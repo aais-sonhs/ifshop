@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-chart-bar mr-2"></i>Báo cáo nhập hàng</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="small-box bg-primary">
+                    <div class="inner"><h4 id="total_count">0</h4><p>Phiếu nhập</p></div>
+                    <div class="icon"><i class="fas fa-truck-loading"></i></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="small-box bg-success">
+                    <div class="inner"><h4 id="total_amount">0đ</h4><p>Tổng tiền nhập</p></div>
+                    <div class="icon"><i class="fas fa-coins"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table id="report_tbl" class="table table-bordered table-striped table-sm">
+                <thead class="bg-light">
+                    <tr><th>STT</th><th>Mã phiếu</th><th>Ngày</th><th>Nhà cung cấp</th><th>Kho</th><th>Tổng tiền</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot class="font-weight-bold bg-light">
+                    <tr><td colspan="5">TỔNG</td><td id="ft_total">0</td><td></td></tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+$(document).ready(function(){
+    var today = new Date();
+    var first = new Date(today.getFullYear(), today.getMonth(), 1);
+    $('#filter_from_date').val(first.toISOString().split('T')[0]);
+    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+    loadReport();
+    $('#btn_search').click(function(){ loadReport(); });
+});
+function loadReport(){
+    var url = '/api/report_purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val();
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+        $('#total_count').text(res.summary.total_count);
+        $('#total_amount').text(fmtD(res.summary.total_amount));
+        var h='', total=0;
+        res.data.forEach(function(d,i){
+            var badge = d.status===2 ? '<span class="badge badge-dark">Hủy</span>' :
+                        d.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' :
+                        '<span class="badge badge-info">'+d.status_display+'</span>';
+            h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.date+'</td>'+
+                '<td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
+                '<td class="text-right">'+fmtD(d.total_amount)+'</td><td class="text-center">'+badge+'</td></tr>';
+            if(d.status !== 2) total += d.total_amount;
+        });
+        if(!h) h = '<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+        $('#report_tbl tbody').html(h);
+        $('#ft_total').text(fmtD(total));
+    });
+}
+</script>
+{% endblock %}

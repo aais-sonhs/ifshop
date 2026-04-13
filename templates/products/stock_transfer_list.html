@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-exchange-alt mr-2"></i>Chuyển hàng</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu chuyển</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Kho xuất</th><th>Kho nhập</th><th>Ngày chuyển</th><th>Số SP</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo phiếu chuyển</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-3"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Kho xuất <span class="text-danger">*</span></label><select class="form-control form-control-sm select2" id="inp_from_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Kho nhập <span class="text-danger">*</span></label><select class="form-control form-control-sm select2" id="inp_to_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Ngày chuyển <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_transfer_date"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Đang chuyển</option><option value="2">Hoàn thành</option><option value="3">Hủy</option></select></div></div>
+                    <div class="col-md-9"><div class="form-group"><label>Ghi chú</label><input type="text" class="form-control form-control-sm" id="inp_note"></div></div>
+                </div>
+
+                <!-- Chi tiết sản phẩm chuyển -->
+                <hr>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết sản phẩm chuyển</h6>
+                    <button type="button" class="btn btn-sm btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm" id="items_tbl">
+                        <thead class="bg-light">
+                            <tr>
+                                <th style="width:5%">#</th>
+                                <th style="width:45%">Sản phẩm</th>
+                                <th style="width:10%">ĐVT</th>
+                                <th style="width:20%">Số lượng</th>
+                                <th style="width:5%"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="items_body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Product data from API (loaded with variants)
+var PRODUCTS = [];
+
+var itemRowIndex = 0;
+
+$(document).ready(function(){
+    $.get('/api/products_select/', function(res){ PRODUCTS = res.data; });
+    loadData();
+
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');
+        $('#inp_code,#inp_note').val('');
+        $('#inp_from_warehouse_id,#inp_to_warehouse_id').val('');
+        $('#inp_transfer_date').val('');
+        $('#inp_status').val('0');
+        $('#items_body').html('');
+        itemRowIndex = 0;
+        $('#modal_title').text('Tạo phiếu chuyển');
+        $('#modal_form').modal('show');
+        setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
+    });
+
+    $('#btn_add_item').click(function(){
+        addItemRow();
+    });
+
+    $('#btn_save').click(function(){
+        var items = getItemsData();
+        if(!$('#inp_code').val() || !$('#inp_transfer_date').val()){
+            alert('Vui lòng nhập mã phiếu và ngày chuyển'); return;
+        }
+        if(!$('#inp_from_warehouse_id').val() || !$('#inp_to_warehouse_id').val()){
+            alert('Vui lòng chọn kho xuất và kho nhập'); return;
+        }
+        if($('#inp_from_warehouse_id').val() === $('#inp_to_warehouse_id').val()){
+            alert('Kho xuất và kho nhập không được trùng nhau'); return;
+        }
+        if(items.length === 0){
+            alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;
+        }
+
+        var data = {
+            id: $('#edit_id').val() || null,
+            code: $('#inp_code').val(),
+            from_warehouse_id: $('#inp_from_warehouse_id').val(),
+            to_warehouse_id: $('#inp_to_warehouse_id').val(),
+            transfer_date: $('#inp_transfer_date').val(),
+            status: parseInt($('#inp_status').val()),
+            note: $('#inp_note').val(),
+            items: items
+        };
+
+        $.ajax({
+            url: '/api/stock_transfers/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){
+                    $('#modal_form').modal('hide');
+                    loadData();
+                }
+                alert(r.message);
+            }
+        });
+    });
+
+    // Delegate events for item rows
+    $(document).on('change', '.item-product-select', function(){
+        var row = $(this).closest('tr');
+        var productId = $(this).val();
+        var product = PRODUCTS.find(function(p){ return p.id == productId; });
+        if(product){
+            row.find('.item-unit').text(product.unit);
+        }
+    });
+
+    $(document).on('click', '.btn-remove-item', function(){
+        $(this).closest('tr').remove();
+        reindexRows();
+    });
+});
+
+function addItemRow(data){
+    itemRowIndex++;
+    var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
+    PRODUCTS.forEach(function(p){
+        if(p.variants && p.variants.length > 0){
+            p.variants.forEach(function(v){
+                var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
+                if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
+                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" '+selected+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+            });
+        } else {
+            var selected = (data && data.product_id == p.id) ? 'selected' : '';
+            productOptions += '<option value="'+p.id+'" '+selected+'>'+p.code+' - '+p.name+'</option>';
+        }
+    });
+
+    var unit = '';
+    if(data){
+        var prod = PRODUCTS.find(function(p){ return p.id == data.product_id; });
+        unit = prod ? prod.unit : '';
+    }
+    var qty = data ? (data.quantity || 1) : 1;
+
+    var html = '<tr>' +
+        '<td class="text-center item-index">' + itemRowIndex + '</td>' +
+        '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
+        '<td class="text-center item-unit">' + unit + '</td>' +
+        '<td><input type="number" class="form-control form-control-sm item-qty" value="' + qty + '" min="1"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
+        '</tr>';
+    $('#items_body').append(html);
+
+    // Init Select2 for the new row
+    var lastRow = $('#items_body tr:last');
+    lastRow.find('.select2-item').select2({
+        dropdownParent: $('#modal_form'),
+        width: '100%',
+        placeholder: '-- Chọn sản phẩm --',
+        allowClear: true
+    });
+    // Set value if editing
+    if(data && data.product_id){
+        if(data.variant_id){
+            lastRow.find('.select2-item option').each(function(){
+                if($(this).val() == data.product_id && $(this).data('variant-id') == data.variant_id){
+                    $(this).prop('selected', true);
+                }
+            });
+            lastRow.find('.select2-item').trigger('change.select2');
+        } else {
+            lastRow.find('.select2-item').val(data.product_id).trigger('change.select2');
+        }
+    }
+}
+
+function reindexRows(){
+    $('#items_body tr').each(function(i){
+        $(this).find('.item-index').text(i+1);
+    });
+    itemRowIndex = $('#items_body tr').length;
+}
+
+function getItemsData(){
+    var items = [];
+    $('#items_body tr').each(function(){
+        var productId = $(this).find('.item-product-select').val();
+        var qty = parseInt($(this).find('.item-qty').val()) || 0;
+        if(productId && qty > 0){
+            var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
+            items.push({
+                product_id: parseInt(productId),
+                variant_id: variantId,
+                quantity: qty
+            });
+        }
+    });
+    return items;
+}
+
+function loadData(){
+    $.get('/api/stock_transfers/', function(res){
+        var h = '';
+        res.data.forEach(function(d, i){
+            var statusBadge = '';
+            if(d.status === 0) statusBadge = '<span class="badge badge-secondary">Nháp</span>';
+            else if(d.status === 1) statusBadge = '<span class="badge badge-info">Đang chuyển</span>';
+            else if(d.status === 2) statusBadge = '<span class="badge badge-success">Hoàn thành</span>';
+            else statusBadge = '<span class="badge badge-danger">Hủy</span>';
+
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.from_warehouse+'</td><td>'+d.to_warehouse+'</td>'+
+                '<td>'+d.transfer_date+'</td><td class="text-center">'+d.items.length+'</td>'+
+                '<td class="text-center">'+statusBadge+'</td>'+
+                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>\u003ci class="fas fa-edit">\u003c/i>\u003c/button> '+
+                '<button class="btn btn-xs btn-success" onclick=\'printST('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\'>\u003ci class="fas fa-print">\u003c/i>\u003c/button> '+
+                '<button class="btn btn-xs btn-danger" onclick=\'downloadSTPDF('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\' title="Tải PDF">\u003ci class="fas fa-file-pdf">\u003c/i>\u003c/button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function editItem(d){
+    $('#edit_id').val(d.id);
+    $('#inp_code').val(d.code);
+    $('#inp_from_warehouse_id').val(d.from_warehouse_id);
+    $('#inp_to_warehouse_id').val(d.to_warehouse_id);
+    $('#inp_transfer_date').val(d.transfer_date);
+    $('#inp_status').val(d.status);
+    $('#inp_note').val(d.note);
+
+    // Clear items first
+    $('#items_body').html('');
+    itemRowIndex = 0;
+
+    $('#modal_title').text('Sửa phiếu chuyển');
+    $('#modal_form').modal('show');
+
+    // Load items AFTER modal is fully shown so Select2 renders correctly
+    $('#modal_form').one('shown.bs.modal', function(){
+        $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+        if(d.items && d.items.length > 0){
+            d.items.forEach(function(item){
+                addItemRow(item);
+            });
+        }
+    });
+}
+
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?')) return;
+    $.ajax({
+        url: '/api/stock_transfers/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){ loadData(); alert(r.message); }
+    });
+}
+
+function printST(d){
+    var itemsHtml = '';
+    if(d.items){
+        d.items.forEach(function(it, i){
+            var prod = PRODUCTS.find(function(p){return p.id==it.product_id;});
+            var pname = prod ? prod.code + ' - ' + prod.name : 'SP #'+it.product_id;
+            if(it.variant_name) pname += ' ['+it.variant_name+']';
+            var punit = prod ? prod.unit : '';
+            itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td><td>'+pname+'</td><td class="text-center">'+punit+'</td>'+
+                '<td class="text-center">'+it.quantity+'</td></tr>';
+        });
+    }
+    var statusText = {0:'Nháp',1:'Đang chuyển',2:'Hoàn thành',3:'Hủy'};
+    var html = getPrintHeader() +
+        '<div class="print-title">PHIẾU CHUYỂN KHO</div>' +
+        '<div class="print-subtitle">Số: ' + d.code + '</div>' +
+        '<div class="print-info"><table>' +
+        '<tr><td class="label">Kho xuất:</td><td>' + (d.from_warehouse||'') + '</td><td class="label" style="width:100px">Ngày chuyển:</td><td>' + (d.transfer_date||'') + '</td></tr>' +
+        '<tr><td class="label">Kho nhập:</td><td>' + (d.to_warehouse||'') + '</td><td class="label">Trạng thái:</td><td>' + (statusText[d.status]||'') + '</td></tr>' +
+        (d.note ? '<tr><td class="label">Ghi chú:</td><td colspan="3">' + d.note + '</td></tr>' : '') +
+        '</table></div>' +
+        '<table class="print-table"><thead><tr><th>STT</th><th>Sản phẩm</th><th>ĐVT</th><th>Số lượng</th></tr></thead>' +
+        '<tbody>' + itemsHtml + '</tbody></table>' +
+        getPrintSignatures('Thủ kho xuất', 'Thủ kho nhập') +
+        getPrintFooter();
+    printPreviewHTML(html, 'PhieuChuyenKho_' + d.code);
+}
+
+function downloadSTPDF(d){
+    var itemsHtml = '';
+    if(d.items){
+        d.items.forEach(function(it, i){
+            var prod = PRODUCTS.find(function(p){return p.id==it.product_id;});
+            var pname = prod ? prod.code + ' - ' + prod.name : 'SP #'+it.product_id;
+            if(it.variant_name) pname += ' ['+it.variant_name+']';
+            var punit = prod ? prod.unit : '';
+            itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td><td>'+pname+'</td><td class="text-center">'+punit+'</td>'+
+                '<td class="text-center">'+it.quantity+'</td></tr>';
+        });
+    }
+    var statusText = {0:'Nháp',1:'Đang chuyển',2:'Hoàn thành',3:'Hủy'};
+    var html = getPrintHeader() +
+        '<div class="print-title">PHIẾU CHUYỂN KHO</div>' +
+        '<div class="print-subtitle">Số: ' + d.code + '</div>' +
+        '<div class="print-info"><table>' +
+        '<tr><td class="label">Kho xuất:</td><td>' + (d.from_warehouse||'') + '</td><td class="label" style="width:100px">Ngày chuyển:</td><td>' + (d.transfer_date||'') + '</td></tr>' +
+        '<tr><td class="label">Kho nhập:</td><td>' + (d.to_warehouse||'') + '</td><td class="label">Trạng thái:</td><td>' + (statusText[d.status]||'') + '</td></tr>' +
+        (d.note ? '<tr><td class="label">Ghi chú:</td><td colspan="3">' + d.note + '</td></tr>' : '') +
+        '</table></div>' +
+        '<table class="print-table"><thead><tr><th>STT</th><th>Sản phẩm</th><th>ĐVT</th><th>Số lượng</th></tr></thead>' +
+        '<tbody>' + itemsHtml + '</tbody></table>' +
+        getPrintSignatures('Thủ kho xuất', 'Thủ kho nhập') +
+        getPrintFooter();
+    $('#print_content').html(html);
+    _pdfTitle = 'PhieuChuyenKho_' + d.code;
+    downloadPDF();
+}
+</script>
+{% endblock %}

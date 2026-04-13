@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}🪑 Quản lý bàn{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-1 align-items-center">
+            <div class="col-6 col-sm-6"><h4 class="m-0" style="font-size:clamp(16px,4vw,24px);">🪑 Sơ đồ bàn</h4></div>
+            <div class="col-6 col-sm-6 text-right">
+                <button class="btn btn-sm btn-primary" onclick="openAddTable()"><i class="fas fa-plus mr-1"></i><span class="d-none d-sm-inline">Thêm bàn</span></button>
+                <button class="btn btn-sm btn-outline-info" onclick="loadTables()"><i class="fas fa-sync-alt"></i></button>
+            </div>
+        </div>
+        <div style="overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:4px;">
+            <div class="btn-group">
+                <button class="btn btn-sm btn-outline-secondary active" onclick="filterArea('all',this)">Tất cả</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="filterArea('indoor',this)">Trong nhà</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="filterArea('outdoor',this)">Ngoài trời</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="filterArea('bar',this)">Quầy bar</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="filterArea('vip',this)">VIP</button>
+            </div>
+        </div>
+    </div>
+</div>
+<section class="content">
+<div class="container-fluid">
+    <!-- Status summary -->
+    <div class="row mb-3">
+        <div class="col-12" style="overflow-x:auto;white-space:nowrap;">
+            <span class="badge badge-success mr-1" style="font-size:clamp(11px,2.5vw,14px);padding:5px 10px;">🟢 Trống: <b id="cnt_free">0</b></span>
+            <span class="badge badge-danger mr-1" style="font-size:clamp(11px,2.5vw,14px);padding:5px 10px;">🔴 Đang PV: <b id="cnt_serving">0</b></span>
+            <span class="badge badge-warning mr-1" style="font-size:clamp(11px,2.5vw,14px);padding:5px 10px;">🟡 Đặt trước: <b id="cnt_reserved">0</b></span>
+            <span class="badge badge-secondary" style="font-size:clamp(11px,2.5vw,14px);padding:5px 10px;">⚫ Bảo trì: <b id="cnt_maint">0</b></span>
+        </div>
+    </div>
+
+    <!-- Table Grid -->
+    <div class="row" id="table_grid"></div>
+</div>
+</section>
+
+<!-- Modal Thêm/Sửa bàn -->
+<div class="modal fade" id="modal_table" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h5 class="modal-title" id="modal_table_title"><i class="fas fa-plus mr-1"></i>Thêm bàn</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="tbl_id">
+                <div class="form-group"><label>Số bàn *</label><input type="text" class="form-control form-control-sm" id="tbl_number"></div>
+                <div class="form-group"><label>Tên bàn</label><input type="text" class="form-control form-control-sm" id="tbl_name"></div>
+                <div class="form-group"><label>Khu vực</label>
+                    <select class="form-control form-control-sm" id="tbl_area">
+                        <option value="indoor">Trong nhà</option>
+                        <option value="outdoor">Ngoài trời</option>
+                        <option value="bar">Quầy bar</option>
+                        <option value="vip">Phòng VIP</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Số ghế</label><input type="number" class="form-control form-control-sm" id="tbl_capacity" value="4"></div>
+                <div class="form-group"><label>Ghi chú</label><input type="text" class="form-control form-control-sm" id="tbl_note"></div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveTable()"><i class="fas fa-save mr-1"></i>Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table-card {
+    cursor: pointer; border-radius: 12px; transition: all 0.3s;
+    min-height: 120px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; position: relative;
+    border: 2px solid transparent;
+}
+.table-card:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+.table-card:active { transform: scale(0.96); }
+.table-card.status-0 { background: linear-gradient(135deg, #d4edda, #c3e6cb); border-color: #28a745; }
+.table-card.status-1 { background: linear-gradient(135deg, #f8d7da, #f5c6cb); border-color: #dc3545; }
+.table-card.status-2 { background: linear-gradient(135deg, #fff3cd, #ffeeba); border-color: #ffc107; }
+.table-card.status-3 { background: linear-gradient(135deg, #e2e3e5, #d6d8db); border-color: #6c757d; }
+.table-card .table-number { font-size: clamp(20px, 5vw, 28px); font-weight: 800; }
+.table-card .table-info { font-size: 11px; opacity: 0.8; }
+.table-card .table-status { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.table-card .table-actions { position: absolute; top: 5px; right: 5px; display: none; }
+.table-card:hover .table-actions { display: flex; gap: 4px; }
+@media (max-width: 768px) {
+    .table-card { min-height: 100px; }
+    .table-card .table-number { font-size: 22px; }
+    .table-card .table-actions { display: flex; }
+}
+</style>
+
+<script>
+var allTables = [];
+var currentFilter = 'all';
+
+function loadTables(){
+    $.get('/api/cafe_tables/', function(res){
+        allTables = res.data || [];
+        renderTables();
+    });
+}
+
+function renderTables(){
+    var grid = $('#table_grid');
+    grid.empty();
+    var filtered = currentFilter === 'all' ? allTables : allTables.filter(t => t.area === currentFilter);
+    var cnt = {0:0, 1:0, 2:0, 3:0};
+
+    filtered.forEach(function(t){
+        cnt[t.status] = (cnt[t.status]||0) + 1;
+        var icons = {indoor:'🏠', outdoor:'🌳', bar:'🍸', vip:'👑'};
+        var orderInfo = t.status === 1 && t.current_order_code ? '<div class="table-info mt-1">📋 '+t.current_order_code+'</div>' : '';
+        var html = '<div class="col-lg-2 col-md-3 col-sm-4 col-6 mb-3 table-item" data-area="'+t.area+'">' +
+            '<div class="table-card status-'+t.status+'" onclick="onTableClick('+t.id+')" title="'+t.name+'">' +
+                '<div class="table-actions">' +
+                    '<button class="btn btn-xs btn-light" onclick="event.stopPropagation();editTable('+t.id+')" title="Sửa"><i class="fas fa-pen"></i></button>' +
+                    '<button class="btn btn-xs btn-light text-danger" onclick="event.stopPropagation();deleteTable('+t.id+')" title="Xóa"><i class="fas fa-trash"></i></button>' +
+                '</div>' +
+                '<div class="table-info">'+(icons[t.area]||'')+ ' ' +t.area_display+'</div>' +
+                '<div class="table-number">'+t.number+'</div>' +
+                '<div class="table-status">'+t.status_display+'</div>' +
+                '<div class="table-info"><i class="fas fa-chair"></i> '+t.capacity+' ghế</div>' +
+                orderInfo +
+            '</div>' +
+        '</div>';
+        grid.append(html);
+    });
+
+    $('#cnt_free').text(cnt[0]||0);
+    $('#cnt_serving').text(cnt[1]||0);
+    $('#cnt_reserved').text(cnt[2]||0);
+    $('#cnt_maint').text(cnt[3]||0);
+}
+
+function filterArea(area, btn){
+    currentFilter = area;
+    $(btn).addClass('active').siblings().removeClass('active');
+    renderTables();
+}
+
+function onTableClick(id){
+    var t = allTables.find(x=>x.id===id);
+    if(!t) return;
+    if(t.status === 0){
+        // Bàn trống → chuyển POS để order
+        if(confirm('Mở POS cho ' + t.name + '?')){
+            window.location.href = '/pos/?table_id=' + id;
+        }
+    } else if(t.status === 1){
+        // Đang phục vụ → hỏi thanh toán/clear
+        if(confirm(t.name + ' đang phục vụ.\nĐơn: ' + (t.current_order_code||'N/A') + '\n\nĐánh dấu trống?')){
+            updateTableStatus(id, 0);
+        }
+    }
+}
+
+function updateTableStatus(id, status){
+    $.ajax({url:'/api/cafe_tables/update_status/', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{ csrf_token }}'},
+        data: JSON.stringify({id: id, status: status}),
+        success: function(r){ loadTables(); }
+    });
+}
+
+function openAddTable(){
+    $('#tbl_id').val(''); $('#tbl_number,#tbl_name,#tbl_note').val('');
+    $('#tbl_area').val('indoor'); $('#tbl_capacity').val(4);
+    $('#modal_table_title').html('<i class="fas fa-plus mr-1"></i>Thêm bàn');
+    $('#modal_table').modal('show');
+}
+
+function editTable(id){
+    var t = allTables.find(x=>x.id===id);
+    if(!t) return;
+    $('#tbl_id').val(t.id); $('#tbl_number').val(t.number);
+    $('#tbl_name').val(t.name); $('#tbl_area').val(t.area);
+    $('#tbl_capacity').val(t.capacity); $('#tbl_note').val(t.note);
+    $('#modal_table_title').html('<i class="fas fa-pen mr-1"></i>Sửa bàn');
+    $('#modal_table').modal('show');
+}
+
+function saveTable(){
+    var data = {
+        id: $('#tbl_id').val() || null,
+        number: $('#tbl_number').val(),
+        name: $('#tbl_name').val(),
+        area: $('#tbl_area').val(),
+        capacity: parseInt($('#tbl_capacity').val()) || 4,
+        note: $('#tbl_note').val(),
+    };
+    $.ajax({url:'/api/cafe_tables/save/', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{ csrf_token }}'}, data: JSON.stringify(data),
+        success: function(r){
+            alert(r.message); if(r.status==='ok'){ $('#modal_table').modal('hide'); loadTables(); }
+        }
+    });
+}
+
+function deleteTable(id){
+    if(!confirm('Xóa bàn này?')) return;
+    $.ajax({url:'/api/cafe_tables/delete/', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{ csrf_token }}'}, data: JSON.stringify({id:id}),
+        success: function(r){ loadTables(); }
+    });
+}
+
+$(document).ready(function(){ loadTables(); setInterval(loadTables, 30000); });
+</script>
+{% endblock %}

@@ -1,0 +1,4 @@
+LOAD DATABASE
+     FROM sqlite:///home/aais/Documents/revenue_expenditure_manager/db.sqlite3
+     INTO postgresql://postgres:TuanHai2508@localhost/bizf
+     WITH include drop, create tables, create indexes, reset sequences;

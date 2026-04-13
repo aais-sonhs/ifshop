@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-user-shield mr-2"></i>Nhóm vai trò</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add_role">
+                <i class="fas fa-plus"></i> Thêm nhóm vai trò
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="role_tbl" class="table table-bordered table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">STT</th>
+                        <th>Tên nhóm</th>
+                        <th>Mô tả</th>
+                        <th style="width:120px;" class="text-center">Số người dùng</th>
+                        <th style="width:100px;" class="text-center">Trạng thái</th>
+                        <th style="width:80px;" class="text-center">Ngày tạo</th>
+                        <th style="width:150px;" class="text-center">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="role_tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal thêm/sửa nhóm vai trò -->
+<div class="modal fade" id="modal_role" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_role_title">Thêm nhóm vai trò</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="role_id">
+                <div class="form-group">
+                    <label>Tên nhóm vai trò <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="inp_role_name" placeholder="VD: Quản lý cửa hàng, Nhân viên bán hàng...">
+                </div>
+                <div class="form-group">
+                    <label>Mô tả</label>
+                    <textarea class="form-control" id="inp_role_desc" rows="3" placeholder="Mô tả quyền hạn của nhóm..."></textarea>
+                </div>
+                <div class="custom-control custom-switch">
+                    <input type="checkbox" class="custom-control-input" id="inp_role_active" checked>
+                    <label class="custom-control-label" for="inp_role_active">Đang hoạt động</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save_role"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal quản lý thành viên -->
+<div class="modal fade" id="modal_members" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="fas fa-users mr-2"></i>Thành viên nhóm: <span id="lbl_group_name"></span></h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="member_role_id">
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <select class="form-control form-control-sm" id="sel_add_user">
+                            <option value="">-- Chọn người dùng để thêm --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-success btn-sm btn-block" id="btn_add_member"><i class="fas fa-plus"></i> Thêm vào nhóm</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm">
+                        <thead><tr><th>STT</th><th>Username</th><th>Họ tên</th><th>Email</th><th>Cửa hàng</th><th>Thao tác</th></tr></thead>
+                        <tbody id="member_tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var allUsers = [];
+var allRoleGroups = [];
+
+$(document).ready(function(){
+    loadData();
+
+    $('#btn_add_role').click(function(){
+        $('#role_id').val('');
+        $('#inp_role_name').val('');
+        $('#inp_role_desc').val('');
+        $('#inp_role_active').prop('checked', true);
+        $('#modal_role_title').text('Thêm nhóm vai trò');
+        $('#modal_role').modal('show');
+    });
+
+    $('#btn_save_role').click(function(){
+        var name = $('#inp_role_name').val().trim();
+        if(!name){alert('Vui lòng nhập tên nhóm vai trò');return;}
+        $.ajax({
+            url: '/api/role_groups/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({
+                id: $('#role_id').val() || null,
+                name: name,
+                description: $('#inp_role_desc').val(),
+                is_active: $('#inp_role_active').prop('checked'),
+            }),
+            success: function(r){
+                alert(r.message);
+                if(r.status === 'ok'){$('#modal_role').modal('hide'); loadData();}
+            }
+        });
+    });
+
+    $('#btn_add_member').click(function(){
+        var userId = $('#sel_add_user').val();
+        var roleId = $('#member_role_id').val();
+        if(!userId){alert('Chọn người dùng');return;}
+        $.ajax({
+            url: '/api/role_groups/assign/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({role_group_id: roleId, user_id: userId, action: 'add'}),
+            success: function(r){
+                alert(r.message);
+                if(r.status === 'ok') openMembers(roleId);
+            }
+        });
+    });
+});
+
+function loadData(){
+    $.when($.get('/api/role_groups/'), $.get('/api/users/')).done(function(r1, r2){
+        allRoleGroups = r1[0].data;
+        allUsers = r2[0].data;
+        renderTable();
+    });
+}
+
+function renderTable(){
+    var h = '';
+    if(!allRoleGroups.length){
+        h = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có nhóm vai trò nào. Nhấn <b>Thêm nhóm vai trò</b> để bắt đầu.</td></tr>';
+    }
+    allRoleGroups.forEach(function(rg, i){
+        var statusBadge = rg.is_active
+            ? '<span class="badge badge-success">Hoạt động</span>'
+            : '<span class="badge badge-secondary">Tạm ngưng</span>';
+        h += '<tr>';
+        h += '<td class="text-center">'+(i+1)+'</td>';
+        h += '<td><b>'+rg.name+'</b></td>';
+        h += '<td><small class="text-muted">'+rg.description+'</small></td>';
+        h += '<td class="text-center"><span class="badge badge-info" style="cursor:pointer;" onclick="openMembers('+rg.id+')"><i class="fas fa-users"></i> '+rg.user_count+' người</span></td>';
+        h += '<td class="text-center">'+statusBadge+'</td>';
+        h += '<td class="text-center"><small>'+rg.created_at+'</small></td>';
+        h += '<td class="text-center">';
+        h += '<button class="btn btn-xs btn-info mr-1" onclick="openMembers('+rg.id+')" title="Quản lý thành viên"><i class="fas fa-users"></i></button>';
+        h += '<button class="btn btn-xs btn-warning mr-1" onclick=\'editRole('+JSON.stringify(rg)+')\' title="Sửa"><i class="fas fa-edit"></i></button>';
+        h += '<button class="btn btn-xs btn-danger" onclick="deleteRole('+rg.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+        h += '</td>';
+        h += '</tr>';
+    });
+    $('#role_tbody').html(h);
+}
+
+function editRole(rg){
+    $('#role_id').val(rg.id);
+    $('#inp_role_name').val(rg.name);
+    $('#inp_role_desc').val(rg.description);
+    $('#inp_role_active').prop('checked', rg.is_active);
+    $('#modal_role_title').text('Sửa nhóm vai trò');
+    $('#modal_role').modal('show');
+}
+
+function deleteRole(id){
+    if(!confirm('Xóa nhóm vai trò này? Tất cả người dùng sẽ bị bỏ khỏi nhóm.'))return;
+    $.ajax({
+        url: '/api/role_groups/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){alert(r.message); loadData();}
+    });
+}
+
+function openMembers(roleId){
+    var rg = allRoleGroups.find(function(r){return r.id == roleId;});
+    if(!rg)return;
+    $('#member_role_id').val(roleId);
+    $('#lbl_group_name').text(rg.name);
+
+    // Load members from allUsers based on group membership
+    $.get('/api/users/', function(res){
+        allUsers = res.data;
+        var members = allUsers.filter(function(u){
+            // Check if user has this group
+            return u.groups && u.groups.split(', ').indexOf(rg.name) >= 0;
+        });
+        var nonMembers = allUsers.filter(function(u){
+            return !u.groups || u.groups.split(', ').indexOf(rg.name) < 0;
+        });
+
+        // Populate add user dropdown
+        var opts = '<option value="">-- Chọn người dùng để thêm --</option>';
+        nonMembers.forEach(function(u){
+            opts += '<option value="'+u.id+'">'+ u.username +' ('+(u.full_name||'')+')</option>';
+        });
+        $('#sel_add_user').html(opts);
+
+        // Render members table
+        var h = '';
+        if(!members.length){
+            h = '<tr><td colspan="6" class="text-center text-muted py-3">Chưa có thành viên nào trong nhóm</td></tr>';
+        }
+        members.forEach(function(u, i){
+            h += '<tr>';
+            h += '<td class="text-center">'+(i+1)+'</td>';
+            h += '<td><b>'+u.username+'</b></td>';
+            h += '<td>'+u.full_name+'</td>';
+            h += '<td>'+u.email+'</td>';
+            h += '<td>'+(u.store_name||'')+'</td>';
+            h += '<td class="text-center"><button class="btn btn-xs btn-danger" onclick="removeMember('+roleId+','+u.id+')"><i class="fas fa-user-minus"></i> Xóa</button></td>';
+            h += '</tr>';
+        });
+        $('#member_tbody').html(h);
+    });
+
+    $('#modal_members').modal('show');
+}
+
+function removeMember(roleId, userId){
+    if(!confirm('Xóa người dùng khỏi nhóm?'))return;
+    $.ajax({
+        url: '/api/role_groups/assign/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({role_group_id: roleId, user_id: userId, action: 'remove'}),
+        success: function(r){
+            alert(r.message);
+            if(r.status === 'ok'){openMembers(roleId); loadData();}
+        }
+    });
+}
+</script>
+{% endblock %}

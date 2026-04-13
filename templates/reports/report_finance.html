@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-coins mr-2"></i>Báo cáo tài chính</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-md-3" id="store_filter_wrap" style="display:none;">
+                <select class="form-control form-control-sm" id="filter_store_id"><option value="">🏢 Tất cả cửa hàng</option></select>
+            </div>
+            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
+        </div>
+        <!-- TỔNG QUAN -->
+        <div class="row mb-3">
+            <div class="col-lg-4 col-6">
+                <div class="small-box bg-success">
+                    <div class="inner"><h4 id="total_income">0đ</h4><p>Tổng thu (phiếu thu)</p></div>
+                    <div class="icon"><i class="fas fa-arrow-down"></i></div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-6">
+                <div class="small-box bg-danger">
+                    <div class="inner"><h4 id="total_expense">0đ</h4><p>Tổng chi (phiếu chi)</p></div>
+                    <div class="icon"><i class="fas fa-arrow-up"></i></div>
+                </div>
+            </div>
+            <div class="col-lg-4 col-6">
+                <div class="small-box" id="box_net">
+                    <div class="inner"><h4 id="net_profit">0đ</h4><p>Lãi / Lỗ</p></div>
+                    <div class="icon"><i class="fas fa-balance-scale"></i></div>
+                </div>
+            </div>
+        </div>
+        <!-- DOANH THU ĐƠN HÀNG -->
+        <div class="row mb-3">
+            <div class="col-lg-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-info"><i class="fas fa-shopping-cart"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Doanh thu đơn hàng (đã thu)</span>
+                        <span class="info-box-number" id="order_revenue">0đ</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-warning"><i class="fas fa-exclamation-triangle"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Công nợ đơn hàng</span>
+                        <span class="info-box-number" id="order_debt">0đ</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- DOANH THU THEO HÌNH THỨC THANH TOÁN -->
+        <div class="row mb-3">
+            <div class="col-lg-3 col-6">
+                <div class="info-box mb-2">
+                    <span class="info-box-icon bg-success"><i class="fas fa-university"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">🏦 Thu chuyển khoản</span>
+                        <span class="info-box-number text-success" id="income_transfer">0đ</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box mb-2">
+                    <span class="info-box-icon bg-olive"><i class="fas fa-money-bill-wave"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">💵 Thu tiền mặt</span>
+                        <span class="info-box-number text-success" id="income_cash">0đ</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box mb-2">
+                    <span class="info-box-icon bg-pink"><i class="fas fa-university"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">🏦 Chi chuyển khoản</span>
+                        <span class="info-box-number text-danger" id="expense_transfer">0đ</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box mb-2">
+                    <span class="info-box-icon bg-maroon"><i class="fas fa-money-bill-wave"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">💵 Chi tiền mặt</span>
+                        <span class="info-box-number text-danger" id="expense_cash">0đ</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG SO SÁNH CỬA HÀNG -->
+        <div id="store_breakdown_wrap" style="display:none;" class="mb-3">
+            <div class="card card-outline card-purple">
+                <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-balance-scale mr-1"></i> So sánh thu chi theo cửa hàng</h6></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm mb-0">
+                            <thead class="bg-light">
+                                <tr><th>Cửa hàng</th><th class="text-right">Tổng thu</th><th class="text-right">Tổng chi</th><th class="text-right">Lãi/Lỗ</th><th></th></tr>
+                            </thead>
+                            <tbody id="store_breakdown_tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG THEO DANH MỤC -->
+        <div class="card card-outline card-info">
+            <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-list mr-1"></i> Thu chi theo danh mục</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table id="report_tbl" class="table table-bordered table-sm mb-0">
+                        <thead class="bg-light">
+                            <tr><th>STT</th><th>Khoản mục</th><th>Thu</th><th>Chi</th><th>Chênh lệch</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot class="font-weight-bold bg-light">
+                            <tr><td colspan="2">TỔNG</td><td id="ft_income" class="text-right text-success">0</td><td id="ft_expense" class="text-right text-danger">0</td><td id="ft_diff" class="text-right">0</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+$(document).ready(function(){
+    var today = new Date();
+    var first = new Date(today.getFullYear(), today.getMonth(), 1);
+    $('#filter_from_date').val(first.toISOString().split('T')[0]);
+    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+    loadReport();
+    $('#btn_search').click(function(){ loadReport(); });
+    $('#filter_store_id').change(function(){ loadReport(); });
+});
+function loadReport(){
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/report_finance/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val();
+    if(storeId) url += '&store_id='+storeId;
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+
+        // Store filter
+        if(res.has_multiple_stores && res.stores && res.stores.length > 1){
+            $('#store_filter_wrap').show();
+            var curVal = $('#filter_store_id').val();
+            var opts = '<option value="">🏢 Tất cả cửa hàng</option>';
+            res.stores.forEach(function(s){ var sel=(s.id==curVal)?' selected':''; opts+='<option value="'+s.id+'"'+sel+'>'+s.name+'</option>'; });
+            $('#filter_store_id').html(opts);
+        } else { $('#store_filter_wrap').hide(); }
+
+        var s = res.summary;
+        $('#total_income').text(fmtD(s.total_income));
+        $('#total_expense').text(fmtD(s.total_expense));
+        $('#net_profit').text(fmtD(s.net_profit));
+        $('#box_net').removeClass('bg-success bg-danger bg-info').addClass(s.net_profit >= 0 ? 'bg-info' : 'bg-danger');
+        $('#order_revenue').text(fmtD(s.order_revenue));
+        $('#order_debt').text(fmtD(s.order_debt));
+        $('#income_cash').text(fmtD(s.income_cash));
+        $('#income_transfer').text(fmtD(s.income_transfer));
+        $('#expense_cash').text(fmtD(s.expense_cash));
+        $('#expense_transfer').text(fmtD(s.expense_transfer));
+
+        // Store breakdown
+        if(res.store_breakdown && res.store_breakdown.length > 0 && !storeId){
+            $('#store_breakdown_wrap').show();
+            var sb = '';
+            res.store_breakdown.forEach(function(st){
+                var cls = st.net >= 0 ? 'text-success' : 'text-danger';
+                sb += '<tr>';
+                sb += '<td><b>'+st.store_name+'</b> <small class="text-muted">('+st.brand_name+')</small></td>';
+                sb += '<td class="text-right text-success">'+fmtD(st.income)+'</td>';
+                sb += '<td class="text-right text-danger">'+fmtD(st.expense)+'</td>';
+                sb += '<td class="text-right '+cls+'"><b>'+fmtD(st.net)+'</b></td>';
+                sb += '<td class="text-center"><button class="btn btn-xs btn-info" onclick="viewStore('+st.store_id+')"><i class="fas fa-eye"></i></button></td>';
+                sb += '</tr>';
+            });
+            $('#store_breakdown_tbody').html(sb);
+        } else { $('#store_breakdown_wrap').hide(); }
+
+        var h = '', tI=0, tE=0;
+        res.categories.forEach(function(c, i){
+            var diff = c.income - c.expense;
+            var diffClass = diff >= 0 ? 'text-success' : 'text-danger';
+            tI += c.income; tE += c.expense;
+            h += '<tr><td>'+(i+1)+'</td><td>'+c.name+'</td>'+
+                '<td class="text-right text-success">'+(c.income > 0 ? fmtD(c.income) : '-')+'</td>'+
+                '<td class="text-right text-danger">'+(c.expense > 0 ? fmtD(c.expense) : '-')+'</td>'+
+                '<td class="text-right '+diffClass+'"><strong>'+fmtD(diff)+'</strong></td></tr>';
+        });
+        if(!h) h = '<tr><td colspan="5" class="text-center text-muted py-3">Không có dữ liệu phiếu thu/chi trong khoảng thời gian này</td></tr>';
+        $('#report_tbl tbody').html(h);
+        $('#ft_income').text(fmtD(tI));
+        $('#ft_expense').text(fmtD(tE));
+        var tDiff = tI - tE;
+        $('#ft_diff').html('<span class="'+(tDiff>=0?'text-success':'text-danger')+'">'+fmtD(tDiff)+'</span>');
+    });
+}
+function viewStore(storeId){ $('#filter_store_id').val(storeId); loadReport(); }
+</script>
+{% endblock %}

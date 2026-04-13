@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-trademark mr-2"></i>Thương hiệu & Cửa hàng</h3>
+        <div class="card-tools"><button type="button" class="btn btn-sm btn-primary" id="btn_add_brand"><i class="fas fa-plus"></i> Thêm thương hiệu</button></div>
+    </div>
+    <div class="card-body">
+        <!-- Filter bar -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <select class="form-control form-control-sm" id="filter_brand" onchange="renderBrands()">
+                    <option value="">-- Tất cả thương hiệu --</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-control form-control-sm" id="filter_btype" onchange="renderBrands()">
+                    <option value="">-- Tất cả mô hình --</option>
+                    <option value="retail">🛒 Bán lẻ</option>
+                    <option value="restaurant">🍜 Quán ăn</option>
+                    <option value="cafe">☕ Cafe</option>
+                    <option value="spa">💆 Spa</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm tên cửa hàng, mã..." oninput="renderBrands()">
+            </div>
+            <div class="col-md-2 text-right">
+                <span class="badge badge-primary" id="brand_count" style="font-size:13px;"></span>
+            </div>
+        </div>
+        <div id="brand_container"></div>
+    </div>
+</div>
+
+<!-- Modal Brand -->
+<div class="modal fade" id="modal_brand" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="brand_modal_title">Thêm thương hiệu</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="brand_id">
+                <div class="row">
+                    <div class="col-md-5"><div class="form-group"><label>Tên thương hiệu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_brand_name"></div></div>
+                    <div class="col-md-4" id="wrap_brand_btype"><div class="form-group"><label>Mô hình kinh doanh</label><select class="form-control form-control-sm" id="inp_brand_btype"><option value="retail">🛒 Bán lẻ</option><option value="restaurant">🍜 Quán ăn</option><option value="cafe">☕ Cafe</option><option value="spa">💆 Spa</option></select></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>MST</label><input type="text" class="form-control form-control-sm" id="inp_brand_tax"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Hotline</label><input type="text" class="form-control form-control-sm" id="inp_brand_phone"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Email</label><input type="email" class="form-control form-control-sm" id="inp_brand_email"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Website</label><input type="url" class="form-control form-control-sm" id="inp_brand_website" placeholder="https://"></div></div>
+                </div>
+                <div class="form-group"><label>Địa chỉ trụ sở</label><input type="text" class="form-control form-control-sm" id="inp_brand_address"></div>
+                <div class="form-group" id="wrap_brand_owner"><label>Chủ sở hữu</label><select class="form-control form-control-sm" id="inp_brand_owner"><option value="">-- Chọn --</option></select></div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control form-control-sm" id="inp_brand_desc" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save_brand"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Store -->
+<div class="modal fade" id="modal_store" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="store_modal_title">Thêm cửa hàng</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="store_id">
+                <input type="hidden" id="store_brand_id">
+                <div class="row">
+                    <div class="col-md-3"><div class="form-group"><label>Mã CH <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_store_code" placeholder="CH01"></div></div>
+                    <div class="col-md-5"><div class="form-group"><label>Tên cửa hàng <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_store_name"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>SĐT</label><input type="text" class="form-control form-control-sm" id="inp_store_phone"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Địa chỉ</label><input type="text" class="form-control form-control-sm" id="inp_store_address"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Tỉnh/Thành</label><input type="text" class="form-control form-control-sm" id="inp_store_city"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Quận/Huyện</label><input type="text" class="form-control form-control-sm" id="inp_store_district"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Email</label><input type="email" class="form-control form-control-sm" id="inp_store_email"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Giờ mở cửa</label><input type="time" class="form-control form-control-sm" id="inp_store_open"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Giờ đóng cửa</label><input type="time" class="form-control form-control-sm" id="inp_store_close"></div></div>
+                </div>
+                <div class="form-group"><label>Quản lý</label><select class="form-control form-control-sm" id="inp_store_manager"><option value="">-- Chọn --</option></select></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success" id="btn_save_store"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var allUsers = [];
+var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
+
+$(document).ready(function(){
+    // Superadmin: ẩn chọn mô hình (để chủ TH tự chọn), hiện chủ sở hữu
+    // Brand owner: hiện mô hình, ẩn chủ sở hữu, ẩn nút thêm TH
+    if(isSuperAdmin){
+        $('#wrap_brand_btype').hide();
+    } else {
+        $('#wrap_brand_owner').hide();
+        $('#btn_add_brand').hide();
+    }
+    loadData();
+
+    $('#btn_add_brand').click(function(){
+        $('#brand_id').val('');
+        $('#inp_brand_name,#inp_brand_phone,#inp_brand_email,#inp_brand_website,#inp_brand_address,#inp_brand_tax,#inp_brand_desc').val('');
+        $('#inp_brand_owner').val('');$('#inp_brand_btype').val('retail');
+        $('#brand_modal_title').text('Thêm thương hiệu');
+        $('#modal_brand').modal('show');
+    });
+
+    $('#btn_save_brand').click(function(){
+        if(!$('#inp_brand_name').val()){alert('Nhập tên thương hiệu');return;}
+        $.ajax({url:'/api/brands/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},
+            data:JSON.stringify({
+                id:$('#brand_id').val()||null, name:$('#inp_brand_name').val(),
+                business_type:$('#inp_brand_btype').val(),
+                phone:$('#inp_brand_phone').val(), email:$('#inp_brand_email').val(),
+                website:$('#inp_brand_website').val(), address:$('#inp_brand_address').val(),
+                tax_code:$('#inp_brand_tax').val(), description:$('#inp_brand_desc').val(),
+                owner_id:$('#inp_brand_owner').val()||null,
+            }),
+            success:function(r){if(r.status==='ok'){$('#modal_brand').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+
+    $('#btn_save_store').click(function(){
+        if(!$('#inp_store_code').val()||!$('#inp_store_name').val()){alert('Nhập mã và tên cửa hàng');return;}
+        $.ajax({url:'/api/stores/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},
+            data:JSON.stringify({
+                id:$('#store_id').val()||null, brand_id:$('#store_brand_id').val(),
+                code:$('#inp_store_code').val(), name:$('#inp_store_name').val(),
+                phone:$('#inp_store_phone').val(), email:$('#inp_store_email').val(),
+                address:$('#inp_store_address').val(), city:$('#inp_store_city').val(),
+                district:$('#inp_store_district').val(), manager_id:$('#inp_store_manager').val()||null,
+                open_time:$('#inp_store_open').val()||null, close_time:$('#inp_store_close').val()||null,
+            }),
+            success:function(r){if(r.status==='ok'){$('#modal_store').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+});
+
+function loadData(){
+    $.get('/api/brands/',function(res){
+        allBrandsData = res.data;
+        allUsers = res.users || [];
+        var uOpts = '<option value="">-- Chọn --</option>';
+        allUsers.forEach(function(u){uOpts+='<option value="'+u.id+'">'+u.name+'</option>';});
+        $('#inp_brand_owner,#inp_store_manager').html(uOpts);
+
+        // Populate brand filter dropdown
+        var fOpts = '<option value="">-- Tất cả thương hiệu --</option>';
+        res.data.forEach(function(b){ fOpts+='<option value="'+b.id+'">'+b.name+'</option>'; });
+        var prevFilter = $('#filter_brand').val();
+        $('#filter_brand').html(fOpts).val(prevFilter);
+
+        renderBrands();
+    });
+}
+
+var allBrandsData = [];
+
+function renderBrands(){
+    var filterBrand = $('#filter_brand').val();
+    var filterBtype = $('#filter_btype').val();
+    var filterSearch = ($('#filter_search').val()||'').toLowerCase();
+
+    var filtered = allBrandsData.filter(function(b){
+        if(filterBrand && String(b.id) !== filterBrand) return false;
+        if(filterBtype && b.business_type !== filterBtype) return false;
+        return true;
+    });
+
+    var h = '';
+    if(!filtered.length){
+        h = '<div class="text-center text-muted py-5"><i class="fas fa-search fa-3x mb-3 d-block"></i>Không tìm thấy thương hiệu nào.</div>';
+    }
+    var btypeEmoji = {'retail':'🛒','restaurant':'🍜','cafe':'☕','spa':'💆'};
+    var btypeLabel = {'retail':'Bán lẻ','restaurant':'Quán ăn','cafe':'Cafe','spa':'Spa'};
+    var totalStores = 0;
+    filtered.forEach(function(b){
+        var bEmoji = btypeEmoji[b.business_type] || '🏢';
+        var bLabel = btypeLabel[b.business_type] || b.business_type;
+
+        // Filter stores by search
+        var filteredStores = b.stores;
+        if(filterSearch){
+            filteredStores = b.stores.filter(function(s){
+                var text = (s.code+' '+s.name+' '+s.address+' '+s.phone).toLowerCase();
+                return text.indexOf(filterSearch) >= 0;
+            });
+        }
+        totalStores += filteredStores.length;
+
+        // Skip brand if search active and no stores match
+        if(filterSearch && filteredStores.length === 0) return;
+
+        var collapseId = 'collapse_brand_'+b.id;
+        var isOpen = filterSearch || filterBrand; // auto-open when filtering
+        // Summary info for header
+        var headerLine1 = [];
+        if(b.owner_name) headerLine1.push('<i class="fas fa-user-tie"></i> '+b.owner_name);
+        if(b.owner_username) headerLine1.push('<code style="background:rgba(255,255,255,0.25);padding:1px 6px;border-radius:3px;font-size:11px;">'+b.owner_username+'</code>');
+        if(b.phone) headerLine1.push('<i class="fas fa-phone"></i> '+b.phone);
+        if(b.email) headerLine1.push('<i class="fas fa-envelope"></i> '+b.email);
+        var headerLine2 = [];
+        if(b.address) headerLine2.push('📍 '+b.address);
+        if(b.tax_code) headerLine2.push('🏢 MST: '+b.tax_code);
+        if(b.website) headerLine2.push('🌐 '+b.website);
+        var headerInfoHtml = '';
+        if(headerLine1.length) headerInfoHtml += '<div style="font-size:12px;color:#555;margin-top:3px;">'+headerLine1.join(' &nbsp;·&nbsp; ')+'</div>';
+        if(headerLine2.length) headerInfoHtml += '<div style="font-size:11px;color:#888;margin-top:2px;">'+headerLine2.join(' &nbsp;|&nbsp; ')+'</div>';
+
+        h += '<div class="card mb-2" style="border-left:4px solid #007bff;">';
+        // Clickable header - light bg, dark text
+        h += '<div class="card-header p-2" style="cursor:pointer;background:#f8f9fa;border-bottom:1px solid #dee2e6;" data-toggle="collapse" data-target="#'+collapseId+'">';
+        h += '<div class="d-flex align-items-center">';
+        h += '<i class="fas fa-chevron-right mr-2 collapse-icon text-primary" style="transition:0.2s;font-size:13px;'+(isOpen?'transform:rotate(90deg)':'')+'"></i>';
+        h += '<div class="flex-grow-1">';
+        h += '<div style="font-size:15px;font-weight:700;color:#1a237e;">'+bEmoji+' '+b.name+' <span class="badge badge-primary ml-1" style="font-size:11px;">'+bLabel+'</span></div>';
+        h += headerInfoHtml;
+        h += '</div>';
+        h += '<span class="badge badge-warning mr-2" style="font-size:12px;">'+filteredStores.length+' cửa hàng</span>';
+        h += '<button class="btn btn-xs btn-outline-primary mr-1" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')" title="Sửa TH"><i class="fas fa-edit"></i></button>';
+        h += '<button class="btn btn-xs btn-outline-danger mr-1" onclick="event.stopPropagation();deleteBrand('+b.id+')" title="Xóa TH"><i class="fas fa-trash"></i></button>';
+        h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')" title="Thêm CH"><i class="fas fa-plus"></i></button>';
+        h += '</div>';
+        h += '</div>';
+
+        // Collapsible body
+        h += '<div id="'+collapseId+'" class="collapse'+(isOpen?' show':'')+'">';
+        h += '<div class="card-body p-0">';
+
+        // Stores table
+        if(filteredStores.length > 0){
+            h += '<table class="table table-sm table-striped mb-0"><thead><tr><th>Mã</th><th>Tên cửa hàng</th><th>Địa chỉ</th><th>SĐT</th><th>Quản lý</th><th>Giờ HĐ</th><th>TT</th><th>Thao tác</th></tr></thead><tbody>';
+            filteredStores.forEach(function(s){
+                var statusBadge = s.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Tạm ngưng</span>';
+                var timeStr = (s.open_time && s.close_time) ? s.open_time+' - '+s.close_time : '';
+                var addr = [s.address, s.district, s.city].filter(Boolean).join(', ');
+                h += '<tr>';
+                h += '<td><b>'+s.code+'</b></td>';
+                h += '<td>'+s.name+'</td>';
+                h += '<td><small>'+addr+'</small></td>';
+                h += '<td>'+s.phone+'</td>';
+                h += '<td>'+s.manager_name+'</td>';
+                h += '<td class="text-center"><small>'+timeStr+'</small></td>';
+                h += '<td class="text-center">'+statusBadge+'</td>';
+                h += '<td class="text-center">';
+                h += '<button class="btn btn-xs btn-info" onclick=\'editStore('+b.id+','+JSON.stringify(s).replace(/'/g,"\\\'")+')\' title="Sửa"><i class="fas fa-edit"></i></button> ';
+                h += '<button class="btn btn-xs btn-danger" onclick="deleteStore('+s.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+                h += '</td></tr>';
+            });
+            h += '</tbody></table>';
+        } else {
+            h += '<div class="text-center text-muted py-3"><small>Chưa có cửa hàng. Nhấn <b>+</b> để tạo.</small></div>';
+        }
+        h += '</div></div></div>';
+    });
+
+    $('#brand_container').html(h);
+    $('#brand_count').text(filtered.length+' thương hiệu · '+totalStores+' cửa hàng');
+
+    // Toggle chevron icon
+    $('.collapse').on('show.bs.collapse',function(){ $(this).prev().find('.collapse-icon').css('transform','rotate(90deg)'); });
+    $('.collapse').on('hide.bs.collapse',function(){ $(this).prev().find('.collapse-icon').css('transform','rotate(0deg)'); });
+}
+
+function editBrand(b){
+    $('#brand_id').val(b.id);$('#inp_brand_name').val(b.name);$('#inp_brand_btype').val(b.business_type);
+    $('#inp_brand_phone').val(b.phone);
+    $('#inp_brand_email').val(b.email);$('#inp_brand_website').val(b.website);$('#inp_brand_address').val(b.address);
+    $('#inp_brand_tax').val(b.tax_code);$('#inp_brand_desc').val(b.description);$('#inp_brand_owner').val(b.owner_id);
+    $('#brand_modal_title').text('Sửa thương hiệu');$('#modal_brand').modal('show');
+}
+
+function deleteBrand(id){
+    if(!confirm('Xóa thương hiệu này (sẽ xóa tất cả cửa hàng)?'))return;
+    $.ajax({url:'/api/brands/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}});
+}
+
+function addStore(brandId){
+    $('#store_id').val('');$('#store_brand_id').val(brandId);
+    $('#inp_store_code,#inp_store_name,#inp_store_phone,#inp_store_email,#inp_store_address,#inp_store_city,#inp_store_district').val('');
+    $('#inp_store_open,#inp_store_close').val('');$('#inp_store_manager').val('');
+    $('#store_modal_title').text('Thêm cửa hàng');$('#modal_store').modal('show');
+}
+
+function editStore(brandId, s){
+    $('#store_id').val(s.id);$('#store_brand_id').val(brandId);
+    $('#inp_store_code').val(s.code);$('#inp_store_name').val(s.name);$('#inp_store_phone').val(s.phone);
+    $('#inp_store_email').val(s.email);$('#inp_store_address').val(s.address);$('#inp_store_city').val(s.city);
+    $('#inp_store_district').val(s.district);$('#inp_store_manager').val(s.manager_id);
+    $('#inp_store_open').val(s.open_time);$('#inp_store_close').val(s.close_time);
+    $('#store_modal_title').text('Sửa cửa hàng');$('#modal_store').modal('show');
+}
+
+function deleteStore(id){
+    if(!confirm('Xóa cửa hàng này?'))return;
+    $.ajax({url:'/api/stores/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}});
+}
+</script>
+{% endblock %}

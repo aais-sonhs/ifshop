@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-print mr-2"></i>Cài đặt máy in</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm máy in</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle mr-1"></i>
+            <strong>Hướng dẫn:</strong> Thêm máy in LAN bằng cách nhập địa chỉ IP và Port của máy in (mặc định port 9100).
+            Bạn có thể test kết nối trước khi lưu. Máy in mặc định sẽ được tự động chọn khi in phiếu.
+        </div>
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Tên máy in</th>
+                        <th>Loại</th>
+                        <th>Địa chỉ IP</th>
+                        <th>Port</th>
+                        <th>Khổ giấy</th>
+                        <th>Mặc định</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal thêm/sửa máy in -->
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title"><i class="fas fa-print mr-2"></i>Thêm máy in</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="form-group">
+                    <label>Tên máy in <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="inp_name" placeholder="VD: Máy in Văn phòng, Máy in Kho...">
+                </div>
+                <div class="form-group">
+                    <label>Loại kết nối</label>
+                    <select class="form-control" id="inp_printer_type">
+                        <option value="lan">🌐 Máy in LAN (Mạng)</option>
+                        <option value="usb">🔌 Máy in USB</option>
+                        <option value="bluetooth">📶 Máy in Bluetooth</option>
+                    </select>
+                </div>
+                <div class="row" id="lan_settings">
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Địa chỉ IP <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="inp_ip_address" placeholder="VD: 192.168.1.100">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Port</label>
+                            <input type="number" class="form-control" id="inp_port" value="9100">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Khổ giấy</label>
+                    <select class="form-control" id="inp_paper_size">
+                        <option value="A4">📄 A4 (210 x 297 mm)</option>
+                        <option value="A5">📄 A5 (148 x 210 mm)</option>
+                        <option value="80mm">🧾 Giấy nhiệt 80mm</option>
+                        <option value="58mm">🧾 Giấy nhiệt 58mm</option>
+                        <option value="letter">📄 Letter (216 x 279 mm)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mô tả</label>
+                    <input type="text" class="form-control" id="inp_description" placeholder="VD: Tầng 2, phòng kế toán">
+                </div>
+                <div class="custom-control custom-switch mb-3">
+                    <input type="checkbox" class="custom-control-input" id="inp_is_default">
+                    <label class="custom-control-label" for="inp_is_default">
+                        <i class="fas fa-star text-warning mr-1"></i> Đặt làm máy in mặc định
+                    </label>
+                </div>
+
+                <!-- Nút test kết nối -->
+                <div class="card card-outline card-warning mb-0">
+                    <div class="card-body py-2">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span><i class="fas fa-network-wired mr-1"></i> Test kết nối máy in</span>
+                            <button type="button" class="btn btn-sm btn-warning" id="btn_test">
+                                <i class="fas fa-plug"></i> Test kết nối
+                            </button>
+                        </div>
+                        <div id="test_result" class="mt-2" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function(){
+    loadData();
+
+    // Show/hide LAN fields
+    $('#inp_printer_type').change(function(){
+        if($(this).val() === 'lan'){
+            $('#lan_settings').show();
+        } else {
+            $('#lan_settings').hide();
+        }
+    });
+
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');
+        $('#inp_name,#inp_description,#inp_ip_address').val('');
+        $('#inp_port').val(9100);
+        $('#inp_printer_type').val('lan');
+        $('#inp_paper_size').val('A4');
+        $('#inp_is_default').prop('checked', false);
+        $('#lan_settings').show();
+        $('#test_result').hide();
+        $('#modal_title').html('<i class="fas fa-print mr-2"></i>Thêm máy in');
+        $('#modal_form').modal('show');
+    });
+
+    // Test kết nối
+    $('#btn_test').click(function(){
+        var ip = $('#inp_ip_address').val();
+        var port = parseInt($('#inp_port').val()) || 9100;
+        if(!ip){ alert('Vui lòng nhập địa chỉ IP'); return; }
+
+        var $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Đang test...');
+        $('#test_result').show().html('<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Đang kiểm tra kết nối...</span>');
+
+        $.ajax({
+            url: '/api/printers/test/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({ip_address: ip, port: port}),
+            success: function(r){
+                if(r.status === 'ok'){
+                    $('#test_result').html('<span class="text-success"><i class="fas fa-check-circle"></i> ' + r.message + '</span>');
+                } else {
+                    $('#test_result').html('<span class="text-danger"><i class="fas fa-times-circle"></i> ' + r.message + '</span>');
+                }
+            },
+            error: function(){ $('#test_result').html('<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> Lỗi kết nối server</span>'); },
+            complete: function(){ $btn.prop('disabled', false).html('<i class="fas fa-plug"></i> Test kết nối'); }
+        });
+    });
+
+    // Lưu
+    $('#btn_save').click(function(){
+        var data = {
+            id: $('#edit_id').val() || null,
+            name: $('#inp_name').val(),
+            printer_type: $('#inp_printer_type').val(),
+            ip_address: $('#inp_ip_address').val(),
+            port: parseInt($('#inp_port').val()) || 9100,
+            paper_size: $('#inp_paper_size').val(),
+            description: $('#inp_description').val(),
+            is_default: $('#inp_is_default').is(':checked'),
+            is_active: true
+        };
+        if(!data.name){ alert('Vui lòng nhập tên máy in'); return; }
+        if(data.printer_type === 'lan' && !data.ip_address){ alert('Vui lòng nhập địa chỉ IP'); return; }
+
+        $.ajax({
+            url: '/api/printers/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){ $('#modal_form').modal('hide'); loadData(); }
+                alert(r.message);
+            }
+        });
+    });
+});
+
+function loadData(){
+    $.get('/api/printers/', function(res){
+        var h = '';
+        res.data.forEach(function(d, i){
+            var defaultBadge = d.is_default ? '<span class="badge badge-warning"><i class="fas fa-star"></i> Mặc định</span>' : '';
+            var statusBadge = d.is_active ? '<span class="badge badge-success">Hoạt động</span>' : '<span class="badge badge-secondary">Tắt</span>';
+            var typeIcon = d.printer_type === 'lan' ? '🌐' : (d.printer_type === 'usb' ? '🔌' : '📶');
+
+            h += '<tr>' +
+                '<td>'+(i+1)+'</td>' +
+                '<td><strong>'+d.name+'</strong>' + (d.description ? '<br><small class="text-muted">'+d.description+'</small>' : '') + '</td>' +
+                '<td>'+typeIcon+' '+d.printer_type_display+'</td>' +
+                '<td>'+d.ip_address+'</td>' +
+                '<td>'+d.port+'</td>' +
+                '<td>'+d.paper_size_display+'</td>' +
+                '<td class="text-center">'+defaultBadge+'</td>' +
+                '<td class="text-center">'+statusBadge+'</td>' +
+                '<td class="text-center">' +
+                    '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> ' +
+                    '<button class="btn btn-xs btn-warning" onclick="testPrinter('+d.id+',\''+d.ip_address+'\','+d.port+')"><i class="fas fa-plug"></i></button> ' +
+                    '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button>' +
+                '</td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Chưa có máy in nào. Bấm "Thêm máy in" để bắt đầu.</td></tr>');
+    });
+}
+
+function editItem(d){
+    $('#edit_id').val(d.id);
+    $('#inp_name').val(d.name);
+    $('#inp_printer_type').val(d.printer_type).trigger('change');
+    $('#inp_ip_address').val(d.ip_address);
+    $('#inp_port').val(d.port);
+    $('#inp_paper_size').val(d.paper_size);
+    $('#inp_description').val(d.description);
+    $('#inp_is_default').prop('checked', d.is_default);
+    $('#test_result').hide();
+    $('#modal_title').html('<i class="fas fa-print mr-2"></i>Sửa máy in');
+    $('#modal_form').modal('show');
+}
+
+function testPrinter(id, ip, port){
+    var $btn = $('button[onclick*="testPrinter('+id+'"]');
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+    $.ajax({
+        url: '/api/printers/test/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({ip_address: ip, port: port}),
+        success: function(r){ alert(r.message); },
+        complete: function(){ $btn.prop('disabled', false).html('<i class="fas fa-plug"></i>'); }
+    });
+}
+
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa máy in này?')) return;
+    $.ajax({
+        url: '/api/printers/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){ loadData(); alert(r.message); }
+    });
+}
+</script>
+{% endblock %}

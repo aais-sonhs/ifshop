@@ -1,0 +1,1228 @@
+/* ============================================================
+   TWIN THEME — Modern Light Admin Dashboard
+   Override AdminLTE 3 defaults for a clean, bright, premium look.
+   Adapted for Revenue & Expenditure Manager
+   ============================================================ */
+
+/* ---------- CSS Variables ---------- */
+:root {
+    --twin-bg-light: #f4f6f9;
+    --twin-bg-card: #ffffff;
+    --twin-bg-sidebar: #ffffff;
+    --twin-bg-sidebar-deep: #f8fafc;
+    --twin-bg-input: #f1f5f9;
+    --twin-bg-hover: #e8f0fe;
+    --twin-accent: #4361ee;
+    --twin-accent-light: #5a7bff;
+    --twin-accent-glow: rgba(67, 97, 238, 0.18);
+    --twin-text: #1e293b;
+    --twin-text-muted: #64748b;
+    --twin-text-heading: #0f172a;
+    --twin-border: #e2e8f0;
+    --twin-success: #00ab55;
+    --twin-danger: #e7515a;
+    --twin-warning: #e2a03f;
+    --twin-info: #2196f3;
+    --twin-radius: 8px;
+    --twin-transition: all 0.3s ease;
+    --twin-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+    --twin-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --twin-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- Global ---------- */
+body {
+    font-family: 'Inter', 'Source Sans Pro', sans-serif !important;
+    background-color: var(--twin-bg-light) !important;
+    color: var(--twin-text) !important;
+}
+
+a {
+    color: var(--twin-accent);
+}
+a:hover {
+    color: var(--twin-accent-light);
+}
+
+/* ---------- Content Wrapper ---------- */
+.content-wrapper {
+    background-color: var(--twin-bg-light) !important;
+}
+
+.content-header {
+    padding: 12px 0.5rem !important;
+}
+
+/* ---------- Top Navbar ---------- */
+.main-header.navbar {
+    background-color: var(--twin-bg-card) !important;
+    border-bottom: 1px solid var(--twin-border) !important;
+    box-shadow: var(--twin-shadow-sm) !important;
+}
+
+.main-header .nav-link {
+    color: var(--twin-text) !important;
+}
+
+.main-header .nav-link:hover {
+    color: var(--twin-accent) !important;
+}
+
+.main-header .navbar-nav .nav-hover {
+    border-radius: var(--twin-radius);
+    padding: 6px 14px !important;
+    transition: var(--twin-transition);
+}
+
+.main-header .navbar-nav .nav-hover:hover {
+    background-color: var(--twin-bg-hover);
+}
+
+/* Brand title in navbar */
+.logo-text B {
+    font-family: 'Inter', sans-serif !important;
+    background: linear-gradient(135deg, var(--twin-accent), #00b4d8) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    letter-spacing: 0.5px;
+}
+
+/* User dropdown */
+.main-header .dropdown-menu {
+    background-color: var(--twin-bg-card) !important;
+    border: 1px solid var(--twin-border) !important;
+    border-radius: var(--twin-radius) !important;
+    box-shadow: var(--twin-shadow-lg) !important;
+}
+
+.main-header .dropdown-item {
+    color: var(--twin-text) !important;
+}
+
+.main-header .dropdown-item:hover,
+.main-header .dropdown-item:focus {
+    background-color: var(--twin-bg-hover) !important;
+    color: var(--twin-accent) !important;
+}
+
+.main-header .dropdown-divider {
+    border-color: var(--twin-border) !important;
+}
+
+/* ---------- Sidebar ---------- */
+.main-sidebar {
+    background: var(--twin-bg-sidebar) !important;
+    border-right: 1px solid var(--twin-border) !important;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04) !important;
+}
+
+.main-sidebar .brand-link {
+    border-bottom: 1px solid var(--twin-border) !important;
+    padding: 16px 16px !important;
+    background: transparent !important;
+}
+
+.main-sidebar .brand-text {
+    font-weight: 700 !important;
+    font-size: 18px !important;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, var(--twin-accent), #00b4d8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Sidebar nav */
+.sidebar {
+    padding-top: 8px;
+}
+
+.nav-sidebar .nav-item > .nav-link {
+    color: var(--twin-text-muted) !important;
+    border-radius: 6px !important;
+    margin: 2px 10px !important;
+    padding: 10px 14px !important;
+    transition: var(--twin-transition);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.nav-sidebar .nav-item > .nav-link:hover {
+    background-color: var(--twin-bg-hover) !important;
+    color: var(--twin-accent) !important;
+}
+
+.nav-sidebar .nav-item > .nav-link.active {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 15px var(--twin-accent-glow) !important;
+}
+
+/* Nav icon base style */
+.nav-sidebar .nav-item > .nav-link .nav-icon {
+    font-size: 15px;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    margin-right: 10px;
+    border-radius: 8px;
+    transition: var(--twin-transition);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-sidebar .nav-item > .nav-link:hover .nav-icon {
+    color: var(--twin-accent) !important;
+}
+
+.nav-sidebar .nav-item > .nav-link.active .nav-icon {
+    color: #fff !important;
+    background: transparent !important;
+}
+
+/* ============================================================
+   COLORFUL SIDEBAR ICONS
+   Each menu icon gets a unique color + subtle background
+   ============================================================ */
+
+/* --- ĐƠN HÀNG --- */
+/* Báo giá - File Invoice */
+.nav-icon.fa-file-invoice {
+    color: #8b5cf6 !important;
+    background: rgba(139, 92, 246, 0.12);
+}
+
+/* Đơn hàng - Shopping Cart */
+.nav-icon.fa-shopping-cart {
+    color: #0ea5e9 !important;
+    background: rgba(14, 165, 233, 0.12);
+}
+
+/* Trả hàng - Undo Alt */
+.nav-icon.fa-undo-alt {
+    color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* Đóng gói - Box */
+.nav-icon.fa-box {
+    color: #d97706 !important;
+    background: rgba(217, 119, 6, 0.12);
+}
+
+/* --- SẢN PHẨM & KHO --- */
+/* Sản phẩm - Tags */
+.nav-icon.fa-tags {
+    color: #e11d48 !important;
+    background: rgba(225, 29, 72, 0.12);
+}
+
+/* Quản lý kho - Warehouse */
+.nav-icon.fa-warehouse {
+    color: #059669 !important;
+    background: rgba(5, 150, 105, 0.12);
+}
+
+/* Đặt hàng nhập - Clipboard List */
+.nav-icon.fa-clipboard-list {
+    color: #ea580c !important;
+    background: rgba(234, 88, 12, 0.12);
+}
+
+/* Nhập hàng - Truck Loading */
+.nav-icon.fa-truck-loading {
+    color: #0284c7 !important;
+    background: rgba(2, 132, 199, 0.12);
+}
+
+/* Kiểm hàng - Clipboard Check */
+.nav-icon.fa-clipboard-check {
+    color: #16a34a !important;
+    background: rgba(22, 163, 74, 0.12);
+}
+
+/* Chuyển hàng - Exchange */
+.nav-icon.fa-exchange-alt {
+    color: #7c3aed !important;
+    background: rgba(124, 58, 237, 0.12);
+}
+
+/* NCC - Truck */
+.nav-icon.fa-truck {
+    color: #0891b2 !important;
+    background: rgba(8, 145, 178, 0.12);
+}
+
+/* Điều chỉnh giá vốn - Dollar Sign */
+.nav-icon.fa-dollar-sign {
+    color: #ca8a04 !important;
+    background: rgba(202, 138, 4, 0.12);
+}
+
+/* --- KHÁCH HÀNG --- */
+/* DS Khách hàng - Users */
+.nav-icon.fa-users {
+    color: #0891b2 !important;
+    background: rgba(8, 145, 178, 0.12);
+}
+
+/* Nhóm khách hàng - User Tag */
+.nav-icon.fa-user-tag {
+    color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.12);
+}
+
+/* --- THU CHI --- */
+/* Phiếu thu - Hand Holding USD */
+.nav-icon.fa-hand-holding-usd {
+    color: #10b981 !important;
+    background: rgba(16, 185, 129, 0.12);
+}
+
+/* Phiếu chi - Money Bill Wave */
+.nav-icon.fa-money-bill-wave {
+    color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* DS Thu chi - List Alt */
+.nav-icon.fa-list-alt {
+    color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.12);
+}
+
+/* Sổ quỹ - Book */
+.nav-icon.fa-book {
+    color: #8b5cf6 !important;
+    background: rgba(139, 92, 246, 0.12);
+}
+
+/* --- BÁO CÁO --- */
+/* BC Bán hàng - Chart Line */
+.nav-icon.fa-chart-line {
+    color: #4361ee !important;
+    background: rgba(67, 97, 238, 0.12);
+}
+
+/* BC Nhập hàng - Chart Bar */
+.nav-icon.fa-chart-bar {
+    color: #0ea5e9 !important;
+    background: rgba(14, 165, 233, 0.12);
+}
+
+/* BC Kho - Chart Pie */
+.nav-icon.fa-chart-pie {
+    color: #e11d48 !important;
+    background: rgba(225, 29, 72, 0.12);
+}
+
+/* BC Tài chính - Coins */
+.nav-icon.fa-coins {
+    color: #ca8a04 !important;
+    background: rgba(202, 138, 4, 0.12);
+}
+
+/* BC Khách hàng - User Friends */
+.nav-icon.fa-user-friends {
+    color: #0891b2 !important;
+    background: rgba(8, 145, 178, 0.12);
+}
+
+/* --- SPA & DỊCH VỤ --- */
+/* Lịch hẹn (Lịch) - Calendar Alt */
+.nav-icon.fa-calendar-alt {
+    color: #e91e63 !important;
+    background: rgba(233, 30, 99, 0.12);
+}
+
+/* Lịch hẹn (DS) - Calendar Check */
+.nav-icon.fa-calendar-check {
+    color: #e91e63 !important;
+    background: rgba(233, 30, 99, 0.12);
+}
+
+/* Dịch vụ - Spa */
+.nav-icon.fa-spa {
+    color: #ec4899 !important;
+    background: rgba(236, 72, 153, 0.12);
+}
+
+/* Nhân viên KTV - User MD */
+.nav-icon.fa-user-md {
+    color: #14b8a6 !important;
+    background: rgba(20, 184, 166, 0.12);
+}
+
+/* Phòng - Door Open */
+.nav-icon.fa-door-open {
+    color: #f59e0b !important;
+    background: rgba(245, 158, 11, 0.12);
+}
+
+/* --- QUẢN LÝ NHÂN SỰ --- */
+/* QL Người dùng - Users Cog */
+.nav-icon.fa-users-cog {
+    color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.12);
+}
+
+/* Nhóm vai trò - User Shield */
+.nav-icon.fa-user-shield {
+    color: #0d9488 !important;
+    background: rgba(13, 148, 136, 0.12);
+}
+
+/* Phân quyền - Key */
+.nav-icon.fa-key {
+    color: #f59e0b !important;
+    background: rgba(245, 158, 11, 0.12);
+}
+
+/* Cửa hàng - Store Alt */
+.nav-icon.fa-store-alt {
+    color: #7c3aed !important;
+    background: rgba(124, 58, 237, 0.12);
+}
+
+/* Mô hình KD - Cog */
+.nav-icon.fa-cog {
+    color: #6366f1 !important;
+    background: rgba(99, 102, 241, 0.12);
+}
+
+/* Cài đặt - Sliders */
+.nav-icon.fa-sliders-h {
+    color: #64748b !important;
+    background: rgba(100, 116, 139, 0.12);
+}
+
+/* --- HỆ THỐNG (superadmin) --- */
+/* Thương hiệu - Trademark */
+.nav-icon.fa-trademark {
+    color: #e11d48 !important;
+    background: rgba(225, 29, 72, 0.12);
+}
+
+/* Danh mục - Cogs */
+.nav-icon.fa-cogs {
+    color: #475569 !important;
+    background: rgba(71, 85, 105, 0.12);
+}
+
+/* Giá dịch vụ - File Invoice Dollar */
+.nav-icon.fa-file-invoice-dollar {
+    color: #059669 !important;
+    background: rgba(5, 150, 105, 0.12);
+}
+
+/* Cài đặt máy in - Print */
+.nav-icon.fa-print {
+    color: #0284c7 !important;
+    background: rgba(2, 132, 199, 0.12);
+}
+
+/* Reset icon color/bg on hover & active states */
+.nav-sidebar .nav-item > .nav-link:hover .nav-icon {
+    background: rgba(67, 97, 238, 0.15) !important;
+}
+
+.nav-sidebar .nav-item > .nav-link.active .nav-icon[class*="fa-"] {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Ensure sidebar-dark overrides do NOT affect colorful nav-icon colors */
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-chart-line { color: #4361ee !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-chart-bar { color: #0ea5e9 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-chart-pie { color: #e11d48 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-coins { color: #ca8a04 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-user-friends { color: #0891b2 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-file-invoice { color: #8b5cf6 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-shopping-cart { color: #0ea5e9 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-undo-alt { color: #ef4444 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-box { color: #d97706 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-tags { color: #e11d48 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-warehouse { color: #059669 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-clipboard-list { color: #ea580c !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-truck-loading { color: #0284c7 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-clipboard-check { color: #16a34a !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-exchange-alt { color: #7c3aed !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-truck { color: #0891b2 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-dollar-sign { color: #ca8a04 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-users { color: #0891b2 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-user-tag { color: #6366f1 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-hand-holding-usd { color: #10b981 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-money-bill-wave { color: #ef4444 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-list-alt { color: #3b82f6 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-book { color: #8b5cf6 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-calendar-alt { color: #e91e63 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-calendar-check { color: #e91e63 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-spa { color: #ec4899 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-user-md { color: #14b8a6 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-door-open { color: #f59e0b !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-users-cog { color: #6366f1 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-user-shield { color: #0d9488 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-key { color: #f59e0b !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-store-alt { color: #7c3aed !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-cog { color: #6366f1 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-sliders-h { color: #64748b !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-trademark { color: #e11d48 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-cogs { color: #475569 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-file-invoice-dollar { color: #059669 !important; }
+[class*="sidebar-dark-"] .sidebar .nav-icon.fa-print { color: #0284c7 !important; }
+
+/* Active state: all icons turn white */
+[class*="sidebar-dark-"] .sidebar .nav-link.active .nav-icon[class*="fa-"] {
+    color: #fff !important;
+}
+
+/* Sidebar treeview (submenu) */
+.nav-treeview {
+    background: transparent !important;
+}
+
+.nav-treeview > .nav-item > .nav-link {
+    font-size: 13px !important;
+    padding: 7px 14px 7px 20px !important;
+    color: var(--twin-text-muted) !important;
+}
+
+.nav-treeview > .nav-item > .nav-link:hover {
+    color: var(--twin-accent) !important;
+    background-color: var(--twin-bg-hover) !important;
+}
+
+.nav-treeview > .nav-item > .nav-link.active {
+    background: rgba(67, 97, 238, 0.12) !important;
+    color: var(--twin-accent) !important;
+    font-weight: 600;
+    box-shadow: none !important;
+}
+
+/* Treeview arrow */
+.nav-sidebar .nav-link p .right {
+    transition: var(--twin-transition);
+}
+
+/* Sidebar header labels */
+.nav-sidebar .nav-header {
+    color: var(--twin-accent) !important;
+    font-size: 11px !important;
+    letter-spacing: 0.8px !important;
+    text-transform: uppercase !important;
+    padding: 16px 20px 6px !important;
+    font-weight: 700 !important;
+}
+
+/* Sidebar scrollbar */
+.sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.12);
+    border-radius: 4px;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    background-color: var(--twin-bg-card) !important;
+    border: 1px solid var(--twin-border) !important;
+    border-radius: var(--twin-radius) !important;
+    box-shadow: var(--twin-shadow-sm) !important;
+}
+
+.card:hover {
+    box-shadow: var(--twin-shadow-md) !important;
+}
+
+.card-header {
+    background-color: transparent !important;
+    border-bottom: 1px solid var(--twin-border) !important;
+    color: var(--twin-text-heading) !important;
+    padding: 12px 16px !important;
+}
+
+.card-body {
+    padding: 16px !important;
+    color: var(--twin-text) !important;
+}
+
+.card-footer {
+    background-color: transparent !important;
+    border-top: 1px solid var(--twin-border) !important;
+}
+
+.card.card-outline {
+    border-top: 3px solid !important;
+    border-radius: var(--twin-radius) !important;
+}
+
+/* ---------- Tables ---------- */
+.table {
+    color: var(--twin-text) !important;
+}
+
+.table thead th {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 10px !important;
+}
+
+.table-bordered {
+    border-color: var(--twin-border) !important;
+}
+
+.table-bordered td,
+.table-bordered th {
+    border-color: var(--twin-border) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--twin-bg-hover) !important;
+    color: var(--twin-text) !important;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #f8fafc !important;
+}
+
+.table tbody tr {
+    transition: var(--twin-transition);
+}
+
+.table td {
+    padding: 10px !important;
+    vertical-align: middle !important;
+    border-color: var(--twin-border) !important;
+    font-size: 13.5px;
+}
+
+.table tfoot td, .table tfoot th {
+    background: #f1f5f9 !important;
+    font-weight: 600 !important;
+}
+
+/* ---------- DataTables ---------- */
+.dataTables_wrapper .dataTables_length label,
+.dataTables_wrapper .dataTables_filter label,
+.dataTables_wrapper .dataTables_info {
+    color: var(--twin-text-muted) !important;
+    font-size: 13px;
+}
+
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+    padding: 4px 10px;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus {
+    outline: none;
+    border-color: var(--twin-accent) !important;
+    box-shadow: 0 0 0 3px var(--twin-accent-glow) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+    margin: 0 2px;
+    transition: var(--twin-transition);
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    color: #fff !important;
+    border-color: var(--twin-accent) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    color: #fff !important;
+    border-color: var(--twin-accent) !important;
+    box-shadow: 0 2px 10px var(--twin-accent-glow) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+    opacity: 0.4;
+}
+
+/* ---------- Forms / Inputs ---------- */
+.form-control {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+    transition: var(--twin-transition);
+}
+
+.form-control:focus {
+    border-color: var(--twin-accent) !important;
+    box-shadow: 0 0 0 3px var(--twin-accent-glow) !important;
+    background-color: #fff !important;
+    color: var(--twin-text) !important;
+}
+
+.form-control::placeholder {
+    color: var(--twin-text-muted) !important;
+}
+
+.custom-select {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+}
+
+.custom-select:focus {
+    border-color: var(--twin-accent) !important;
+    box-shadow: 0 0 0 3px var(--twin-accent-glow) !important;
+}
+
+.input-group-text {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text-muted) !important;
+}
+
+label {
+    color: var(--twin-text) !important;
+    font-weight: 500;
+    font-size: 13.5px;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+    border-radius: 6px !important;
+    font-weight: 600;
+    transition: var(--twin-transition);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px var(--twin-accent-glow) !important;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(67, 97, 238, 0.35) !important;
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--twin-success), #00cc66) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(0, 171, 85, 0.2) !important;
+}
+
+.btn-success:hover {
+    box-shadow: 0 6px 20px rgba(0, 171, 85, 0.35) !important;
+    transform: translateY(-1px);
+}
+
+.btn-info {
+    background: linear-gradient(135deg, var(--twin-info), #42a5f5) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2) !important;
+}
+
+.btn-info:hover {
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.35) !important;
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--twin-danger), #ff6b6b) !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(231, 81, 90, 0.2) !important;
+}
+
+.btn-secondary {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+}
+
+.btn-secondary:hover {
+    background-color: var(--twin-bg-hover) !important;
+    color: var(--twin-accent) !important;
+}
+
+.btn-default {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+}
+
+.btn-default:hover {
+    background-color: var(--twin-bg-hover) !important;
+    color: var(--twin-accent) !important;
+}
+
+.btn-outline-info {
+    border-color: var(--twin-accent) !important;
+    color: var(--twin-accent) !important;
+    border-radius: 6px !important;
+}
+
+.btn-outline-info:hover {
+    background: var(--twin-accent) !important;
+    color: #fff !important;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2) !important;
+}
+
+.btn-warning:hover {
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35) !important;
+    transform: translateY(-1px);
+}
+
+.btn-xs {
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+}
+
+.btn-app {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    min-width: auto !important;
+    height: auto !important;
+    padding: 4px 8px !important;
+    margin: 0 2px !important;
+    font-size: 14px !important;
+}
+
+/* ---------- Small Info Boxes ---------- */
+.small-box {
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    overflow: hidden;
+}
+
+.small-box .inner h4 {
+    font-weight: 700 !important;
+    font-size: 22px !important;
+}
+
+.small-box .inner p {
+    font-size: 13px !important;
+    opacity: 0.9;
+}
+
+.small-box .icon i {
+    font-size: 60px !important;
+    opacity: 0.15 !important;
+}
+
+.small-box.bg-info { background: linear-gradient(135deg, #0ea5e9, #38bdf8) !important; }
+.small-box.bg-success { background: linear-gradient(135deg, #10b981, #34d399) !important; }
+.small-box.bg-danger { background: linear-gradient(135deg, #ef4444, #f87171) !important; }
+.small-box.bg-warning { background: linear-gradient(135deg, #f59e0b, #fbbf24) !important; }
+.small-box.bg-secondary { background: linear-gradient(135deg, #64748b, #94a3b8) !important; }
+
+/* ---------- Modals ---------- */
+.modal-content {
+    background-color: var(--twin-bg-card) !important;
+    border: 1px solid var(--twin-border) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--twin-shadow-lg) !important;
+}
+
+.modal-header {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    border-bottom: none !important;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 14px 20px !important;
+}
+
+.modal-header .modal-title {
+    color: #fff !important;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.modal-header .close {
+    color: #fff !important;
+    opacity: 0.8;
+    text-shadow: none !important;
+}
+
+.modal-header .close:hover {
+    opacity: 1;
+}
+
+.modal-header.bg-warning {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+}
+
+.modal-header.bg-info {
+    background: linear-gradient(135deg, var(--twin-info), #42a5f5) !important;
+}
+
+.modal-header.bg-success {
+    background: linear-gradient(135deg, var(--twin-success), #00cc66) !important;
+}
+
+.modal-header.bg-danger {
+    background: linear-gradient(135deg, var(--twin-danger), #ff6b6b) !important;
+}
+
+.modal-body {
+    padding: 20px !important;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--twin-border) !important;
+    padding: 12px 20px !important;
+}
+
+.modal-backdrop.show {
+    opacity: 0.5;
+}
+
+/* ---------- Alerts ---------- */
+.alert {
+    border-radius: var(--twin-radius) !important;
+    border: none !important;
+}
+
+.alert-danger {
+    background-color: rgba(231, 81, 90, 0.1) !important;
+    border-color: rgba(231, 81, 90, 0.25) !important;
+    color: #c0392b !important;
+}
+
+.alert-success {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #059669 !important;
+}
+
+.alert-warning {
+    background-color: rgba(245, 158, 11, 0.1) !important;
+    color: #d97706 !important;
+}
+
+.alert-info {
+    background-color: rgba(14, 165, 233, 0.1) !important;
+    color: #0284c7 !important;
+}
+
+/* ---------- Select2 ---------- */
+.select2-container--default .select2-selection--single {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    border-radius: 6px !important;
+    height: 2.3rem;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--twin-text) !important;
+    line-height: 2.3rem;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 2.3rem;
+}
+
+.select2-container--default .select2-results__option {
+    background-color: var(--twin-bg-card) !important;
+    color: var(--twin-text) !important;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: var(--twin-accent) !important;
+    color: #fff !important;
+}
+
+.select2-dropdown {
+    background-color: var(--twin-bg-card) !important;
+    border: 1px solid var(--twin-border) !important;
+    border-radius: 6px !important;
+    box-shadow: var(--twin-shadow-md) !important;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    color: var(--twin-text) !important;
+}
+
+/* Select2 Multiple */
+.select2-container--default .select2-selection--multiple {
+    background-color: var(--twin-bg-input) !important;
+    border: 1px solid var(--twin-border) !important;
+    border-radius: 6px !important;
+    min-height: 2.3rem !important;
+    padding: 2px 6px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    transition: var(--twin-transition);
+}
+
+.select2-container--default .select2-selection--multiple:focus-within,
+.select2-container--default.select2-container--focus .select2-selection--multiple {
+    border-color: var(--twin-accent) !important;
+    box-shadow: 0 0 0 3px var(--twin-accent-glow) !important;
+    background-color: #fff !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    border: none !important;
+    color: #fff !important;
+    border-radius: 4px !important;
+    padding: 2px 8px !important;
+    margin: 2px 4px 2px 0 !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    line-height: 1.6;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+    color: rgba(255, 255, 255, 0.7) !important;
+    margin-right: 4px !important;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: #fff !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-search__field {
+    color: var(--twin-text) !important;
+    margin-top: 0 !important;
+    padding: 0 4px !important;
+    height: auto !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__rendered {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    padding: 0 !important;
+}
+
+/* ---------- Pagination (Bootstrap) ---------- */
+.page-item .page-link {
+    background-color: var(--twin-bg-input) !important;
+    border-color: var(--twin-border) !important;
+    color: var(--twin-text) !important;
+    transition: var(--twin-transition);
+}
+
+.page-item.active .page-link {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    border-color: var(--twin-accent) !important;
+    color: #fff !important;
+}
+
+.page-item .page-link:hover {
+    background-color: var(--twin-accent) !important;
+    color: #fff !important;
+}
+
+/* ---------- Badges ---------- */
+.badge {
+    font-weight: 500 !important;
+    padding: 4px 10px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    letter-spacing: 0.2px !important;
+}
+
+.badge-success {
+    background-color: var(--twin-success) !important;
+}
+.badge-danger {
+    background-color: var(--twin-danger) !important;
+}
+.badge-warning {
+    background-color: var(--twin-warning) !important;
+    color: #fff !important;
+}
+.badge-info {
+    background-color: var(--twin-info) !important;
+}
+.badge-primary {
+    background: var(--twin-accent) !important;
+}
+.badge-light {
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+}
+
+/* ---------- Progress bars ---------- */
+.progress {
+    background-color: var(--twin-bg-input) !important;
+    border-radius: var(--twin-radius) !important;
+}
+
+/* ---------- Scrollbars (Global) ---------- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--twin-bg-light);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* Fix for the table-responsive scrollbar */
+.table-responsive::-webkit-scrollbar {
+    background-color: var(--twin-bg-light) !important;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: rgba(0,0,0,0.15) !important;
+    border-radius: 3px !important;
+}
+
+/* ---------- Misc ---------- */
+.elevation-4 {
+    box-shadow: none !important;
+}
+
+.text-muted {
+    color: var(--twin-text-muted) !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--twin-text-heading) !important;
+}
+
+.text-sm {
+    color: var(--twin-text-muted) !important;
+}
+
+/* Image zoom effect */
+.zoom {
+    border-radius: 6px;
+}
+
+/* Content header button spacing */
+.content-header .btn {
+    border-radius: 6px;
+}
+
+/* Dropdown check list */
+.dropdown-check-list {
+    display: inline-block;
+}
+.dropdown-check-list .anchor {
+    position: relative;
+    cursor: pointer;
+    display: inline-block;
+    padding: 5px 50px 5px 10px;
+    border: 1px solid var(--twin-border);
+    border-radius: 8px;
+}
+.dropdown-check-list .anchor:after {
+    position: absolute;
+    content: "";
+    border-left: 2px solid var(--twin-text-muted);
+    border-top: 2px solid var(--twin-text-muted);
+    padding: 5px;
+    right: 10px;
+    top: 20%;
+    transform: rotate(-135deg);
+}
+.dropdown-check-list ul.items {
+    padding: 2px;
+    display: none;
+    margin: 0;
+    border: 1px solid var(--twin-border);
+    border-top: none;
+}
+.dropdown-check-list ul.items li {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+}
+.dropdown-check-list.visible .anchor {
+    color: var(--twin-accent);
+}
+.dropdown-check-list.visible .items {
+    display: block;
+}
+
+/* ---------- Responsive Adjustments ---------- */
+@media (max-width: 768px) {
+    .main-sidebar {
+        box-shadow: 8px 0 24px rgba(0, 0, 0, 0.12) !important;
+    }
+}
+
+/* ---------- Override AdminLTE sidebar specific colors ---------- */
+.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active,
+[class*="sidebar-dark-"] .nav-sidebar > .nav-item > .nav-link.active {
+    background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 15px var(--twin-accent-glow) !important;
+}
+
+[class*="sidebar-dark-"] .nav-sidebar > .nav-item > .nav-link:hover {
+    background-color: var(--twin-bg-hover) !important;
+}
+
+[class*="sidebar-dark-"] .sidebar a {
+    color: var(--twin-text-muted) !important;
+}
+
+[class*="sidebar-dark-"] .sidebar a:hover {
+    color: var(--twin-accent) !important;
+}
+
+[class*="sidebar-dark-"] .sidebar a.active {
+    color: #fff !important;
+}
+
+/* Override sidebar-dark background */
+.sidebar-dark-primary,
+[class*="sidebar-dark-"] {
+    background: var(--twin-bg-sidebar) !important;
+}
+
+/* ---------- Login page override ---------- */
+body.login-page {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}

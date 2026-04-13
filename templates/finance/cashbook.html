@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-book mr-2"></i>Sổ quỹ</h3>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <select class="form-control form-control-sm" id="filter_cashbook">
+                    <option value="">-- Tất cả quỹ --</option>
+                    {% for c in cashbooks %}
+                    <option value="{{ c.id }}">{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem</button></div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="info-box bg-success">
+                    <span class="info-box-icon"><i class="fas fa-arrow-down"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Tổng thu</span><span class="info-box-number" id="total_receipt">0</span></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-box bg-danger">
+                    <span class="info-box-icon"><i class="fas fa-arrow-up"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Tổng chi</span><span class="info-box-number" id="total_payment">0</span></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-box bg-info">
+                    <span class="info-box-icon"><i class="fas fa-wallet"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Số dư</span><span class="info-box-number" id="balance">0</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Ngày</th><th>Mã phiếu</th><th>Diễn giải</th><th class="text-right">Thu</th><th class="text-right">Chi</th><th class="text-right">Số dư</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+$(document).ready(function(){
+    loadData();
+    $('#btn_search').click(function(){loadData();});
+});
+function loadData(){
+    var cashbookId = $('#filter_cashbook').val();
+    var fromDate = $('#filter_from_date').val();
+    var toDate = $('#filter_to_date').val();
+    var entries = [];
+
+    $.when(
+        $.get('/api/receipts/'),
+        $.get('/api/payments/')
+    ).done(function(r1, r2){
+        r1[0].data.forEach(function(d){
+            if(d.status !== 1) return;
+            if(cashbookId && d.cash_book_id != cashbookId) return;
+            if(fromDate && d.receipt_date < fromDate) return;
+            if(toDate && d.receipt_date > toDate) return;
+            entries.push({date:d.receipt_date, code:d.code, desc:d.description||d.category, thu:d.amount, chi:0});
+        });
+        r2[0].data.forEach(function(d){
+            if(d.status !== 1) return;
+            if(cashbookId && d.cash_book_id != cashbookId) return;
+            if(fromDate && d.payment_date < fromDate) return;
+            if(toDate && d.payment_date > toDate) return;
+            entries.push({date:d.payment_date, code:d.code, desc:d.description||d.category, thu:0, chi:d.amount});
+        });
+
+        entries.sort(function(a,b){return a.date.localeCompare(b.date);});
+
+        var totalThu=0, totalChi=0, running=0, h='';
+        entries.forEach(function(d,i){
+            totalThu += d.thu; totalChi += d.chi; running += d.thu - d.chi;
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.date+'</td><td>'+d.code+'</td><td>'+d.desc+'</td>'+
+                '<td class="text-right">'+(d.thu?fmt(d.thu):'')+'</td>'+
+                '<td class="text-right">'+(d.chi?fmt(d.chi):'')+'</td>'+
+                '<td class="text-right">'+fmt(running)+'</td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="7" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#total_receipt').text(fmt(totalThu));
+        $('#total_payment').text(fmt(totalChi));
+        $('#balance').text(fmt(totalThu - totalChi));
+    });
+}
+</script>
+{% endblock %}

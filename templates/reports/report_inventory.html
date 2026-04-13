@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-chart-pie mr-2"></i>Báo cáo tồn kho</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <select class="form-control form-control-sm" id="filter_warehouse">
+                    <option value="">-- Tất cả kho --</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_alert">
+                    <option value="">-- Tất cả --</option>
+                    <option value="low">⚠️ Dưới tối thiểu</option>
+                    <option value="high">⚠️ Trên tối đa</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <div class="small-box bg-info">
+                    <div class="inner"><h4 id="total_items">0</h4><p>Tổng tồn kho (SL)</p></div>
+                    <div class="icon"><i class="fas fa-boxes"></i></div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="small-box bg-success">
+                    <div class="inner"><h4 id="total_value">0đ</h4><p>Giá trị tồn kho</p></div>
+                    <div class="icon"><i class="fas fa-coins"></i></div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="small-box bg-danger">
+                    <div class="inner"><h4 id="alert_count">0</h4><p>Cảnh báo</p></div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table id="report_tbl" class="table table-bordered table-striped table-sm">
+                <thead class="bg-light">
+                    <tr><th>STT</th><th>Mã SP</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+$(document).ready(function(){
+    loadReport();
+    $('#btn_search').click(function(){ loadReport(); });
+});
+function loadReport(){
+    var wh = $('#filter_warehouse').val();
+    var alert_filter = $('#filter_alert').val();
+    var url = '/api/report_inventory/?' + (wh ? 'warehouse_id='+wh : '');
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+
+        // Populate warehouse filter
+        if($('#filter_warehouse option').length <= 1){
+            res.warehouses.forEach(function(w){
+                $('#filter_warehouse').append('<option value="'+w.id+'">'+w.name+'</option>');
+            });
+        }
+
+        var data = res.data;
+        if(alert_filter === 'low') data = data.filter(function(d){ return d.alert_type === 'danger'; });
+        else if(alert_filter === 'high') data = data.filter(function(d){ return d.alert_type === 'warning'; });
+
+        $('#total_items').text(fmt(res.summary.total_items));
+        $('#total_value').text(fmtD(res.summary.total_value));
+        $('#alert_count').text(res.summary.alert_count);
+
+        var h = '';
+        data.forEach(function(d, i){
+            var alertBadge = '';
+            if(d.alert_type === 'danger') alertBadge = '<span class="badge badge-danger"><i class="fas fa-arrow-down"></i> '+d.alert+'</span>';
+            else if(d.alert_type === 'warning') alertBadge = '<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> '+d.alert+'</span>';
+            else alertBadge = '<span class="badge badge-success">OK</span>';
+
+            var rowStyle = d.alert_type === 'danger' ? ' style="background:#fce4ec;"' : (d.alert_type === 'warning' ? ' style="background:#fff3e0;"' : '');
+            h += '<tr'+rowStyle+'><td>'+(i+1)+'</td><td>'+d.product_code+'</td><td>'+d.product_name+'</td><td>'+d.unit+'</td>'+
+                '<td>'+d.warehouse+'</td><td class="text-center"><strong>'+fmt(d.quantity)+'</strong></td>'+
+                '<td class="text-center">'+d.min_stock+'</td><td class="text-center">'+d.max_stock+'</td>'+
+                '<td class="text-right">'+fmtD(d.cost_price)+'</td><td class="text-right"><strong>'+fmtD(d.stock_value)+'</strong></td>'+
+                '<td class="text-center">'+alertBadge+'</td></tr>';
+        });
+        if(!h) h = '<tr><td colspan="11" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+        $('#report_tbl tbody').html(h);
+    });
+}
+</script>
+{% endblock %}

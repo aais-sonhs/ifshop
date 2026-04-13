@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-calendar-alt mr-2"></i>Lịch hẹn - Xem theo ngày</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-outline-secondary" id="btn_prev"><i class="fas fa-chevron-left"></i></button>
+            <span class="mx-2 font-weight-bold" id="lbl_date"></span>
+            <button class="btn btn-sm btn-outline-secondary" id="btn_next"><i class="fas fa-chevron-right"></i></button>
+            <button class="btn btn-sm btn-info ml-2" id="btn_today">Hôm nay</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row" id="timeline_view"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+var currentDate=new Date();
+var allRooms=[];
+
+$(document).ready(function(){
+    $.get('/api/spa/rooms/',function(r){
+        allRooms=r.data.filter(function(r){return r.is_active;});
+        renderDate();
+    });
+    $('#btn_prev').click(function(){currentDate.setDate(currentDate.getDate()-1);renderDate();});
+    $('#btn_next').click(function(){currentDate.setDate(currentDate.getDate()+1);renderDate();});
+    $('#btn_today').click(function(){currentDate=new Date();renderDate();});
+});
+
+function renderDate(){
+    var ds=currentDate.toISOString().slice(0,10);
+    var dd=currentDate.getDate()+'/'+(currentDate.getMonth()+1)+'/'+currentDate.getFullYear();
+    var dayNames=['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+    $('#lbl_date').text(dayNames[currentDate.getDay()]+', '+dd);
+
+    $.get('/api/spa/bookings/?from_date='+ds+'&to_date='+ds,function(res){
+        var h='';
+        if(allRooms.length){
+            allRooms.forEach(function(room){
+                var bookings=res.data.filter(function(b){return b.room_id==room.id;});
+                var statusColor=room.status==0?'success':(room.status==1?'warning':'secondary');
+                h+='<div class="col-md-4 col-sm-6 mb-3"><div class="card border-'+statusColor+'">'+
+                    '<div class="card-header bg-'+statusColor+' text-white py-2"><b>'+room.name+'</b> <small>('+room.room_type_display+')</small></div>'+
+                    '<div class="card-body p-2">';
+                if(bookings.length){
+                    bookings.forEach(function(b){
+                        var svcNames=b.items.map(function(it){return it.service_name;}).join(', ');
+                        var statusBadge={0:'info',1:'warning',2:'success',3:'secondary'};
+                        h+='<div class="border rounded p-2 mb-2">'+
+                            '<div class="d-flex justify-content-between"><b>'+b.start_time+(b.end_time?' - '+b.end_time:'')+'</b>'+
+                            '<span class="badge badge-'+statusBadge[b.status]+'">'+b.status_display+'</span></div>'+
+                            '<div>👤 '+b.customer_name+'</div>'+
+                            '<div><small class="text-muted">'+svcNames+'</small></div>'+
+                            (b.staff_name?'<div><small>KTV: '+b.staff_name+'</small></div>':'')+
+                            '<div class="text-right"><b>'+fmt(b.final_amount)+'đ</b></div>'+
+                            '</div>';
+                    });
+                } else {
+                    h+='<p class="text-muted text-center mb-0 py-3"><i class="fas fa-check-circle text-success"></i> Trống</p>';
+                }
+                h+='</div></div></div>';
+            });
+        }
+        // Bookings without room
+        var noRoom=res.data.filter(function(b){return !b.room_id;});
+        if(noRoom.length){
+            h+='<div class="col-md-4 col-sm-6 mb-3"><div class="card border-info">'+
+                '<div class="card-header bg-info text-white py-2"><b>Chưa xếp phòng</b></div>'+
+                '<div class="card-body p-2">';
+            noRoom.forEach(function(b){
+                var svcNames=b.items.map(function(it){return it.service_name;}).join(', ');
+                h+='<div class="border rounded p-2 mb-2">'+
+                    '<div class="d-flex justify-content-between"><b>'+b.start_time+'</b>'+
+                    '<span class="badge badge-info">'+b.status_display+'</span></div>'+
+                    '<div>👤 '+b.customer_name+'</div>'+
+                    '<div><small class="text-muted">'+svcNames+'</small></div></div>';
+            });
+            h+='</div></div></div>';
+        }
+        $('#timeline_view').html(h||'<div class="col-12 text-center text-muted py-5"><i class="fas fa-calendar-times fa-3x mb-3 d-block"></i>Không có lịch hẹn nào trong ngày</div>');
+    });
+}
+</script>
+{% endblock %}

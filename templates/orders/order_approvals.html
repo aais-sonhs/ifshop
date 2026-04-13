@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.approval-card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 16px;
+}
+.approval-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+.approval-card .card-header {
+    border-radius: 12px 12px 0 0;
+    padding: 12px 16px;
+}
+.approval-card.pending .card-header {
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    color: #fff;
+}
+.approval-card.approved .card-header {
+    background: linear-gradient(135deg, #4caf50, #388e3c);
+    color: #fff;
+}
+.approval-card.rejected .card-header {
+    background: linear-gradient(135deg, #e53935, #c62828);
+    color: #fff;
+}
+.approval-card .card-body { padding: 16px; }
+.stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.stat-item {
+    flex: 1; min-width: 100px; text-align: center;
+    padding: 8px; border-radius: 8px; background: #f5f7fa;
+}
+.stat-item .stat-value { font-size: 18px; font-weight: 700; }
+.stat-item .stat-label { font-size: 11px; color: #888; text-transform: uppercase; }
+.approval-actions { display: flex; gap: 8px; margin-top: 12px; }
+.approval-actions .btn { flex: 1; padding: 10px; font-weight: 600; font-size: 14px; border-radius: 8px; }
+.btn-approve {
+    background: linear-gradient(135deg, #4caf50, #2e7d32);
+    color: #fff; border: none;
+}
+.btn-approve:hover { background: linear-gradient(135deg, #66bb6a, #43a047); color: #fff; }
+.btn-reject {
+    background: #fff; color: #e53935;
+    border: 2px solid #e53935;
+}
+.btn-reject:hover { background: #ffebee; }
+.summary-banner {
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    background: linear-gradient(135deg, #1a237e, #283593);
+    color: #fff; position: relative; overflow: hidden;
+}
+.summary-banner .banner-icon {
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    font-size: 60px; opacity: 0.15;
+}
+.summary-banner h2 { margin: 0; font-weight: 700; }
+.summary-banner .sub { opacity: 0.85; font-size: 14px; }
+.pulse-dot {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; background: #ff9800;
+    animation: pulse 1.5s infinite;
+    margin-right: 6px; vertical-align: middle;
+}
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,152,0,0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(255,152,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,152,0,0); }
+}
+.empty-approval {
+    text-align: center; padding: 60px 20px; color: #aaa;
+}
+.empty-approval i { font-size: 48px; margin-bottom: 16px; }
+.detail-row { display: flex; gap: 6px; font-size: 13px; color: #555; margin-bottom: 4px; }
+.detail-row .label { color: #999; min-width: 90px; }
+</style>
+
+<div class="summary-banner" id="banner">
+    <i class="fas fa-clipboard-check banner-icon"></i>
+    <p class="sub mb-1"><i class="fas fa-user-check mr-1"></i> Xin chào, {{ request.user.get_full_name|default:request.user.username }}</p>
+    <h2><span class="pulse-dot" id="pulse_dot"></span> <span id="banner_count">0</span> đơn hàng chờ bạn duyệt</h2>
+    <p class="sub mt-1 mb-0">Vui lòng xác nhận đã nhận tiền trước khi duyệt đơn hàng.</p>
+</div>
+
+<!-- ĐƠN CHỜ DUYỆT -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-hourglass-half text-warning mr-2"></i>Đơn hàng chờ duyệt</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-outline-primary" id="btn_refresh"><i class="fas fa-sync-alt"></i> Làm mới</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row" id="pending_list">
+            <div class="col-12 empty-approval" id="empty_pending">
+                <i class="fas fa-check-circle text-success"></i>
+                <p class="mb-0">🎉 Không có đơn hàng nào cần duyệt!</p>
+                <small>Bạn đã xử lý hết tất cả yêu cầu.</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- LỊCH SỬ DUYỆT -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-history text-info mr-2"></i>Lịch sử duyệt (7 ngày gần đây)</h3>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm table-striped mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Mã ĐH</th>
+                        <th>Khách hàng</th>
+                        <th class="text-right">Thành tiền</th>
+                        <th>NV bán hàng</th>
+                        <th>Kết quả</th>
+                        <th>Thời gian</th>
+                    </tr>
+                </thead>
+                <tbody id="history_tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-3">Chưa có lịch sử</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+
+$(document).ready(function(){
+    loadApprovals();
+    $('#btn_refresh').click(function(){ loadApprovals(); });
+    // Auto-refresh mỗi 30 giây
+    setInterval(loadApprovals, 30000);
+});
+
+function loadApprovals(){
+    $.get('/api/orders/pending_approvals/', function(res){
+        if(res.status !== 'ok') return;
+
+        var count = res.pending_count;
+        $('#banner_count').text(count);
+        if(count > 0){
+            $('#pulse_dot').show();
+            $('#banner').css('background', 'linear-gradient(135deg, #e65100, #f57c00)');
+        } else {
+            $('#pulse_dot').hide();
+            $('#banner').css('background', 'linear-gradient(135deg, #2e7d32, #43a047)');
+        }
+
+        // Pending cards
+        if(res.pending.length === 0){
+            $('#pending_list').html(
+                '<div class="col-12 empty-approval" id="empty_pending">' +
+                '<i class="fas fa-check-circle text-success"></i>' +
+                '<p class="mb-0">🎉 Không có đơn hàng nào cần duyệt!</p>' +
+                '<small>Bạn đã xử lý hết tất cả yêu cầu.</small></div>'
+            );
+        } else {
+            var html = '';
+            res.pending.forEach(function(d){
+                var payBadge = d.payment_status === 2
+                    ? '<span class="badge badge-success"><i class="fas fa-check-circle mr-1"></i>Đã thanh toán</span>'
+                    : (d.payment_status === 1
+                        ? '<span class="badge badge-info">Thanh toán một phần</span>'
+                        : '<span class="badge badge-secondary">Chưa thanh toán</span>');
+
+                html += '<div class="col-lg-6 col-xl-4">';
+                html += '<div class="approval-card pending card">';
+                html += '<div class="card-header d-flex justify-content-between align-items-center">';
+                html += '<span><i class="fas fa-file-invoice mr-2"></i><strong>' + d.code + '</strong></span>';
+                html += '<span class="badge badge-light text-dark">' + d.order_date + '</span>';
+                html += '</div>';
+                html += '<div class="card-body">';
+
+                // Stats
+                html += '<div class="stat-row">';
+                html += '<div class="stat-item"><div class="stat-value" style="color:#e65100;">' + fmtD(d.final_amount) + '</div><div class="stat-label">Thành tiền</div></div>';
+                html += '<div class="stat-item"><div class="stat-value" style="color:#2e7d32;">' + fmtD(d.paid_amount) + '</div><div class="stat-label">Đã thu</div></div>';
+                var debt = d.final_amount - d.paid_amount;
+                if(debt > 0){
+                    html += '<div class="stat-item"><div class="stat-value" style="color:#c62828;">' + fmtD(debt) + '</div><div class="stat-label">Còn nợ</div></div>';
+                }
+                html += '</div>';
+
+                // Details
+                html += '<div class="detail-row"><span class="label">👤 Khách hàng:</span><strong>' + (d.customer || 'Khách lẻ') + '</strong></div>';
+                html += '<div class="detail-row"><span class="label">🧑‍💼 NV bán hàng:</span><span>' + (d.salesperson || '-') + '</span></div>';
+                html += '<div class="detail-row"><span class="label">📝 Người tạo:</span><span>' + (d.creator_name || '-') + '</span></div>';
+                html += '<div class="detail-row"><span class="label">💳 Thanh toán:</span>' + payBadge + '</div>';
+                if(d.note){
+                    html += '<div class="detail-row"><span class="label">📋 Ghi chú:</span><span class="text-muted">' + d.note.substring(0, 80) + (d.note.length > 80 ? '...' : '') + '</span></div>';
+                }
+                html += '<div class="detail-row"><span class="label">⏰ Tạo lúc:</span><span class="text-muted">' + d.created_at + '</span></div>';
+
+                // Buttons
+                html += '<div class="approval-actions">';
+                html += '<button class="btn btn-approve" onclick="approveOrder('+d.id+',\''+d.code+'\')"><i class="fas fa-check-double mr-1"></i> Duyệt & Hoàn thành</button>';
+                html += '<button class="btn btn-reject" onclick="rejectOrder('+d.id+',\''+d.code+'\')"><i class="fas fa-times mr-1"></i> Từ chối</button>';
+                html += '</div>';
+
+                html += '</div></div></div>';
+            });
+            $('#pending_list').html(html);
+        }
+
+        // History table
+        if(res.processed.length === 0){
+            $('#history_tbody').html('<tr><td colspan="6" class="text-center text-muted py-3">Chưa có lịch sử</td></tr>');
+        } else {
+            var hHtml = '';
+            res.processed.forEach(function(d){
+                var resultBadge = d.approval_status === 2
+                    ? '<span class="badge badge-success"><i class="fas fa-check-double mr-1"></i>Đã duyệt</span>'
+                    : '<span class="badge badge-danger"><i class="fas fa-times-circle mr-1"></i>Từ chối</span>';
+                hHtml += '<tr>';
+                hHtml += '<td><strong>' + d.code + '</strong></td>';
+                hHtml += '<td>' + (d.customer || 'Khách lẻ') + '</td>';
+                hHtml += '<td class="text-right"><strong>' + fmtD(d.final_amount) + '</strong></td>';
+                hHtml += '<td>' + (d.salesperson || '-') + '</td>';
+                hHtml += '<td>' + resultBadge + '</td>';
+                hHtml += '<td><small class="text-muted">' + d.approved_at + '</small></td>';
+                hHtml += '</tr>';
+            });
+            $('#history_tbody').html(hHtml);
+        }
+    });
+}
+
+function approveOrder(id, code){
+    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận đã nhận được tiền và duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Hoàn thành.')) return;
+    var note = prompt('Ghi chú khi duyệt (có thể bỏ trống):', '');
+    $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({id:id, action:'approve', note:note||''}),
+        success:function(r){
+            loadApprovals();
+            alert(r.message);
+        }
+    });
+}
+
+function rejectOrder(id, code){
+    var reason = prompt('Nhập lý do từ chối duyệt đơn hàng ' + code + ':', '');
+    if(reason === null) return;
+    if(!reason.trim()){ alert('Vui lòng nhập lý do từ chối.'); return; }
+    if(!confirm('❌ XÁC NHẬN TỪ CHỐI\n\nĐơn hàng: ' + code + '\nLý do: ' + reason)) return;
+    $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({id:id, action:'reject', note:reason}),
+        success:function(r){
+            loadApprovals();
+            alert(r.message);
+        }
+    });
+}
+</script>
+{% endblock %}

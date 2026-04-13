@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-cogs mr-2"></i>Danh mục hệ thống</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <!-- Danh mục nghiệp vụ thu chi -->
+            <div class="col-md-6">
+                <div class="card card-outline card-primary">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục nghiệp vụ thu chi</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-primary" id="btn_add_finance_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="finance_cat_tbl">
+                            <thead><tr><th>Tên</th><th>Loại</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- Danh mục quỹ -->
+            <div class="col-md-6">
+                <div class="card card-outline card-success">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục quỹ</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-success" id="btn_add_cashbook"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="cashbook_cat_tbl">
+                            <thead><tr><th>Tên quỹ</th><th>Số dư</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <!-- Danh mục sản phẩm -->
+            <div class="col-md-6">
+                <div class="card card-outline card-warning">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục sản phẩm</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-warning" id="btn_add_product_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="product_cat_tbl">
+                            <thead><tr><th>Tên danh mục</th><th>Mô tả</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- Danh mục kho -->
+            <div class="col-md-6">
+                <div class="card card-outline card-info">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục kho</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-info" id="btn_add_warehouse_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="warehouse_cat_tbl">
+                            <thead><tr><th>Mã kho</th><th>Tên kho</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Danh mục thu chi -->
+<div class="modal fade" id="modal_finance_cat" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="fc_modal_title">Thêm danh mục thu chi</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="fc_id">
+                <div class="form-group"><label>Tên danh mục <span class="text-danger">*</span></label><input type="text" class="form-control" id="fc_name"></div>
+                <div class="form-group"><label>Loại <span class="text-danger">*</span></label>
+                    <select class="form-control" id="fc_type"><option value="1">Thu</option><option value="2">Chi</option></select>
+                </div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="fc_description" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="fc_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Quỹ -->
+<div class="modal fade" id="modal_cashbook" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="cb_modal_title">Thêm quỹ</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cb_id">
+                <div class="form-group"><label>Tên quỹ <span class="text-danger">*</span></label><input type="text" class="form-control" id="cb_name"></div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="cb_description" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success" id="cb_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Danh mục sản phẩm -->
+<div class="modal fade" id="modal_product_cat" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="pc_modal_title">Thêm danh mục sản phẩm</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="pc_id">
+                <div class="form-group"><label>Tên danh mục <span class="text-danger">*</span></label><input type="text" class="form-control" id="pc_name"></div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="pc_description" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-warning" id="pc_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Kho -->
+<div class="modal fade" id="modal_warehouse_cat" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="wh_modal_title">Thêm kho</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="wh_id">
+                <div class="form-group"><label>Mã kho <span class="text-danger">*</span></label><input type="text" class="form-control" id="wh_code"></div>
+                <div class="form-group"><label>Tên kho <span class="text-danger">*</span></label><input type="text" class="form-control" id="wh_name"></div>
+                <div class="form-group"><label>Địa chỉ</label><textarea class="form-control" id="wh_address" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-info" id="wh_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+$(document).ready(function(){
+    loadFinanceCats();
+    loadCashbooks();
+    loadProductCats();
+    loadWarehouseCats();
+
+    // ===== DANH MỤC THU CHI =====
+    $('#btn_add_finance_cat').click(function(){
+        $('#fc_id').val(''); $('#fc_name').val(''); $('#fc_type').val('1'); $('#fc_description').val('');
+        $('#fc_modal_title').text('Thêm danh mục thu chi');
+        $('#modal_finance_cat').modal('show');
+    });
+
+    $('#fc_save').click(function(){
+        var data = {id:$('#fc_id').val()||null, name:$('#fc_name').val(), type:parseInt($('#fc_type').val()), description:$('#fc_description').val()};
+        if(!data.name){alert('Vui lòng nhập tên');return;}
+        $.ajax({url:'/api/finance_categories/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_finance_cat').modal('hide'); loadFinanceCats();}alert(r.message);}
+        });
+    });
+
+    // ===== QUỸ =====
+    $('#btn_add_cashbook').click(function(){
+        $('#cb_id').val(''); $('#cb_name').val(''); $('#cb_description').val('');
+        $('#cb_modal_title').text('Thêm quỹ');
+        $('#modal_cashbook').modal('show');
+    });
+
+    $('#cb_save').click(function(){
+        var data = {id:$('#cb_id').val()||null, name:$('#cb_name').val(), description:$('#cb_description').val()};
+        if(!data.name){alert('Vui lòng nhập tên');return;}
+        $.ajax({url:'/api/cashbooks/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_cashbook').modal('hide'); loadCashbooks();}alert(r.message);}
+        });
+    });
+
+    // ===== DANH MỤC SẢN PHẨM =====
+    $('#btn_add_product_cat').click(function(){
+        $('#pc_id').val(''); $('#pc_name').val(''); $('#pc_description').val('');
+        $('#pc_modal_title').text('Thêm danh mục sản phẩm');
+        $('#modal_product_cat').modal('show');
+    });
+
+    $('#pc_save').click(function(){
+        var data = {id:$('#pc_id').val()||null, name:$('#pc_name').val(), description:$('#pc_description').val()};
+        if(!data.name){alert('Vui lòng nhập tên');return;}
+        $.ajax({url:'/api/categories/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_product_cat').modal('hide'); loadProductCats();}alert(r.message);}
+        });
+    });
+
+    // ===== KHO =====
+    $('#btn_add_warehouse_cat').click(function(){
+        $('#wh_id').val(''); $('#wh_code').val(''); $('#wh_name').val(''); $('#wh_address').val('');
+        $('#wh_modal_title').text('Thêm kho');
+        $('#modal_warehouse_cat').modal('show');
+    });
+
+    $('#wh_save').click(function(){
+        var data = {id:$('#wh_id').val()||null, code:$('#wh_code').val(), name:$('#wh_name').val(), address:$('#wh_address').val()};
+        if(!data.code || !data.name){alert('Vui lòng nhập mã và tên kho');return;}
+        $.ajax({url:'/api/warehouses/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_warehouse_cat').modal('hide'); loadWarehouseCats();}alert(r.message);}
+        });
+    });
+});
+
+// ===== LOAD DATA =====
+function loadFinanceCats(){
+    $.get('/api/finance_categories/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            var typeLabel = d.type === 1 ? '<span class="badge badge-success">Thu</span>' : '<span class="badge badge-danger">Chi</span>';
+            h += '<tr><td>'+d.name+'</td><td>'+typeLabel+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick="editFC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\','+d.type+',\''+( d.description||'').replace(/'/g,"\\'")+ '\')"><i class="fas fa-edit"></i></button></td></tr>';
+        });
+        $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function loadCashbooks(){
+    $.get('/api/cashbooks/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            h += '<tr><td>'+d.name+'</td><td class="text-right">'+fmt(d.balance)+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick="editCB('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+        });
+        $('#cashbook_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function loadProductCats(){
+    $.get('/api/categories/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            h += '<tr><td>'+d.name+'</td><td>'+( d.description||'')+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+        });
+        $('#product_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function loadWarehouseCats(){
+    $.get('/api/warehouses/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            h += '<tr><td>'+d.code+'</td><td>'+d.name+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick="editWH('+d.id+',\''+d.code.replace(/'/g,"\\'")+'\',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.address||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+        });
+        $('#warehouse_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+// ===== EDIT FUNCTIONS =====
+function editFC(id, name, type, desc){
+    $('#fc_id').val(id); $('#fc_name').val(name); $('#fc_type').val(type); $('#fc_description').val(desc);
+    $('#fc_modal_title').text('Sửa danh mục thu chi');
+    $('#modal_finance_cat').modal('show');
+}
+
+function editCB(id, name, desc){
+    $('#cb_id').val(id); $('#cb_name').val(name); $('#cb_description').val(desc);
+    $('#cb_modal_title').text('Sửa quỹ');
+    $('#modal_cashbook').modal('show');
+}
+
+function editPC(id, name, desc){
+    $('#pc_id').val(id); $('#pc_name').val(name); $('#pc_description').val(desc);
+    $('#pc_modal_title').text('Sửa danh mục sản phẩm');
+    $('#modal_product_cat').modal('show');
+}
+
+function editWH(id, code, name, address){
+    $('#wh_id').val(id); $('#wh_code').val(code); $('#wh_name').val(name); $('#wh_address').val(address);
+    $('#wh_modal_title').text('Sửa kho');
+    $('#modal_warehouse_cat').modal('show');
+}
+</script>
+{% endblock %}

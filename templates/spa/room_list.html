@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-door-open mr-2"></i>Quản lý phòng</h3>
+        <div class="card-tools"><button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm phòng</button></div>
+    </div>
+    <div class="card-body">
+        <!-- Room cards -->
+        <div class="row" id="room_cards"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm phòng</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Tên phòng <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_name"></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Loại phòng</label><select class="form-control form-control-sm" id="inp_room_type"><option value="1">Phòng thường</option><option value="2">Phòng VIP</option><option value="3">Phòng đôi</option></select></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Sức chứa</label><input type="number" class="form-control form-control-sm" id="inp_capacity" value="1" min="1"></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Trống</option><option value="1">Đang phục vụ</option><option value="2">Bảo trì</option></select></div></div>
+                </div>
+                <div class="form-group"><label>Ghi chú</label><textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function(){
+    loadData();
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('#inp_name,#inp_note').val('');
+        $('#inp_room_type').val(1);$('#inp_status').val(0);$('#inp_capacity').val(1);
+        $('#modal_title').text('Thêm phòng');$('#modal_form').modal('show');
+    });
+    $('#btn_save').click(function(){
+        if(!$('#inp_name').val()){alert('Nhập tên phòng');return;}
+        $.ajax({url:'/api/spa/rooms/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},
+            data:JSON.stringify({id:$('#edit_id').val()||null,name:$('#inp_name').val(),
+                room_type:parseInt($('#inp_room_type').val()),status:parseInt($('#inp_status').val()),
+                max_capacity:parseInt($('#inp_capacity').val()),note:$('#inp_note').val()}),
+            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+});
+function loadData(){
+    $.get('/api/spa/rooms/',function(res){
+        var h='';
+        res.data.forEach(function(d){
+            var statusColor=d.status==0?'success':(d.status==1?'warning':'secondary');
+            var statusIcon=d.status==0?'check-circle':(d.status==1?'spinner fa-spin':'wrench');
+            var typeIcon=d.room_type==2?'⭐ ':'';
+            h+='<div class="col-md-3 col-sm-6 mb-3">'+
+                '<div class="card border-'+statusColor+'" style="cursor:pointer;" onclick=\'editItem('+JSON.stringify(d)+'\')>'+
+                '<div class="card-body text-center p-3">'+
+                '<i class="fas fa-'+statusIcon+' fa-2x text-'+statusColor+' mb-2"></i>'+
+                '<h5 class="mb-1">'+typeIcon+d.name+'</h5>'+
+                '<p class="text-muted mb-1"><small>'+d.room_type_display+' | '+d.max_capacity+' người</small></p>'+
+                '<span class="badge badge-'+statusColor+'">'+d.status_display+'</span>'+
+                '</div></div></div>';
+        });
+        $('#room_cards').html(h||'<div class="col-12 text-center text-muted p-5">Chưa có phòng nào</div>');
+    });
+}
+function editItem(d){
+    $('#edit_id').val(d.id);$('#inp_name').val(d.name);$('#inp_room_type').val(d.room_type);
+    $('#inp_status').val(d.status);$('#inp_capacity').val(d.max_capacity);$('#inp_note').val(d.note);
+    $('#modal_title').text('Sửa phòng');$('#modal_form').modal('show');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,602 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-file-invoice mr-2"></i>Danh sách báo giá</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo báo giá</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã BG</th><th>Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th>Người BG</th>{% endif %}<th>Ngày BG</th><th>Số SP</th><th>Tổng tiền</th><th>Hiệu lực</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL BÁO GIÁ -->
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo báo giá</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <!-- Thông tin chung -->
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Mã BG <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="inp_code">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Khách hàng
+                                <button type="button" class="btn btn-xs btn-outline-success ml-2" id="btn_quick_customer" title="Tạo khách hàng mới">
+                                    <i class="fas fa-user-plus"></i> Tạo KH mới
+                                </button>
+                            </label>
+                            <select class="form-control form-control-sm select2" id="inp_customer_id">
+                                <option value="">-- Chọn --</option>
+                                {% for c in customers %}
+                                <option value="{{ c.id }}">{{ c.code }} - {{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Ngày BG <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control form-control-sm" id="inp_quotation_date">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Hiệu lực đến</label>
+                            <input type="date" class="form-control form-control-sm" id="inp_valid_until">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Trạng thái</label>
+                            <select class="form-control form-control-sm" id="inp_status">
+                                <option value="0">Nháp</option>
+                                <option value="1">Đã gửi</option>
+                                <option value="2">Đã duyệt</option>
+                                <option value="3">Đã tạo ĐH</option>
+                                <option value="4">Hủy</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                {% if biz.opt_quotation_salesperson %}
+                <div class="row mt-1">
+                    <div class="col-md-3">
+                        <div class="form-group mb-1">
+                            <label><i class="fas fa-user-tie text-primary"></i> Người báo giá</label>
+                            <select class="form-control form-control-sm select2" id="inp_salesperson">
+                                <option value="">-- Chọn --</option>
+                                {% for u in system_users %}
+                                <option value="{{ u.full_name }}">{{ u.full_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Chọn sản phẩm -->
+                <div class="card card-outline card-info mt-2">
+                    <div class="card-header py-1">
+                        <h6 class="card-title mb-0">Chi tiết sản phẩm</h6>
+                        <div class="card-tools">
+                            <button type="button" class="btn btn-xs btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm SP</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered mb-0" id="items_tbl">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th style="width:28%">Sản phẩm</th>
+                                    <th style="width:6%">ĐVT</th>
+                                    <th style="width:8%">Tồn kho</th>
+                                    <th style="width:9%">Số lượng</th>
+                                    <th style="width:14%">Đơn giá</th>
+                                    <th style="width:8%">CK (%)</th>
+                                    <th style="width:17%">Thành tiền</th>
+                                    <th style="width:5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                                <tr class="bg-light font-weight-bold">
+                                    <td colspan="6" class="text-right">Tổng cộng:</td>
+                                    <td class="text-right" id="lbl_total">0</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="6" class="text-right">Chiết khấu:</td>
+                                    <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td>
+                                    <td></td>
+                                </tr>
+                                <tr class="bg-warning font-weight-bold">
+                                    <td colspan="6" class="text-right">Thành tiền:</td>
+                                    <td class="text-right" id="lbl_final">0</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="form-group mt-2">
+                    <label>Ghi chú</label>
+                    <textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu báo giá</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL TẠO NHANH KHÁCH HÀNG -->
+<div class="modal fade" id="modal_quick_customer" tabindex="-1" data-backdrop="static">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-user-plus mr-1"></i> Tạo nhanh khách hàng</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Tên khách hàng <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="qc_name" placeholder="VD: Nguyễn Văn A">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Số điện thoại</label>
+                            <input type="text" class="form-control form-control-sm" id="qc_phone" placeholder="VD: 0901234567">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" class="form-control form-control-sm" id="qc_email" placeholder="VD: email@gmail.com">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Công ty</label>
+                            <input type="text" class="form-control form-control-sm" id="qc_company" placeholder="VD: Công ty ABC">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Địa chỉ</label>
+                    <input type="text" class="form-control form-control-sm" id="qc_address" placeholder="VD: 123 Nguyễn Huệ, Q.1, TP.HCM">
+                </div>
+                <div class="alert alert-info py-2 mb-0">
+                    <small><i class="fas fa-info-circle mr-1"></i> Mã khách hàng sẽ được tự động sinh. Bạn có thể bổ sung thêm thông tin sau.</small>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-sm btn-success" id="btn_save_quick_customer"><i class="fas fa-check mr-1"></i> Tạo khách hàng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var allProducts = [];
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+$(document).ready(function(){
+    $.get('/api/products_select/', function(res){ allProducts = res.data; });
+    loadData();
+
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');
+        $('#inp_customer_id').val('').trigger('change');
+        $('#inp_valid_until').val('');
+        $('#inp_status').val('0'); $('#inp_note').val('');
+        setMoneyValue('#inp_discount_amount', 0);
+        if($('#inp_salesperson').length) $('#inp_salesperson').val('').trigger('change');
+        $('#items_tbl tbody').html('');
+        calcTotal();
+        // Auto-fill mã mới + ngày hôm nay
+        $.get('/api/quotations/next_code/', function(res){
+            $('#inp_code').val(res.code);
+        });
+        var today = new Date().toISOString().split('T')[0];
+        $('#inp_quotation_date').val(today);
+        $('#modal_title').text('Tạo báo giá');
+        $('#modal_form').modal('show');
+    });
+
+    $('#btn_add_item').click(function(){ addItemRow(null); });
+    $('#inp_discount_amount').on('input', function(){ calcTotal(); });
+
+    // Tạo nhanh khách hàng
+    $('#btn_quick_customer').click(function(){
+        $('#qc_name,#qc_phone,#qc_email,#qc_company,#qc_address').val('');
+        $('#modal_quick_customer').modal('show');
+    });
+    $('#btn_save_quick_customer').click(function(){
+        var name = $('#qc_name').val().trim();
+        if(!name){ alert('Vui lòng nhập tên khách hàng'); return; }
+        var data = {
+            name: name,
+            phone: $('#qc_phone').val().trim(),
+            email: $('#qc_email').val().trim(),
+            company: $('#qc_company').val().trim(),
+            address: $('#qc_address').val().trim(),
+        };
+        $.ajax({
+            url: '/api/orders/quick_customer/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){
+                    // Thêm option mới vào select2
+                    var newOpt = new Option(r.code + ' - ' + r.name, r.id, true, true);
+                    $('#inp_customer_id').append(newOpt).trigger('change');
+                    $('#modal_quick_customer').modal('hide');
+                    alert('✅ Đã tạo khách hàng: ' + r.code + ' - ' + r.name);
+                } else {
+                    alert(r.message);
+                }
+            }
+        });
+    });
+
+    $('#btn_save').click(function(){
+        var code = $('#inp_code').val();
+        var date = $('#inp_quotation_date').val();
+        if(!code || !date){ alert('Vui lòng nhập mã và ngày BG'); return; }
+
+        var items = [];
+        var hasError = false;
+        $('#items_tbl tbody tr').each(function(){
+            var pid = $(this).find('.sel_product').val();
+            var qty = parseInt($(this).find('.inp_qty').val()) || 0;
+            var price = getMoneyValue($(this).find('.inp_price')) || 0;
+            var disc = parseFloat($(this).find('.inp_disc').val()) || 0;
+            if(!pid){ hasError = true; return; }
+            var variantId = $(this).find('.sel_product option:selected').data('variant-id') || null;
+            items.push({ product_id: pid, variant_id: variantId, quantity: qty, unit_price: price, discount_percent: disc });
+        });
+        if(hasError){ alert('Vui lòng chọn sản phẩm cho tất cả dòng'); return; }
+        if(items.length === 0){ alert('Vui lòng thêm ít nhất 1 sản phẩm'); return; }
+
+        var data = {
+            id: $('#edit_id').val() || null,
+            code: code,
+            customer_id: $('#inp_customer_id').val(),
+            quotation_date: date,
+            valid_until: $('#inp_valid_until').val(),
+            discount_amount: getMoneyValue('#inp_discount_amount'),
+            status: parseInt($('#inp_status').val()),
+            note: $('#inp_note').val(),
+            items: items
+        };
+        if($('#inp_salesperson').length) data.salesperson = $('#inp_salesperson').val();
+
+        $.ajax({
+            url: '/api/quotations/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){ $('#modal_form').modal('hide'); loadData(); }
+                alert(r.message);
+            }
+        });
+    });
+});
+
+function getStockForProduct(productId){
+    var product = allProducts.find(function(p){return p.id == productId;});
+    if(!product) return {stock: 0, label: '-', isService: false};
+    if(product.is_service) return {stock: 999999, label: 'DV', isService: true};
+    return {stock: product.total_stock, label: product.total_stock.toString(), isService: false};
+}
+
+function addItemRow(item){
+    var opts = '<option value="">-- Chọn SP --</option>';
+    allProducts.forEach(function(p){
+        if(p.variants && p.variants.length > 0){
+            p.variants.forEach(function(v){
+                var sel=(item&&item.product_id==p.id&&item.variant_id==v.id)?'selected':'';
+                if(!sel) sel=(item&&item.product_id==p.id&&!item.variant_id&&p.variants.length==1)?'selected':'';
+                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+v.selling_price+'" data-variant-id="'+v.id+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+            });
+        } else {
+            var sel = (item && item.product_id == p.id) ? 'selected' : '';
+            opts += '<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+p.selling_price+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
+        }
+    });
+
+    var qty = item ? item.quantity : 1;
+    var price = item ? item.unit_price : 0;
+    var disc = item ? item.discount_percent : 0;
+    var unit = item ? item.unit : '';
+    var lineTotal = qty * price * (1 - disc / 100);
+
+    // Stock info
+    var stockLabel = '-';
+    var stockClass = '';
+    if(item && item.product_id){
+        var info = getStockForProduct(item.product_id);
+        stockLabel = info.label;
+        if(info.isService){
+            stockClass = 'text-muted';
+        } else {
+            stockClass = qty > info.stock ? 'text-danger font-weight-bold' : 'text-success';
+        }
+    }
+
+    var html = '<tr>' +
+        '<td><select class="form-control form-control-sm sel_product">' + opts + '</select></td>' +
+        '<td class="lbl_unit text-center">' + unit + '</td>' +
+        '<td class="lbl_stock text-center ' + stockClass + '">' + stockLabel + '</td>' +
+        '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
+        '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
+        '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
+        '<td class="text-right lbl_line_total">' + fmt(lineTotal) + '</td>' +
+        '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td>' +
+        '</tr>';
+    $('#items_tbl tbody').append(html);
+
+    var $row = $('#items_tbl tbody tr:last');
+    $row.find('.sel_product').select2({width:'100%',theme:'bootstrap4',placeholder:'-- Chọn SP --',allowClear:true,dropdownParent:$('#modal_form')});
+
+    // Set value if editing
+    if(item && item.product_id){
+        if(item.variant_id){
+            $row.find('.sel_product option').each(function(){
+                if($(this).val() == item.product_id && $(this).data('variant-id') == item.variant_id){
+                    $(this).prop('selected', true);
+                }
+            });
+            $row.find('.sel_product').trigger('change.select2');
+        } else {
+            $row.find('.sel_product').val(item.product_id).trigger('change.select2');
+        }
+    }
+
+    $row.find('.sel_product').on('change', function(){
+        var $opt = $(this).find('option:selected');
+        var pid = $(this).val();
+        $row.find('.lbl_unit').text($opt.data('unit') || '');
+        setMoneyValue($row.find('.inp_price'), $opt.data('price') || 0);
+        if(pid){
+            var info = getStockForProduct(parseInt(pid));
+            if(info.isService){
+                $row.find('.lbl_stock').text(info.label).removeClass('text-danger font-weight-bold text-success').addClass('text-muted');
+            } else {
+                $row.find('.lbl_stock').text(info.label).removeClass('text-danger font-weight-bold text-muted').addClass('text-success');
+            }
+        } else {
+            $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
+        }
+        // Set qty step based on weight
+        var product = allProducts.find(function(pp){return pp.id==parseInt(pid);});
+        if(product) $row.find('.inp_qty').attr('step', product.is_weight_based ? '0.01' : '1');
+        calcLine($row);
+    });
+
+    $row.find('.inp_qty').on('input', function(){
+        calcLine($row);
+        var pid = $row.find('.sel_product').val();
+        if(pid){
+            var info = getStockForProduct(parseInt(pid));
+            if(!info.isService){
+                var qty = parseInt($(this).val()) || 0;
+                if(qty > info.stock){
+                    $row.find('.lbl_stock').removeClass('text-success').addClass('text-danger font-weight-bold');
+                } else {
+                    $row.find('.lbl_stock').removeClass('text-danger font-weight-bold').addClass('text-success');
+                }
+            }
+        }
+    });
+    $row.find('.inp_price, .inp_disc').on('input', function(){ calcLine($row); });
+    $row.find('.btn_remove_item').click(function(){ $row.remove(); calcTotal(); });
+}
+
+function calcLine($row){
+    var qty = parseInt($row.find('.inp_qty').val()) || 0;
+    var price = getMoneyValue($row.find('.inp_price')) || 0;
+    var disc = parseFloat($row.find('.inp_disc').val()) || 0;
+    var total = qty * price * (1 - disc / 100);
+    $row.find('.lbl_line_total').text(fmt(total));
+    calcTotal();
+}
+
+function calcTotal(){
+    var total = 0;
+    $('#items_tbl tbody tr').each(function(){
+        var qty = parseInt($(this).find('.inp_qty').val()) || 0;
+        var price = getMoneyValue($(this).find('.inp_price')) || 0;
+        var disc = parseFloat($(this).find('.inp_disc').val()) || 0;
+        total += qty * price * (1 - disc / 100);
+    });
+    var discount = getMoneyValue('#inp_discount_amount');
+    $('#lbl_total').text(fmt(total));
+    $('#lbl_final').text(fmt(total - discount));
+}
+
+function loadData(){
+    $.get('/api/quotations/', function(res){
+        var h = '';
+        res.data.forEach(function(d, i){
+            var sp = {% if biz.opt_quotation_salesperson %}'<td>'+(d.salesperson||'')+'</td>'{% else %}''{% endif %};
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.customer+'</td>'+sp+
+                '<td>'+d.quotation_date+'</td>'+
+                '<td class="text-center">'+d.item_count+'</td>'+
+                '<td class="text-right">'+fmt(d.final_amount)+'</td><td>'+d.valid_until+'</td>'+
+                '<td>'+d.status_display+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')"><i class="fas fa-edit"></i></button> '+
+                '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')" title="Sao chép báo giá"><i class="fas fa-copy"></i></button> '+
+                '<button class="btn btn-xs btn-success" onclick="printQuotation('+d.id+')"><i class="fas fa-print"></i></button> '+
+                '<button class="btn btn-xs btn-danger" onclick="downloadQuotationPDF('+d.id+')" title="Tải PDF"><i class="fas fa-file-pdf"></i></button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });
+        var cols = {% if biz.opt_quotation_salesperson %}10{% else %}9{% endif %};
+        $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function editItem(id){
+    $.get('/api/quotations/detail/?id=' + id, function(res){
+        if(res.status !== 'ok'){ alert(res.message); return; }
+        var q = res.quotation;
+        $('#edit_id').val(q.id);
+        $('#inp_code').val(q.code);
+        $('#inp_customer_id').val(q.customer_id);
+        $('#inp_quotation_date').val(q.quotation_date);
+        $('#inp_valid_until').val(q.valid_until);
+        setMoneyValue('#inp_discount_amount', q.discount_amount);
+        $('#inp_status').val(q.status);
+        $('#inp_note').val(q.note);
+        if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
+
+        $('#items_tbl tbody').html('');
+
+        $('#modal_title').text('Sửa báo giá');
+        $('#modal_form').modal('show');
+
+        // Load items AFTER modal is fully shown so Select2 renders correctly
+        $('#modal_form').one('shown.bs.modal', function(){
+            res.items.forEach(function(it){ addItemRow(it); });
+            calcTotal();
+        });
+    });
+}
+
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?')) return;
+    $.ajax({
+        url: '/api/quotations/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){ loadData(); alert(r.message); }
+    });
+}
+
+function buildQuotationHTML(res){
+    var q = res.quotation;
+    var itemsHtml = '';
+    var total = 0;
+    var hasAnyImage = res.items.some(function(it){ return it.image; });
+    res.items.forEach(function(it, i){
+        var lineTotal = it.quantity * it.unit_price * (1 - it.discount_percent/100);
+        total += lineTotal;
+        var imgCell = '';
+        if(hasAnyImage){
+            if(it.image){
+                imgCell = '<td class="text-center"><img src="'+it.image+'" style="max-width:60px;max-height:60px;object-fit:contain;border:1px solid #eee;border-radius:4px;"></td>';
+            } else {
+                imgCell = '<td class="text-center" style="color:#ccc;font-size:11px;">Không có ảnh</td>';
+            }
+        }
+        itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td>'+
+            imgCell+
+            '<td>'+it.product_code+' - '+it.product_name+'</td>'+
+            '<td class="text-center">'+(it.unit||'')+'</td><td class="text-center">'+it.quantity+'</td>'+
+            '<td class="text-right">'+fmtMoney(it.unit_price)+'</td>'+
+            '<td class="text-center">'+(it.discount_percent||0)+'%</td>'+
+            '<td class="text-right">'+fmtMoney(lineTotal)+'</td></tr>';
+    });
+    var discount = q.discount_amount || 0;
+    var finalAmt = total - discount;
+    var custName = q.customer_id ? $('#inp_customer_id option[value="'+q.customer_id+'"]').text() : '';
+    var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
+    var colSpan = hasAnyImage ? 7 : 6;
+    var html = getPrintHeader() +
+        '<div class="print-title">B\u00C1O GI\u00C1</div>' +
+        '<div class="print-subtitle">S\u1ED1: ' + q.code + '</div>' +
+        '<div class="print-info"><table>' +
+        '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + custName + '</td></tr>' +
+        '<tr><td class="label">Ng\u00E0y b\u00E1o gi\u00E1:</td><td>' + (q.quotation_date||'') + '</td><td class="label">Hi\u1EC7u l\u1EF1c \u0111\u1EBFn:</td><td>' + (q.valid_until||'') + '</td></tr>' +
+        '</table></div>' +
+        '<table class="print-table"><thead><tr><th>STT</th>'+thImage+'<th>S\u1EA3n ph\u1EA9m</th><th>\u0110VT</th><th>SL</th><th>\u0110\u01A1n gi\u00E1</th><th>CK</th><th>Th\u00E0nh ti\u1EC1n</th></tr></thead>' +
+        '<tbody>' + itemsHtml + '</tbody>' +
+        '<tfoot><tr><td colspan="'+colSpan+'" class="text-right">T\u1ED5ng c\u1ED9ng:</td><td class="text-right">' + fmtMoney(total) + '</td></tr>' +
+        (discount > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Chi\u1EBFt kh\u1EA5u:</td><td class="text-right">-' + fmtMoney(discount) + '</td></tr>' : '') +
+        '<tr><td colspan="'+colSpan+'" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
+        '</tfoot></table>' +
+        '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +
+        '<div class="print-note">* B\u00E1o gi\u00E1 c\u00F3 hi\u1EC7u l\u1EF1c \u0111\u1EBFn ng\u00E0y ' + (q.valid_until||'...') + '</div>' +
+        getPrintSignatures('Kh\u00E1ch h\u00E0ng', 'Ng\u01B0\u1EDDi l\u1EADp') +
+        getPrintFooter();
+    return html;
+}
+
+function printQuotation(id){
+    $.get('/api/quotations/detail/?id=' + id, function(res){
+        if(res.status !== 'ok'){ alert(res.message); return; }
+        var html = buildQuotationHTML(res);
+        printPreviewHTML(html, 'BaoGia_' + res.quotation.code);
+    });
+}
+
+function downloadQuotationPDF(id){
+    $.get('/api/quotations/detail/?id=' + id, function(res){
+        if(res.status !== 'ok'){ alert(res.message); return; }
+        var html = buildQuotationHTML(res);
+        $('#print_content').html(html);
+        _pdfTitle = 'BaoGia_' + res.quotation.code;
+        downloadPDF();
+    });
+}
+
+function copyQuotation(id){
+    $.get('/api/quotations/detail/?id=' + id, function(res){
+        if(res.status !== 'ok'){ alert(res.message); return; }
+        var q = res.quotation;
+        // Reset form cho tạo mới
+        $('#edit_id').val('');
+        $('#inp_customer_id').val(q.customer_id).trigger('change');
+        setMoneyValue('#inp_discount_amount', q.discount_amount);
+        $('#inp_status').val('0'); // Nháp
+        $('#inp_note').val('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : ''));
+        if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
+        // Auto-fill mã mới + ngày hôm nay
+        $.get('/api/quotations/next_code/', function(cRes){
+            $('#inp_code').val(cRes.code);
+        });
+        var today = new Date().toISOString().split('T')[0];
+        $('#inp_quotation_date').val(today);
+        $('#inp_valid_until').val('');
+        $('#items_tbl tbody').html('');
+        $('#modal_title').text('Sao chép báo giá (từ ' + q.code + ')');
+        $('#modal_form').modal('show');
+        // Load items sau khi modal hiện
+        $('#modal_form').one('shown.bs.modal', function(){
+            res.items.forEach(function(it){ addItemRow(it); });
+            calcTotal();
+        });
+    });
+}
+</script>
+{% endblock %}

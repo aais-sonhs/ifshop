@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-warehouse mr-2"></i>Quản lý kho</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add_warehouse">
+                <i class="fas fa-plus"></i> Thêm kho
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="warehouse_tbl" class="table table-bordered table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Mã kho</th>
+                        <th>Tên kho</th>
+                        <th>Địa chỉ</th>
+                        <th>Quản lý</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal fade" id="modal_warehouse" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm kho</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="form-group">
+                    <label>Mã kho <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="inp_code" placeholder="VD: KHO01">
+                </div>
+                <div class="form-group">
+                    <label>Tên kho <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="inp_name" placeholder="Tên kho">
+                </div>
+                <div class="form-group">
+                    <label>Địa chỉ</label>
+                    <textarea class="form-control" id="inp_address" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select class="form-control" id="inp_is_active">
+                        <option value="true">Đang hoạt động</option>
+                        <option value="false">Ngừng hoạt động</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save">
+                    <i class="fas fa-save"></i> Lưu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    loadData();
+
+    $('#btn_add_warehouse').click(function() {
+        $('#edit_id').val('');
+        $('#inp_code').val('');
+        $('#inp_name').val('');
+        $('#inp_address').val('');
+        $('#inp_is_active').val('true');
+        $('#modal_title').text('Thêm kho');
+        $('#modal_warehouse').modal('show');
+    });
+
+    $('#btn_save').click(function() {
+        var data = {
+            id: $('#edit_id').val() || null,
+            code: $('#inp_code').val(),
+            name: $('#inp_name').val(),
+            address: $('#inp_address').val(),
+            is_active: $('#inp_is_active').val() === 'true'
+        };
+        if (!data.code || !data.name) { alert('Vui lòng nhập mã và tên kho'); return; }
+
+        $.ajax({
+            url: '/api/warehouses/save/',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            data: JSON.stringify(data),
+            success: function(res) {
+                if (res.status === 'ok') {
+                    $('#modal_warehouse').modal('hide');
+                    loadData();
+                    alert(res.message);
+                } else { alert(res.message); }
+            }
+        });
+    });
+});
+
+function loadData() {
+    $.get('/api/warehouses/', function(res) {
+        var html = '';
+        res.data.forEach(function(item, idx) {
+            html += '<tr>' +
+                '<td>' + (idx + 1) + '</td>' +
+                '<td>' + item.code + '</td>' +
+                '<td>' + item.name + '</td>' +
+                '<td>' + item.address + '</td>' +
+                '<td>' + item.manager + '</td>' +
+                '<td>' + (item.is_active ? '<span class="badge badge-success">Hoạt động</span>' : '<span class="badge badge-secondary">Ngừng</span>') + '</td>' +
+                '<td>' +
+                    '<button class="btn btn-xs btn-info" onclick="editItem(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')"><i class="fas fa-edit"></i></button> ' +
+                    '<button class="btn btn-xs btn-danger" onclick="deleteItem(' + item.id + ')"><i class="fas fa-trash"></i></button>' +
+                '</td></tr>';
+        });
+        $('#warehouse_tbl tbody').html(html);
+    });
+}
+
+function editItem(item) {
+    $('#edit_id').val(item.id);
+    $('#inp_code').val(item.code);
+    $('#inp_name').val(item.name);
+    $('#inp_address').val(item.address);
+    $('#inp_is_active').val(item.is_active ? 'true' : 'false');
+    $('#modal_title').text('Sửa kho');
+    $('#modal_warehouse').modal('show');
+}
+
+function deleteItem(id) {
+    if (!confirm('Bạn có chắc muốn xóa?')) return;
+    $.ajax({
+        url: '/api/warehouses/delete/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        data: JSON.stringify({id: id}),
+        success: function(res) { loadData(); alert(res.message); }
+    });
+}
+</script>
+{% endblock %}

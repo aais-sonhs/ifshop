@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-users mr-2"></i>Báo cáo khách hàng</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- BỘ LỌC -->
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm theo tên, SĐT, mã KH...">
+            </div>
+            <div class="col-md-4" id="store_filter_wrap" style="display:none;">
+                <select class="form-control form-control-sm" id="filter_store_id">
+                    <option value="">🏢 Tất cả cửa hàng</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- TỔNG QUAN -->
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="small-box bg-info">
+                    <div class="inner"><h4 id="total_customers">0</h4><p>Khách hàng</p></div>
+                    <div class="icon"><i class="fas fa-users"></i></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="small-box bg-success">
+                    <div class="inner"><h4 id="total_revenue">0đ</h4><p>Tổng doanh thu</p></div>
+                    <div class="icon"><i class="fas fa-coins"></i></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="small-box bg-danger">
+                    <div class="inner"><h4 id="total_debt">0đ</h4><p>Tổng công nợ</p></div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG SO SÁNH CỬA HÀNG -->
+        <div id="store_breakdown_wrap" style="display:none;" class="mb-3">
+            <div class="card card-outline card-purple">
+                <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-balance-scale mr-1"></i> Khách hàng theo cửa hàng</h6></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm mb-0">
+                            <thead class="bg-light">
+                                <tr><th>Cửa hàng</th><th class="text-center">Số KH</th><th class="text-right">Tổng mua</th><th class="text-right">Công nợ</th><th></th></tr>
+                            </thead>
+                            <tbody id="store_breakdown_tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG CHI TIẾT -->
+        <div class="table-responsive">
+            <table id="report_tbl" class="table table-bordered table-striped table-sm">
+                <thead class="bg-light">
+                    <tr>
+                        <th>STT</th><th>Mã KH</th><th>Tên khách hàng</th><th>SĐT</th><th>Email</th>
+                        <th id="col_store_header">Cửa hàng</th>
+                        <th>Nhóm</th><th>Số ĐH</th><th>Tổng mua</th><th>Công nợ</th><th>Lần mua cuối</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot class="font-weight-bold bg-light">
+                    <tr><td colspan="7">TỔNG</td><td id="ft_orders">0</td><td id="ft_revenue">0</td><td id="ft_debt">0</td><td></td></tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+
+var allReportData = [];
+var reportMeta = {};
+
+$(document).ready(function(){
+    loadReport();
+    $('#filter_store_id').change(function(){ loadReport(); });
+    $('#filter_search').on('input', function(){ renderTable(); });
+});
+
+function loadReport(){
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/report_customers/';
+    if(storeId) url += '?store_id='+storeId;
+
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+        allReportData = res.data;
+        reportMeta = res;
+
+        // Store filter dropdown
+        if(res.has_multiple_stores && res.stores && res.stores.length > 1){
+            $('#store_filter_wrap').show();
+            var curVal = $('#filter_store_id').val();
+            var opts = '<option value="">🏢 Tất cả cửa hàng</option>';
+            res.stores.forEach(function(s){
+                var sel = (s.id == curVal) ? ' selected' : '';
+                opts += '<option value="'+s.id+'"'+sel+'>'+s.name+'</option>';
+            });
+            $('#filter_store_id').html(opts);
+            $('#col_store_header').show();
+        } else {
+            $('#store_filter_wrap').hide();
+            if(!res.has_multiple_stores) $('#col_store_header').hide();
+        }
+
+        var s = res.summary;
+        $('#total_customers').text(s.total_customers);
+        $('#total_revenue').text(fmtD(s.total_revenue));
+        $('#total_debt').text(fmtD(s.total_debt));
+
+        // Store breakdown
+        var stId = $('#filter_store_id').val();
+        if(res.store_breakdown && res.store_breakdown.length > 0 && !stId){
+            $('#store_breakdown_wrap').show();
+            var sb = '';
+            res.store_breakdown.forEach(function(st){
+                var debtCls = st.debt > 0 ? 'text-danger font-weight-bold' : '';
+                sb += '<tr>';
+                sb += '<td><b>'+st.store_name+'</b>';
+                if(st.brand_name) sb += ' <small class="text-muted">('+st.brand_name+')</small>';
+                sb += '</td>';
+                sb += '<td class="text-center"><span class="badge badge-info">'+st.customer_count+'</span></td>';
+                sb += '<td class="text-right">'+fmtD(st.revenue)+'</td>';
+                sb += '<td class="text-right '+debtCls+'">'+fmtD(st.debt)+'</td>';
+                if(st.store_id){
+                    sb += '<td class="text-center"><button class="btn btn-xs btn-info" onclick="viewStore('+st.store_id+')"><i class="fas fa-eye"></i> Xem</button></td>';
+                } else {
+                    sb += '<td></td>';
+                }
+                sb += '</tr>';
+            });
+            $('#store_breakdown_tbody').html(sb);
+        } else {
+            $('#store_breakdown_wrap').hide();
+        }
+
+        renderTable();
+    });
+}
+
+function renderTable(){
+    var keyword = ($('#filter_search').val()||'').toLowerCase().trim();
+    var showStore = reportMeta.has_multiple_stores;
+    var filtered = allReportData;
+    if(keyword){
+        filtered = allReportData.filter(function(d){
+            return (d.name||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.phone||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.code||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.email||'').toLowerCase().indexOf(keyword) >= 0;
+        });
+    }
+
+    var h = '', tOrders=0, tRevenue=0, tDebt=0;
+    filtered.forEach(function(d, i){
+        tOrders += d.order_count;
+        tRevenue += d.total_purchased;
+        tDebt += d.total_debt;
+        var debtStyle = d.total_debt > 0 ? 'color:#dc3545;font-weight:bold;' : '';
+        var rowStyle = d.total_debt > 0 ? ' style="background:#fff3e0;"' : '';
+        h += '<tr'+rowStyle+'>';
+        h += '<td>'+(i+1)+'</td>';
+        h += '<td>'+d.code+'</td>';
+        h += '<td><strong>'+d.name+'</strong></td>';
+        h += '<td>'+d.phone+'</td>';
+        h += '<td>'+d.email+'</td>';
+        if(showStore){
+            h += '<td>'+(d.store_name ? '<span class="badge badge-outline badge-primary">'+d.store_name+'</span>' : '<span class="text-muted">-</span>')+'</td>';
+        }
+        h += '<td>'+d.group+'</td>';
+        h += '<td class="text-center">'+d.order_count+'</td>';
+        h += '<td class="text-right"><strong>'+fmtD(d.total_purchased)+'</strong></td>';
+        h += '<td class="text-right" style="'+debtStyle+'">'+(d.total_debt > 0 ? fmtD(d.total_debt) : '<span class="text-muted">0</span>')+'</td>';
+        h += '<td>'+d.last_order_date+'</td>';
+        h += '</tr>';
+    });
+    if(!h) h = '<tr><td colspan="'+(showStore?11:10)+'" class="text-center text-muted py-3">Không tìm thấy khách hàng</td></tr>';
+    $('#report_tbl tbody').html(h);
+
+    // Footer
+    var footColspan = showStore ? 7 : 6;
+    $('#report_tbl tfoot tr').html('<td colspan="'+footColspan+'">TỔNG ('+filtered.length+' KH)</td><td id="ft_orders">'+tOrders+'</td><td id="ft_revenue" class="text-right">'+fmtD(tRevenue)+'</td><td id="ft_debt" class="text-right"><span class="'+(tDebt>0?'text-danger':'')+'">'+fmtD(tDebt)+'</span></td><td></td>');
+}
+
+function viewStore(storeId){
+    $('#filter_store_id').val(storeId);
+    loadReport();
+}
+</script>
+{% endblock %}

@@ -1,2 +1,1 @@
-# ifshop
-ifshop
+# quan_ly_thu_chi

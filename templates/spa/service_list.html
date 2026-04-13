@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-spa mr-2"></i>Dịch vụ Spa</h3>
+        <div class="card-tools"><button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm</button></div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã DV</th><th>Tên dịch vụ</th><th>Nhóm</th><th>Thời lượng</th><th>Giá</th><th>% HH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm dịch vụ</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Mã DV <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-8"><div class="form-group"><label>Tên dịch vụ <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_name"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Nhóm DV</label><select class="form-control form-control-sm" id="inp_category"><option value="">-- Chọn --</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Thời lượng (phút)</label><input type="number" class="form-control form-control-sm" id="inp_duration" value="60" min="15" step="15"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Giá dịch vụ</label><input type="number" class="form-control form-control-sm" id="inp_price" value="0"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>% Hoa hồng riêng</label><input type="number" class="form-control form-control-sm" id="inp_commission" value="0" step="0.5" min="0" max="100"></div></div>
+                </div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control form-control-sm" id="inp_desc" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+
+$(document).ready(function(){
+    loadData();
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('#inp_code,#inp_name,#inp_desc').val('');
+        $('#inp_category').val('');$('#inp_duration').val(60);$('#inp_price').val(0);$('#inp_commission').val(0);
+        $('#modal_title').text('Thêm dịch vụ');$('#modal_form').modal('show');
+    });
+    $('#btn_save').click(function(){
+        if(!$('#inp_code').val()||!$('#inp_name').val()){alert('Nhập mã và tên DV');return;}
+        $.ajax({url:'/api/spa/services/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},
+            data:JSON.stringify({id:$('#edit_id').val()||null,code:$('#inp_code').val(),name:$('#inp_name').val(),
+                category_id:$('#inp_category').val()||null,duration_minutes:parseInt($('#inp_duration').val()),
+                price:parseFloat($('#inp_price').val())||0,commission_rate:parseFloat($('#inp_commission').val())||0,
+                description:$('#inp_desc').val()}),
+            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+});
+function loadData(){
+    $.get('/api/spa/services/',function(res){
+        var h='';
+        res.data.forEach(function(d,i){
+            var statusBadge=d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Tạm ngưng</span>';
+            h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td><b>'+d.name+'</b></td><td>'+d.category+'</td>'+
+                '<td class="text-center">'+d.duration_minutes+' phút</td><td class="text-right">'+fmt(d.price)+'đ</td>'+
+                '<td class="text-center">'+(d.commission_rate>0?d.commission_rate+'%':'-')+'</td><td class="text-center">'+statusBadge+'</td>'+
+                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d)+')\'>'+
+                '<i class="fas fa-edit"></i></button> <button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')">'+
+                '<i class="fas fa-trash"></i></button></td></tr>';
+        });
+        $('#data_tbl tbody').html(h||'<tr><td colspan="9" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+function editItem(d){
+    $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_name').val(d.name);
+    $('#inp_category').val(d.category_id);$('#inp_duration').val(d.duration_minutes);
+    $('#inp_price').val(d.price);$('#inp_commission').val(d.commission_rate);$('#inp_desc').val(d.description);
+    $('#modal_title').text('Sửa dịch vụ');$('#modal_form').modal('show');
+}
+function deleteItem(id){
+    if(!confirm('Xóa dịch vụ này?'))return;
+    $.ajax({url:'/api/spa/services/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}});
+}
+</script>
+{% endblock %}

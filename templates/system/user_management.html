@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-users-cog mr-2"></i>Quản lý người dùng</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add_user"><i class="fas fa-user-plus"></i> Thêm tài khoản</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead>
+                    <tr>
+                        <th style="width:40px;">STT</th>
+                        <th>Username</th>
+                        <th>Họ tên</th>
+                        <th>Email</th>
+                        {% if request.user.is_superuser %}
+                        <th>Thương hiệu</th>
+                        {% else %}
+                        <th>Cửa hàng</th>
+                        <th>Nhóm vai trò</th>
+                        {% endif %}
+                        <th style="width:90px;" class="text-center">Trạng thái</th>
+                        <th style="width:130px;" class="text-center">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="user_tbody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal thêm/sửa user -->
+<div class="modal fade" id="modal_user" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_user_title">Thêm tài khoản</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="user_id">
+                <div class="form-group">
+                    <label>Tên đăng nhập <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-sm" id="inp_username" autocomplete="off">
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Họ</label>
+                            <input type="text" class="form-control form-control-sm" id="inp_last_name">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Tên</label>
+                            <input type="text" class="form-control form-control-sm" id="inp_first_name">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" class="form-control form-control-sm" id="inp_email">
+                </div>
+                <div class="form-group">
+                    <label>Mật khẩu <span class="text-danger" id="lbl_pw_required">*</span></label>
+                    <input type="password" class="form-control form-control-sm" id="inp_password" autocomplete="new-password">
+                    <small class="text-muted" id="lbl_pw_hint" style="display:none;">Để trống nếu không muốn đổi mật khẩu</small>
+                </div>
+                <div class="form-group">
+                    <label>Cửa hàng</label>
+                    <select class="form-control form-control-sm" id="inp_store_id"><option value="">-- Chưa gán --</option></select>
+                </div>
+                <div class="custom-control custom-switch">
+                    <input type="checkbox" class="custom-control-input" id="inp_is_active" checked>
+                    <label class="custom-control-label" for="inp_is_active">Đang hoạt động</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save_user"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal đổi mật khẩu nhanh -->
+<div class="modal fade" id="modal_reset_pw" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="fas fa-key mr-2"></i>Đặt lại mật khẩu</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reset_user_id">
+                <p>Tài khoản: <b id="reset_username"></b></p>
+                <div class="form-group">
+                    <label>Mật khẩu mới <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="inp_new_password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-warning" id="btn_reset_pw"><i class="fas fa-key"></i> Đặt lại</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var allUsers = [];
+var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
+var allStores = [];
+
+$(document).ready(function(){
+    loadData();
+
+    // Thêm user
+    $('#btn_add_user').click(function(){
+        $('#user_id').val('');
+        $('#inp_username').val('').prop('disabled', false);
+        $('#inp_first_name,#inp_last_name,#inp_email,#inp_password').val('');
+        $('#inp_is_active').prop('checked', true);
+        $('#inp_store_id').val('');
+        $('#lbl_pw_required').show(); $('#lbl_pw_hint').hide();
+        $('#modal_user_title').text('Thêm tài khoản');
+        $('#modal_user').modal('show');
+    });
+
+    // Lưu user
+    $('#btn_save_user').click(function(){
+        var uid = $('#user_id').val();
+        var username = $('#inp_username').val().trim();
+        var password = $('#inp_password').val();
+        if(!uid && !username){alert('Nhập tên đăng nhập');return;}
+        if(!uid && !password){alert('Nhập mật khẩu');return;}
+        $.ajax({
+            url: '/api/users/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({
+                id: uid || null,
+                username: username,
+                first_name: $('#inp_first_name').val(),
+                last_name: $('#inp_last_name').val(),
+                email: $('#inp_email').val(),
+                password: password,
+                store_id: $('#inp_store_id').val() || null,
+                is_active: $('#inp_is_active').prop('checked'),
+            }),
+            success: function(r){
+                alert(r.message);
+                if(r.status === 'ok'){$('#modal_user').modal('hide'); loadData();}
+            }
+        });
+    });
+
+    // Reset password
+    $('#btn_reset_pw').click(function(){
+        var pw = $('#inp_new_password').val();
+        if(!pw){alert('Nhập mật khẩu mới');return;}
+        $.ajax({
+            url: '/api/users/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({id: $('#reset_user_id').val(), password: pw}),
+            success: function(r){
+                alert(r.message);
+                if(r.status === 'ok') $('#modal_reset_pw').modal('hide');
+            }
+        });
+    });
+});
+
+function loadData(){
+    $.when($.get('/api/users/'), $.get('/api/stores_for_user/')).done(function(r1, r2){
+        allUsers = r1[0].data;
+        allStores = r2[0].data;
+
+        // Populate store dropdown
+        var sOpts = '<option value="">-- Chưa gán --</option>';
+        allStores.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.name+' ('+s.code+')</option>';});
+        $('#inp_store_id').html(sOpts);
+
+        renderTable();
+    });
+}
+
+function renderTable(){
+    var h = '';
+    if(!allUsers.length){
+        h = '<tr><td colspan="8" class="text-center text-muted py-4">Chưa có người dùng nào</td></tr>';
+    }
+    allUsers.forEach(function(u, i){
+        var statusBadge = u.is_active ? '<span class="badge badge-success">HĐ</span>' : '<span class="badge badge-secondary">Khóa</span>';
+        var roleBadge = '';
+        if(u.is_superuser) roleBadge = '<span class="badge badge-danger">Admin</span> ';
+        if(u.groups) roleBadge += '<span class="badge badge-info">'+u.groups+'</span>';
+        if(!u.is_superuser && !u.groups) roleBadge = '<span class="badge badge-light">Chưa phân quyền</span>';
+
+        h += '<tr>';
+        h += '<td class="text-center">'+(i+1)+'</td>';
+        h += '<td><b>'+u.username+'</b></td>';
+        h += '<td>'+u.full_name+'</td>';
+        h += '<td>'+u.email+'</td>';
+        if(isSuperAdmin){
+            h += '<td>'+(u.brand_name||'<span class="text-muted">-</span>')+'</td>';
+        } else {
+            h += '<td>'+(u.store_name||'<span class="text-muted">-</span>')+'</td>';
+            h += '<td>'+roleBadge+'</td>';
+        }
+        h += '<td class="text-center">'+statusBadge+'</td>';
+        h += '<td class="text-center">';
+        if(!u.is_superuser){
+            h += '<button class="btn btn-xs btn-info mr-1" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'  title="Sửa"><i class="fas fa-edit"></i></button>';
+            h += '<button class="btn btn-xs btn-warning mr-1" onclick="resetPw('+u.id+',\''+u.username+'\')" title="Đổi MK"><i class="fas fa-key"></i></button>';
+            h += '<button class="btn btn-xs btn-danger" onclick="deleteUser('+u.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+        } else {
+            h += '<span class="text-muted"><small>Admin</small></span>';
+        }
+        h += '</td>';
+        h += '</tr>';
+    });
+    $('#user_tbody').html(h);
+}
+
+function editUser(u){
+    $('#user_id').val(u.id);
+    $('#inp_username').val(u.username).prop('disabled', true);
+    $('#inp_first_name').val(u.first_name);
+    $('#inp_last_name').val(u.last_name);
+    $('#inp_email').val(u.email);
+    $('#inp_password').val('');
+    $('#inp_store_id').val(u.store_id);
+    $('#inp_is_active').prop('checked', u.is_active);
+    $('#lbl_pw_required').hide(); $('#lbl_pw_hint').show();
+    $('#modal_user_title').text('Sửa tài khoản: ' + u.username);
+    $('#modal_user').modal('show');
+}
+
+function deleteUser(id){
+    if(!confirm('Xóa tài khoản này? Thao tác không thể hoàn tác.'))return;
+    $.ajax({
+        url: '/api/users/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){alert(r.message); loadData();}
+    });
+}
+
+function resetPw(id, username){
+    $('#reset_user_id').val(id);
+    $('#reset_username').text(username);
+    $('#inp_new_password').val('');
+    $('#modal_reset_pw').modal('show');
+}
+</script>
+{% endblock %}

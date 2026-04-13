@@ -1,0 +1,32 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('order_tbl/', views.order_tbl, name='order_tbl'),
+    path('quotation_tbl/', views.quotation_tbl, name='quotation_tbl'),
+    path('order_return_tbl/', views.order_return_tbl, name='order_return_tbl'),
+    path('packaging_tbl/', views.packaging_tbl, name='packaging_tbl'),
+    # APIs
+    path('api/products_select/', views.api_get_products_for_select, name='api_get_products_for_select'),
+    path('api/orders/next_code/', views.api_next_order_code, name='api_next_order_code'),
+    path('api/orders/quick_customer/', views.api_quick_create_customer, name='api_quick_create_customer'),
+    path('api/orders/', views.api_get_orders, name='api_get_orders'),
+    path('api/orders/detail/', views.api_get_order_detail, name='api_get_order_detail'),
+    path('api/orders/save/', views.api_save_order, name='api_save_order'),
+    path('api/orders/delete/', views.api_delete_order, name='api_delete_order'),
+    path('api/orders/cancel/', views.api_cancel_order, name='api_cancel_order'),
+    path('api/orders/approve/', views.api_approve_order, name='api_approve_order'),
+    path('order_approvals/', views.order_approvals, name='order_approvals'),
+    path('api/orders/pending_approvals/', views.api_pending_approvals, name='api_pending_approvals'),
+    path('api/quotations/', views.api_get_quotations, name='api_get_quotations'),
+    path('api/quotations/next_code/', views.api_next_quotation_code, name='api_next_quotation_code'),
+    path('api/quotations/detail/', views.api_get_quotation_detail, name='api_get_quotation_detail'),
+    path('api/quotations/save/', views.api_save_quotation, name='api_save_quotation'),
+    path('api/quotations/delete/', views.api_delete_quotation, name='api_delete_quotation'),
+    path('api/order_returns/', views.api_get_order_returns, name='api_get_order_returns'),
+    path('api/order_returns/save/', views.api_save_order_return, name='api_save_order_return'),
+    path('api/packagings/', views.api_get_packagings, name='api_get_packagings'),
+    path('api/packagings/save/', views.api_save_packaging, name='api_save_packaging'),
+    path('api/packagings/delete/', views.api_delete_packaging, name='api_delete_packaging'),
+    path('api/orders/pos_checkout/', views.api_pos_checkout, name='api_pos_checkout'),
+]

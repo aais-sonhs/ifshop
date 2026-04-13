@@ -1,0 +1,389 @@
+<!-- Print Preview Modal - Reusable Component -->
+<div class="modal fade" id="modal_print_preview" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-print mr-2"></i>Xem trước khi in</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body p-0" style="background:#e9ecef;">
+                <!-- Thanh chọn máy in LAN -->
+                <div class="px-3 py-2 border-bottom" style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);">
+                    <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                        <span class="font-weight-bold text-dark" style="white-space:nowrap;">
+                            <i class="fas fa-network-wired text-success mr-1"></i> Máy in LAN:
+                        </span>
+                        <select id="sel_printer" class="form-control form-control-sm" style="max-width:380px;">
+                        </select>
+                        <span id="printer_status" class="small" style="white-space:nowrap;"></span>
+                    </div>
+                </div>
+                <div style="max-height:63vh;overflow-y:auto;padding:20px;">
+                    <div id="print_content" style="background:#fff;max-width:210mm;margin:0 auto;padding:15mm 20mm;box-shadow:0 0 10px rgba(0,0,0,0.15);font-family:'Source Sans Pro',sans-serif;font-size:13px;color:#333;">
+                        <!-- Nội dung in sẽ được inject vào đây -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2 d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal"><i class="fas fa-times"></i> Đóng</button>
+                <div>
+                    <button type="button" class="btn btn-outline-danger" onclick="downloadPDF()" title="Tải file PDF">
+                        <i class="fas fa-file-pdf"></i> Tải PDF
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="doPrint()" title="In qua hộp thoại trình duyệt">
+                        <i class="fas fa-desktop"></i> In (Trình duyệt)
+                    </button>
+                    <button type="button" class="btn btn-success btn-lg" onclick="doPrintDirect()" id="btn_direct_print">
+                        <i class="fas fa-network-wired"></i> <span id="btn_print_label">In qua LAN</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ===== PRINT PREVIEW STYLES ===== */
+#print_content {
+    line-height: 1.5;
+}
+#print_content .print-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+}
+#print_content .print-header .company-name {
+    font-size: 18px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #1a1a1a;
+}
+#print_content .print-header .company-info {
+    font-size: 11px;
+    color: #666;
+}
+#print_content .print-title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 15px 0;
+    color: #1a1a1a;
+}
+#print_content .print-subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 15px;
+}
+#print_content .print-info {
+    margin-bottom: 15px;
+}
+#print_content .print-info table {
+    width: 100%;
+}
+#print_content .print-info td {
+    padding: 3px 0;
+    vertical-align: top;
+}
+#print_content .print-info .label {
+    font-weight: bold;
+    width: 140px;
+    color: #555;
+}
+#print_content .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+}
+#print_content .print-table th {
+    background: #f0f0f0;
+    border: 1px solid #999;
+    padding: 6px 8px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 12px;
+}
+#print_content .print-table td {
+    border: 1px solid #999;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+#print_content .print-table .text-right { text-align: right; }
+#print_content .print-table .text-center { text-align: center; }
+#print_content .print-table tfoot td {
+    font-weight: bold;
+    background: #f9f9f9;
+}
+#print_content .print-total-row {
+    margin: 10px 0;
+    text-align: right;
+    font-size: 14px;
+}
+#print_content .print-total-row .total-amount {
+    font-size: 18px;
+    font-weight: bold;
+    color: #d32f2f;
+}
+#print_content .print-signatures {
+    margin-top: 40px;
+    display: flex;
+    justify-content: space-between;
+}
+#print_content .print-signatures .sig-block {
+    text-align: center;
+    width: 30%;
+}
+#print_content .print-signatures .sig-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+#print_content .print-signatures .sig-date {
+    font-size: 11px;
+    font-style: italic;
+    color: #999;
+}
+#print_content .print-signatures .sig-space {
+    height: 60px;
+}
+#print_content .print-note {
+    margin-top: 15px;
+    padding: 8px 12px;
+    background: #f9f9f9;
+    border-left: 3px solid #ccc;
+    font-style: italic;
+    font-size: 12px;
+    color: #666;
+}
+#print_content .print-footer {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 10px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+}
+
+/* ===== PRINT MEDIA STYLES ===== */
+@media print {
+    body * { visibility: hidden !important; }
+    #print_content, #print_content * { visibility: visible !important; }
+    #print_content {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 10mm 15mm !important;
+        box-shadow: none !important;
+        background: #fff !important;
+        font-size: 12px !important;
+    }
+    @page {
+        size: A4;
+        margin: 10mm;
+    }
+    .no-print { display: none !important; }
+}
+</style>
+
+<script>
+// Load danh sách máy in khi trang load
+var _printerList = [];
+var _defaultPrinterId = null;
+
+$(document).ready(function(){
+    $.get('/api/printers/', function(res){
+        _printerList = res.data || [];
+        var $sel = $('#sel_printer');
+        $sel.empty();
+
+        // Lọc chỉ máy in LAN
+        var lanPrinters = _printerList.filter(function(p){ return p.printer_type === 'lan'; });
+
+        if(lanPrinters.length === 0){
+            // Không có máy in LAN → ẩn nút in LAN
+            $('#btn_direct_print').hide();
+            $sel.append('<option value="">Chưa cài đặt máy in LAN</option>');
+            $('#printer_status').html('<a href="/printer_setting_tbl/" class="text-primary"><i class="fas fa-cog"></i> Cài đặt</a>');
+            return;
+        }
+
+        // Thêm các máy in LAN vào dropdown
+        lanPrinters.forEach(function(p){
+            var defaultTag = p.is_default ? ' ⭐ Mặc định' : '';
+            var opt = '<option value="'+p.id+'">🌐 '+p.name+' ('+p.ip_address+':'+p.port+')'+defaultTag+'</option>';
+            $sel.append(opt);
+            if(p.is_default) _defaultPrinterId = p.id;
+        });
+
+        // Nếu chưa có máy in mặc định → dùng máy đầu tiên
+        if(!_defaultPrinterId && lanPrinters.length > 0){
+            _defaultPrinterId = lanPrinters[0].id;
+        }
+
+        // Chọn máy in mặc định
+        $sel.val(_defaultPrinterId);
+        updatePrinterLabel();
+    });
+
+    // Khi thay đổi máy in
+    $(document).on('change', '#sel_printer', function(){
+        updatePrinterLabel();
+    });
+});
+
+function updatePrinterLabel(){
+    var val = $('#sel_printer').val();
+    if(val){
+        var printer = _printerList.find(function(p){return p.id == val;});
+        if(printer){
+            $('#btn_print_label').text('In → ' + printer.name);
+            $('#printer_status').html('<i class="fas fa-check-circle text-success"></i> Sẵn sàng');
+            $('#btn_direct_print').show().removeClass('btn-secondary').addClass('btn-success');
+        }
+    } else {
+        // Không chọn → nếu có máy in mặc định thì dùng
+        if(_defaultPrinterId){
+            var def = _printerList.find(function(p){return p.id == _defaultPrinterId;});
+            $('#btn_print_label').text('In → ' + (def ? def.name : 'LAN'));
+            $('#btn_direct_print').show();
+        } else {
+            $('#btn_direct_print').hide();
+        }
+        $('#printer_status').text('');
+    }
+}
+
+function doPrint(){
+    window.print();
+}
+
+function doPrintDirect(){
+    var printerId = $('#sel_printer').val() || _defaultPrinterId;
+    if(!printerId){
+        alert('Chưa cài đặt máy in LAN. Vào Hệ thống → Cài đặt máy in.');
+        return;
+    }
+
+    var printer = _printerList.find(function(p){return p.id == printerId;});
+    var printerName = printer ? printer.name : 'LAN';
+
+    var htmlContent = $('#print_content').html();
+    var $btn = $('#btn_direct_print');
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Đang gửi đến ' + printerName + '...');
+
+    $.ajax({
+        url: '/api/printers/direct_print/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': getCSRFToken()},
+        data: JSON.stringify({printer_id: parseInt(printerId), html_content: htmlContent}),
+        success: function(r){
+            if(r.status === 'ok'){
+                alert('✅ ' + r.message);
+            } else {
+                alert('❌ ' + r.message);
+            }
+        },
+        error: function(){ alert('❌ Lỗi kết nối server'); },
+        complete: function(){
+            $btn.prop('disabled', false);
+            updatePrinterLabel();
+        }
+    });
+}
+
+function getCSRFToken(){
+    var cookie = document.cookie.split(';').find(function(c){return c.trim().startsWith('csrftoken=');});
+    return cookie ? cookie.split('=')[1] : '';
+}
+
+function fmtMoney(n){
+    return Number(n||0).toLocaleString('vi-VN') + 'đ';
+}
+
+function readAmount(n){
+    // Đọc số tiền bằng chữ (tiếng Việt)
+    if(!n || n == 0) return 'Không đồng';
+    n = Math.abs(Math.round(n));
+    var ones = ['','một','hai','ba','bốn','năm','sáu','bảy','tám','chín'];
+    var teens = ['mười','mười một','mười hai','mười ba','mười bốn','mười lăm','mười sáu','mười bảy','mười tám','mười chín'];
+
+    function readGroup(num){
+        if(num == 0) return '';
+        var h = Math.floor(num/100), t = Math.floor((num%100)/10), o = num%10;
+        var s = '';
+        if(h > 0) s += ones[h] + ' trăm ';
+        if(t > 1) { s += ones[t] + ' mươi '; if(o==1) s+='mốt '; else if(o==5) s+='lăm '; else if(o>0) s+=ones[o]+' '; }
+        else if(t == 1) { s += teens[o] + ' '; }
+        else if(t == 0 && h > 0 && o > 0) { s += 'lẻ ' + ones[o] + ' '; }
+        else if(o > 0) { s += ones[o] + ' '; }
+        return s;
+    }
+
+    var units = ['', 'nghìn', 'triệu', 'tỷ'];
+    var groups = [];
+    while(n > 0){ groups.push(n % 1000); n = Math.floor(n/1000); }
+    var result = '';
+    for(var i = groups.length-1; i >= 0; i--){
+        if(groups[i] > 0) result += readGroup(groups[i]) + units[i] + ' ';
+    }
+    return result.trim().charAt(0).toUpperCase() + result.trim().slice(1) + ' đồng';
+}
+
+var _pdfTitle = 'document';
+
+function printPreviewHTML(html, title){
+    _pdfTitle = title || 'document';
+    $('#print_content').html(html);
+    // Auto-select default printer
+    if(_defaultPrinterId){
+        $('#sel_printer').val(_defaultPrinterId).trigger('change');
+    }
+    $('#modal_print_preview').modal('show');
+}
+
+function downloadPDF(){
+    var element = document.getElementById('print_content');
+    var filename = _pdfTitle.replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF]/g, '_') + '.pdf';
+    var opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     filename,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    // Show loading
+    var $btn = $('button[onclick="downloadPDF()"]');
+    var origHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Đang tạo PDF...');
+    html2pdf().set(opt).from(element).save().then(function(){
+        $btn.prop('disabled', false).html(origHtml);
+    }).catch(function(){
+        $btn.prop('disabled', false).html(origHtml);
+        alert('❌ Lỗi khi tạo file PDF');
+    });
+}
+
+function getPrintHeader(){
+    return '<div class="print-header">' +
+        '<div class="company-name">CÔNG TY CỦA BẠN</div>' +
+        '<div class="company-info">Địa chỉ: TP. Hồ Chí Minh | ĐT: 0123.456.789 | Email: info@company.com</div>' +
+        '</div>';
+}
+
+function getPrintSignatures(left, right){
+    var today = new Date();
+    var dateStr = 'Ngày ' + today.getDate() + ' tháng ' + (today.getMonth()+1) + ' năm ' + today.getFullYear();
+    return '<div class="print-signatures">' +
+        '<div class="sig-block"><div class="sig-title">' + left + '</div><div class="sig-date">&nbsp;</div><div class="sig-space"></div><div>(Ký, họ tên)</div></div>' +
+        '<div class="sig-block"><div class="sig-title">' + right + '</div><div class="sig-date">' + dateStr + '</div><div class="sig-space"></div><div>(Ký, họ tên)</div></div>' +
+        '</div>';
+}
+
+function getPrintFooter(){
+    return '<div class="print-footer">Được in từ hệ thống Quản lý Bán hàng</div>';
+}
+</script>

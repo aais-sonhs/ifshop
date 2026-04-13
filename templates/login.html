@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Quản lý bán hàng | Đăng nhập</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Favicon & CSS -->
+    <link rel="icon" type="image/x-icon" href="{% static 'assets/images/favicon.ico' %}">
+    <link rel="stylesheet" href="{% static 'plugins/fontawesome-free/css/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'plugins/icheck-bootstrap/icheck-bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'dist/css/adminlte.min.css' %}">
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1c2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+        }
+
+        .login-box {
+            max-width: 400px;
+            width: 100%;
+            margin: 5% auto;
+            padding: 0 15px;
+        }
+
+        .login-logo a {
+            font-weight: 700;
+            color: #e94560;
+            text-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+        }
+
+        .login-card-body {
+            border-radius: 10px;
+            padding: 30px 25px;
+        }
+
+        .form-control {
+            height: 45px;
+            font-size: 15px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #e94560;
+            box-shadow: 0 0 0 0.2rem rgba(233, 69, 96, 0.15);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 12px 0;
+            font-weight: 600;
+            font-size: 16px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #e94560, #c23152);
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(233, 69, 96, 0.4);
+            background: linear-gradient(135deg, #c23152, #e94560);
+        }
+
+        .login-box-msg {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .input-group-text {
+            background: transparent;
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            border: 2px solid #e0e0e0;
+            border-left: none;
+        }
+
+        .input-group .form-control {
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            margin-bottom: 18px;
+            user-select: none;
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            accent-color: #e94560;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .remember-me label {
+            margin: 0;
+            font-size: 14px;
+            color: #555;
+            cursor: pointer;
+            font-weight: 400;
+        }
+
+        @media (max-width: 480px) {
+            .login-box {
+                margin-top: 15%;
+            }
+        }
+    </style>
+</head>
+
+<body class="hold-transition login-page">
+    <div class="login-box">
+        <div class="login-logo">
+            <a href="#"><b>📦 Quản lý Bán hàng</b></a>
+        </div>
+
+        <div class="card">
+            <div class="card-body login-card-body">
+                {% if msg %}
+                <div class="alert alert-danger" role="alert">
+                    {{ msg }}
+                </div>
+                {% endif %}
+
+                <p class="login-box-msg">Đăng nhập hệ thống</p>
+
+                <form id="loginForm" role="form" method="post" action="">
+                    {% csrf_token %}
+
+                    <div class="input-group mb-3">
+                        {{ form.username }}
+                        <div class="input-group-append">
+                            <div class="input-group-text">
+                                <span class="fas fa-user"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="input-group mb-3">
+                        {{ form.password }}
+                        <div class="input-group-append">
+                            <div class="input-group-text">
+                                <span class="fas fa-lock"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="remember-me">
+                        <input type="checkbox" id="rememberMe">
+                        <label for="rememberMe">Ghi nhớ mật khẩu</label>
+                    </div>
+
+                    <button type="submit" name="login" class="btn btn-danger btn-login">
+                        <i class="fas fa-sign-in-alt mr-1"></i> Đăng nhập
+                    </button>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS -->
+    <script src="{% static 'plugins/jquery/jquery.min.js' %}"></script>
+    <script src="{% static 'plugins/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'dist/js/adminlte.min.js' %}"></script>
+
+    <script>
+    $(function() {
+        var usernameInput = $('#loginForm input[name="username"]');
+        var passwordInput = $('#loginForm input[name="password"]');
+        var rememberCheck = $('#rememberMe');
+
+        // Khôi phục trạng thái từ localStorage
+        var saved = localStorage.getItem('_rm');
+        if (saved) {
+            try {
+                var data = JSON.parse(atob(saved));
+                if (data.u) usernameInput.val(data.u);
+                if (data.p) passwordInput.val(data.p);
+                rememberCheck.prop('checked', true);
+            } catch(e) {
+                localStorage.removeItem('_rm');
+            }
+        }
+
+        // Lưu hoặc xóa khi submit
+        $('#loginForm').on('submit', function() {
+            if (rememberCheck.is(':checked')) {
+                var data = {
+                    u: usernameInput.val(),
+                    p: passwordInput.val()
+                };
+                localStorage.setItem('_rm', btoa(JSON.stringify(data)));
+            } else {
+                localStorage.removeItem('_rm');
+            }
+        });
+    });
+    </script>
+</body>
+
+</html>

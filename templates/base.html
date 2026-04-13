@@ -1,0 +1,116 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="vi">
+{% include "layout/head.html" %}
+<body class="hold-transition sidebar-mini layout-fixed">
+    <div class="wrapper">
+        {% include "layout/menu.html" %}
+        <!-- Content Wrapper. Contains page content -->
+        <div class="content-wrapper">
+            <!-- Main content -->
+            <section class="content" style="padding: 15px;">
+                {% block content %}{% endblock %}
+            </section>
+        </div>
+        <!-- /.content-wrapper -->
+        {% include "layout/print_preview.html" %}
+    </div>
+    <!-- ./wrapper -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@1.5.2/dist/select2-bootstrap4.min.css">
+    <script>
+    // Auto init Select2 cho tất cả select có class 'select2'
+    $(document).ready(function(){
+        $.fn.select2.defaults.set("theme", "bootstrap4");
+        $.fn.select2.defaults.set("language", {noResults: function(){return "Không tìm thấy";}});
+        $.fn.select2.defaults.set("allowClear", true);
+        $.fn.select2.defaults.set("placeholder", "-- Chọn --");
+        // Init cho select ngoài modal
+        $('.select2').each(function(){
+            var $modal = $(this).closest('.modal');
+            var opts = {width:'100%'};
+            if($modal.length) opts.dropdownParent = $modal;
+            $(this).select2(opts);
+        });
+
+        // Căn giữa cột "Thao tác" trong tất cả các bảng
+        function centerThaoTacColumns(){
+            $('table thead th').filter(function(){
+                return $.trim($(this).text()) === 'Thao tác';
+            }).each(function(){
+                var colIndex = $(this).index();
+                $(this).css('text-align', 'center');
+                $(this).closest('table').find('tbody tr').each(function(){
+                    $(this).children('td').eq(colIndex).css('text-align', 'center');
+                });
+            });
+        }
+        centerThaoTacColumns();
+
+        // Dùng MutationObserver để căn giữa khi dữ liệu bảng được tải động (AJAX)
+        $('table tbody').each(function(){
+            var observer = new MutationObserver(function(){ centerThaoTacColumns(); });
+            observer.observe(this, {childList: true, subtree: true});
+        });
+    });
+    // Helper: init select2 cho element mới thêm vào DOM (dùng trong JS)
+    function initSelect2(selector, parentModal){
+        var opts = {width:'100%', theme:'bootstrap4', allowClear:true, placeholder:'-- Chọn --'};
+        if(parentModal) opts.dropdownParent = $(parentModal);
+        $(selector).select2(opts);
+    }
+    // ===== MONEY FORMAT UTILITY =====
+    // Auto-format số có dấu phân cách hàng nghìn khi gõ
+    function formatMoneyInput(el){
+        $(el).on('input', function(){
+            var cursorPos = this.selectionStart;
+            var oldLength = this.value.length;
+            var raw = this.value.replace(/[^0-9]/g, '');
+            if(raw === ''){this.value = '';return;}
+            var formatted = Number(raw).toLocaleString('vi-VN');
+            this.value = formatted;
+            // Adjust cursor position
+            var newLength = formatted.length;
+            var diff = newLength - oldLength;
+            var newPos = cursorPos + diff;
+            if(newPos < 0) newPos = 0;
+            this.setSelectionRange(newPos, newPos);
+        });
+    }
+    // Lấy giá trị số từ input đã format (bỏ dấu . phân cách)
+    function getMoneyValue(selector){
+        var val = $(selector).val();
+        if(!val) return 0;
+        return parseFloat(val.toString().replace(/\./g, '').replace(/,/g, '')) || 0;
+    }
+    // Set giá trị số vào input có format
+    function setMoneyValue(selector, val){
+        var num = Math.round(parseFloat(val) || 0);
+        $(selector).val(num ? num.toLocaleString('vi-VN') : '0');
+    }
+    // Auto-init cho tất cả input có class 'money-format'
+    $(document).ready(function(){
+        $('.money-format').each(function(){ formatMoneyInput(this); });
+    });
+    // Delegate cho input.money-format được thêm động
+    $(document).on('focus', 'input.money-format', function(){
+        if(!$(this).data('money-init')){
+            formatMoneyInput(this);
+            $(this).data('money-init', true);
+        }
+    });
+    </script>
+    {% block extra_js %}{% endblock %}
+
+    <!-- PWA Service Worker -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js', {scope: '/'})
+                .then(function(reg) { console.log('[PWA] SW registered:', reg.scope); })
+                .catch(function(err) { console.log('[PWA] SW failed:', err); });
+        });
+    }
+    </script>
+</body>
+</html>
+

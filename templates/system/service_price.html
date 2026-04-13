@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-file-invoice-dollar mr-2"></i>Danh mục giá dịch vụ</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm dịch vụ</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Tên dịch vụ</th><th>Giá</th><th>Đơn vị</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm dịch vụ</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="form-group"><label>Tên dịch vụ <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_name"></div>
+                <div class="form-group"><label>Giá <span class="text-danger">*</span></label><input type="number" class="form-control" id="inp_price" value="0"></div>
+                <div class="form-group"><label>Đơn vị</label><input type="text" class="form-control" id="inp_unit"></div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="inp_description" rows="2"></textarea></div>
+                <div class="form-group"><label>Trạng thái</label><select class="form-control" id="inp_is_active"><option value="true">Hoạt động</option><option value="false">Ngừng</option></select></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+$(document).ready(function(){
+    loadData();
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('#inp_name,#inp_unit,#inp_description').val('');$('#inp_price').val(0);$('#inp_is_active').val('true');
+        $('#modal_title').text('Thêm dịch vụ');$('#modal_form').modal('show');
+    });
+    $('#btn_save').click(function(){
+        var data={id:$('#edit_id').val()||null,name:$('#inp_name').val(),price:$('#inp_price').val(),
+            unit:$('#inp_unit').val(),description:$('#inp_description').val(),is_active:$('#inp_is_active').val()==='true'};
+        if(!data.name){alert('Vui lòng nhập tên dịch vụ');return;}
+        $.ajax({url:'/api/service_prices/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+});
+function loadData(){
+    $.get('/api/service_prices/',function(res){
+        var h='';res.data.forEach(function(d,i){
+            h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td class="text-right">'+fmt(d.price)+'</td><td>'+d.unit+'</td>'+
+                '<td>'+d.description+'</td>'+
+                '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });$('#data_tbl tbody').html(h);
+    });
+}
+function editItem(d){
+    $('#edit_id').val(d.id);$('#inp_name').val(d.name);$('#inp_price').val(d.price);$('#inp_unit').val(d.unit);
+    $('#inp_description').val(d.description);$('#inp_is_active').val(d.is_active?'true':'false');
+    $('#modal_title').text('Sửa dịch vụ');$('#modal_form').modal('show');
+}
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?'))return;
+    $.ajax({url:'/api/service_prices/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}
+    });
+}
+</script>
+{% endblock %}

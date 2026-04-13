@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-chart-line mr-2"></i>Báo cáo bán hàng (Dashboard)</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- BỘ LỌC -->
+        <div class="row mb-3">
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" id="filter_from_date">
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" id="filter_to_date">
+            </div>
+            <div class="col-md-3" id="store_filter_wrap" style="display:none;">
+                <select class="form-control form-control-sm" id="filter_store_id">
+                    <option value="">🏢 Tất cả cửa hàng</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
+            </div>
+        </div>
+
+        <!-- TỔNG QUAN -->
+        <div class="row mb-3">
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-info">
+                    <div class="inner">
+                        <h4 id="total_orders">0</h4>
+                        <p>Đơn hàng</p>
+                    </div>
+                    <div class="icon"><i class="fas fa-shopping-cart"></i></div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-success">
+                    <div class="inner">
+                        <h4 id="total_revenue">0</h4>
+                        <p>Doanh thu</p>
+                    </div>
+                    <div class="icon"><i class="fas fa-dollar-sign"></i></div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-warning">
+                    <div class="inner">
+                        <h4 id="total_profit">0</h4>
+                        <p>Lợi nhuận gộp</p>
+                    </div>
+                    <div class="icon"><i class="fas fa-coins"></i></div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-danger">
+                    <div class="inner">
+                        <h4 id="total_debt">0</h4>
+                        <p>Công nợ</p>
+                    </div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- THÊM: CHI PHÍ -->
+        <div class="row mb-3">
+            <div class="col-lg-3 col-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-secondary"><i class="fas fa-truck-loading"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Nhập hàng</span>
+                        <span class="info-box-number" id="total_purchases">0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-primary"><i class="fas fa-receipt"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Giá vốn hàng bán</span>
+                        <span class="info-box-number" id="total_cost">0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-danger"><i class="fas fa-undo"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Trả hàng (<span id="returns_count">0</span> phiếu)</span>
+                        <span class="info-box-number" id="total_returns">0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-6">
+                <div class="info-box">
+                    <span class="info-box-icon bg-success"><i class="fas fa-hand-holding-usd"></i></span>
+                    <div class="info-box-content">
+                        <span class="info-box-text">Đã thu</span>
+                        <span class="info-box-number" id="total_paid">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG SO SÁNH CỬA HÀNG (chỉ hiện khi nhiều CH) -->
+        <div id="store_breakdown_wrap" style="display:none;" class="mb-3">
+            <div class="card card-outline card-purple">
+                <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-balance-scale mr-1"></i> So sánh theo cửa hàng</h6></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm mb-0">
+                            <thead class="bg-light">
+                                <tr><th>Cửa hàng</th><th class="text-right">Đơn hàng</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Công nợ</th><th class="text-right">Đã thu</th><th></th></tr>
+                            </thead>
+                            <tbody id="store_breakdown_tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG DOANH THU THEO NGÀY -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card card-outline card-info">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i> Doanh thu theo ngày</h6></div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table id="report_tbl" class="table table-bordered table-striped table-sm mb-0">
+                                <thead class="bg-light">
+                                    <tr><th>STT</th><th>Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th>Trả hàng</th></tr>
+                                </thead>
+                                <tbody></tbody>
+                                <tfoot class="font-weight-bold bg-light">
+                                    <tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_returns">0</td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <!-- TOP SẢN PHẨM -->
+                <div class="card card-outline card-success mb-3">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-trophy mr-1"></i> Top sản phẩm bán chạy</h6></div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0" id="top_products_tbl">
+                            <thead class="bg-light"><tr><th>#</th><th>Sản phẩm</th><th>SL</th><th>Doanh thu</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- TOP KHÁCH HÀNG -->
+                <div class="card card-outline card-primary">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-users mr-1"></i> Top khách hàng</h6></div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0" id="top_customers_tbl">
+                            <thead class="bg-light"><tr><th>#</th><th>Khách hàng</th><th>ĐH</th><th>Doanh thu</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+
+$(document).ready(function(){
+    var today = new Date();
+    var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    $('#filter_from_date').val(firstDay.toISOString().split('T')[0]);
+    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+
+    loadReport();
+
+    $('#btn_search').click(function(){ loadReport(); });
+    $('#filter_store_id').change(function(){ loadReport(); });
+});
+
+function loadReport(){
+    var from = $('#filter_from_date').val();
+    var to = $('#filter_to_date').val();
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/report_sales/?from_date='+from+'&to_date='+to;
+    if(storeId) url += '&store_id='+storeId;
+
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+
+        // Store filter dropdown
+        if(res.has_multiple_stores && res.stores && res.stores.length > 1){
+            $('#store_filter_wrap').show();
+            var curVal = $('#filter_store_id').val();
+            var opts = '<option value="">🏢 Tất cả cửa hàng</option>';
+            res.stores.forEach(function(s){
+                var sel = (s.id == curVal) ? ' selected' : '';
+                opts += '<option value="'+s.id+'"'+sel+'>'+s.name+'</option>';
+            });
+            $('#filter_store_id').html(opts);
+        } else {
+            $('#store_filter_wrap').hide();
+        }
+
+        var s = res.summary;
+        $('#total_orders').text(s.total_orders);
+        $('#total_revenue').text(fmtD(s.total_revenue));
+        $('#total_profit').text(fmtD(s.total_profit));
+        $('#total_debt').text(fmtD(s.total_debt));
+        $('#total_cost').text(fmtD(s.total_cost));
+        $('#total_returns').text(fmtD(s.total_returns));
+        $('#returns_count').text(s.returns_count);
+        $('#total_purchases').text(fmtD(s.total_purchases));
+        var totalPaid = s.total_revenue - s.total_debt;
+        $('#total_paid').text(fmtD(totalPaid));
+
+        // Store breakdown
+        if(res.store_breakdown && res.store_breakdown.length > 0 && !storeId){
+            $('#store_breakdown_wrap').show();
+            var sb = '';
+            res.store_breakdown.forEach(function(st){
+                var profitCls = st.profit >= 0 ? 'text-success' : 'text-danger';
+                sb += '<tr>';
+                sb += '<td><b>'+st.store_name+'</b> <small class="text-muted">('+st.brand_name+')</small></td>';
+                sb += '<td class="text-right">'+st.orders+'</td>';
+                sb += '<td class="text-right">'+fmtD(st.revenue)+'</td>';
+                sb += '<td class="text-right">'+fmtD(st.cost)+'</td>';
+                sb += '<td class="text-right '+profitCls+'"><b>'+fmtD(st.profit)+'</b></td>';
+                sb += '<td class="text-right">'+fmtD(st.debt)+'</td>';
+                sb += '<td class="text-right">'+fmtD(st.paid)+'</td>';
+                sb += '<td class="text-center"><button class="btn btn-xs btn-info" onclick="viewStore('+st.store_id+')"><i class="fas fa-eye"></i></button></td>';
+                sb += '</tr>';
+            });
+            $('#store_breakdown_tbody').html(sb);
+        } else {
+            $('#store_breakdown_wrap').hide();
+        }
+
+        // Daily table
+        var h = '';
+        var tCount=0, tRevenue=0, tCost=0, tProfit=0, tReturns=0;
+        res.daily.forEach(function(d, i){
+            tCount += d.count; tRevenue += d.revenue; tCost += d.cost; tProfit += d.profit; tReturns += d.returns;
+            var profitColor = d.profit >= 0 ? 'text-success' : 'text-danger';
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.date+'</td><td class="text-center">'+d.count+'</td>' +
+                '<td class="text-right">'+fmtD(d.revenue)+'</td>' +
+                '<td class="text-right">'+fmtD(d.cost)+'</td>' +
+                '<td class="text-right '+profitColor+'"><strong>'+fmtD(d.profit)+'</strong></td>' +
+                '<td class="text-right">'+(d.returns > 0 ? '<span class="text-danger">'+fmtD(d.returns)+'</span>' : '0')+'</td></tr>';
+        });
+        if(!h) h = '<tr><td colspan="7" class="text-center text-muted py-3"><i class="fas fa-inbox mr-1"></i> Không có dữ liệu trong khoảng thời gian này</td></tr>';
+        $('#report_tbl tbody').html(h);
+        $('#ft_count').text(tCount);
+        $('#ft_revenue').text(fmtD(tRevenue));
+        $('#ft_cost').text(fmtD(tCost));
+        var profitClass = tProfit >= 0 ? 'text-success' : 'text-danger';
+        $('#ft_profit').html('<span class="'+profitClass+'">'+fmtD(tProfit)+'</span>');
+        $('#ft_returns').text(fmtD(tReturns));
+
+        // Top products
+        var hp = '';
+        res.top_products.forEach(function(p, i){
+            hp += '<tr><td>'+(i+1)+'</td><td>'+p.name+'</td><td class="text-center"><strong>'+p.qty+'</strong></td><td class="text-right">'+fmtD(p.amount)+'</td></tr>';
+        });
+        if(!hp) hp = '<tr><td colspan="4" class="text-center text-muted">Chưa có</td></tr>';
+        $('#top_products_tbl tbody').html(hp);
+
+        // Top customers
+        var hc = '';
+        res.top_customers.forEach(function(c, i){
+            hc += '<tr><td>'+(i+1)+'</td><td>'+c.name+'</td><td class="text-center">'+c.orders+'</td><td class="text-right">'+fmtD(c.amount)+'</td></tr>';
+        });
+        if(!hc) hc = '<tr><td colspan="4" class="text-center text-muted">Chưa có</td></tr>';
+        $('#top_customers_tbl tbody').html(hc);
+    });
+}
+
+function viewStore(storeId){
+    $('#filter_store_id').val(storeId);
+    loadReport();
+}
+</script>
+{% endblock %}

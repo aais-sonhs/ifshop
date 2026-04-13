@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-users mr-2"></i>Danh sách khách hàng</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm khách hàng</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-2">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm theo tên, SĐT, mã KH...">
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Ảnh</th><th></th>Mã KH</th><th>Tên khách hàng</th><th>SĐT</th><th>Email</th><th>Nhóm</th><th>Tổng mua</th><th>Công nợ</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL THÊM/SỬA KHÁCH HÀNG -->
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm khách hàng</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <!-- AVATAR -->
+                <div class="text-center mb-3">
+                    <div style="position:relative;display:inline-block;cursor:pointer;" onclick="$('#inp_avatar_file').click()">
+                        <img id="avatar_preview" src="{% static 'img/default_avatar.svg' %}" alt="Avatar"
+                             style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid #ddd;">
+                        <div style="position:absolute;bottom:0;right:0;background:#007bff;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-camera" style="font-size:12px;"></i>
+                        </div>
+                    </div>
+                    <input type="file" id="inp_avatar_file" accept=".jpg,.jpeg,.png,.webp" style="display:none;" onchange="previewAvatar(this)">
+                    <div><small class="text-muted">Click để chọn ảnh đại diện</small></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Loại khách hàng</label>
+                            <select class="form-control" id="inp_customer_type" onchange="toggleCustomerType()">
+                                <option value="1">👤 Cá nhân</option>
+                                <option value="2">🏢 Công ty</option>
+                                <option value="3">🏠 Hộ kinh doanh</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4"><div class="form-group"><label>Mã KH <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_code"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Nhóm KH</label><select class="form-control" id="inp_group_id"><option value="">-- Chọn --</option>{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Tên KH / Người liên hệ <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_name"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>SĐT</label><input type="text" class="form-control" id="inp_phone"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Email</label><input type="email" class="form-control" id="inp_email"></div></div>
+                </div>
+                <!-- CÁ NHÂN -->
+                <div id="section_individual">
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-group"><label>CCCD/CMND</label><input type="text" class="form-control" id="inp_id_number" placeholder="Số căn cước công dân"></div></div>
+                    </div>
+                </div>
+                <!-- CÔNG TY -->
+                <div id="section_company" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-group"><label>Tên công ty <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_company" placeholder="Công ty TNHH..."></div></div>
+                        <div class="col-md-6"><div class="form-group"><label>Mã số thuế <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_tax_code" placeholder="MST"></div></div>
+                    </div>
+                    <div class="form-group"><label>Địa chỉ công ty</label><textarea class="form-control" id="inp_company_address" rows="2" placeholder="Địa chỉ trên hóa đơn"></textarea></div>
+                </div>
+                <!-- HỘ KINH DOANH -->
+                <div id="section_household" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-group"><label>Tên hộ kinh doanh <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_company_hkd" placeholder="Hộ KD Nguyễn Văn A"></div></div>
+                        <div class="col-md-6"><div class="form-group"><label>MST cá nhân chủ hộ</label><input type="text" class="form-control" id="inp_owner_tax_code" placeholder="MST cá nhân"></div></div>
+                    </div>
+                </div>
+                <div class="form-group"><label>Địa chỉ</label><textarea class="form-control" id="inp_address" rows="2"></textarea></div>
+                <div class="form-group"><label>Ghi chú</label><textarea class="form-control" id="inp_note" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL LỊCH SỬ MUA HÀNG -->
+<div class="modal fade" id="modal_history" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-history mr-2"></i>Lịch sử mua hàng — <span id="hist_customer_name"></span></h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <!-- Summary cards -->
+                <div class="row mb-3" id="hist_summary"></div>
+                <!-- Orders table -->
+                <div class="table-responsive" style="max-height:55vh;overflow-y:auto;">
+                    <table class="table table-bordered table-sm" id="hist_tbl">
+                        <thead class="bg-light" style="position:sticky;top:0;">
+                            <tr>
+                                <th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Kho</th>
+                                <th>Tổng tiền</th><th>Đã trả</th><th>Còn nợ</th>
+                                <th>Thanh toán</th><th>Trạng thái</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal"><i class="fas fa-times"></i> Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+var defaultAvatar = "{% static 'img/default_avatar.svg' %}";
+var allCustomers = [];
+$(document).ready(function(){
+    loadData();
+    $('#filter_search').on('input', function(){ renderTable(); });
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('input[id^=inp_],textarea[id^=inp_]').val('');$('#inp_group_id').val('');
+        $('#inp_customer_type').val('1'); toggleCustomerType();
+        $('#avatar_preview').attr('src', defaultAvatar);
+        $('#inp_avatar_file').val('');
+        $('#modal_title').text('Thêm khách hàng');$('#modal_form').modal('show');
+    });
+    $('#btn_save').click(function(){
+        var ctype = parseInt($('#inp_customer_type').val());
+        var data={id:$('#edit_id').val()||null,
+            customer_type: ctype,
+            code:$('#inp_code').val(),name:$('#inp_name').val(),
+            phone:$('#inp_phone').val(),email:$('#inp_email').val(),
+            id_number:$('#inp_id_number').val(),
+            company: ctype === 3 ? $('#inp_company_hkd').val() : $('#inp_company').val(),
+            tax_code:$('#inp_tax_code').val(),
+            company_address:$('#inp_company_address').val(),
+            owner_tax_code:$('#inp_owner_tax_code').val(),
+            address:$('#inp_address').val(),note:$('#inp_note').val(),
+            group_id:$('#inp_group_id').val()};
+        if(!data.code||!data.name){alert('Vui lòng nhập mã và tên KH');return;}
+        if(ctype === 2 && (!data.company || !data.tax_code)){alert('Khách hàng Công ty cần nhập tên CTY và MST');return;}
+        if(ctype === 3 && !data.company){alert('Hộ kinh doanh cần nhập tên hộ KD');return;}
+        $.ajax({url:'/api/customers/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
+            success:function(r){
+                if(r.status==='ok'){
+                    // Upload avatar nếu có chọn file
+                    var fileInput = $('#inp_avatar_file')[0];
+                    if(fileInput.files && fileInput.files[0]){
+                        // Lấy customer id từ response hoặc edit_id
+                        var cid = data.id;
+                        if(!cid){
+                            // Reload data và lấy id mới nhất
+                            $.get('/api/customers/', function(res2){
+                                var found = res2.data.find(function(c){ return c.code === data.code; });
+                                if(found) uploadAvatar(found.id, fileInput.files[0]);
+                            });
+                        } else {
+                            uploadAvatar(cid, fileInput.files[0]);
+                        }
+                    }
+                    $('#modal_form').modal('hide');loadData();
+                }
+                alert(r.message);
+            }
+        });
+    });
+});
+
+function loadData(){
+    $.get('/api/customers/',function(res){
+        allCustomers = res.data;
+        renderTable();
+    });
+}
+
+function renderTable(){
+    var keyword = ($('#filter_search').val()||'').toLowerCase().trim();
+    var filtered = allCustomers;
+    if(keyword){
+        filtered = allCustomers.filter(function(d){
+            return (d.name||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.phone||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.code||'').toLowerCase().indexOf(keyword) >= 0
+                || (d.email||'').toLowerCase().indexOf(keyword) >= 0;
+        });
+    }
+    var h = '';
+    filtered.forEach(function(d, i){
+        var debtStyle = d.total_debt > 0 ? 'color:#dc3545;font-weight:bold;' : '';
+        var typeBadge = d.customer_type === 2 ? '<span class="badge badge-primary">CTY</span>' : (d.customer_type === 3 ? '<span class="badge badge-warning">HKD</span>' : '<span class="badge badge-light">CN</span>');
+        var avatarSrc = d.avatar_url || defaultAvatar;
+        var avatarImg = '<img src="'+avatarSrc+'" style="width:112px;height:112px;border-radius:8px;object-fit:cover;border:1px solid #ddd;">';
+        h+='<tr style="vertical-align:middle;"><td>'+(i+1)+'</td><td class="text-center" style="padding:4px;">'+avatarImg+'</td><td>'+d.code+'</td><td>'+typeBadge+' '+d.name+'</td><td>'+d.phone+'</td><td>'+d.email+'</td>'+
+            '<td>'+d.group+'</td><td class="text-right">'+fmt(d.total_purchased)+'</td>'+
+            '<td class="text-right" style="'+debtStyle+'">'+fmt(d.total_debt)+'</td>'+
+            '<td class="text-center">'+
+            '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng"><i class="fas fa-history"></i></button> '+
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
+            '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+    });
+    if(!h) h = '<tr><td colspan="10" class="text-center text-muted py-3">Không tìm thấy khách hàng</td></tr>';
+    $('#data_tbl tbody').html(h);
+}
+
+function editItem(d){
+    $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_name').val(d.name);$('#inp_phone').val(d.phone);
+    $('#inp_email').val(d.email);$('#inp_company').val(d.company);$('#inp_tax_code').val(d.tax_code);
+    $('#inp_id_number').val(d.id_number);$('#inp_company_address').val(d.company_address);
+    $('#inp_owner_tax_code').val(d.owner_tax_code);
+    if(d.customer_type === 3) $('#inp_company_hkd').val(d.company); else $('#inp_company_hkd').val('');
+    $('#inp_address').val(d.address);$('#inp_note').val(d.note);$('#inp_group_id').val(d.group_id);
+    $('#inp_customer_type').val(d.customer_type || 1); toggleCustomerType();
+    $('#avatar_preview').attr('src', d.avatar_url || defaultAvatar);
+    $('#inp_avatar_file').val('');
+    $('#modal_title').text('Sửa khách hàng');$('#modal_form').modal('show');
+}
+
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?'))return;
+    $.ajax({url:'/api/customers/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}
+    });
+}
+
+function viewHistory(customerId){
+    $.get('/api/customers/orders/?customer_id='+customerId, function(res){
+        if(res.status !== 'ok'){alert(res.message);return;}
+
+        var c = res.customer;
+        var s = res.summary;
+        $('#hist_customer_name').text(c.code + ' - ' + c.name + (c.company ? ' ('+c.company+')' : ''));
+
+        // Summary cards
+        var summary = '<div class="col-md-3"><div class="small-box bg-info"><div class="inner"><h4>'+s.total_orders+'</h4><p>Đơn hàng</p></div><div class="icon"><i class="fas fa-shopping-cart"></i></div></div></div>' +
+            '<div class="col-md-3"><div class="small-box bg-success"><div class="inner"><h4>'+fmt(s.total_amount)+'đ</h4><p>Tổng mua hàng</p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>' +
+            '<div class="col-md-3"><div class="small-box bg-'+(s.total_debt > 0 ? 'danger' : 'secondary')+'"><div class="inner"><h4>'+fmt(s.total_debt)+'đ</h4><p>Công nợ</p></div><div class="icon"><i class="fas fa-'+(s.total_debt > 0 ? 'exclamation-triangle' : 'check-circle')+'"></i></div></div></div>' +
+            '<div class="col-md-3"><div class="small-box bg-warning"><div class="inner"><h4>'+s.total_cancelled+'</h4><p>Đơn đã hủy</p></div><div class="icon"><i class="fas fa-ban"></i></div></div></div>';
+        $('#hist_summary').html(summary);
+
+        // Orders table
+        var h = '';
+        res.orders.forEach(function(o, i){
+            var statusBadge = '';
+            if(o.status === 5) statusBadge = '<span class="badge badge-success">'+o.status_display+'</span>';
+            else if(o.status === 6) statusBadge = '<span class="badge badge-dark">'+o.status_display+'</span>';
+            else statusBadge = '<span class="badge badge-info">'+o.status_display+'</span>';
+
+            var payBadge = '';
+            if(o.payment_status === 2) payBadge = '<span class="badge badge-success">'+o.payment_status_display+'</span>';
+            else if(o.payment_status === 1) payBadge = '<span class="badge badge-warning">'+o.payment_status_display+'</span>';
+            else payBadge = '<span class="badge badge-danger">'+o.payment_status_display+'</span>';
+
+            var debtStr = o.debt > 0 ? '<span class="text-danger font-weight-bold">'+fmt(o.debt)+'đ</span>' : '<span class="text-muted">0</span>';
+            var rowClass = o.status === 6 ? 'style="background:#fce4ec;opacity:0.7;"' : (o.debt > 0 ? 'style="background:#fff3e0;"' : '');
+
+            // Items detail (expandable)
+            var itemsHtml = '<tr class="hist-items-row" id="items_'+o.id+'" style="display:none;"><td colspan="10" class="p-0"><table class="table table-sm mb-0" style="background:#f8f9fa;"><thead><tr><th class="pl-4">Sản phẩm</th><th>Số lượng</th><th>Đơn giá</th><th>CK%</th><th>Thành tiền</th></tr></thead><tbody>';
+            o.items.forEach(function(it){
+                itemsHtml += '<tr><td class="pl-4">'+it.product_name+'</td><td class="text-center">'+it.quantity+'</td><td class="text-right">'+fmt(it.unit_price)+'đ</td><td class="text-center">'+it.discount_percent+'%</td><td class="text-right">'+fmt(it.total_price)+'đ</td></tr>';
+            });
+            itemsHtml += '</tbody></table></td></tr>';
+
+            h += '<tr '+rowClass+'><td>'+(i+1)+'</td><td><strong>'+o.code+'</strong></td><td>'+o.order_date+'</td><td>'+o.warehouse+'</td>' +
+                '<td class="text-right"><strong>'+fmt(o.final_amount)+'đ</strong></td>' +
+                '<td class="text-right">'+fmt(o.paid_amount)+'đ</td>' +
+                '<td class="text-right">'+debtStr+'</td>' +
+                '<td class="text-center">'+payBadge+'</td><td class="text-center">'+statusBadge+'</td>' +
+                '<td class="text-center"><button class="btn btn-xs btn-outline-info" onclick="$(\'#items_'+o.id+'\').toggle()" title="Xem chi tiết SP"><i class="fas fa-list"></i></button></td></tr>' +
+                itemsHtml;
+        });
+
+        if(!h) h = '<tr><td colspan="10" class="text-center text-muted py-3"><i class="fas fa-inbox mr-2"></i>Chưa có đơn hàng nào</td></tr>';
+        $('#hist_tbl tbody').html(h);
+        $('#modal_history').modal('show');
+    });
+}
+
+function toggleCustomerType(){
+    var t = $('#inp_customer_type').val();
+    $('#section_individual').hide();
+    $('#section_company').hide();
+    $('#section_household').hide();
+    if(t == '1') $('#section_individual').show();
+    else if(t == '2') $('#section_company').show();
+    else if(t == '3') $('#section_household').show();
+}
+
+function previewAvatar(input){
+    if(input.files && input.files[0]){
+        var reader = new FileReader();
+        reader.onload = function(e){ $('#avatar_preview').attr('src', e.target.result); };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function uploadAvatar(customerId, file){
+    var fd = new FormData();
+    fd.append('id', customerId);
+    fd.append('avatar', file);
+    $.ajax({
+        url: '/api/customers/upload_avatar/',
+        type: 'POST',
+        data: fd,
+        processData: false,
+        contentType: false,
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        success: function(r){
+            if(r.status === 'ok') loadData();
+        }
+    });
+}
+</script>
+{% endblock %}

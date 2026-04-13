@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title"><i class="fas fa-file-invoice mr-2"></i>Cài đặt báo giá</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted"><small>Cấu hình hiển thị cho module báo giá</small></p>
+
+                <div class="card card-outline card-info">
+                    <div class="card-header py-2"><b>📋 Hiển thị trên báo giá</b></div>
+                    <div class="card-body">
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_quotation_salesperson">
+                            <label class="custom-control-label" for="opt_quotation_salesperson">
+                                <i class="fas fa-user text-primary mr-1"></i> Hiện cột <b>"Người báo giá"</b> trên danh sách báo giá
+                            </label>
+                        </div>
+                        <small class="text-muted">Khi bật, danh sách báo giá sẽ hiện thêm cột "Người BG" — tự động lấy từ tài khoản đang đăng nhập.</small>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button class="btn btn-primary btn-lg" id="btn_save"><i class="fas fa-save mr-2"></i>Lưu cài đặt</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function(){
+    // Load
+    $.get('/api/business_config/', function(res){
+        var d = res.data;
+        $('#opt_quotation_salesperson').prop('checked', d.opt_quotation_salesperson);
+    });
+
+    // Save
+    $('#btn_save').click(function(){
+        $.get('/api/business_config/', function(res){
+            var data = res.data;
+            data.opt_quotation_salesperson = $('#opt_quotation_salesperson').prop('checked');
+            $.ajax({
+                url: '/api/business_config/save/', type: 'POST',
+                contentType: 'application/json',
+                headers: {'X-CSRFToken': '{{csrf_token}}'},
+                data: JSON.stringify(data),
+                success: function(r){
+                    alert(r.message);
+                    if(r.status === 'ok') location.reload();
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

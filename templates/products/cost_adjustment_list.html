@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-dollar-sign mr-2"></i>Điều chỉnh giá vốn</h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive"><table id="data_tbl" class="table table-bordered table-striped table-sm"><thead><tr><th>STT</th><th>Sản phẩm</th><th>Mã SP</th><th>Giá vốn cũ</th><th>Giá vốn mới</th><th>Lý do</th><th>Người điều chỉnh</th><th>Ngày</th></tr></thead><tbody></tbody></table></div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+$(document).ready(function(){loadData();});
+function loadData(){$.get('/api/cost_adjustments/',function(res){var h='';res.data.forEach(function(d,i){h+='<tr><td>'+(i+1)+'</td><td>'+d.product+'</td><td>'+d.product_code+'</td><td class="text-right">'+fmt(d.old_cost)+'</td><td class="text-right">'+fmt(d.new_cost)+'</td><td>'+d.reason+'</td><td>'+d.adjusted_by+'</td><td>'+d.adjusted_at+'</td></tr>';});$('#data_tbl tbody').html(h);});}
+</script>
+{% endblock %}

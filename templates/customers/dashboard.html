@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}📊 Dashboard{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-1">
+            <div class="col-sm-6"><h4 class="m-0">📊 Dashboard — {% if biz %}{{ biz.business_name }}{% else %}Tổng quan{% endif %}</h4></div>
+            <div class="col-sm-6 text-right">
+                <span class="text-muted" id="dashboard_period"></span>
+                <button class="btn btn-sm btn-outline-primary ml-2" onclick="loadDashboard()"><i class="fas fa-sync-alt"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+<section class="content">
+<div class="container-fluid">
+
+    <!-- KPI Cards -->
+    <div class="row" id="kpi_cards">
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-info">
+                <div class="inner"><h3 id="kpi_revenue">0</h3><p>Doanh thu tháng</p></div>
+                <div class="icon"><i class="fas fa-chart-line"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-success">
+                <div class="inner"><h3 id="kpi_profit">0</h3><p>Lợi nhuận ước tính</p></div>
+                <div class="icon"><i class="fas fa-hand-holding-usd"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-primary">
+                <div class="inner"><h3 id="kpi_orders">0</h3><p>Đơn hàng</p></div>
+                <div class="icon"><i class="fas fa-shopping-cart"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-warning">
+                <div class="inner"><h3 id="kpi_debt">0</h3><p>Công nợ</p></div>
+                <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-teal">
+                <div class="inner"><h3 id="kpi_paid">0</h3><p>Đã thu</p></div>
+                <div class="icon"><i class="fas fa-money-check-alt"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-12">
+            <div class="small-box bg-gradient-purple">
+                <div class="inner"><h3 id="kpi_customers">0</h3><p>KH mới tháng</p></div>
+                <div class="icon"><i class="fas fa-user-plus"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Chart doanh thu -->
+        <div class="col-lg-8">
+            <div class="card card-primary card-outline">
+                <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-area mr-1"></i>Doanh thu 7 ngày gần nhất</h3></div>
+                <div class="card-body" style="height:320px;">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <!-- Cảnh báo tồn kho -->
+        <div class="col-lg-4">
+            <div class="card card-danger card-outline">
+                <div class="card-header"><h3 class="card-title"><i class="fas fa-exclamation-triangle mr-1"></i>Cảnh báo tồn kho thấp</h3></div>
+                <div class="card-body p-0" style="max-height:290px;overflow-y:auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr><th>Sản phẩm</th><th>Kho</th><th class="text-center">Tồn</th></tr></thead>
+                        <tbody id="low_stock_body"><tr><td colspan="3" class="text-center text-muted">Đang tải...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Top SP -->
+        <div class="col-lg-6">
+            <div class="card card-success card-outline">
+                <div class="card-header"><h3 class="card-title"><i class="fas fa-trophy mr-1"></i>Top SP bán chạy tháng này</h3></div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead><tr><th>#</th><th>Sản phẩm</th><th class="text-right">SL</th><th class="text-right">Doanh thu</th></tr></thead>
+                        <tbody id="top_products_body"><tr><td colspan="4" class="text-center text-muted">Đang tải...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Top KH -->
+        <div class="col-lg-6">
+            <div class="card card-info card-outline">
+                <div class="card-header"><h3 class="card-title"><i class="fas fa-crown mr-1"></i>Top KH mua nhiều tháng này</h3></div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead><tr><th>#</th><th>Khách hàng</th><th>SĐT</th><th class="text-right">Đơn</th><th class="text-right">Doanh thu</th></tr></thead>
+                        <tbody id="top_customers_body"><tr><td colspan="5" class="text-center text-muted">Đang tải...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+var revenueChart = null;
+function fmt(n){ return new Intl.NumberFormat('vi-VN').format(Math.round(n)); }
+function fmtShort(n){
+    if(n>=1e9) return (n/1e9).toFixed(1)+'tỷ';
+    if(n>=1e6) return (n/1e6).toFixed(1)+'tr';
+    if(n>=1e3) return (n/1e3).toFixed(0)+'k';
+    return n.toString();
+}
+function loadDashboard(){
+    $.get('/api/dashboard/', function(res){
+        if(res.status!=='ok') return;
+        var k = res.kpi;
+        $('#kpi_revenue').text(fmtShort(k.revenue));
+        $('#kpi_profit').text(fmtShort(k.profit));
+        $('#kpi_orders').text(fmt(k.orders));
+        $('#kpi_debt').text(fmtShort(k.debt));
+        $('#kpi_paid').text(fmtShort(k.paid));
+        $('#kpi_customers').text(fmt(k.new_customers));
+
+        // Chart
+        var labels = res.chart.map(c=>c.date);
+        var data = res.chart.map(c=>c.revenue);
+        var ctx = document.getElementById('revenueChart').getContext('2d');
+        if(revenueChart) revenueChart.destroy();
+        revenueChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Doanh thu',
+                    data: data,
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14,165,233,0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#0ea5e9',
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: {display: false},
+                    tooltip: { callbacks: { label: function(ctx){ return fmt(ctx.raw) + 'đ'; } } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: function(v){ return fmtShort(v); } } }
+                }
+            }
+        });
+
+        // Top products
+        var tp = '';
+        res.top_products.forEach(function(p,i){
+            tp += '<tr><td>'+(i+1)+'</td><td>'+p.name+'</td><td class="text-right">'+fmt(p.qty)+'</td><td class="text-right">'+fmt(p.amount)+'</td></tr>';
+        });
+        $('#top_products_body').html(tp || '<tr><td colspan="4" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+
+        // Top customers
+        var tc = '';
+        res.top_customers.forEach(function(c,i){
+            tc += '<tr><td>'+(i+1)+'</td><td>'+c.name+'</td><td>'+c.phone+'</td><td class="text-right">'+c.count+'</td><td class="text-right">'+fmt(c.total)+'</td></tr>';
+        });
+        $('#top_customers_body').html(tc || '<tr><td colspan="5" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+
+        // Low stock
+        var ls = '';
+        res.low_stock.forEach(function(s){
+            var cls = s.qty<=0 ? 'text-danger font-weight-bold' : (s.qty<=5 ? 'text-warning' : '');
+            ls += '<tr><td><small>'+s.product+'</small></td><td><small>'+s.warehouse+'</small></td><td class="text-center '+cls+'">'+fmt(s.qty)+'</td></tr>';
+        });
+        $('#low_stock_body').html(ls || '<tr><td colspan="3" class="text-center text-success"><i class="fas fa-check mr-1"></i>Tồn kho ổn</td></tr>');
+
+        $('#dashboard_period').text('Tháng ' + new Date().toLocaleDateString('vi-VN', {month:'long', year:'numeric'}));
+    });
+}
+$(document).ready(function(){ loadDashboard(); });
+</script>
+{% endblock %}

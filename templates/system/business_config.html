@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title"><i class="fas fa-store mr-2"></i>Cài đặt mô hình kinh doanh</h3>
+            </div>
+            <div class="card-body">
+                <!-- Business Type Selection -->
+                <div class="form-group">
+                    <label><b>Mô hình kinh doanh</b></label>
+                    <select class="form-control" id="sel_type"></select>
+                    <small class="text-muted">Chọn mô hình sẽ tự động bật/tắt các module phù hợp. Sau đó bạn có thể tùy chỉnh thêm.</small>
+                </div>
+                <div class="form-group">
+                    <label><b>Tên doanh nghiệp</b></label>
+                    <input type="text" class="form-control" id="inp_name" placeholder="VD: Spa Hoa Sen, Siêu thị ABC...">
+                    <small class="text-muted">Hiển thị trên thanh tiêu đề</small>
+                </div>
+                <hr>
+                <h5><i class="fas fa-toggle-on"></i> Module hiển thị trên menu</h5>
+                <p class="text-muted"><small>Bật/tắt các module tùy theo nhu cầu kinh doanh</small></p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header py-2"><b>📦 Bán hàng</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_orders">
+                                    <label class="custom-control-label" for="mod_orders">🛒 Đơn hàng</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2 ml-4">
+                                    <input type="checkbox" class="custom-control-input mod-toggle sub-orders" id="mod_quotations">
+                                    <label class="custom-control-label" for="mod_quotations">📋 Báo giá</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2 ml-4">
+                                    <input type="checkbox" class="custom-control-input mod-toggle sub-orders" id="mod_returns">
+                                    <label class="custom-control-label" for="mod_returns">↩️ Trả hàng</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2 ml-4">
+                                    <input type="checkbox" class="custom-control-input mod-toggle sub-orders" id="mod_packaging">
+                                    <label class="custom-control-label" for="mod_packaging">📦 Đóng gói</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header py-2"><b>🏪 Kho & Sản phẩm</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_products">
+                                    <label class="custom-control-label" for="mod_products">🏷️ Sản phẩm & Kho</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_customers">
+                                    <label class="custom-control-label" for="mod_customers">👥 Khách hàng</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header py-2"><b>💰 Tài chính</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_finance">
+                                    <label class="custom-control-label" for="mod_finance">💵 Thu chi & Sổ quỹ</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_reports">
+                                    <label class="custom-control-label" for="mod_reports">📊 Báo cáo</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3 border-pink">
+                            <div class="card-header py-2" style="background:#e91e63;color:#fff;"><b>🧖 Spa & Dịch vụ</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_spa">
+                                    <label class="custom-control-label" for="mod_spa">💆 Spa / Massage / Dịch vụ</label>
+                                </div>
+                                <small class="text-muted">Bao gồm: Lịch hẹn, Dịch vụ, KTV, Phòng</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3" style="border-color:#10b981;">
+                            <div class="card-header py-2" style="background:#10b981;color:#fff;"><b>💻 POS & Quán cà phê</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_pos">
+                                    <label class="custom-control-label" for="mod_pos">💳 POS bán hàng nhanh</label>
+                                </div>
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input mod-toggle" id="mod_cafe_tables">
+                                    <label class="custom-control-label" for="mod_cafe_tables">☕ Quản lý bàn (Cafe)</label>
+                                </div>
+                                <small class="text-muted">Sơ đồ bàn, gán bàn vào đơn hàng, POS touch-friendly</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-3" style="border-color:#f59e0b;">
+                            <div class="card-header py-2" style="background:#f59e0b;color:#fff;"><b>⭐ Tích điểm & Hoa hồng</b></div>
+                            <div class="card-body">
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input" id="opt_loyalty_points">
+                                    <label class="custom-control-label" for="opt_loyalty_points">⭐ Tích điểm khách hàng</label>
+                                </div>
+                                <div class="form-group mb-2 ml-4" id="loyalty_rate_group" style="display:none;">
+                                    <label class="small">Mỗi bao nhiêu đồng = 1 điểm?</label>
+                                    <input type="number" class="form-control form-control-sm" id="opt_loyalty_rate" value="10000" style="width:150px;">
+                                </div>
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input" id="opt_commission">
+                                    <label class="custom-control-label" for="opt_commission">💰 Hoa hồng nhân viên</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+                <h5><i class="fas fa-sliders-h"></i> Tùy chọn</h5>
+                <p class="text-muted"><small>Bật/tắt các tùy chọn hiển thị</small></p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_quotation_salesperson">
+                            <label class="custom-control-label" for="opt_quotation_salesperson">👤 Hiện người báo giá trên báo giá</label>
+                        </div>
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_salesperson">
+                            <label class="custom-control-label" for="opt_order_salesperson">🛒 Hiện NV bán hàng trên hóa đơn</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_server_staff">
+                            <label class="custom-control-label" for="opt_order_server_staff">🍽️ Hiện NV phục vụ trên hóa đơn</label>
+                        </div>
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_bonus">
+                            <label class="custom-control-label" for="opt_order_bonus">💰 Hiện tiền bonus trên hóa đơn</label>
+                        </div>
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_approver">
+                            <label class="custom-control-label" for="opt_order_approver">✅ Hiện người duyệt trên hóa đơn</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-3">
+                    <button class="btn btn-primary btn-lg" id="btn_save"><i class="fas fa-save mr-2"></i>Lưu cấu hình</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preset descriptions -->
+        <div class="card">
+            <div class="card-header"><h5 class="card-title mb-0"><i class="fas fa-info-circle mr-2"></i>Mô tả các mô hình</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Mô hình</th><th>Module được bật</th></tr></thead>
+                    <tbody>
+                        <tr><td><b>🏪 Bán lẻ / Siêu thị</b></td><td>Đơn hàng, Sản phẩm & Kho, Khách hàng, Thu chi, Báo cáo</td></tr>
+                        <tr><td><b>🧖 Spa / Massage</b></td><td>Đơn hàng (đơn giản), Sản phẩm bán kèm, Khách hàng, Thu chi, Báo cáo, <b class="text-danger">Spa & DV</b></td></tr>
+                        <tr><td><b>👗 Thời trang</b></td><td>Đơn hàng, Báo giá, Trả hàng, Sản phẩm & Kho, Khách hàng, Thu chi, Báo cáo</td></tr>
+                        <tr><td><b>🍽️ Nhà hàng / Café</b></td><td>Đơn hàng, Sản phẩm, Khách hàng, Thu chi, Báo cáo</td></tr>
+                        <tr><td><b>💊 Nhà thuốc</b></td><td>Tất cả (kèm đóng gói), không Spa</td></tr>
+                        <tr><td><b>⚙️ Tùy chỉnh</b></td><td>Bạn tự bật/tắt từng module</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Presets
+var presets = {
+    retail:   {mod_orders:true, mod_quotations:false, mod_returns:true,  mod_packaging:false, mod_products:true,  mod_customers:true,  mod_finance:true, mod_reports:true, mod_spa:false, mod_pos:true, mod_cafe_tables:false},
+    spa:      {mod_orders:true, mod_quotations:false, mod_returns:false, mod_packaging:false, mod_products:true,  mod_customers:true,  mod_finance:true, mod_reports:true, mod_spa:true, mod_pos:true, mod_cafe_tables:false},
+    fashion:  {mod_orders:true, mod_quotations:true,  mod_returns:true,  mod_packaging:false, mod_products:true,  mod_customers:true,  mod_finance:true, mod_reports:true, mod_spa:false, mod_pos:false, mod_cafe_tables:false},
+    fnb:      {mod_orders:true, mod_quotations:false, mod_returns:false, mod_packaging:false, mod_products:true,  mod_customers:true,  mod_finance:true, mod_reports:true, mod_spa:false, mod_pos:true, mod_cafe_tables:true},
+    pharmacy: {mod_orders:true, mod_quotations:true,  mod_returns:true,  mod_packaging:true,  mod_products:true,  mod_customers:true,  mod_finance:true, mod_reports:true, mod_spa:false, mod_pos:false, mod_cafe_tables:false},
+    custom:   null,
+};
+var mods = ['mod_orders','mod_quotations','mod_returns','mod_packaging','mod_products','mod_customers','mod_finance','mod_reports','mod_spa','mod_pos','mod_cafe_tables'];
+
+$('#opt_loyalty_points').change(function(){ $('#loyalty_rate_group').toggle($(this).prop('checked')); });
+
+$(document).ready(function(){
+    loadConfig();
+
+    $('#sel_type').change(function(){
+        var type = $(this).val();
+        if(presets[type]){
+            mods.forEach(function(m){ $('#'+m).prop('checked', presets[type][m]); });
+        }
+        updateSubToggles();
+    });
+
+    $('#mod_orders').change(function(){
+        if(!$(this).prop('checked')){
+            $('.sub-orders').prop('checked', false);
+        }
+        updateSubToggles();
+    });
+
+    $('#btn_save').click(function(){
+        var data = {
+            business_type: $('#sel_type').val(),
+            business_name: $('#inp_name').val(),
+        };
+        mods.forEach(function(m){ data[m] = $('#'+m).prop('checked'); });
+        data.opt_quotation_salesperson = $('#opt_quotation_salesperson').prop('checked');
+        data.opt_order_salesperson = $('#opt_order_salesperson').prop('checked');
+        data.opt_order_server_staff = $('#opt_order_server_staff').prop('checked');
+        data.opt_order_bonus = $('#opt_order_bonus').prop('checked');
+        data.opt_order_approver = $('#opt_order_approver').prop('checked');
+        data.opt_loyalty_points = $('#opt_loyalty_points').prop('checked');
+        data.opt_loyalty_rate = parseInt($('#opt_loyalty_rate').val()) || 10000;
+        data.opt_commission = $('#opt_commission').prop('checked');
+        $.ajax({
+            url: '/api/business_config/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                alert(r.message);
+                if(r.status === 'ok') location.reload();
+            }
+        });
+    });
+});
+
+function loadConfig(){
+    $.get('/api/business_config/', function(res){
+        var d = res.data;
+        // Populate type select
+        var opts = '';
+        res.business_types.forEach(function(t){ opts += '<option value="'+t[0]+'">'+t[1]+'</option>'; });
+        $('#sel_type').html(opts).val(d.business_type);
+        $('#inp_name').val(d.business_name);
+        mods.forEach(function(m){ $('#'+m).prop('checked', d[m]); });
+        $('#opt_quotation_salesperson').prop('checked', d.opt_quotation_salesperson);
+        $('#opt_order_salesperson').prop('checked', d.opt_order_salesperson);
+        $('#opt_order_server_staff').prop('checked', d.opt_order_server_staff);
+        $('#opt_order_bonus').prop('checked', d.opt_order_bonus);
+        $('#opt_order_approver').prop('checked', d.opt_order_approver);
+        $('#opt_loyalty_points').prop('checked', d.opt_loyalty_points);
+        $('#opt_loyalty_rate').val(d.opt_loyalty_rate || 10000);
+        $('#opt_commission').prop('checked', d.opt_commission);
+        if(d.opt_loyalty_points) $('#loyalty_rate_group').show();
+        updateSubToggles();
+    });
+}
+
+function updateSubToggles(){
+    var ordersOn = $('#mod_orders').prop('checked');
+    $('.sub-orders').prop('disabled', !ordersOn);
+    if(!ordersOn) $('.sub-orders').prop('checked', false);
+}
+</script>
+{% endblock %}

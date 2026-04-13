@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+/* ===== STAFF SALES REPORT STYLES ===== */
+.kpi-card {
+    border-radius: 12px;
+    padding: 18px 20px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    min-height: 110px;
+}
+.kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+.kpi-card .kpi-icon {
+    position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+    font-size: 42px; opacity: 0.2;
+}
+.kpi-card .kpi-value { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+.kpi-card .kpi-label { font-size: 12px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-bg-purple  { background: linear-gradient(135deg, #667eea, #764ba2); }
+.kpi-bg-green   { background: linear-gradient(135deg, #11998e, #38ef7d); }
+.kpi-bg-blue    { background: linear-gradient(135deg, #2193b0, #6dd5ed); }
+.kpi-bg-orange  { background: linear-gradient(135deg, #f2994a, #f2c94c); }
+.kpi-bg-red     { background: linear-gradient(135deg, #e44d26, #f09819); }
+.kpi-bg-teal    { background: linear-gradient(135deg, #00b4db, #0083b0); }
+.kpi-bg-pink    { background: linear-gradient(135deg, #ec6ead, #3494e6); }
+.kpi-bg-dark    { background: linear-gradient(135deg, #434343, #000000); }
+
+/* Rank badges */
+.rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%; font-weight: 700; font-size: 14px;
+    color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.rank-1 { background: linear-gradient(135deg, #FFD700, #FFA500); }
+.rank-2 { background: linear-gradient(135deg, #C0C0C0, #9E9E9E); }
+.rank-3 { background: linear-gradient(135deg, #CD7F32, #A0522D); }
+.rank-other { background: #6c757d; }
+
+/* Progress bar in table */
+.contrib-bar-wrap {
+    background: #e9ecef; border-radius: 8px; height: 20px; overflow: hidden;
+    position: relative; min-width: 80px;
+}
+.contrib-bar {
+    height: 100%; border-radius: 8px; transition: width 0.6s ease;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+}
+.contrib-bar-text {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: #333;
+}
+
+/* Detail toggle row */
+.staff-detail-row { display: none; }
+.staff-detail-row.show { display: table-row; }
+.staff-detail-row td { background: #f9fbfd; }
+.btn-toggle-detail {
+    cursor: pointer; transition: transform 0.2s;
+}
+.btn-toggle-detail.open { transform: rotate(90deg); }
+
+/* Top products pills */
+.top-pill {
+    display: inline-block; background: #eef2ff; color: #4338ca;
+    padding: 2px 10px; border-radius: 12px; font-size: 11px; margin: 2px 3px;
+    white-space: nowrap;
+}
+
+/* Animate table rows */
+.staff-row { transition: background 0.2s; }
+.staff-row:hover { background: #f0f4ff !important; }
+</style>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-user-tie mr-2"></i>Báo cáo Doanh thu Nhân viên Bán hàng — KPI & Lương</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-success" id="btn_export"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- BỘ LỌC -->
+        <div class="row mb-3 align-items-end">
+            <div class="col-md-2">
+                <label class="small text-muted mb-1">Từ ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_from_date">
+            </div>
+            <div class="col-md-2">
+                <label class="small text-muted mb-1">Đến ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_to_date">
+            </div>
+            <div class="col-md-2" id="store_filter_wrap" style="display:none;">
+                <label class="small text-muted mb-1">Cửa hàng</label>
+                <select class="form-control form-control-sm" id="filter_store_id">
+                    <option value="">🏢 Tất cả</option>
+                </select>
+            </div>
+            <div class="col-md-2" id="sp_filter_wrap">
+                <label class="small text-muted mb-1">Nhân viên</label>
+                <select class="form-control form-control-sm" id="filter_salesperson">
+                    <option value="">👤 Tất cả</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
+            </div>
+        </div>
+
+        <!-- TỔNG QUAN KPI -->
+        <div class="row mb-3" id="summary_cards">
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-purple">
+                    <div class="kpi-value" id="kpi_staff_count">0</div>
+                    <div class="kpi-label">Nhân viên bán hàng</div>
+                    <i class="fas fa-users kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-blue">
+                    <div class="kpi-value" id="kpi_total_orders">0</div>
+                    <div class="kpi-label">Tổng đơn hàng</div>
+                    <i class="fas fa-shopping-cart kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-green">
+                    <div class="kpi-value" id="kpi_revenue">0</div>
+                    <div class="kpi-label">Tổng doanh thu</div>
+                    <i class="fas fa-chart-line kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-orange">
+                    <div class="kpi-value" id="kpi_profit">0</div>
+                    <div class="kpi-label">Lợi nhuận gộp</div>
+                    <i class="fas fa-coins kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-red">
+                    <div class="kpi-value" id="kpi_returns">0</div>
+                    <div class="kpi-label">Trả hàng</div>
+                    <i class="fas fa-undo kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-teal">
+                    <div class="kpi-value" id="kpi_bonus">0</div>
+                    <div class="kpi-label">Tổng Bonus</div>
+                    <i class="fas fa-gift kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-pink">
+                    <div class="kpi-value" id="kpi_paid">0</div>
+                    <div class="kpi-label">Đã thu</div>
+                    <i class="fas fa-hand-holding-usd kpi-icon"></i>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-6 mb-3">
+                <div class="kpi-card kpi-bg-dark">
+                    <div class="kpi-value" id="kpi_debt">0</div>
+                    <div class="kpi-label">Công nợ</div>
+                    <i class="fas fa-exclamation-triangle kpi-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- BẢNG XẾP HẠNG NHÂN VIÊN -->
+        <div class="card card-outline card-primary">
+            <div class="card-header py-2">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-trophy mr-1 text-warning"></i>
+                    Bảng xếp hạng doanh thu nhân viên
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm mb-0" id="staff_tbl">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="text-center" style="width:50px">Hạng</th>
+                                <th>Nhân viên</th>
+                                <th class="text-center">Số ĐH</th>
+                                <th class="text-right">Doanh thu</th>
+                                <th class="text-right">Giá vốn</th>
+                                <th class="text-right">Lợi nhuận</th>
+                                <th class="text-right">Trả hàng</th>
+                                <th class="text-right">DT ròng</th>
+                                <th class="text-right">Bonus</th>
+                                <th class="text-right">Công nợ</th>
+                                <th class="text-right">Đã thu</th>
+                                <th class="text-center" style="width:120px">Tỷ lệ đóng góp</th>
+                                <th class="text-right">TB/Đơn</th>
+                                <th class="text-center" style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="staff_tbody"></tbody>
+                        <tfoot class="font-weight-bold bg-light">
+                            <tr>
+                                <td colspan="2">TỔNG CỘNG</td>
+                                <td class="text-center" id="ft_orders">0</td>
+                                <td class="text-right" id="ft_revenue">0</td>
+                                <td class="text-right" id="ft_cost">0</td>
+                                <td class="text-right" id="ft_profit">0</td>
+                                <td class="text-right" id="ft_returns">0</td>
+                                <td class="text-right" id="ft_net">0</td>
+                                <td class="text-right" id="ft_bonus">0</td>
+                                <td class="text-right" id="ft_debt">0</td>
+                                <td class="text-right" id="ft_paid">0</td>
+                                <td class="text-center">100%</td>
+                                <td class="text-right" id="ft_avg">0</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- KHI KHÔNG CÓ DỮ LIỆU -->
+        <div id="empty_state" style="display:none;" class="text-center py-5 text-muted">
+            <i class="fas fa-inbox fa-3x mb-3"></i>
+            <p class="mb-0">Không có dữ liệu nhân viên trong khoảng thời gian này.</p>
+            <small>Hãy kiểm tra bộ lọc hoặc chọn khoảng thời gian khác.</small>
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL CHI TIẾT ĐƠN HÀNG -->
+<div class="modal fade" id="modal_staff_orders" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header py-2" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;">
+                <h5 class="modal-title"><i class="fas fa-list mr-2"></i>Chi tiết đơn hàng — <span id="modal_sp_name"></span></h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body p-0">
+                <!-- Thông tin tóm tắt -->
+                <div class="p-3" style="background:#f9fbfd;">
+                    <div class="row text-center" id="modal_summary_row"></div>
+                </div>
+                <!-- Top sản phẩm -->
+                <div class="px-3 pt-2 pb-1">
+                    <strong class="small text-muted"><i class="fas fa-star text-warning mr-1"></i>Top sản phẩm bán chạy:</strong>
+                    <span id="modal_top_products"></span>
+                </div>
+                <!-- Bảng đơn hàng -->
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm table-striped mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="text-center">STT</th>
+                                <th>Mã ĐH</th>
+                                <th>Ngày</th>
+                                <th>Khách hàng</th>
+                                <th class="text-right">Thành tiền</th>
+                                <th class="text-right">Đã thu</th>
+                                <th class="text-right">Bonus</th>
+                                <th class="text-center">Trạng thái</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modal_orders_tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
+
+var _staffData = []; // cache for modal
+
+$(document).ready(function(){
+    var today = new Date();
+    var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    $('#filter_from_date').val(firstDay.toISOString().split('T')[0]);
+    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+
+    loadReport();
+
+    $('#btn_search').click(function(){ loadReport(); });
+    $('#filter_store_id').change(function(){ loadReport(); });
+    $('#filter_salesperson').change(function(){ loadReport(); });
+
+    // Export Excel
+    $('#btn_export').click(function(){
+        var from = $('#filter_from_date').val();
+        var to = $('#filter_to_date').val();
+        var storeId = $('#filter_store_id').val();
+        var url = '/api/export_staff_sales_excel/?from_date='+from+'&to_date='+to;
+        if(storeId) url += '&store_id='+storeId;
+        window.location.href = url;
+    });
+});
+
+function loadReport(){
+    var from = $('#filter_from_date').val();
+    var to = $('#filter_to_date').val();
+    var storeId = $('#filter_store_id').val();
+    var sp = $('#filter_salesperson').val();
+    var url = '/api/report_staff_sales/?from_date='+from+'&to_date='+to;
+    if(storeId) url += '&store_id='+storeId;
+    if(sp) url += '&salesperson='+encodeURIComponent(sp);
+
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
+
+        _staffData = res.staff_data;
+
+        // Store filter
+        if(res.has_multiple_stores && res.stores && res.stores.length > 1){
+            $('#store_filter_wrap').show();
+            var curVal = $('#filter_store_id').val();
+            var opts = '<option value="">🏢 Tất cả</option>';
+            res.stores.forEach(function(s){
+                var sel = (s.id == curVal) ? ' selected' : '';
+                opts += '<option value="'+s.id+'"'+sel+'>'+s.name+'</option>';
+            });
+            $('#filter_store_id').html(opts);
+        } else {
+            $('#store_filter_wrap').hide();
+        }
+
+        // Salesperson filter
+        var curSp = $('#filter_salesperson').val();
+        var spOpts = '<option value="">👤 Tất cả</option>';
+        (res.salespersons || []).forEach(function(name){
+            var sel = (name === curSp) ? ' selected' : '';
+            spOpts += '<option value="'+name+'"'+sel+'>'+name+'</option>';
+        });
+        $('#filter_salesperson').html(spOpts);
+
+        // Summary KPI cards
+        var s = res.summary;
+        $('#kpi_staff_count').text(s.total_staff);
+        $('#kpi_total_orders').text(fmt(s.grand_orders));
+        $('#kpi_revenue').text(fmtD(s.grand_revenue));
+        $('#kpi_profit').text(fmtD(s.grand_profit));
+        $('#kpi_returns').text(fmtD(s.grand_returns));
+        $('#kpi_bonus').text(fmtD(s.grand_bonus));
+        $('#kpi_paid').text(fmtD(s.grand_paid));
+        $('#kpi_debt').text(fmtD(s.grand_debt));
+
+        // Staff table
+        if(!res.staff_data || res.staff_data.length === 0){
+            $('#staff_tbody').html('');
+            $('#empty_state').show();
+            $('#staff_tbl').closest('.card').hide();
+            return;
+        }
+        $('#empty_state').hide();
+        $('#staff_tbl').closest('.card').show();
+
+        var html = '';
+        var maxRevenue = Math.max.apply(null, res.staff_data.map(function(d){ return d.revenue; })) || 1;
+        var tOrders=0, tRevenue=0, tCost=0, tProfit=0, tReturns=0, tNet=0, tBonus=0, tDebt=0, tPaid=0;
+
+        res.staff_data.forEach(function(d, i){
+            var rank = d.rank;
+            var rankClass = rank <= 3 ? 'rank-'+rank : 'rank-other';
+            var rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+            var profitCls = d.profit >= 0 ? 'text-success' : 'text-danger';
+            var barWidth = Math.round((d.revenue / maxRevenue) * 100);
+
+            html += '<tr class="staff-row" data-idx="'+i+'">';
+            html += '<td class="text-center"><span class="rank-badge '+rankClass+'">'+rankIcon+'</span></td>';
+            html += '<td><strong>'+d.salesperson+'</strong>';
+            // Top products as pills
+            if(d.top_products && d.top_products.length > 0){
+                html += '<br>';
+                d.top_products.forEach(function(p){
+                    html += '<span class="top-pill">'+p.name+' ('+fmt(p.qty)+')</span>';
+                });
+            }
+            html += '</td>';
+            html += '<td class="text-center"><strong>'+d.order_count+'</strong></td>';
+            html += '<td class="text-right"><strong>'+fmtD(d.revenue)+'</strong></td>';
+            html += '<td class="text-right">'+fmtD(d.cost)+'</td>';
+            html += '<td class="text-right '+profitCls+'"><strong>'+fmtD(d.profit)+'</strong></td>';
+            html += '<td class="text-right">'+(d.returns_amount > 0 ? '<span class="text-danger">'+fmtD(d.returns_amount)+'</span>' : '-')+'</td>';
+            html += '<td class="text-right"><strong>'+fmtD(d.net_revenue)+'</strong></td>';
+            html += '<td class="text-right">'+(d.bonus > 0 ? '<span class="text-info">'+fmtD(d.bonus)+'</span>' : '-')+'</td>';
+            html += '<td class="text-right">'+(d.debt > 0 ? '<span class="text-danger">'+fmtD(d.debt)+'</span>' : '<span class="text-success">0đ</span>')+'</td>';
+            html += '<td class="text-right">'+fmtD(d.paid)+'</td>';
+            // Contribution bar
+            html += '<td class="text-center">';
+            html += '<div class="contrib-bar-wrap">';
+            html += '<div class="contrib-bar" style="width:'+barWidth+'%"></div>';
+            html += '<div class="contrib-bar-text">'+d.contribution+'%</div>';
+            html += '</div></td>';
+            html += '<td class="text-right"><small class="text-muted">'+fmtD(d.avg_per_order)+'</small></td>';
+            html += '<td class="text-center"><button class="btn btn-xs btn-outline-primary" title="Xem chi tiết" onclick="showStaffOrders('+i+')"><i class="fas fa-eye"></i></button></td>';
+            html += '</tr>';
+
+            tOrders += d.order_count;
+            tRevenue += d.revenue;
+            tCost += d.cost;
+            tProfit += d.profit;
+            tReturns += d.returns_amount;
+            tNet += d.net_revenue;
+            tBonus += d.bonus;
+            tDebt += d.debt;
+            tPaid += d.paid;
+        });
+
+        $('#staff_tbody').html(html);
+
+        // Footer totals
+        $('#ft_orders').text(fmt(tOrders));
+        $('#ft_revenue').text(fmtD(tRevenue));
+        $('#ft_cost').text(fmtD(tCost));
+        var ftProfitCls = tProfit >= 0 ? 'text-success' : 'text-danger';
+        $('#ft_profit').html('<span class="'+ftProfitCls+'">'+fmtD(tProfit)+'</span>');
+        $('#ft_returns').text(fmtD(tReturns));
+        $('#ft_net').text(fmtD(tNet));
+        $('#ft_bonus').text(fmtD(tBonus));
+        $('#ft_debt').text(fmtD(tDebt));
+        $('#ft_paid').text(fmtD(tPaid));
+        var avgAll = tOrders > 0 ? Math.round(tRevenue / tOrders) : 0;
+        $('#ft_avg').text(fmtD(avgAll));
+    });
+}
+
+function showStaffOrders(idx){
+    var d = _staffData[idx];
+    if(!d) return;
+
+    $('#modal_sp_name').text(d.salesperson);
+
+    // Summary row
+    var summaryHtml = '';
+    var summaryItems = [
+        {label:'Đơn hàng', value:d.order_count, icon:'fa-shopping-cart', color:'#2193b0'},
+        {label:'Doanh thu', value:fmtD(d.revenue), icon:'fa-chart-line', color:'#11998e'},
+        {label:'Lợi nhuận', value:fmtD(d.profit), icon:'fa-coins', color:d.profit>=0?'#27ae60':'#e74c3c'},
+        {label:'DT ròng', value:fmtD(d.net_revenue), icon:'fa-money-bill', color:'#3498db'},
+        {label:'Bonus', value:fmtD(d.bonus), icon:'fa-gift', color:'#e67e22'},
+        {label:'Đóng góp', value:d.contribution+'%', icon:'fa-percentage', color:'#8e44ad'},
+    ];
+    summaryItems.forEach(function(item){
+        summaryHtml += '<div class="col-md-2 col-4 mb-2">';
+        summaryHtml += '<div style="border-left:3px solid '+item.color+';padding:6px 10px;background:#fff;border-radius:6px;">';
+        summaryHtml += '<div style="font-size:11px;color:#888;"><i class="fas '+item.icon+' mr-1"></i>'+item.label+'</div>';
+        summaryHtml += '<div style="font-size:16px;font-weight:700;color:'+item.color+';">'+item.value+'</div>';
+        summaryHtml += '</div></div>';
+    });
+    $('#modal_summary_row').html(summaryHtml);
+
+    // Top products
+    var topHtml = '';
+    if(d.top_products && d.top_products.length > 0){
+        d.top_products.forEach(function(p, i){
+            var medal = i===0 ? '🥇' : i===1 ? '🥈' : '🥉';
+            topHtml += '<span class="top-pill">'+medal+' '+p.name+' — SL: '+fmt(p.qty)+' — '+fmtD(p.amount)+'</span>';
+        });
+    } else {
+        topHtml = '<span class="text-muted small">Chưa có</span>';
+    }
+    $('#modal_top_products').html(topHtml);
+
+    // Orders table
+    var ordersHtml = '';
+    if(d.orders && d.orders.length > 0){
+        d.orders.forEach(function(o, i){
+            var statusBadge = '';
+            switch(o.status){
+                case 0: statusBadge = '<span class="badge badge-secondary">Nháp</span>'; break;
+                case 1: statusBadge = '<span class="badge badge-info">Xác nhận</span>'; break;
+                case 2: statusBadge = '<span class="badge badge-primary">Đang xử lý</span>'; break;
+                case 3: statusBadge = '<span class="badge badge-warning">Đóng gói</span>'; break;
+                case 4: statusBadge = '<span class="badge badge-success">Đã giao</span>'; break;
+                case 5: statusBadge = '<span class="badge badge-success">Hoàn thành</span>'; break;
+                default: statusBadge = '<span class="badge badge-dark">'+o.status_display+'</span>';
+            }
+            ordersHtml += '<tr>';
+            ordersHtml += '<td class="text-center">'+(i+1)+'</td>';
+            ordersHtml += '<td><strong>'+o.code+'</strong></td>';
+            ordersHtml += '<td>'+o.date+'</td>';
+            ordersHtml += '<td>'+o.customer+'</td>';
+            ordersHtml += '<td class="text-right"><strong>'+fmtD(o.final_amount)+'</strong></td>';
+            ordersHtml += '<td class="text-right">'+fmtD(o.paid_amount)+'</td>';
+            ordersHtml += '<td class="text-right">'+(o.bonus_amount > 0 ? fmtD(o.bonus_amount) : '-')+'</td>';
+            ordersHtml += '<td class="text-center">'+statusBadge+'</td>';
+            ordersHtml += '</tr>';
+        });
+    } else {
+        ordersHtml = '<tr><td colspan="8" class="text-center text-muted py-3"><i class="fas fa-inbox mr-1"></i>Không có đơn hàng</td></tr>';
+    }
+    $('#modal_orders_tbody').html(ordersHtml);
+
+    $('#modal_staff_orders').modal('show');
+}
+</script>
+{% endblock %}

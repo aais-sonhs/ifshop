@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-money-bill-wave mr-2"></i>Phiếu chi</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu chi</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Số tiền</th><th>HTTT</th><th>Ngày chi</th><th>Quỹ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo phiếu chi</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Danh mục</label><select class="form-control form-control-sm" id="inp_category_id"><option value="">-- Chọn --</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Phiếu nhập hàng</label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Không liên kết --</option>{% for g in goods_receipts %}<option value="{{ g.id }}" data-amount="{{ g.total_amount }}">{{ g.code }} - {{ g.supplier__name|default:"" }} ({{ g.total_amount|floatformat:0 }}đ)</option>{% endfor %}</select></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Quỹ</label><select class="form-control form-control-sm" id="inp_cash_book_id"><option value="">-- Chọn --</option>{% for c in cashbooks %}<option value="{{ c.id }}" data-balance="{{ c.balance }}">{{ c.name }}</option>{% endfor %}</select><small class="text-muted" id="lbl_balance"></small></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Số tiền <span class="text-danger">*</span></label><input type="number" class="form-control form-control-sm" id="inp_amount" value="0"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Ngày chi <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_payment_date"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Hình thức TT</label><select class="form-control form-control-sm" id="inp_payment_method"><option value="2">🏦 Chuyển khoản</option><option value="1">💵 Tiền mặt</option></select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
+                </div>
+                <div class="form-group"><label>Diễn giải</label><textarea class="form-control form-control-sm" id="inp_description" rows="2"></textarea></div>
+                <div class="form-group"><label>Ghi chú</label><textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+$(document).ready(function(){
+    loadData();
+
+    // Hiển thị số dư khi chọn quỹ
+    $('#inp_cash_book_id').change(function(){
+        var $opt = $(this).find('option:selected');
+        var bal = $opt.data('balance');
+        if($(this).val()){
+            var balClass = bal < 0 ? 'text-danger font-weight-bold' : 'text-success';
+            $('#lbl_balance').html('Số dư: <span class="'+balClass+'">'+fmt(bal)+'đ</span>');
+        } else {
+            $('#lbl_balance').html('');
+        }
+    });
+
+    // Khi chọn phiếu nhập hàng → tự động điền số tiền
+    $('#inp_goods_receipt_id').change(function(){
+        var $opt = $(this).find('option:selected');
+        var amount = $opt.data('amount');
+        if(amount){
+            $('#inp_amount').val(amount);
+        }
+    });
+
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('#inp_code,#inp_description,#inp_note').val('');$('#inp_amount').val(0);
+        $('#inp_category_id,#inp_cash_book_id,#inp_supplier_id,#inp_goods_receipt_id').val('').trigger('change');
+        $('#inp_payment_date').val('');$('#inp_status').val('0');$('#inp_payment_method').val('2');
+        $('#modal_title').text('Tạo phiếu chi');$('#modal_form').modal('show');
+    });
+    $('#btn_save').click(function(){
+        var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),category_id:$('#inp_category_id').val(),
+            cash_book_id:$('#inp_cash_book_id').val(),supplier_id:$('#inp_supplier_id').val(),
+            goods_receipt_id:$('#inp_goods_receipt_id').val(),
+            amount:$('#inp_amount').val(),
+            payment_date:$('#inp_payment_date').val(),description:$('#inp_description').val(),
+            status:parseInt($('#inp_status').val()),payment_method:parseInt($('#inp_payment_method').val())||1,note:$('#inp_note').val()};
+        if(!data.code||!data.payment_date){alert('Vui lòng nhập mã và ngày chi');return;}
+        $.ajax({url:'/api/payments/save/',type:'POST',contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+        });
+    });
+});
+function loadData(){
+    $.get('/api/payments/',function(res){
+        var h='';res.data.forEach(function(d,i){
+            var grBadge = d.goods_receipt ? '<span class="badge badge-info">'+d.goods_receipt+'</span>' : '';
+            var pmLabel = d.payment_method === 2 ? '🏦 CK' : '💵 TM';
+            h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
+                '<td>'+grBadge+'</td>'+
+                '<td class="text-right">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+d.payment_date+'</td><td>'+d.cash_book+'</td>'+
+                '<td>'+d.status_display+'</td>'+
+                '<td><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });$('#data_tbl tbody').html(h||'<tr><td colspan="11" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+function editItem(d){
+    $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_category_id').val(d.category_id);
+    $('#inp_cash_book_id').val(d.cash_book_id);$('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
+    $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
+    $('#inp_amount').val(d.amount);$('#inp_payment_date').val(d.payment_date);
+    $('#inp_description').val(d.description);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method||1);$('#inp_note').val(d.note);
+    $('#modal_title').text('Sửa phiếu chi');$('#modal_form').modal('show');
+}
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?'))return;
+    $.ajax({url:'/api/payments/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}
+    });
+}
+</script>
+{% endblock %}

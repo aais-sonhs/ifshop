@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-clipboard-check mr-2"></i>Kiểm hàng</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu kiểm</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Kho</th><th>Ngày kiểm</th><th>Số SP</th><th>Trạng thái</th><th>Ghi chú</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo phiếu kiểm</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-3"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Kho <span class="text-danger">*</span></label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-2"><div class="form-group"><label>Ngày kiểm <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_check_date"></div></div>
+                    <div class="col-md-2"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Đang kiểm</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
+                    <div class="col-md-2"><div class="form-group"><label>Ghi chú</label><input type="text" class="form-control form-control-sm" id="inp_note"></div></div>
+                </div>
+
+                <!-- Chi tiết sản phẩm kiểm -->
+                <hr>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết kiểm kê</h6>
+                    <button type="button" class="btn btn-sm btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm" id="items_tbl">
+                        <thead class="bg-light">
+                            <tr>
+                                <th style="width:5%">#</th>
+                                <th style="width:30%">Sản phẩm</th>
+                                <th style="width:8%">ĐVT</th>
+                                <th style="width:13%">Tồn hệ thống</th>
+                                <th style="width:13%">Tồn thực tế</th>
+                                <th style="width:13%">Chênh lệch</th>
+                                <th style="width:13%">Ghi chú</th>
+                                <th style="width:5%"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="items_body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Product data from API (loaded with variants)
+var PRODUCTS = [];
+
+var itemRowIndex = 0;
+
+$(document).ready(function(){
+    $.get('/api/products_select/', function(res){ PRODUCTS = res.data; });
+    loadData();
+
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');
+        $('#inp_code,#inp_note').val('');
+        $('#inp_warehouse_id').val('');
+        $('#inp_check_date').val('');
+        $('#inp_status').val('0');
+        $('#items_body').html('');
+        itemRowIndex = 0;
+        $('#modal_title').text('Tạo phiếu kiểm');
+        $('#modal_form').modal('show');
+        setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
+    });
+
+    $('#btn_add_item').click(function(){
+        addItemRow();
+    });
+
+    $('#btn_save').click(function(){
+        var items = getItemsData();
+        if(!$('#inp_code').val() || !$('#inp_check_date').val() || !$('#inp_warehouse_id').val()){
+            alert('Vui lòng nhập mã phiếu, chọn kho và ngày kiểm'); return;
+        }
+        if(items.length === 0){
+            alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;
+        }
+
+        var data = {
+            id: $('#edit_id').val() || null,
+            code: $('#inp_code').val(),
+            warehouse_id: $('#inp_warehouse_id').val(),
+            check_date: $('#inp_check_date').val(),
+            status: parseInt($('#inp_status').val()),
+            note: $('#inp_note').val(),
+            items: items
+        };
+
+        $.ajax({
+            url: '/api/stock_checks/save/', type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){
+                    $('#modal_form').modal('hide');
+                    loadData();
+                }
+                alert(r.message);
+            }
+        });
+    });
+
+    // Delegate events for item rows
+    $(document).on('change', '.item-product-select', function(){
+        var row = $(this).closest('tr');
+        var productId = $(this).val();
+        var product = PRODUCTS.find(function(p){ return p.id == productId; });
+        if(product){
+            row.find('.item-unit').text(product.unit);
+        }
+    });
+
+    $(document).on('input change', '.item-actual-qty', function(){
+        var row = $(this).closest('tr');
+        var sysQty = parseInt(row.find('.item-sys-qty').val()) || 0;
+        var actualQty = parseInt($(this).val()) || 0;
+        var diff = actualQty - sysQty;
+        row.find('.item-diff').text(diff).removeClass('text-success text-danger');
+        if(diff > 0) row.find('.item-diff').addClass('text-success');
+        else if(diff < 0) row.find('.item-diff').addClass('text-danger');
+    });
+
+    $(document).on('click', '.btn-remove-item', function(){
+        $(this).closest('tr').remove();
+        reindexRows();
+    });
+});
+
+function addItemRow(data){
+    itemRowIndex++;
+    var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
+    PRODUCTS.forEach(function(p){
+        if(p.variants && p.variants.length > 0){
+            p.variants.forEach(function(v){
+                var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
+                if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
+                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" '+selected+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+            });
+        } else {
+            var selected = (data && data.product_id == p.id) ? 'selected' : '';
+            productOptions += '<option value="'+p.id+'" '+selected+'>'+p.code+' - '+p.name+'</option>';
+        }
+    });
+
+    var unit = '';
+    if(data){
+        var prod = PRODUCTS.find(function(p){ return p.id == data.product_id; });
+        unit = prod ? prod.unit : '';
+    }
+
+    var sysQty = data ? (data.system_quantity || 0) : 0;
+    var actualQty = data ? (data.actual_quantity || 0) : 0;
+    var diff = actualQty - sysQty;
+    var diffClass = diff > 0 ? 'text-success' : (diff < 0 ? 'text-danger' : '');
+    var itemNote = data ? (data.note || '') : '';
+
+    var html = '<tr>' +
+        '<td class="text-center item-index">' + itemRowIndex + '</td>' +
+        '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
+        '<td class="text-center item-unit">' + unit + '</td>' +
+        '<td><input type="number" class="form-control form-control-sm item-sys-qty" value="' + sysQty + '" readonly style="background:#f0f0f0;"></td>' +
+        '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" min="0"></td>' +
+        '<td class="text-center font-weight-bold item-diff ' + diffClass + '">' + diff + '</td>' +
+        '<td><input type="text" class="form-control form-control-sm item-note" value="' + itemNote + '"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
+        '</tr>';
+    $('#items_body').append(html);
+
+    // Init Select2 for the new row
+    var lastRow = $('#items_body tr:last');
+    lastRow.find('.select2-item').select2({
+        dropdownParent: $('#modal_form'),
+        width: '100%',
+        placeholder: '-- Chọn sản phẩm --',
+        allowClear: true
+    });
+    // Set value if editing
+    if(data && data.product_id){
+        if(data.variant_id){
+            lastRow.find('.select2-item option').each(function(){
+                if($(this).val() == data.product_id && $(this).data('variant-id') == data.variant_id){
+                    $(this).prop('selected', true);
+                }
+            });
+            lastRow.find('.select2-item').trigger('change.select2');
+        } else {
+            lastRow.find('.select2-item').val(data.product_id).trigger('change.select2');
+        }
+    }
+}
+
+function reindexRows(){
+    $('#items_body tr').each(function(i){
+        $(this).find('.item-index').text(i+1);
+    });
+    itemRowIndex = $('#items_body tr').length;
+}
+
+function getItemsData(){
+    var items = [];
+    $('#items_body tr').each(function(){
+        var productId = $(this).find('.item-product-select').val();
+        var actualQty = parseInt($(this).find('.item-actual-qty').val()) || 0;
+        var note = $(this).find('.item-note').val() || '';
+        if(productId){
+            var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
+            items.push({
+                product_id: parseInt(productId),
+                variant_id: variantId,
+                actual_quantity: actualQty,
+                note: note
+            });
+        }
+    });
+    return items;
+}
+
+function loadData(){
+    $.get('/api/stock_checks/', function(res){
+        var h = '';
+        res.data.forEach(function(d, i){
+            var statusBadge = '';
+            if(d.status === 0) statusBadge = '<span class="badge badge-warning">Đang kiểm</span>';
+            else if(d.status === 1) statusBadge = '<span class="badge badge-success">Hoàn thành</span>';
+            else statusBadge = '<span class="badge badge-danger">Hủy</span>';
+
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.warehouse+'</td>'+
+                '<td>'+d.check_date+'</td><td class="text-center">'+d.items.length+'</td>'+
+                '<td class="text-center">'+statusBadge+'</td><td>'+d.note+'</td>'+
+                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function editItem(d){
+    $('#edit_id').val(d.id);
+    $('#inp_code').val(d.code);
+    $('#inp_warehouse_id').val(d.warehouse_id);
+    $('#inp_check_date').val(d.check_date);
+    $('#inp_status').val(d.status);
+    $('#inp_note').val(d.note);
+
+    // Clear items first
+    $('#items_body').html('');
+    itemRowIndex = 0;
+
+    $('#modal_title').text('Sửa phiếu kiểm');
+    $('#modal_form').modal('show');
+
+    // Load items AFTER modal is fully shown so Select2 renders correctly
+    $('#modal_form').one('shown.bs.modal', function(){
+        $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+        if(d.items && d.items.length > 0){
+            d.items.forEach(function(item){
+                addItemRow(item);
+            });
+        }
+    });
+}
+
+function deleteItem(id){
+    if(!confirm('Bạn có chắc muốn xóa?')) return;
+    $.ajax({
+        url: '/api/stock_checks/delete/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){ loadData(); alert(r.message); }
+    });
+}
+</script>
+{% endblock %}

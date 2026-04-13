@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-calendar-check mr-2"></i>Lịch hẹn / Phiếu dịch vụ</h3>
+        <div class="card-tools">
+            <input type="date" class="form-control form-control-sm d-inline-block" style="width:140px;" id="filter_from">
+            <input type="date" class="form-control form-control-sm d-inline-block" style="width:140px;" id="filter_to">
+            <select class="form-control form-control-sm d-inline-block" style="width:130px;" id="filter_status">
+                <option value="">Tất cả TT</option>
+                <option value="0">Đặt trước</option>
+                <option value="1">Đang PV</option>
+                <option value="2">Hoàn thành</option>
+                <option value="3">Hủy</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-info" id="btn_filter"><i class="fas fa-search"></i></button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo lịch hẹn</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr><th>STT</th><th>Mã</th><th>Ngày</th><th>Giờ</th><th>Khách hàng</th><th>KTV</th><th>Phòng</th><th>Dịch vụ</th><th>Thành tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo lịch hẹn</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-3"><div class="form-group"><label>Mã lịch hẹn</label><input type="text" class="form-control form-control-sm" id="inp_code" readonly></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Ngày hẹn <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_date"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Giờ BĐ <span class="text-danger">*</span></label><input type="time" class="form-control form-control-sm" id="inp_start_time"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Giờ KT</label><input type="time" class="form-control form-control-sm" id="inp_end_time"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>Khách hàng</label><select class="form-control form-control-sm select2" id="inp_customer"><option value="">-- Khách vãng lai --</option></select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Tên khách (vãng lai)</label><input type="text" class="form-control form-control-sm" id="inp_customer_name"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>SĐT</label><input type="text" class="form-control form-control-sm" id="inp_customer_phone"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4"><div class="form-group"><label>KTV phụ trách</label><select class="form-control form-control-sm" id="inp_staff"><option value="">-- Chọn KTV --</option></select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Phòng</label><select class="form-control form-control-sm" id="inp_room"><option value="">-- Chọn phòng --</option></select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Đặt trước</option><option value="1">Đang phục vụ</option><option value="2">Hoàn thành</option><option value="3">Hủy</option></select></div></div>
+                </div>
+
+                <hr>
+                <h6><i class="fas fa-list"></i> Chi tiết dịch vụ <button type="button" class="btn btn-xs btn-success float-right" id="btn_add_item"><i class="fas fa-plus"></i> Thêm DV</button></h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm" id="items_tbl">
+                        <thead><tr><th>Dịch vụ</th><th>KTV thực hiện</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th><th></th></tr></thead>
+                        <tbody id="items_body"></tbody>
+                        <tfoot>
+                            <tr><td colspan="4" class="text-right"><b>Tổng:</b></td><td class="text-right" id="lbl_total"><b>0</b></td><td></td></tr>
+                            <tr><td colspan="4" class="text-right">Giảm giá:</td><td><input type="number" class="form-control form-control-sm" id="inp_discount" value="0" min="0"></td><td></td></tr>
+                            <tr><td colspan="4" class="text-right"><b>Thành tiền:</b></td><td class="text-right" id="lbl_final"><b>0</b></td><td></td></tr>
+                            <tr><td colspan="4" class="text-right text-info">Hoa hồng KTV:</td><td class="text-right text-info" id="lbl_commission">0</td><td></td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div class="form-group"><label>Ghi chú</label><textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+var allServices=[],allStaff=[],allRooms=[],allCustomers=[];
+
+$(document).ready(function(){
+    // Set default date filter to current month
+    var now = new Date();
+    $('#filter_from').val(now.getFullYear()+'-'+(now.getMonth()+1<10?'0':'')+(now.getMonth()+1)+'-01');
+    $('#filter_to').val(now.toISOString().slice(0,10));
+
+    // Load master data
+    $.when(
+        $.get('/api/spa/services/'),
+        $.get('/api/spa/staff/'),
+        $.get('/api/spa/rooms/'),
+        $.get('/api/customers/')
+    ).done(function(r1,r2,r3,r4){
+        allServices=r1[0].data.filter(function(s){return s.is_active;});
+        allStaff=r2[0].data.filter(function(s){return s.is_active;});
+        allRooms=r3[0].data.filter(function(r){return r.is_active;});
+        allCustomers=r4[0].data;
+
+        // Populate staff select
+        var sOpts='<option value="">-- Chọn KTV --</option>';
+        allStaff.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.name+'</option>';});
+        $('#inp_staff').html(sOpts);
+
+        // Populate room select
+        var rOpts='<option value="">-- Chọn phòng --</option>';
+        allRooms.forEach(function(r){rOpts+='<option value="'+r.id+'">'+r.name+' ('+r.status_display+')</option>';});
+        $('#inp_room').html(rOpts);
+
+        // Populate customer select
+        var cOpts='<option value="">-- Khách vãng lai --</option>';
+        allCustomers.forEach(function(c){cOpts+='<option value="'+c.id+'">'+c.code+' - '+c.name+'</option>';});
+        $('#inp_customer').html(cOpts);
+
+        loadData();
+    });
+
+    $('#btn_filter').click(loadData);
+    $('#btn_add').click(function(){
+        $('#edit_id').val('');$('#inp_customer_name,#inp_customer_phone,#inp_note').val('');
+        $('#inp_customer').val('').trigger('change');$('#inp_staff').val('');$('#inp_room').val('');
+        $('#inp_status').val(0);$('#inp_discount').val(0);$('#items_body').empty();
+        var now=new Date();
+        $('#inp_date').val(now.toISOString().slice(0,10));
+        $('#inp_start_time').val(now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));
+        $.get('/api/spa/bookings/generate_code/',function(r){$('#inp_code').val(r.code);});
+        updateTotals();
+        $('#modal_title').text('Tạo lịch hẹn');$('#modal_form').modal('show');
+    });
+
+    $('#btn_add_item').click(function(){addItemRow();});
+    $(document).on('input change','.item-qty,.item-price',function(){updateTotals();});
+    $(document).on('change','.sel-service',function(){
+        var $row=$(this).closest('tr');
+        var svc=allServices.find(function(s){return s.id==parseInt($(this).val());}.bind(this));
+        if(svc){$row.find('.item-price').val(svc.price);}
+        updateTotals();
+    });
+    $('#inp_discount').on('input',function(){updateTotals();});
+
+    $('#btn_save').click(saveBooking);
+});
+
+function addItemRow(data){
+    var sOpts='<option value="">-- Chọn DV --</option>';
+    allServices.forEach(function(s){
+        var sel=(data&&data.service_id==s.id)?'selected':'';
+        sOpts+='<option value="'+s.id+'" data-price="'+s.price+'" '+sel+'>'+s.code+' - '+s.name+' ('+s.duration_minutes+'p)</option>';
+    });
+    var staffOpts='<option value="">--</option>';
+    allStaff.forEach(function(s){
+        var sel=(data&&data.staff_id==s.id)?'selected':'';
+        staffOpts+='<option value="'+s.id+'" '+sel+'>'+s.name+'</option>';
+    });
+    var qty=data?data.quantity:1, price=data?data.unit_price:0;
+    var html='<tr>'+
+        '<td><select class="form-control form-control-sm sel-service">'+sOpts+'</select></td>'+
+        '<td><select class="form-control form-control-sm sel-item-staff">'+staffOpts+'</select></td>'+
+        '<td><input type="number" class="form-control form-control-sm item-qty" value="'+qty+'" min="1" style="width:60px;"></td>'+
+        '<td><input type="number" class="form-control form-control-sm item-price" value="'+price+'"></td>'+
+        '<td class="text-right item-total">'+fmt(qty*price)+'</td>'+
+        '<td><button type="button" class="btn btn-xs btn-danger btn-remove"><i class="fas fa-times"></i></button></td>'+
+        '</tr>';
+    $('#items_body').append(html);
+    updateTotals();
+}
+
+function updateTotals(){
+    var total=0;
+    $('#items_body tr').each(function(){
+        var q=parseInt($(this).find('.item-qty').val())||0;
+        var p=parseFloat($(this).find('.item-price').val())||0;
+        var t=q*p;
+        $(this).find('.item-total').text(fmt(t));
+        total+=t;
+    });
+    var disc=parseFloat($('#inp_discount').val())||0;
+    $('#lbl_total').html('<b>'+fmt(total)+'</b>');
+    $('#lbl_final').html('<b>'+fmt(total-disc)+'</b>');
+    // Estimate commission
+    var comm=0;
+    $('#items_body tr').each(function(){
+        var svcId=$(this).find('.sel-service').val();
+        var staffId=$(this).find('.sel-item-staff').val()||$('#inp_staff').val();
+        var svc=allServices.find(function(s){return s.id==parseInt(svcId);});
+        var stf=allStaff.find(function(s){return s.id==parseInt(staffId);});
+        var rate=0;
+        if(svc&&svc.commission_rate>0) rate=svc.commission_rate;
+        else if(stf&&stf.commission_rate>0) rate=stf.commission_rate;
+        var q=parseInt($(this).find('.item-qty').val())||0;
+        var p=parseFloat($(this).find('.item-price').val())||0;
+        comm+=q*p*rate/100;
+    });
+    $('#lbl_commission').text(fmt(Math.round(comm)));
+}
+
+$(document).on('click','.btn-remove',function(){$(this).closest('tr').remove();updateTotals();});
+
+function saveBooking(){
+    if(!$('#inp_code').val()||!$('#inp_date').val()||!$('#inp_start_time').val()){
+        alert('Vui lòng nhập đủ thông tin bắt buộc');return;
+    }
+    var items=[];
+    $('#items_body tr').each(function(){
+        var svcId=$(this).find('.sel-service').val();
+        if(!svcId)return;
+        items.push({
+            service_id:parseInt(svcId),
+            staff_id:$(this).find('.sel-item-staff').val()||null,
+            quantity:parseInt($(this).find('.item-qty').val())||1,
+            unit_price:parseFloat($(this).find('.item-price').val())||0,
+        });
+    });
+    $.ajax({url:'/api/spa/bookings/save/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({
+            id:$('#edit_id').val()||null,code:$('#inp_code').val(),
+            customer_id:$('#inp_customer').val()||null,
+            customer_name:$('#inp_customer_name').val(),
+            customer_phone:$('#inp_customer_phone').val(),
+            staff_id:$('#inp_staff').val()||null,
+            room_id:$('#inp_room').val()||null,
+            booking_date:$('#inp_date').val(),
+            start_time:$('#inp_start_time').val(),
+            end_time:$('#inp_end_time').val()||null,
+            status:parseInt($('#inp_status').val()),
+            discount_amount:parseFloat($('#inp_discount').val())||0,
+            note:$('#inp_note').val(),items:items,
+        }),
+        success:function(r){
+            if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}
+            alert(r.message);
+        }
+    });
+}
+
+function loadData(){
+    var params='?from_date='+($('#filter_from').val()||'')+'&to_date='+($('#filter_to').val()||'')+'&status='+($('#filter_status').val()||'');
+    $.get('/api/spa/bookings/'+params,function(res){
+        var h='';
+        res.data.forEach(function(d,i){
+            var statusColors={0:'info',1:'warning',2:'success',3:'secondary'};
+            var svcNames=d.items.map(function(it){return it.service_name;}).join(', ');
+            h+='<tr><td>'+(i+1)+'</td><td><b>'+d.code+'</b></td><td>'+d.booking_date_display+'</td>'+
+                '<td>'+d.start_time+(d.end_time?' - '+d.end_time:'')+'</td>'+
+                '<td>'+d.customer_name+'</td><td>'+d.staff_name+'</td><td>'+d.room_name+'</td>'+
+                '<td><small>'+svcNames+'</small></td><td class="text-right">'+fmt(d.final_amount)+'</td>'+
+                '<td class="text-center"><span class="badge badge-'+statusColors[d.status]+'">'+d.status_display+'</span></td>'+
+                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editBooking('+JSON.stringify(d).replace(/'/g,"\\'")+')\'><i class="fas fa-edit"></i></button>'+
+                ' <button class="btn btn-xs btn-danger" onclick="deleteBooking('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        });
+        $('#data_tbl tbody').html(h||'<tr><td colspan="11" class="text-center text-muted p-4">Chưa có lịch hẹn</td></tr>');
+    });
+}
+
+function editBooking(d){
+    $('#edit_id').val(d.id);$('#inp_code').val(d.code);
+    $('#inp_date').val(d.booking_date);$('#inp_start_time').val(d.start_time);$('#inp_end_time').val(d.end_time);
+    $('#inp_customer').val(d.customer_id).trigger('change');
+    $('#inp_customer_name').val(d.customer_name);$('#inp_customer_phone').val(d.customer_phone);
+    $('#inp_staff').val(d.staff_id);$('#inp_room').val(d.room_id);$('#inp_status').val(d.status);
+    $('#inp_discount').val(d.discount_amount);$('#inp_note').val(d.note);
+    $('#items_body').empty();
+    d.items.forEach(function(it){addItemRow(it);});
+    updateTotals();
+    $('#modal_title').text('Sửa lịch hẹn');$('#modal_form').modal('show');
+}
+
+function deleteBooking(id){
+    if(!confirm('Xóa lịch hẹn này?'))return;
+    $.ajax({url:'/api/spa/bookings/delete/',type:'POST',contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        success:function(r){loadData();alert(r.message);}});
+}
+</script>
+{% endblock %}

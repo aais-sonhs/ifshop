@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title"><i class="fas fa-shopping-cart mr-2"></i>Cài đặt đơn hàng</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted"><small>Cấu hình hiển thị cho module đơn hàng / hóa đơn</small></p>
+
+                <div class="card card-outline card-info">
+                    <div class="card-header py-2"><b>👥 Thông tin nhân sự trên hóa đơn</b></div>
+                    <div class="card-body">
+                        <div class="custom-control custom-switch mb-3">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_salesperson">
+                            <label class="custom-control-label" for="opt_order_salesperson">
+                                <i class="fas fa-user-tie text-primary mr-1"></i> Hiện trường <b>"NV bán hàng"</b> khi tạo/sửa hóa đơn
+                            </label>
+                            <br><small class="text-muted">Nếu hóa đơn tạo từ báo giá, NV bán hàng tự động lấy từ người tạo báo giá. Có thể đổi thủ công.</small>
+                        </div>
+                        <div class="custom-control custom-switch mb-3">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_server_staff">
+                            <label class="custom-control-label" for="opt_order_server_staff">
+                                <i class="fas fa-concierge-bell text-info mr-1"></i> Hiện trường <b>"NV phục vụ"</b> khi tạo/sửa hóa đơn
+                            </label>
+                            <br><small class="text-muted">Dành cho nhà hàng, quán café, spa — ghi nhận nhân viên trực tiếp phục vụ khách.</small>
+                        </div>
+                        <div class="custom-control custom-switch mb-3">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_approver">
+                            <label class="custom-control-label" for="opt_order_approver">
+                                <i class="fas fa-user-check text-success mr-1"></i> Hiện trường <b>"Người duyệt"</b> khi tạo/sửa hóa đơn
+                            </label>
+                            <br><small class="text-muted">Chọn người duyệt từ danh sách tài khoản hệ thống. Bán lẻ thường không cần.</small>
+                        </div>
+                        <div class="custom-control custom-switch mb-3">
+                            <input type="checkbox" class="custom-control-input" id="opt_order_bonus">
+                            <label class="custom-control-label" for="opt_order_bonus">
+                                <i class="fas fa-gift text-warning mr-1"></i> Hiện trường <b>"Tiền bonus"</b> khi tạo/sửa hóa đơn
+                            </label>
+                            <br><small class="text-muted">Dành cho spa / massage — ghi nhận tiền thưởng thêm cho hóa đơn này.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-secondary mt-3">
+                    <div class="card-header py-2"><b>ℹ️ Trường luôn hiển thị</b></div>
+                    <div class="card-body">
+                        <ul class="mb-0">
+                            <li><i class="fas fa-user text-success mr-1"></i> <b>Người tạo hóa đơn</b> — tự động lấy từ tài khoản đang đăng nhập</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button class="btn btn-primary btn-lg" id="btn_save"><i class="fas fa-save mr-2"></i>Lưu cài đặt</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function(){
+    // Load
+    $.get('/api/business_config/', function(res){
+        var d = res.data;
+        $('#opt_order_salesperson').prop('checked', d.opt_order_salesperson);
+        $('#opt_order_server_staff').prop('checked', d.opt_order_server_staff);
+        $('#opt_order_approver').prop('checked', d.opt_order_approver);
+        $('#opt_order_bonus').prop('checked', d.opt_order_bonus);
+    });
+
+    // Save
+    $('#btn_save').click(function(){
+        $.get('/api/business_config/', function(res){
+            var data = res.data;
+            data.opt_order_salesperson = $('#opt_order_salesperson').prop('checked');
+            data.opt_order_server_staff = $('#opt_order_server_staff').prop('checked');
+            data.opt_order_approver = $('#opt_order_approver').prop('checked');
+            data.opt_order_bonus = $('#opt_order_bonus').prop('checked');
+            $.ajax({
+                url: '/api/business_config/save/', type: 'POST',
+                contentType: 'application/json',
+                headers: {'X-CSRFToken': '{{csrf_token}}'},
+                data: JSON.stringify(data),
+                success: function(r){
+                    alert(r.message);
+                    if(r.status === 'ok') location.reload();
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

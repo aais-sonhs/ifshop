@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}🖥️ POS Bán hàng{% endblock %}
+{% block content %}
+<style>
+.pos-container { display: grid; grid-template-columns: 1fr 380px; gap: 0; height: calc(100vh - 57px); overflow: hidden; }
+.pos-menu { overflow-y: auto; padding: 12px; background: #f4f6f9; }
+.pos-cart { background: #fff; border-left: 2px solid #dee2e6; display: flex; flex-direction: column; }
+.pos-cart-header { padding: 10px 15px; background: linear-gradient(135deg, #0ea5e9, #6366f1); color:#fff; }
+.pos-cart-items { flex: 1; overflow-y: auto; padding: 0; }
+.pos-cart-footer { padding: 12px 15px; border-top: 2px solid #dee2e6; background: #f8f9fa; }
+.cat-tab { display: inline-block; padding: 6px 16px; margin: 0 4px 8px 0; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; background: #fff; border: 1px solid #ddd; transition: all 0.2s; white-space: nowrap; }
+.cat-tab:hover, .cat-tab.active { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.pos-product { background: #fff; border-radius: 10px; cursor: pointer; transition: all 0.2s; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 2px solid transparent; }
+.pos-product:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); border-color: #0ea5e9; }
+.pos-product:active { transform: scale(0.96); }
+.pos-product img { width: 100%; height: 100px; object-fit: cover; }
+.pos-product .pos-p-info { padding: 8px; text-align: center; }
+.pos-product .pos-p-name { font-size: 12px; font-weight: 600; line-height: 1.3; height: 32px; overflow: hidden; }
+.pos-product .pos-p-price { font-size: 13px; color: #e94560; font-weight: 700; margin-top: 4px; }
+.cart-item { display: flex; align-items: center; padding: 8px 15px; border-bottom: 1px solid #f0f0f0; }
+.cart-item:hover { background: #f8f9fa; }
+.cart-item .ci-name { flex: 1; font-size: 13px; font-weight: 600; }
+.cart-item .ci-price { font-size: 12px; color: #666; min-width: 80px; text-align: right; }
+.cart-item .ci-qty { display: flex; align-items: center; gap: 4px; }
+.cart-item .ci-qty button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.cart-item .ci-qty button:hover { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
+.cart-item .ci-qty span { min-width: 24px; text-align: center; font-weight: 700; }
+.pos-total-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
+.pos-total-row.grand { font-size: 20px; font-weight: 800; color: #e94560; }
+.pay-btn { width: 100%; padding: 12px; font-size: 16px; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s; }
+.pay-btn:hover { transform: scale(1.02); }
+.pay-btn:active { transform: scale(0.98); }
+.pay-btn.cash { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+.pay-btn.transfer { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; margin-top: 6px; }
+.search-pos { border-radius: 20px; padding: 8px 16px; border: 1px solid #ddd; width: 100%; margin-bottom: 12px; }
+.table-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.table-badge.active { background: #0ea5e9; color: #fff; }
+.table-badge.inactive { background: #e2e8f0; color: #64748b; }
+
+/* Mobile cart toggle button */
+.mobile-cart-toggle { display: none; position: fixed; bottom: 16px; right: 16px; z-index: 1050; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #0ea5e9, #6366f1); color: #fff; border: none; box-shadow: 0 4px 20px rgba(14,165,233,0.4); font-size: 20px; cursor: pointer; }
+.mobile-cart-toggle .cart-count { position: absolute; top: -4px; right: -4px; background: #e94560; color: #fff; border-radius: 50%; width: 22px; height: 22px; font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+
+/* Tablet (≤1024px) */
+@media (max-width: 1024px) {
+    .pos-container { grid-template-columns: 1fr 320px; }
+    .product-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+    .pos-product img { height: 80px; }
+}
+
+/* Mobile (≤768px) */
+@media (max-width: 768px) {
+    .pos-container { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 57px); }
+    .pos-menu { padding: 8px; padding-bottom: 80px; }
+    .pos-cart { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1040; border-left: none; }
+    .pos-cart.show { display: flex; }
+    .mobile-cart-toggle { display: flex; align-items: center; justify-content: center; }
+    .product-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+    .pos-product img { height: 75px; }
+    .pos-product .pos-p-name { font-size: 11px; height: 28px; }
+    .pos-product .pos-p-price { font-size: 12px; }
+    .cat-tab { padding: 5px 12px; font-size: 12px; }
+    .pay-btn { padding: 14px; font-size: 15px; }
+    .pos-cart-header h5 { font-size: 16px; }
+    .cart-item .ci-qty button { width: 32px; height: 32px; }
+    .pos-total-row.grand { font-size: 18px; }
+}
+
+/* Small mobile (≤480px) */
+@media (max-width: 480px) {
+    .product-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .pos-product img { height: 65px; }
+    .pos-product .pos-p-info { padding: 5px; }
+    .pos-product .pos-p-name { font-size: 10px; height: 26px; }
+    .pos-product .pos-p-price { font-size: 11px; }
+}
+</style>
+
+<div class="pos-container">
+    <!-- Mobile: Floating Cart Button -->
+    <button class="mobile-cart-toggle" id="btn_mobile_cart" onclick="toggleMobileCart()">
+        <i class="fas fa-shopping-cart"></i>
+        <span class="cart-count" id="mobile_cart_count" style="display:none;">0</span>
+    </button>
+
+    <!-- LEFT: Menu sản phẩm -->
+    <div class="pos-menu">
+        <div class="d-flex align-items-center mb-2">
+            <input type="text" class="search-pos" id="pos_search" placeholder="🔍 Tìm sản phẩm..." oninput="filterProducts()">
+        </div>
+        <!-- Category tabs -->
+        <div id="cat_tabs" class="mb-2" style="overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;"></div>
+        <!-- Product grid -->
+        <div class="product-grid" id="product_grid"></div>
+    </div>
+
+    <!-- RIGHT: Giỏ hàng -->
+    <div class="pos-cart" id="pos_cart_panel">
+        <div class="pos-cart-header">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <h5 class="m-0"><i class="fas fa-shopping-cart mr-1"></i>Đơn hàng <span class="d-md-none" style="font-size:12px;opacity:0.7;">— chạm để đóng</span></h5>
+                    <div id="pos_table_info" class="mt-1" style="font-size:12px;opacity:0.8;"></div>
+                </div>
+                <div class="d-flex align-items-center">
+                    <select id="pos_customer" class="form-control form-control-sm" style="width:140px;font-size:12px;">
+                        <option value="">-- Khách lẻ --</option>
+                    </select>
+                    <button class="btn btn-sm btn-light ml-2 d-md-none" onclick="toggleMobileCart()" style="border-radius:50%;width:32px;height:32px;"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="pos-cart-items" id="cart_items">
+            <div class="text-center text-muted py-5"><i class="fas fa-shopping-basket fa-3x mb-2" style="opacity:0.2;"></i><p>Chưa có sản phẩm</p></div>
+        </div>
+
+        <div class="pos-cart-footer">
+            <div class="pos-total-row"><span>Tạm tính:</span><span id="pos_subtotal">0đ</span></div>
+            <div class="pos-total-row">
+                <span>Giảm giá:</span>
+                <span><input type="number" id="pos_discount" value="0" style="width:80px;text-align:right;border:1px solid #ddd;border-radius:6px;padding:2px 6px;" onchange="updateCartTotal()">đ</span>
+            </div>
+            <div class="pos-total-row grand"><span>TỔNG:</span><span id="pos_total">0đ</span></div>
+            <button class="pay-btn cash" onclick="posCheckout('cash')"><i class="fas fa-money-bill-wave mr-2"></i>Thanh toán tiền mặt</button>
+            <button class="pay-btn transfer" onclick="posCheckout('transfer')"><i class="fas fa-university mr-2"></i>Chuyển khoản</button>
+        </div>
+    </div>
+</div>
+
+<script>
+var posProducts = [];
+var posCategories = [];
+var cart = [];
+var currentCat = 'all';
+var tableId = new URLSearchParams(window.location.search).get('table_id');
+
+function fmt(n){ return new Intl.NumberFormat('vi-VN').format(Math.round(n)); }
+
+function loadPosData(){
+    // Load products
+    $.get('/api/products_select/', function(res){
+        posProducts = (res.data || []).filter(p => p.is_active !== false);
+        // Extract categories
+        var cats = {};
+        posProducts.forEach(function(p){
+            if(p.category_name && !cats[p.category_id]){
+                cats[p.category_id] = p.category_name;
+            }
+        });
+        posCategories = Object.entries(cats).map(([id,name]) => ({id:parseInt(id), name:name}));
+        renderCatTabs();
+        renderProducts();
+    });
+    // Load customers
+    $.get('/api/customers/', function(res){
+        var sel = $('#pos_customer');
+        (res.data||[]).forEach(function(c){
+            sel.append('<option value="'+c.id+'">'+c.name+(c.phone?' ('+c.phone+')':'')+'</option>');
+        });
+    });
+    // Table info
+    if(tableId){
+        $.get('/api/cafe_tables/', function(res){
+            var t = (res.data||[]).find(x => x.id == tableId);
+            if(t) $('#pos_table_info').html('🪑 '+t.name+' ('+t.area_display+')');
+        });
+    }
+}
+
+function renderCatTabs(){
+    var html = '<span class="cat-tab active" onclick="filterCat(\'all\',this)">Tất cả</span>';
+    posCategories.forEach(function(c){
+        html += '<span class="cat-tab" onclick="filterCat('+c.id+',this)">'+c.name+'</span>';
+    });
+    $('#cat_tabs').html(html);
+}
+
+function filterCat(catId, el){
+    currentCat = catId;
+    $(el).addClass('active').siblings().removeClass('active');
+    renderProducts();
+}
+
+function filterProducts(){
+    renderProducts();
+}
+
+function renderProducts(){
+    var search = ($('#pos_search').val()||'').toLowerCase();
+    var grid = $('#product_grid');
+    grid.empty();
+    var filtered = posProducts.filter(function(p){
+        if(currentCat !== 'all' && p.category_id !== currentCat) return false;
+        if(search && !p.name.toLowerCase().includes(search) && !(p.code||'').toLowerCase().includes(search)) return false;
+        return true;
+    });
+    filtered.forEach(function(p){
+        var imgSrc = p.image_url || '/static/img/no-image.png';
+        grid.append(
+            '<div class="pos-product" onclick="addToCart('+p.id+')">' +
+                '<img src="'+imgSrc+'" alt="" onerror="this.src=\'/static/img/no-image.png\'">' +
+                '<div class="pos-p-info">' +
+                    '<div class="pos-p-name">'+p.name+'</div>' +
+                    '<div class="pos-p-price">'+fmt(p.price)+'đ</div>' +
+                '</div>' +
+            '</div>'
+        );
+    });
+    if(!filtered.length) grid.html('<div class="text-center text-muted py-3 w-100">Không tìm thấy SP</div>');
+}
+
+function addToCart(productId){
+    var existing = cart.find(c => c.product_id === productId);
+    if(existing){
+        existing.quantity += 1;
+        existing.total = existing.quantity * existing.price;
+    } else {
+        var p = posProducts.find(x => x.id === productId);
+        if(!p) return;
+        cart.push({
+            product_id: p.id, name: p.name, price: p.price,
+            quantity: 1, total: p.price, image_url: p.image_url || ''
+        });
+    }
+    renderCart();
+}
+
+function changeQty(idx, delta){
+    cart[idx].quantity += delta;
+    if(cart[idx].quantity <= 0){ cart.splice(idx, 1); }
+    else { cart[idx].total = cart[idx].quantity * cart[idx].price; }
+    renderCart();
+}
+
+function removeItem(idx){
+    cart.splice(idx, 1);
+    renderCart();
+}
+
+function renderCart(){
+    var html = '';
+    if(!cart.length){
+        html = '<div class="text-center text-muted py-5"><i class="fas fa-shopping-basket fa-3x mb-2" style="opacity:0.2;"></i><p>Chưa có sản phẩm</p></div>';
+    } else {
+        cart.forEach(function(item, idx){
+            html += '<div class="cart-item">' +
+                '<div class="ci-name">'+item.name+'</div>' +
+                '<div class="ci-qty">' +
+                    '<button onclick="changeQty('+idx+',-1)">−</button>' +
+                    '<span>'+item.quantity+'</span>' +
+                    '<button onclick="changeQty('+idx+',1)">+</button>' +
+                '</div>' +
+                '<div class="ci-price">'+fmt(item.total)+'đ</div>' +
+                '<button class="btn btn-xs text-danger ml-1" onclick="removeItem('+idx+')"><i class="fas fa-times"></i></button>' +
+            '</div>';
+        });
+    }
+    $('#cart_items').html(html);
+    updateCartTotal();
+    updateMobileCartBadge();
+}
+
+function updateCartTotal(){
+    var subtotal = cart.reduce((s,i) => s + i.total, 0);
+    var discount = parseInt($('#pos_discount').val()) || 0;
+    var total = subtotal - discount;
+    $('#pos_subtotal').text(fmt(subtotal) + 'đ');
+    $('#pos_total').text(fmt(total > 0 ? total : 0) + 'đ');
+}
+
+function posCheckout(method){
+    if(!cart.length){ alert('Giỏ hàng trống!'); return; }
+    var subtotal = cart.reduce((s,i) => s + i.total, 0);
+    var discount = parseInt($('#pos_discount').val()) || 0;
+    var total = subtotal - discount;
+    if(!confirm('Xác nhận thanh toán ' + fmt(total) + 'đ (' + (method==='cash'?'Tiền mặt':'Chuyển khoản') + ')?')) return;
+
+    var items = cart.map(function(c){
+        return { product_id: c.product_id, quantity: c.quantity, unit_price: c.price, total_price: c.total, discount_percent: 0 };
+    });
+
+    var orderData = {
+        customer_id: $('#pos_customer').val() || null,
+        items: items,
+        total_amount: subtotal,
+        discount_amount: discount,
+        final_amount: total,
+        paid_amount: total,
+        status: 5,  // Hoàn thành
+        payment_status: 2,  // Đã thanh toán
+        note: 'POS - ' + (method==='cash'?'Tiền mặt':'CK'),
+    };
+    if(tableId) orderData.table_id = parseInt(tableId);
+
+    $.ajax({
+        url: '/api/orders/pos_checkout/', type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        data: JSON.stringify(orderData),
+        success: function(r){
+            if(r.status === 'ok'){
+                alert('✅ Thanh toán thành công!\nMã đơn: ' + r.order_code);
+                cart = []; renderCart(); $('#pos_discount').val(0);
+                if(tableId){
+                    // Clear table
+                    $.ajax({url:'/api/cafe_tables/update_status/', type:'POST', contentType:'application/json',
+                        headers:{'X-CSRFToken':'{{ csrf_token }}'},
+                        data: JSON.stringify({id: parseInt(tableId), status: 0}),
+                    });
+                }
+            } else { alert('Lỗi: ' + r.message); }
+        },
+        error: function(){ alert('Lỗi kết nối!'); }
+    });
+}
+
+$(document).ready(function(){ loadPosData(); });
+
+function toggleMobileCart(){
+    $('#pos_cart_panel').toggleClass('show');
+}
+
+function updateMobileCartBadge(){
+    var count = cart.reduce((s,i) => s + i.quantity, 0);
+    if(count > 0){
+        $('#mobile_cart_count').text(count).show();
+    } else {
+        $('#mobile_cart_count').hide();
+    }
+}
+</script>
+{% endblock %}

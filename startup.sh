@@ -41,7 +41,5 @@ if [ "$LOG_LEVEL" = "info" ] || [ "$LOG_LEVEL" = "debug" ]; then
   ACCESS_LOG_FLAG="--access-log"
 fi
 
-# Chạy server Django
-# Sử dụng Gunicorn cho production với số worker chỉ định trong app.yml
-# Nếu bạn chưa cài gunicorn, hãy chạy pip install gunicorn trước nhé
-gunicorn api_crud.wsgi:application --bind 0.0.0.0:$PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL
+# Chạy Uvicorn (ASGI)
+uvicorn api_crud.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG

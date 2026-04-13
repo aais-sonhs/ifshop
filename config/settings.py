@@ -115,7 +115,7 @@ DATABASES = {
         'NAME': 'ifshop',
         'USER': 'postgres',
         'PASSWORD': 'TuanHai2508',
-        'HOST': '14.224.220.54',
+        'HOST': 'localhost',
         'PORT': '5432',
         'CONN_MAX_AGE': 0,
     }

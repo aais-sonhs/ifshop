@@ -22,8 +22,16 @@ SECRET_KEY = 'ftov1!91yf@7f7&g2%*@0_e^)ac&f&9jeloc@#v76#^b1dhbl#'
 DEBUG = False
 
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = ['https://*.appliedaisystem.com','https://*.127.0.0.1', 'http://113.160.218.241:8020']
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.appliedaisystem.com',
+    'https://*.127.0.0.1', 
+    'http://113.160.218.241:8020',
+    'https://*.ipchello.com',
+    'https://ifshop.ipchello.com'
+]
 
+# Đảm bảo Django hiểu là đang giao tiếp qua HTTPS (nếu deploy qua Nginx)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

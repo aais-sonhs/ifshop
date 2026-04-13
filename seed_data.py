@@ -3,7 +3,7 @@ Script tạo dữ liệu mẫu cho toàn bộ hệ thống
 Chạy: python manage.py shell < seed_data.py
 """
 import os, sys, django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'api_crud.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
 from django.contrib.auth.models import User

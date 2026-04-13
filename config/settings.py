@@ -1,5 +1,5 @@
 """
-Django settings for api_crud project.
+Django settings for config project.
 Phần mềm quản lý bán hàng
 """
 
@@ -76,7 +76,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-ROOT_URLCONF = 'api_crud.urls'
+ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
@@ -95,7 +95,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'api_crud.wsgi.application'
+WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database

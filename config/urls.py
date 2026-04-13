@@ -2,7 +2,7 @@
 from django.contrib import admin
 from django.urls import re_path, include
 
-from api_crud import settings
+from config import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns

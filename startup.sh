@@ -42,4 +42,4 @@ if [ "$LOG_LEVEL" = "info" ] || [ "$LOG_LEVEL" = "debug" ]; then
 fi
 
 # Chạy Uvicorn (ASGI)
-uvicorn api_crud.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG
+uvicorn config.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG

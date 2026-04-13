@@ -6,7 +6,7 @@ import sys
 
 def main():
     # if check_have_usb_dongle():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "api_crud.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

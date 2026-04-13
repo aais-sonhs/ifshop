@@ -39,7 +39,7 @@
                 </div>
                 <div class="row">
                     <div class="col-md-4"><div class="form-group"><label>Ngày chi <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_payment_date"></div></div>
-                    <div class="col-md-4"><div class="form-group"><label>Hình thức TT</label><select class="form-control form-control-sm" id="inp_payment_method"><option value="2">🏦 Chuyển khoản</option><option value="1">💵 Tiền mặt</option></select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Hình thức TT</label><select class="form-control form-control-sm" id="inp_payment_method">{% for m in payment_methods %}<option value="{{ m.id }}" data-legacy-type="{{ m.legacy_type }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}</option>{% endfor %}</select></div></div>
                     <div class="col-md-4"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
                 </div>
                 <div class="form-group"><label>Diễn giải</label><textarea class="form-control form-control-sm" id="inp_description" rows="2"></textarea></div>
@@ -101,12 +101,14 @@ $(document).ready(function(){
         $('#modal_title').text('Tạo phiếu chi');$('#modal_form').modal('show');
     });
     $('#btn_save').click(function(){
+        var $methodOpt = $('#inp_payment_method option:selected');
         var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),category_id:$('#inp_category_id').val(),
             cash_book_id:$('#inp_cash_book_id').val(),supplier_id:$('#inp_supplier_id').val(),
             goods_receipt_id:$('#inp_goods_receipt_id').val(),
             amount:$('#inp_amount').val(),
             payment_date:$('#inp_payment_date').val(),description:$('#inp_description').val(),
-            status:parseInt($('#inp_status').val()),payment_method:parseInt($('#inp_payment_method').val())||1,note:$('#inp_note').val()};
+            status:parseInt($('#inp_status').val()),payment_method:parseInt($methodOpt.data('legacy-type'))||2,
+            payment_method_option_id:$methodOpt.val()||null,note:$('#inp_note').val()};
         if(!data.code||!data.payment_date){alert('Vui lòng nhập mã và ngày chi');return;}
         $.ajax({url:'/api/payments/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
@@ -118,7 +120,7 @@ function loadData(){
     $.get('/api/payments/',function(res){
         var h='';res.data.forEach(function(d,i){
             var grBadge = d.goods_receipt ? '<span class="badge badge-info">'+d.goods_receipt+'</span>' : '';
-            var pmLabel = d.payment_method === 2 ? '🏦 CK' : '💵 TM';
+            var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
             h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
                 '<td class="text-right">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+d.payment_date+'</td><td>'+d.cash_book+'</td>'+
@@ -133,7 +135,7 @@ function editItem(d){
     $('#inp_cash_book_id').val(d.cash_book_id);$('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
     $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
     $('#inp_amount').val(d.amount);$('#inp_payment_date').val(d.payment_date);
-    $('#inp_description').val(d.description);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method||1);$('#inp_note').val(d.note);
+    $('#inp_description').val(d.description);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || '');$('#inp_note').val(d.note);
     $('#modal_title').text('Sửa phiếu chi');$('#modal_form').modal('show');
 }
 function deleteItem(id){

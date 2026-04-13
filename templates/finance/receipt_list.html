@@ -235,6 +235,7 @@ $(document).ready(function(){
         if(!code || !date){ alert('Vui lòng nhập mã và ngày thu'); return; }
         if(amount <= 0){ alert('Vui lòng nhập số tiền'); return; }
 
+        var $methodOpt = $('#inp_payment_method option:selected');
         var data = {
             id: $('#edit_id').val() || null,
             code: code,
@@ -246,7 +247,8 @@ $(document).ready(function(){
             amount: amount,
             description: $('#inp_description').val(),
             status: parseInt($('#inp_status').val()),
-            payment_method: parseInt($('#inp_payment_method').val()) || 1,
+            payment_method: parseInt($methodOpt.data('legacy-type')) || 2,
+            payment_method_option_id: $methodOpt.val() || null,
             note: $('#inp_note').val()
         };
 
@@ -285,7 +287,7 @@ function loadData(){
         var h = '';
         res.data.forEach(function(d, i){
             var statusClass = {'0':'secondary','1':'success','2':'danger'}[d.status] || 'secondary';
-            var pmLabel = d.payment_method === 2 ? '🏦 CK' : '💵 TM';
+            var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
             h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.customer+'</td>'+
                 '<td>'+(d.order ? '<span class="badge badge-info">'+d.order+'</span>' : '')+'</td>'+
                 '<td class="text-right font-weight-bold">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+d.receipt_date+'</td><td>'+d.cash_book+'</td>'+
@@ -331,7 +333,7 @@ function editItem(d){
     $('#inp_amount').val(d.amount);
     $('#inp_receipt_date').val(d.receipt_date);
     $('#inp_status').val(d.status);
-    $('#inp_payment_method').val(d.payment_method || 1);
+    $('#inp_payment_method').val(d.payment_method_option_id || '');
     $('#inp_description').val(d.description);
     $('#inp_note').val(d.note);
 
@@ -364,5 +366,115 @@ function deleteItem(id){
         success: function(r){ loadData(); loadSummary(); alert(r.message); }
     });
 }
+// ============ QUẢN LÝ PHƯƠNG THỨC NHẬN TIỀN ============
+$('#btn_manage_payment_methods').click(function(){
+    loadPaymentMethods();
+    $('#modal_payment_methods').modal('show');
+});
+function loadPaymentMethods(){
+    $.get('/api/payment_methods/', function(res){
+        var h='';
+        res.data.forEach(function(m){
+            h += '<tr>' +
+                '<td>'+m.code+'</td>' +
+                '<td>'+m.name+'</td>' +
+                '<td>'+m.legacy_type_display+'</td>' +
+                '<td>'+(m.default_cash_book||'—')+'</td>' +
+                '<td class="text-center">'+(m.is_active ? '<span class="badge badge-success">Đang dùng</span>' : '<span class="badge badge-secondary">Tắt</span>')+'</td>' +
+                '<td><button class="btn btn-xs btn-info" onclick=\'editPaymentMethod('+JSON.stringify(m).replace(/\'/g,"&#39;")+ ')\'>Sửa</button></td>' +
+                '</tr>';
+        });
+        if(!h) h='<tr><td colspan="6" class="text-center text-muted">Chưa có phương thức nào. Nhấn "Thêm" để tạo mới.</td></tr>';
+        $('#pm_tbl tbody').html(h);
+    });
+}
+function editPaymentMethod(m){
+    $('#pm_edit_id').val(m.id || '');
+    $('#pm_code').val(m.code || '');
+    $('#pm_name').val(m.name || '');
+    $('#pm_description').val(m.description || '');
+    $('#pm_legacy_type').val(m.legacy_type || 3);
+    $('#pm_default_cash_book_id').val(m.default_cash_book_id || '');
+    $('#pm_sort_order').val(m.sort_order || 0);
+    $('#pm_is_active').prop('checked', m.is_active !== false);
+    $('#pm_form_title').text(m.id ? 'Sửa phương thức' : 'Thêm phương thức');
+    $('#pm_form_section').show();
+}
+$('#btn_add_payment_method').click(function(){
+    editPaymentMethod({});
+});
+$('#btn_save_pm').click(function(){
+    var data = {
+        id: $('#pm_edit_id').val() || null,
+        code: $('#pm_code').val(),
+        name: $('#pm_name').val(),
+        description: $('#pm_description').val(),
+        legacy_type: parseInt($('#pm_legacy_type').val()) || 3,
+        default_cash_book_id: $('#pm_default_cash_book_id').val() || null,
+        sort_order: parseInt($('#pm_sort_order').val()) || 0,
+        is_active: $('#pm_is_active').is(':checked')
+    };
+    $.ajax({
+        url:'/api/payment_methods/save/', type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify(data),
+        success:function(r){
+            if(r.status==='ok'){
+                loadPaymentMethods();
+                $('#pm_form_section').hide();
+                alert(r.message);
+            } else { alert(r.message); }
+        }
+    });
+});
 </script>
+
+<!-- MODAL QUẢN LÝ PHƯƠNG THỨC NHẬN TIỀN -->
+<div class="modal fade" id="modal_payment_methods" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-list mr-1"></i> Quản lý phương thức nhận tiền</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2"><button class="btn btn-sm btn-primary" id="btn_add_payment_method"><i class="fas fa-plus mr-1"></i> Thêm</button></div>
+                <table class="table table-bordered table-sm" id="pm_tbl">
+                    <thead><tr><th>Mã</th><th>Tên</th><th>Loại chuẩn</th><th>Tài khoản MĐ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div id="pm_form_section" style="display:none;" class="border-top pt-3 mt-2">
+                    <h6 id="pm_form_title">Thêm phương thức</h6>
+                    <input type="hidden" id="pm_edit_id">
+                    <div class="row">
+                        <div class="col-md-3"><div class="form-group"><label>Mã <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="pm_code" placeholder="VD: MOMO"></div></div>
+                        <div class="col-md-5"><div class="form-group"><label>Tên <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="pm_name" placeholder="VD: Ví MoMo"></div></div>
+                        <div class="col-md-4"><div class="form-group"><label>Loại chuẩn</label>
+                            <select class="form-control form-control-sm" id="pm_legacy_type">
+                                <option value="1">Tiền mặt</option><option value="2">Chuyển khoản</option><option value="3" selected>Khác</option>
+                            </select>
+                        </div></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-5"><div class="form-group"><label>Tài khoản mặc định</label>
+                            <select class="form-control form-control-sm" id="pm_default_cash_book_id">
+                                <option value="">-- Không gán --</option>
+                                {% for c in cashbooks %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            </select>
+                        </div></div>
+                        <div class="col-md-3"><div class="form-group"><label>Thứ tự</label><input type="number" class="form-control form-control-sm" id="pm_sort_order" value="0"></div></div>
+                        <div class="col-md-4"><div class="form-group"><label>Mô tả</label><input type="text" class="form-control form-control-sm" id="pm_description"></div></div>
+                    </div>
+                    <div class="custom-control custom-checkbox mb-2">
+                        <input type="checkbox" class="custom-control-input" id="pm_is_active" checked>
+                        <label class="custom-control-label" for="pm_is_active">Đang hoạt động</label>
+                    </div>
+                    <button class="btn btn-sm btn-success" id="btn_save_pm"><i class="fas fa-save mr-1"></i> Lưu</button>
+                    <button class="btn btn-sm btn-secondary" onclick="$('#pm_form_section').hide()">Hủy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

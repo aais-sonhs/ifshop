@@ -12,6 +12,10 @@ mimetypes.add_type("text/javascript", ".js", True)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 
+# Ensure log directories exist
+os.makedirs(os.path.join(LOG_DIR, 'app'), exist_ok=True)
+os.makedirs(os.path.join(LOG_DIR, 'server'), exist_ok=True)
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.0/howto/deployment/checklist/
 
@@ -157,8 +161,8 @@ LOGGING = {
         'skip_image_404': {
             '()': 'django.utils.log.CallbackFilter',
             'callback': lambda record: not (
-                'Not Found: /media/' in record.getMessage() and
-                any(record.getMessage().lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp'])
+                any(path in record.getMessage() for path in ['Not Found: /media/', 'Not Found: /static/']) and
+                any(record.getMessage().lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.ico'])
             ),
         },
     },

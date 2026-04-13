@@ -213,6 +213,61 @@
         </div>
     </div>
 </div>
+
+<!-- MODAL TẠO NHANH SẢN PHẨM (F3) -->
+<div class="modal fade" id="modal_quick_product" tabindex="-1" data-backdrop="static">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-box-open mr-1"></i> Tạo nhanh sản phẩm <small class="ml-2"><kbd>F3</kbd></small></h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Mã SP <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="qp_code" placeholder="VD: SP001">
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Tên sản phẩm <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="qp_name" placeholder="VD: Bánh quy kẹp bơ">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>ĐVT</label>
+                            <input type="text" class="form-control form-control-sm" id="qp_unit" value="Cái">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Giá vốn</label>
+                            <input type="text" class="form-control form-control-sm money-format" id="qp_cost_price" value="0">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Giá bán <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm money-format" id="qp_selling_price" value="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info py-2 mb-0">
+                    <small><i class="fas fa-info-circle mr-1"></i> Tạo nhanh SP tối giản. Bạn có thể bổ sung thêm thông tin chi tiết ở trang Sản phẩm sau.</small>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-sm btn-info" id="btn_save_quick_product"><i class="fas fa-check mr-1"></i> Tạo & Thêm vào báo giá</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -386,7 +441,7 @@ $(document).ready(function(){
                 return p.name.toLowerCase().indexOf(term)>=0 || p.code.toLowerCase().indexOf(term)>=0;
             }).slice(0, 10);
             if(results.length === 0){
-                $('#quick_search_results').html('<div class="p-2 text-muted text-center"><i class="fas fa-search mr-1"></i>Không tìm thấy.</div>').show();
+                $('#quick_search_results').html('<div class="p-2 text-muted text-center"><i class="fas fa-search mr-1"></i>Không tìm thấy. Nhấn <kbd>F3</kbd> để tạo SP mới</div>').show();
                 return;
             }
             var html = '';
@@ -403,10 +458,7 @@ $(document).ready(function(){
     $(document).on('click', '.quick-search-item', function(){
         var pid = $(this).data('product-id');
         var product = allProducts.find(function(p){ return p.id == pid; });
-        if(product){
-            var item = {product_id:product.id, variant_id:null, unit:product.unit, quantity:1, unit_price:product.selling_price, discount_percent:0};
-            addItemRow(item); calcTotal();
-        }
+        if(product) addItemFromProduct(product);
         $('#quick_search_product').val('').focus();
         $('#quick_search_results').hide();
     });
@@ -415,6 +467,55 @@ $(document).ready(function(){
     });
     $(document).on('click', function(e){
         if(!$(e.target).closest('#quick_search_product, #quick_search_results').length) $('#quick_search_results').hide();
+    });
+
+    // F3 shortcut - tạo nhanh sản phẩm
+    $(document).on('keydown', function(e){
+        if(e.key === 'F3'){
+            e.preventDefault();
+            if(!$('#modal_form').hasClass('show')) return;
+            var searchTerm = $('#quick_search_product').val().trim();
+            $('#qp_name').val(searchTerm);
+            var nextCode = 'SP' + String(allProducts.length + 1).padStart(4, '0');
+            $('#qp_code').val(nextCode);
+            $('#qp_unit').val('Cái');
+            setMoneyValue('#qp_cost_price', 0);
+            setMoneyValue('#qp_selling_price', 0);
+            $('#modal_quick_product').modal('show');
+            setTimeout(function(){ $('#qp_name').focus(); }, 300);
+        }
+    });
+
+    // Save quick product
+    $('#btn_save_quick_product').click(function(){
+        var code = $('#qp_code').val().trim();
+        var name = $('#qp_name').val().trim();
+        if(!code || !name){ alert('Vui lòng nhập mã và tên sản phẩm'); return; }
+        var formData = new FormData();
+        formData.append('code', code);
+        formData.append('name', name);
+        formData.append('unit', $('#qp_unit').val().trim() || 'Cái');
+        formData.append('cost_price', getMoneyValue('#qp_cost_price'));
+        formData.append('selling_price', getMoneyValue('#qp_selling_price'));
+        formData.append('listed_price', getMoneyValue('#qp_selling_price'));
+        formData.append('variants', '[]');
+        $.ajax({
+            url: '/api/products/save/', type: 'POST',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: formData, processData: false, contentType: false,
+            success: function(r){
+                if(r.status === 'ok'){
+                    $.get('/api/products_select/', function(res){
+                        allProducts = res.data;
+                        var newProduct = allProducts.find(function(p){ return p.code === code; });
+                        if(newProduct) addItemFromProduct(newProduct);
+                    });
+                    $('#modal_quick_product').modal('hide');
+                    setTimeout(function(){ $('#quick_search_product').focus(); }, 200);
+                    toastr ? toastr.success('Tạo SP "'+name+'" thành công!') : alert('Tạo SP thành công!');
+                } else { alert(r.message); }
+            }
+        });
     });
 
 
@@ -508,6 +609,19 @@ function getStockForProduct(productId){
     if(!product) return {stock: 0, label: '-', isService: false};
     if(product.is_service) return {stock: 999999, label: 'DV', isService: true};
     return {stock: product.total_stock, label: product.total_stock.toString(), isService: false};
+}
+
+function addItemFromProduct(product){
+    var item = {
+        product_id: product.id,
+        variant_id: null,
+        unit: product.unit,
+        quantity: 1,
+        unit_price: product.selling_price,
+        discount_percent: 0
+    };
+    addItemRow(item);
+    calcTotal();
 }
 
 function addItemRow(item){

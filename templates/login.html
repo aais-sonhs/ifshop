@@ -157,8 +157,8 @@
                     <div class="input-group mb-3">
                         {{ form.password }}
                         <div class="input-group-append">
-                            <div class="input-group-text">
-                                <span class="fas fa-lock"></span>
+                            <div class="input-group-text" id="togglePassword" style="cursor: pointer;" title="Hiển thị mật khẩu">
+                                <span class="fas fa-eye-slash"></span>
                             </div>
                         </div>
                     </div>
@@ -187,6 +187,13 @@
         var usernameInput = $('#loginForm input[name="username"]');
         var passwordInput = $('#loginForm input[name="password"]');
         var rememberCheck = $('#rememberMe');
+
+        // Toggle hiển thị mật khẩu
+        $('#togglePassword').on('click', function() {
+            var type = passwordInput.attr('type') === 'password' ? 'text' : 'password';
+            passwordInput.attr('type', type);
+            $(this).find('span').toggleClass('fa-eye-slash fa-eye');
+        });
 
         // Khôi phục trạng thái từ localStorage
         var saved = localStorage.getItem('_rm');

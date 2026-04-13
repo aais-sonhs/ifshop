@@ -8,6 +8,30 @@
         </div>
     </div>
     <div class="card-body">
+        <!-- BỘ LỌc NÂNG CAO -->
+        <div class="row mb-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã, tên SP...">
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_category">
+                    <option value="">-- Danh mục --</option>
+                    {% for c in categories %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_stock">
+                    <option value="">-- Tồn kho --</option>
+                    <option value="low">⚠️ Sắp hết hàng</option>
+                    <option value="out">❌ Hết hàng</option>
+                    <option value="instock">✅ Còn hàng</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-sm btn-info" id="btn_search_product"><i class="fas fa-search"></i> Tìm</button>
+                <button class="btn btn-sm btn-success ml-1" id="btn_export_products" title="Xuất Excel"><i class="fas fa-file-excel"></i></button>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Ảnh</th><th>Mã SP</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th>Giá vốn</th><th>Giá niêm yết</th><th>Giá bán</th><th>Tồn kho</th><th>Thao tác</th></tr></thead>
@@ -56,9 +80,10 @@
                             </div>
                         </div>
                         <div class="row">
-                            <div class="col-md-4"><div class="form-group"><label>Barcode</label><input type="text" class="form-control form-control-sm" id="inp_barcode"></div></div>
-                            <div class="col-md-4"><div class="form-group"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
-                            <div class="col-md-4"><div class="form-group"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
+                            <div class="col-md-3"><div class="form-group"><label>Barcode</label><input type="text" class="form-control form-control-sm" id="inp_barcode"></div></div>
+                            <div class="col-md-3"><div class="form-group"><label><i class="fas fa-map-marker-alt text-info mr-1"></i>Vị trí SP</label><input type="text" class="form-control form-control-sm" id="inp_location" placeholder="VD: Kệ A1, Tầng 2"></div></div>
+                            <div class="col-md-3"><div class="form-group"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
+                            <div class="col-md-3"><div class="form-group"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
                         </div>
                         <div class="row" id="price_row">
                             <div class="col-md-4"><div class="form-group"><label>Giá vốn</label><input type="number" class="form-control form-control-sm" id="inp_cost_price" value="0"></div></div>
@@ -92,15 +117,15 @@
                 <!-- Biến thể sản phẩm (kích thước) -->
                 <hr>
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0"><i class="fas fa-ruler mr-1"></i>Biến thể theo kích thước <small class="text-muted">(bỏ trống nếu SP chỉ có 1 kích thước)</small></h6>
-                    <button type="button" class="btn btn-sm btn-success" id="btn_add_variant"><i class="fas fa-plus"></i> Thêm kích thước</button>
+                    <h6 class="mb-0"><i class="fas fa-ruler mr-1"></i>Biến thể theo quy cách <small class="text-muted">(bỏ trống nếu SP chỉ có 1 quy cách)</small></h6>
+                    <button type="button" class="btn btn-sm btn-success" id="btn_add_variant"><i class="fas fa-plus"></i> Thêm quy cách</button>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="variants_tbl">
                         <thead class="bg-light">
                             <tr>
                                 <th style="width:5%">#</th>
-                                <th style="width:12%">Kích thước</th>
+                                <th style="width:12%">Quy cách</th>
                                 <th style="width:15%">Mã SKU</th>
                                 <th style="width:13%">Barcode</th>
                                 <th style="width:15%">Giá vốn</th>
@@ -168,6 +193,29 @@
         <img id="zoomImage" src="" alt="Zoom" style="max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.5);transform:scale(0.8);transition:transform 0.3s ease;" onclick="event.stopPropagation()">
     </div>
 </div>
+
+<!-- Modal Lịch sử nhập hàng -->
+<div class="modal fade" id="modal_purchase_history" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title"><i class="fas fa-history mr-2"></i>Lịch sử nhập hàng: <span id="ph_product_name"></span></h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div id="ph_summary" class="mb-2"></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped table-sm">
+                        <thead class="bg-light">
+                            <tr><th>STT</th><th>Mã phiếu</th><th>Ngày nhập</th><th>NCC</th><th>Kho</th><th>SL</th><th>Đơn giá</th></tr>
+                        </thead>
+                        <tbody id="ph_tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -212,6 +260,7 @@ $(document).ready(function(){
         $('#combo_body').html('');
         $('#inp_cost_price,#inp_listed_price,#inp_selling_price,#inp_min_stock,#inp_max_stock').val(0);
         $('#inp_category_id,#inp_supplier_id').val('');
+        $('#inp_location').val('');
         // Reset ảnh
         $('#inp_image').val('');$('#img_preview').hide().attr('src','');
         $('#img_placeholder').show();$('#btn_remove_image').hide();$('#lbl_image').text('Chọn ảnh...');
@@ -256,6 +305,7 @@ $(document).ready(function(){
         fd.append('min_stock', $('#inp_min_stock').val());
         fd.append('max_stock', $('#inp_max_stock').val());
         fd.append('description', $('#inp_description').val());
+        fd.append('location', $('#inp_location').val());
         fd.append('is_weight_based', $('#inp_is_weight_based').is(':checked') ? '1' : '0');
         fd.append('is_service', $('#inp_is_service').is(':checked') ? '1' : '0');
         fd.append('is_combo', $('#inp_is_combo').is(':checked') ? '1' : '0');
@@ -304,7 +354,7 @@ function addVariantRow(data){
 
     var html = '<tr>' +
         '<td class="text-center variant-index">' + variantRowIndex + '</td>' +
-        '<td><input type="text" class="form-control form-control-sm v-size" value="' + sizeName + '" placeholder="S, M, L..."></td>' +
+        '<td><input type="text" class="form-control form-control-sm v-size" value="' + sizeName + '" placeholder="Lon 250ml, Hộp 500g..."></td>' +
         '<td><input type="text" class="form-control form-control-sm v-sku" value="' + sku + '" placeholder="Mã SKU"></td>' +
         '<td><input type="text" class="form-control form-control-sm v-barcode" value="' + barcode + '"></td>' +
         '<td><input type="number" class="form-control form-control-sm v-cost" value="' + costPrice + '" min="0"></td>' +
@@ -353,13 +403,28 @@ function getVariantsData(){
 
 function loadData(){
     $.get('/api/products/', function(res){
+        var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
+        var filterCat = $('#filter_category').val();
+        var filterStock = $('#filter_stock').val();
+
+        var filtered = res.data.filter(function(d){
+            if(filterText){
+                var searchable = (d.code + ' ' + d.name).toLowerCase();
+                if(searchable.indexOf(filterText) < 0) return false;
+            }
+            if(filterCat && d.category !== filterCat) return false;
+            if(filterStock === 'out' && d.total_stock > 0) return false;
+            if(filterStock === 'low' && (d.total_stock <= 0 || d.total_stock > (d.min_stock || 5))) return false;
+            if(filterStock === 'instock' && d.total_stock <= 0) return false;
+            return true;
+        });
+
         var h = '';
-        res.data.forEach(function(d, i){
+        filtered.forEach(function(d, i){
             var imgTd = d.image
                 ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" class="img-thumbnail product-zoom-img" onclick="openImageZoom(this.src)" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'" title="Click để phóng to">'
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
-            // Giá hiển thị: nếu có variants thì hiện range giá
             var costDisplay = fmt(d.cost_price);
             var listedDisplay = fmt(d.listed_price);
             var sellingDisplay = fmt(d.selling_price);
@@ -375,30 +440,73 @@ function loadData(){
                 sellingDisplay = minSelling === maxSelling ? fmt(minSelling) : fmt(minSelling) + ' ~ ' + fmt(maxSelling);
             }
 
-            // Badge số variants
             var variantBadge = '';
             if(d.variants && d.variants.length > 0){
-                variantBadge = ' <span class="badge badge-info" title="'+d.variants.length+' kích thước">'+d.variants.length+' size</span>';
+                variantBadge = ' <span class="badge badge-info" title="'+d.variants.length+' quy cách">'+d.variants.length+' QC</span>';
             }
-            // Badge Combo
             if(d.is_combo){
                 variantBadge += ' <span class="badge badge-warning" title="Combo: '+d.combo_items.length+' SP"><i class="fas fa-cubes mr-1"></i>COMBO</span>';
             }
-            // Badge Dịch vụ
             if(d.is_service){
                 variantBadge += ' <span class="badge badge-secondary">DV</span>';
             }
 
+            var stockClass = d.total_stock <= 0 ? 'text-danger font-weight-bold' : (d.total_stock <= (d.min_stock || 5) ? 'text-warning font-weight-bold' : '');
+
+            // Stock tooltip with warehouse breakdown
+            var stockTooltip = '';
+            if(d.stock_by_warehouse && d.stock_by_warehouse.length > 0){
+                stockTooltip = d.stock_by_warehouse.map(function(s){ return s.warehouse + ': ' + s.quantity; }).join('\n');
+            }
+            var stockHtml = '<span class="'+stockClass+'" style="cursor:pointer;" title="'+stockTooltip+'" onclick="viewPurchaseHistory('+d.id+',\''+d.name.replace(/'/g,'')+'\')">' + d.total_stock + '</span>';
+            if(d.stock_by_warehouse && d.stock_by_warehouse.length > 1){
+                stockHtml += ' <i class="fas fa-warehouse text-muted" style="font-size:10px;" title="'+stockTooltip+'"></i>';
+            }
+
             h += '<tr><td>'+(i+1)+'</td><td class="text-center">'+imgTd+'</td><td>'+d.code+'</td><td>'+d.name+variantBadge+'</td><td>'+d.category+'</td><td>'+d.unit+'</td>'+
                 '<td class="text-right">'+costDisplay+'</td><td class="text-right">'+listedDisplay+'</td>'+
-                '<td class="text-right">'+sellingDisplay+'</td><td class="text-center">'+d.total_stock+'</td>'+
+                '<td class="text-right">'+sellingDisplay+'</td><td class="text-center">'+stockHtml+'</td>'+
                 '<td class="text-center">' +
                 (d.is_combo
-                    ? '<button class="btn btn-xs btn-secondary" onclick=\'viewCombo('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-eye"></i></button> '
-                    : '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> ') +
-                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+                    ? '<button class="btn btn-xs btn-warning" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa Combo</button> '
+                    : '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> ') +
+                '<button class="btn btn-xs btn-outline-secondary" onclick="viewPurchaseHistory('+d.id+',\''+d.name.replace(/'/g,'')+'\')" title="Lịch sử nhập"><i class="fas fa-history"></i></button> ' +
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="11" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+$('#btn_search_product').click(function(){ loadData(); });
+$('#filter_text').on('input', function(){ loadData(); });
+$('#filter_category, #filter_stock').change(function(){ loadData(); });
+$('#btn_export_products').click(function(){
+    window.location.href = '/api/export_inventory_excel/';
+});
+
+// Lịch sử nhập hàng
+function viewPurchaseHistory(productId, productName){
+    $('#ph_product_name').text(productName);
+    $('#ph_tbody').html('<tr><td colspan="7" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
+    $('#modal_purchase_history').modal('show');
+    $.get('/api/products/purchase_history/?product_id='+productId, function(res){
+        if(res.status !== 'ok'){ $('#ph_tbody').html('<tr><td colspan="7" class="text-center text-danger">Lỗi</td></tr>'); return; }
+        var s = res.summary;
+        $('#ph_summary').html(
+            '<span class="badge badge-info mr-2">' + s.total_entries + ' lần nhập</span>' +
+            '<span class="badge badge-primary mr-2">Tổng SL: ' + fmt(s.total_quantity) + '</span>' +
+            '<span class="badge badge-success mr-2">Tổng tiền: ' + fmt(s.total_amount) + 'đ</span>' +
+            '<span class="badge badge-warning">Giá TB: ' + fmt(s.avg_unit_price) + 'đ</span>'
+        );
+        var h = '';
+        res.data.forEach(function(d, i){
+            h += '<tr><td>'+(i+1)+'</td><td><strong>'+d.receipt_code+'</strong></td><td>'+d.receipt_date+'</td>'+
+                '<td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
+                '<td class="text-center">'+fmt(d.quantity)+'</td>'+
+                '<td class="text-right">'+fmt(d.unit_price)+'đ</td></tr>';
+        });
+        if(!h) h = '<tr><td colspan="7" class="text-center text-muted">Chưa có lịch sử nhập hàng</td></tr>';
+        $('#ph_tbody').html(h);
     });
 }
 
@@ -408,6 +516,7 @@ function editItem(d){
     $('#inp_barcode').val(d.barcode); $('#inp_category_id').val(d.category_id); $('#inp_supplier_id').val(d.supplier_id);
     $('#inp_cost_price').val(d.cost_price); $('#inp_listed_price').val(d.listed_price); $('#inp_selling_price').val(d.selling_price);
     $('#inp_min_stock').val(d.min_stock); $('#inp_max_stock').val(d.max_stock); $('#inp_description').val(d.description);
+    $('#inp_location').val(d.location || '');
     $('#inp_is_weight_based').prop('checked', d.is_weight_based);
     $('#inp_is_service').prop('checked', d.is_service);
     $('#inp_is_combo').prop('checked', d.is_combo || false);

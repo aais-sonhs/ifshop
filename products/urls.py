@@ -36,4 +36,5 @@ urlpatterns = [
     path('api/purchase_orders/save/', views.api_save_purchase_order, name='api_save_purchase_order'),
     path('api/purchase_orders/delete/', views.api_delete_purchase_order, name='api_delete_purchase_order'),
     path('api/cost_adjustments/', views.api_get_cost_adjustments, name='api_get_cost_adjustments'),
+    path('api/products/purchase_history/', views.api_product_purchase_history, name='api_product_purchase_history'),
 ]

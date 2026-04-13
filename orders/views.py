@@ -50,6 +50,15 @@ def order_tbl(request):
         'quotations': quotations,
         'system_users': system_users,
     }
+    # Thêm cấu hình tồn âm
+    try:
+        from system_management.models import BusinessConfig
+        from core.store_utils import get_owned_brands
+        brands = get_owned_brands(request.user)
+        config = BusinessConfig.get_config(brands.first() if brands.exists() else None)
+        context['allow_negative_stock'] = config.opt_allow_negative_stock
+    except Exception:
+        context['allow_negative_stock'] = False
     return render(request, "orders/order_list.html", context)
 
 
@@ -226,17 +235,17 @@ def api_next_order_code(request):
     """Sinh mã đơn hàng tiếp theo: DH-001, DH-002, ..."""
     import re
     prefix = 'DH-'
-    # Tìm mã lớn nhất có dạng DH-XXX
-    last_order = Order.objects.filter(code__startswith=prefix).order_by('-id').first()
+    # FIX: Dùng all_objects để tính cả record đã soft-delete, tránh trùng mã
+    last_order = Order.all_objects.filter(code__startswith=prefix).order_by('-id').first()
     next_num = 1
     if last_order:
         match = re.search(r'DH-(\d+)', last_order.code)
         if match:
             next_num = int(match.group(1)) + 1
-    # Đảm bảo không trùng
+    # Đảm bảo không trùng (kể cả đã xóa mềm)
     while True:
         code = f'{prefix}{next_num:03d}'
-        if not Order.objects.filter(code=code).exists():
+        if not Order.all_objects.filter(code=code).exists():
             break
         next_num += 1
     return JsonResponse({'code': code})
@@ -247,7 +256,8 @@ def api_next_quotation_code(request):
     """Sinh mã báo giá tiếp theo: BG-001, BG-002, ..."""
     import re
     prefix = 'BG-'
-    last_q = Quotation.objects.filter(code__startswith=prefix).order_by('-id').first()
+    # FIX: Dùng all_objects để tính cả record đã soft-delete, tránh trùng mã
+    last_q = Quotation.all_objects.filter(code__startswith=prefix).order_by('-id').first()
     next_num = 1
     if last_q:
         match = re.search(r'BG-(\d+)', last_q.code)
@@ -255,7 +265,7 @@ def api_next_quotation_code(request):
             next_num = int(match.group(1)) + 1
     while True:
         code = f'{prefix}{next_num:03d}'
-        if not Quotation.objects.filter(code=code).exists():
+        if not Quotation.all_objects.filter(code=code).exists():
             break
         next_num += 1
     return JsonResponse({'code': code})
@@ -373,6 +383,7 @@ def api_get_order_detail(request):
             'product_name': it.product.name,
             'variant_name': it.variant.size_name if it.variant else '',
             'unit': it.product.unit,
+            'image_url': it.product.image.url if it.product.image else '',
             'quantity': float(it.quantity),
             'unit_price': float(it.unit_price),
             'discount_percent': float(it.discount_percent),
@@ -437,8 +448,8 @@ def api_save_order(request):
                         if _sids:
                             o.store = _Store.objects.filter(id__in=_sids).first()
             o.code = data.get('code', '')
-            # Kiểm tra trùng mã
-            dup = Order.objects.filter(code=o.code)
+            # Kiểm tra trùng mã (kể cả record đã soft-delete)
+            dup = Order.all_objects.filter(code=o.code)
             if oid:
                 dup = dup.exclude(id=oid)
             if dup.exists():
@@ -567,6 +578,8 @@ def api_save_order(request):
             o.save(update_fields=['paid_amount', 'payment_status'])
 
             # Hoàn tác tồn kho nếu trước đó đã hoàn thành
+            # FIX: Dùng Decimal thay vì float để tránh lỗi 'unsupported operand type'
+            from decimal import Decimal
             if old_status == 5 and o.warehouse_id:
                 from products.models import ComboItem as _ComboItem
                 for old_item in o.items.all():
@@ -577,12 +590,12 @@ def api_save_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=o.warehouse_id)
-                                stock.quantity += old_item.quantity * ci.quantity
+                                stock.quantity += Decimal(str(old_item.quantity)) * Decimal(str(ci.quantity))
                                 stock.save()
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=old_item.product_id, warehouse_id=o.warehouse_id)
-                        stock.quantity += old_item.quantity
+                        stock.quantity += Decimal(str(old_item.quantity))
                         stock.save()
 
             # Xóa items cũ và tạo mới
@@ -617,10 +630,11 @@ def api_save_order(request):
                 )
 
             # Trừ tồn kho khi đơn hàng Hoàn thành (status=5)
+            # FIX: Dùng Decimal thay vì float
             if new_status == 5 and o.warehouse_id:
                 from products.models import ComboItem as _ComboItem2
                 for it in items_data:
-                    qty = float(it.get('quantity', 0))
+                    qty = Decimal(str(it.get('quantity', 0)))
                     pid = it.get('product_id')
                     product = Product.objects.get(id=pid)
                     if product.is_combo:
@@ -629,7 +643,7 @@ def api_save_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=o.warehouse_id)
-                                stock.quantity -= qty * ci.quantity
+                                stock.quantity -= qty * Decimal(str(ci.quantity))
                                 stock.save()
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
@@ -646,6 +660,23 @@ def api_save_order(request):
             approver_name = o.approver.get_full_name() if o.approver else ''
             msg += f'. ⏳ Đơn hàng cần được {approver_name} duyệt trước khi hoàn thành.'
         return JsonResponse({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_update_order_note(request):
+    """Cho phép sửa ghi chú đơn hàng đã hoàn thành/hủy"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order = Order.objects.get(id=data.get('id'))
+        order.note = data.get('note', '')
+        order.save(update_fields=['note'])
+        return JsonResponse({'status': 'ok', 'message': 'Lưu ghi chú thành công'})
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -691,6 +722,7 @@ def api_cancel_order(request):
             # Nếu đơn đã hoàn thành (status=5) → hoàn lại tồn kho
             if order.status == 5 and order.warehouse_id:
                 from products.models import ComboItem as _CancelComboItem
+                from decimal import Decimal as _Dec
                 for item in order.items.all():
                     product = item.product
                     if product.is_combo:
@@ -698,12 +730,12 @@ def api_cancel_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=order.warehouse_id)
-                                stock.quantity += item.quantity * ci.quantity
+                                stock.quantity += _Dec(str(item.quantity)) * _Dec(str(ci.quantity))
                                 stock.save()
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=item.product_id, warehouse_id=order.warehouse_id)
-                        stock.quantity += item.quantity
+                        stock.quantity += _Dec(str(item.quantity))
                         stock.save()
 
             # Xử lý phiếu thu liên quan
@@ -782,6 +814,7 @@ def api_approve_order(request):
                 # Trừ tồn kho (nếu chưa trừ trước đó)
                 if old_status != 5 and order.warehouse_id:
                     from products.models import ComboItem as _ApprComboItem
+                    from decimal import Decimal as _Dec
                     for item in order.items.all():
                         product = item.product
                         if product.is_combo:
@@ -789,12 +822,12 @@ def api_approve_order(request):
                                 if not ci.product.is_service:
                                     stock, _ = ProductStock.objects.get_or_create(
                                         product_id=ci.product_id, warehouse_id=order.warehouse_id)
-                                    stock.quantity -= item.quantity * ci.quantity
+                                    stock.quantity -= _Dec(str(item.quantity)) * _Dec(str(ci.quantity))
                                     stock.save()
                         elif not product.is_service:
                             stock, _ = ProductStock.objects.get_or_create(
                                 product_id=item.product_id, warehouse_id=order.warehouse_id)
-                            stock.quantity -= item.quantity
+                            stock.quantity -= _Dec(str(item.quantity))
                             stock.save()
 
                 if note:
@@ -913,8 +946,8 @@ def api_save_quotation(request):
                     if _sids:
                         q.store = _Store.objects.filter(id__in=_sids).first()
             q.code = data.get('code', '')
-            # Kiểm tra trùng mã
-            dup = Quotation.objects.filter(code=q.code)
+            # Kiểm tra trùng mã (kể cả record đã soft-delete)
+            dup = Quotation.all_objects.filter(code=q.code)
             if qid:
                 dup = dup.exclude(id=qid)
             if dup.exists():

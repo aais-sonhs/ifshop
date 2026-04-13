@@ -123,6 +123,22 @@
             </div>
         </div>
 
+        <!-- BIỂU ĐỒ DOANH THU -->
+        <div class="row mb-3">
+            <div class="col-md-8">
+                <div class="card card-outline card-primary">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i> Biểu đồ doanh thu theo ngày</h6></div>
+                    <div class="card-body" style="height:300px;"><canvas id="chart_daily"></canvas></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-outline card-success">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i> Top sản phẩm</h6></div>
+                    <div class="card-body" style="height:300px;"><canvas id="chart_products"></canvas></div>
+                </div>
+            </div>
+        </div>
+
         <!-- BẢNG DOANH THU THEO NGÀY -->
         <div class="row">
             <div class="col-md-8">
@@ -281,6 +297,102 @@ function loadReport(){
         });
         if(!hc) hc = '<tr><td colspan="4" class="text-center text-muted">Chưa có</td></tr>';
         $('#top_customers_tbl tbody').html(hc);
+
+        // Render charts
+        renderCharts(res.daily, res.top_products);
+    });
+}
+
+var dailyChart = null;
+var productsChart = null;
+
+function renderCharts(daily, topProducts){
+    // Daily Revenue Chart
+    var labels = daily.map(function(d){ return d.date; });
+    var revenues = daily.map(function(d){ return d.revenue; });
+    var profits = daily.map(function(d){ return d.profit; });
+    var costs = daily.map(function(d){ return d.cost; });
+
+    if(dailyChart) dailyChart.destroy();
+    var ctx = document.getElementById('chart_daily').getContext('2d');
+    dailyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Doanh thu',
+                data: revenues,
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+                order: 2
+            }, {
+                label: 'Lợi nhuận',
+                data: profits,
+                type: 'line',
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointBackgroundColor: '#28a745',
+                order: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx){ return ctx.dataset.label + ': ' + Number(ctx.raw||0).toLocaleString('vi-VN') + 'đ'; }
+                    }
+                },
+                legend: { position: 'top', labels: { usePointStyle: true, padding: 15 } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: function(v){ return (v/1000000).toFixed(0) + 'tr'; } }
+                },
+                x: { ticks: { maxRotation: 45, minRotation: 0 } }
+            }
+        }
+    });
+
+    // Top Products Pie Chart
+    if(productsChart) productsChart.destroy();
+    if(topProducts.length === 0) return;
+    var pLabels = topProducts.map(function(p){ return p.name ? (p.name.length > 15 ? p.name.substring(0,15) + '...' : p.name) : 'N/A'; });
+    var pData = topProducts.map(function(p){ return p.amount; });
+    var colors = ['#36A2EB', '#FF6384', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#7BC8A4'];
+
+    var ctx2 = document.getElementById('chart_products').getContext('2d');
+    productsChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+            labels: pLabels,
+            datasets: [{
+                data: pData,
+                backgroundColor: colors.slice(0, pData.length),
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx){ return ctx.label + ': ' + Number(ctx.raw||0).toLocaleString('vi-VN') + 'đ'; }
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -288,5 +400,14 @@ function viewStore(storeId){
     $('#filter_store_id').val(storeId);
     loadReport();
 }
+
+$('#btn_export').click(function(){
+    var from = $('#filter_from_date').val();
+    var to = $('#filter_to_date').val();
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/export_sales_excel/?from_date='+from+'&to_date='+to;
+    if(storeId) url += '&store_id='+storeId;
+    window.location.href = url;
+});
 </script>
 {% endblock %}

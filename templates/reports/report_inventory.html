@@ -105,5 +105,12 @@ function loadReport(){
         $('#report_tbl tbody').html(h);
     });
 }
+
+$('#btn_export').click(function(){
+    var wh = $('#filter_warehouse').val();
+    var url = '/api/export_inventory_excel/';
+    if(wh) url += '?warehouse_id='+wh;
+    window.location.href = url;
+});
 </script>
 {% endblock %}

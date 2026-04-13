@@ -7,13 +7,14 @@ from django.http import JsonResponse
 from django.db.models import Sum, Count, Q, F
 from orders.models import Order, OrderItem, OrderReturn
 from products.models import PurchaseOrder
-from core.store_utils import filter_by_store, brand_owner_required
+from core.store_utils import filter_by_store, brand_owner_required, report_permission_required
 
 logger = logging.getLogger(__name__)
 
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_sales(request):
     """Báo cáo bán hàng"""
     context = {'active_tab': 'report_sales'}
@@ -184,6 +185,7 @@ def api_report_sales(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_purchases(request):
     context = {'active_tab': 'report_purchases'}
     return render(request, "reports/report_purchases.html", context)
@@ -226,6 +228,7 @@ def api_report_purchases(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_inventory(request):
     context = {'active_tab': 'report_inventory'}
     return render(request, "reports/report_inventory.html", context)
@@ -285,6 +288,7 @@ def api_report_inventory(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_finance(request):
     context = {'active_tab': 'report_finance'}
     return render(request, "reports/report_finance.html", context)
@@ -403,6 +407,7 @@ def api_report_finance(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_customers(request):
     context = {'active_tab': 'report_customers'}
     return render(request, "reports/report_customers.html", context)
@@ -492,6 +497,7 @@ def api_report_customers(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@report_permission_required
 def report_staff_sales(request):
     """Báo cáo doanh thu nhân viên bán hàng"""
     context = {'active_tab': 'report_staff_sales'}
@@ -830,3 +836,641 @@ def export_staff_sales_excel(request):
     wb.save(response)
     return response
 
+
+@login_required(login_url="/login/")
+def export_sales_excel(request):
+    """Xuất báo cáo bán hàng ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    store_id = request.GET.get('store_id')
+
+    today = datetime.now().date()
+    if not from_date:
+        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = today.strftime('%Y-%m-%d')
+
+    orders = Order.objects.filter(
+        order_date__gte=from_date, order_date__lte=to_date
+    ).exclude(status=6)
+    orders = filter_by_store(orders, request)
+    if store_id:
+        orders = orders.filter(store_id=store_id)
+
+    # Styles
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Doanh thu theo ngày'
+    header_font = Font(bold=True, size=14, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sub_font = Font(bold=True, size=10, color='FFFFFF')
+    sub_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    money_fmt = '#,##0'
+
+    ws.merge_cells('A1:G1')
+    ws['A1'] = 'BÁO CÁO BÁN HÀNG'
+    ws['A1'].font = header_font
+    ws['A1'].fill = header_fill
+    ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:G2')
+    ws['A2'] = f'Từ {from_date} đến {to_date}'
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', 'Ngày', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trả hàng']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+
+    from django.db.models.functions import TruncDate
+    daily = orders.annotate(day=TruncDate('order_date')).values('day').annotate(
+        count=Count('id'), revenue=Sum('final_amount')
+    ).order_by('day')
+
+    row = 5
+    grand = {'count': 0, 'revenue': 0, 'cost': 0, 'profit': 0, 'returns': 0}
+    for idx, d in enumerate(daily, 1):
+        day_cost = float(OrderItem.objects.filter(
+            order__order_date=d['day'], order__status__in=[0,1,2,3,4,5]
+        ).exclude(order__status=6).aggregate(c=Sum(F('cost_price') * F('quantity')))['c'] or 0)
+        day_revenue = float(d['revenue'] or 0)
+        day_returns = float(OrderReturn.objects.filter(
+            return_date=d['day']).exclude(status=3).aggregate(
+            s=Sum('total_refund'))['s'] or 0)
+
+        vals = [idx, d['day'].strftime('%d/%m/%Y'), d['count'], day_revenue,
+                day_cost, day_revenue - day_cost, day_returns]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.border = thin
+            if col >= 4:
+                cell.number_format = money_fmt
+        grand['count'] += d['count']
+        grand['revenue'] += day_revenue
+        grand['cost'] += day_cost
+        grand['profit'] += day_revenue - day_cost
+        grand['returns'] += day_returns
+        row += 1
+
+    # Total row
+    totals = ['', 'TỔNG', grand['count'], grand['revenue'], grand['cost'], grand['profit'], grand['returns']]
+    for col, val in enumerate(totals, 1):
+        cell = ws.cell(row=row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col >= 4:
+            cell.number_format = money_fmt
+
+    # Sheet 2: Top sản phẩm
+    ws2 = wb.create_sheet('Top sản phẩm')
+    sp_headers = ['STT', 'Sản phẩm', 'Số lượng bán', 'Doanh thu']
+    for col, h in enumerate(sp_headers, 1):
+        cell = ws2.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    top_products = OrderItem.objects.filter(order__in=orders).values(
+        'product__code', 'product__name'
+    ).annotate(
+        total_qty=Sum('quantity'), total_amount=Sum('total_price')
+    ).order_by('-total_qty')[:20]
+
+    for idx, p in enumerate(top_products, 1):
+        ws2.cell(row=idx+1, column=1, value=idx).border = thin
+        ws2.cell(row=idx+1, column=2, value=f"{p['product__code']} - {p['product__name']}").border = thin
+        ws2.cell(row=idx+1, column=3, value=float(p['total_qty'] or 0)).border = thin
+        c = ws2.cell(row=idx+1, column=4, value=float(p['total_amount'] or 0))
+        c.number_format = money_fmt
+        c.border = thin
+
+    for i, w in enumerate([6, 35, 15, 18], 1):
+        ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    for i, w in enumerate([6, 20, 12, 18, 18, 18, 15], 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f'BC_Ban_hang_{from_date}_{to_date}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+def export_inventory_excel(request):
+    """Xuất báo cáo tồn kho ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+    from products.models import ProductStock, Warehouse
+
+    warehouse_id = request.GET.get('warehouse_id')
+
+    stocks = ProductStock.objects.select_related('product', 'warehouse').all()
+    stocks = filter_by_store(stocks, request, field_name='warehouse__store')
+    if warehouse_id:
+        stocks = stocks.filter(warehouse_id=warehouse_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Tồn kho'
+    header_font = Font(bold=True, size=14, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sub_font = Font(bold=True, size=10, color='FFFFFF')
+    sub_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    danger_fill = PatternFill(start_color='FCE4EC', end_color='FCE4EC', fill_type='solid')
+    warning_fill = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
+    money_fmt = '#,##0'
+
+    ws.merge_cells('A1:K1')
+    ws['A1'] = 'BÁO CÁO TỒN KHO'
+    ws['A1'].font = header_font
+    ws['A1'].fill = header_fill
+    ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:K2')
+    ws['A2'] = f'Ngày xuất: {datetime.now().strftime("%d/%m/%Y %H:%M")}'
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'ĐVT', 'Kho', 'Tồn kho',
+               'Tối thiểu', 'Tối đa', 'Giá vốn', 'Giá trị tồn', 'Cảnh báo']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+
+    row = 5
+    total_value = 0
+    total_qty = 0
+    for idx, s in enumerate(stocks, 1):
+        qty = float(s.quantity)
+        cost = float(s.product.cost_price)
+        value = cost * qty
+        total_value += value
+        total_qty += qty
+
+        alert = ''
+        fill = None
+        if s.product.min_stock and qty < s.product.min_stock:
+            alert = 'Dưới tối thiểu'
+            fill = danger_fill
+        elif s.product.max_stock and qty > s.product.max_stock:
+            alert = 'Trên tối đa'
+            fill = warning_fill
+
+        vals = [idx, s.product.code, s.product.name, s.product.unit or '',
+                s.warehouse.name, qty, s.product.min_stock or 0,
+                s.product.max_stock or 0, cost, value, alert]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.border = thin
+            if col in (9, 10):
+                cell.number_format = money_fmt
+            if fill:
+                cell.fill = fill
+        row += 1
+
+    # Total
+    ws.cell(row=row, column=1, value='').border = thin
+    c = ws.cell(row=row, column=2, value='TỔNG CỘNG')
+    c.font = Font(bold=True)
+    c.border = thin
+    for col in range(3, 6):
+        ws.cell(row=row, column=col, value='').border = thin
+    c = ws.cell(row=row, column=6, value=total_qty)
+    c.font = Font(bold=True)
+    c.border = thin
+    for col in range(7, 10):
+        ws.cell(row=row, column=col, value='').border = thin
+    c = ws.cell(row=row, column=10, value=total_value)
+    c.font = Font(bold=True)
+    c.number_format = money_fmt
+    c.border = thin
+    ws.cell(row=row, column=11, value='').border = thin
+
+    col_widths = [6, 12, 30, 8, 15, 12, 12, 12, 15, 18, 15]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f'BC_Ton_kho_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+def export_orders_excel(request):
+    """Xuất danh sách đơn hàng ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    status = request.GET.get('status')
+    payment_status = request.GET.get('payment_status')
+
+    orders = Order.objects.select_related('customer', 'warehouse').all()
+    orders = filter_by_store(orders, request)
+    if from_date:
+        orders = orders.filter(order_date__gte=from_date)
+    if to_date:
+        orders = orders.filter(order_date__lte=to_date)
+    if status:
+        orders = orders.filter(status=int(status))
+    if payment_status:
+        orders = orders.filter(payment_status=int(payment_status))
+    orders = orders.order_by('-order_date')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Danh sách đơn hàng'
+    header_font = Font(bold=True, size=14, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sub_font = Font(bold=True, size=10, color='FFFFFF')
+    sub_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    money_fmt = '#,##0'
+
+    ws.merge_cells('A1:J1')
+    ws['A1'] = 'DANH SÁCH ĐƠN HÀNG'
+    ws['A1'].font = header_font
+    ws['A1'].fill = header_fill
+    ws['A1'].alignment = Alignment(horizontal='center')
+    date_range = ''
+    if from_date and to_date:
+        date_range = f'Từ {from_date} đến {to_date}'
+    elif from_date:
+        date_range = f'Từ {from_date}'
+    elif to_date:
+        date_range = f'Đến {to_date}'
+    else:
+        date_range = 'Tất cả'
+    ws.merge_cells('A2:J2')
+    ws['A2'] = date_range
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', 'Mã ĐH', 'Khách hàng', 'Kho', 'Ngày đặt',
+               'Tổng tiền', 'Đã thanh toán', 'Còn nợ', 'Trạng thái', 'TT thanh toán']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+
+    row = 5
+    grand = {'total': 0, 'paid': 0, 'debt': 0}
+    for idx, o in enumerate(orders, 1):
+        total = float(o.final_amount)
+        paid = float(o.paid_amount)
+        debt = total - paid
+        grand['total'] += total
+        grand['paid'] += paid
+        grand['debt'] += debt
+
+        vals = [
+            idx, o.code,
+            o.customer.name if o.customer else '',
+            o.warehouse.name if o.warehouse else '',
+            o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
+            total, paid, debt,
+            o.get_status_display(),
+            o.get_payment_status_display(),
+        ]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.border = thin
+            if col in (6, 7, 8):
+                cell.number_format = money_fmt
+        row += 1
+
+    # Total row
+    totals = ['', 'TỔNG', '', '', '', grand['total'], grand['paid'], grand['debt'], '', '']
+    for col, val in enumerate(totals, 1):
+        cell = ws.cell(row=row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col in (6, 7, 8):
+            cell.number_format = money_fmt
+
+    col_widths = [6, 15, 25, 15, 12, 18, 18, 18, 15, 15]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f'DS_Don_hang_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+def export_customers_excel(request):
+    """Xuất báo cáo khách hàng ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+    from customers.models import Customer
+
+    store_id = request.GET.get('store_id')
+
+    customers = Customer.objects.filter(is_active=True).select_related('group', 'store')
+    customers = filter_by_store(customers, request)
+    if store_id:
+        customers = customers.filter(store_id=store_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Khách hàng'
+    header_font = Font(bold=True, size=14, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sub_font = Font(bold=True, size=10, color='FFFFFF')
+    sub_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    debt_fill = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
+    money_fmt = '#,##0'
+
+    ws.merge_cells('A1:I1')
+    ws['A1'] = 'BÁO CÁO KHÁCH HÀNG'
+    ws['A1'].font = header_font
+    ws['A1'].fill = header_fill
+    ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:I2')
+    ws['A2'] = f'Ngày xuất: {datetime.now().strftime("%d/%m/%Y %H:%M")}'
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', 'Mã KH', 'Tên KH', 'SĐT', 'Email', 'Nhóm',
+               'Số ĐH', 'Tổng mua', 'Công nợ']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+
+    row = 5
+    grand = {'orders': 0, 'revenue': 0, 'debt': 0}
+    for idx, c in enumerate(customers, 1):
+        orders = Order.objects.filter(customer=c).exclude(status=6)
+        order_count = orders.count()
+        total = float(orders.aggregate(s=Sum('final_amount'))['s'] or 0)
+        paid = float(orders.aggregate(s=Sum('paid_amount'))['s'] or 0)
+        debt = total - paid
+        grand['orders'] += order_count
+        grand['revenue'] += total
+        grand['debt'] += debt
+
+        vals = [idx, c.code, c.name, c.phone or '', c.email or '',
+                c.group.name if c.group else '', order_count, total, debt]
+        for col, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.border = thin
+            if col in (8, 9):
+                cell.number_format = money_fmt
+            if debt > 0:
+                cell.fill = debt_fill
+        row += 1
+
+    # Total
+    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    totals = ['', 'TỔNG', '', '', '', '', grand['orders'], grand['revenue'], grand['debt']]
+    for col, val in enumerate(totals, 1):
+        cell = ws.cell(row=row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col in (8, 9):
+            cell.number_format = money_fmt
+
+    col_widths = [6, 12, 25, 15, 25, 15, 10, 18, 18]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f'BC_Khach_hang_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+def export_purchases_excel(request):
+    """Xuất báo cáo nhập hàng ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+    from products.models import GoodsReceipt
+
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    today = datetime.now().date()
+    if not from_date:
+        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = today.strftime('%Y-%m-%d')
+
+    receipts = GoodsReceipt.objects.filter(
+        receipt_date__gte=from_date, receipt_date__lte=to_date
+    ).select_related('supplier', 'warehouse').order_by('-receipt_date')
+    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Nhập hàng'
+    hf = Font(bold=True, size=14, color='FFFFFF')
+    hfill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sf = Font(bold=True, size=10, color='FFFFFF')
+    sfill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    cancel_fill = PatternFill(start_color='FCE4EC', end_color='FCE4EC', fill_type='solid')
+    tfill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    mfmt = '#,##0'
+
+    ws.merge_cells('A1:G1')
+    ws['A1'] = 'BÁO CÁO NHẬP HÀNG'
+    ws['A1'].font = hf; ws['A1'].fill = hfill; ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:G2')
+    ws['A2'] = f'Từ {from_date} đến {to_date}'
+    ws['A2'].font = Font(italic=True, size=10); ws['A2'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', 'Mã phiếu', 'Ngày', 'Nhà cung cấp', 'Kho', 'Tổng tiền', 'Trạng thái']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=4, column=col, value=h)
+        c.font = sf; c.fill = sfill; c.alignment = Alignment(horizontal='center'); c.border = thin
+
+    row = 5
+    total = 0
+    for idx, r in enumerate(receipts, 1):
+        amt = float(r.total_amount)
+        is_cancel = (r.status == 2)
+        if not is_cancel:
+            total += amt
+        vals = [idx, r.code,
+                r.receipt_date.strftime('%d/%m/%Y') if r.receipt_date else '',
+                r.supplier.name if r.supplier else '',
+                r.warehouse.name if r.warehouse else '',
+                amt, r.get_status_display()]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = thin
+            if col == 6: c.number_format = mfmt
+            if is_cancel: c.fill = cancel_fill
+        row += 1
+
+    totals = ['', 'TỔNG', '', '', '', total, '']
+    for col, val in enumerate(totals, 1):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = Font(bold=True); c.fill = tfill; c.border = thin
+        if col == 6: c.number_format = mfmt
+
+    for i, w in enumerate([6, 15, 12, 25, 15, 18, 12], 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="BC_Nhap_hang_{from_date}_{to_date}.xlsx"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+def export_finance_excel(request):
+    """Xuất báo cáo tài chính ra Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+    from finance.models import Receipt, Payment
+
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    store_id = request.GET.get('store_id')
+    today = datetime.now().date()
+    if not from_date:
+        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = today.strftime('%Y-%m-%d')
+
+    receipts = Receipt.objects.filter(
+        receipt_date__gte=from_date, receipt_date__lte=to_date, status=1)
+    receipts = filter_by_store(receipts, request)
+    if store_id: receipts = receipts.filter(store_id=store_id)
+
+    payments = Payment.objects.filter(
+        payment_date__gte=from_date, payment_date__lte=to_date, status=1)
+    payments = filter_by_store(payments, request)
+    if store_id: payments = payments.filter(store_id=store_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Thu chi'
+    hf = Font(bold=True, size=14, color='FFFFFF')
+    hfill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    sf = Font(bold=True, size=10, color='FFFFFF')
+    sfill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
+    green_fill = PatternFill(start_color='E8F5E9', end_color='E8F5E9', fill_type='solid')
+    red_fill = PatternFill(start_color='FFEBEE', end_color='FFEBEE', fill_type='solid')
+    tfill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    mfmt = '#,##0'
+
+    ws.merge_cells('A1:G1')
+    ws['A1'] = 'BÁO CÁO THU CHI'
+    ws['A1'].font = hf; ws['A1'].fill = hfill; ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:G2')
+    ws['A2'] = f'Từ {from_date} đến {to_date}'
+    ws['A2'].font = Font(italic=True, size=10); ws['A2'].alignment = Alignment(horizontal='center')
+
+    # Summary row
+    total_income = float(receipts.aggregate(s=Sum('amount'))['s'] or 0)
+    total_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
+    ws['A3'] = f'Tổng thu: {total_income:,.0f}đ  |  Tổng chi: {total_expense:,.0f}đ  |  Lãi/Lỗ: {total_income - total_expense:,.0f}đ'
+    ws['A3'].font = Font(bold=True, size=10)
+    ws.merge_cells('A3:G3')
+
+    headers = ['STT', 'Loại', 'Mã phiếu', 'Ngày', 'Danh mục', 'Diễn giải', 'Số tiền']
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=5, column=col, value=h)
+        c.font = sf; c.fill = sfill; c.alignment = Alignment(horizontal='center'); c.border = thin
+
+    row = 6
+    idx = 1
+    # Ghi phiếu thu
+    for r in receipts.select_related('category').order_by('-receipt_date'):
+        vals = [idx, 'THU', r.code,
+                r.receipt_date.strftime('%d/%m/%Y') if r.receipt_date else '',
+                r.category.name if r.category else '',
+                r.description or '', float(r.amount)]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = thin; c.fill = green_fill
+            if col == 7: c.number_format = mfmt
+        idx += 1; row += 1
+
+    # Ghi phiếu chi
+    for p in payments.select_related('category').order_by('-payment_date'):
+        vals = [idx, 'CHI', p.code,
+                p.payment_date.strftime('%d/%m/%Y') if p.payment_date else '',
+                p.category.name if p.category else '',
+                p.description or '', float(p.amount)]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = thin; c.fill = red_fill
+            if col == 7: c.number_format = mfmt
+        idx += 1; row += 1
+
+    # Total rows
+    for label, amt, fill in [('TỔNG THU', total_income, green_fill),
+                               ('TỔNG CHI', total_expense, red_fill)]:
+        for col, val in enumerate(['', label, '', '', '', '', amt], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = Font(bold=True); c.fill = fill; c.border = thin
+            if col == 7: c.number_format = mfmt
+        row += 1
+    net = total_income - total_expense
+    for col, val in enumerate(['', 'LÃI/LỖ', '', '', '', '', net], 1):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = Font(bold=True, color='006600' if net >= 0 else 'CC0000')
+        c.fill = tfill; c.border = thin
+        if col == 7: c.number_format = mfmt
+
+    for i, w in enumerate([6, 8, 15, 12, 20, 30, 18], 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="BC_Thu_chi_{from_date}_{to_date}.xlsx"'
+    wb.save(response)
+    return response

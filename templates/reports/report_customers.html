@@ -202,5 +202,12 @@ function viewStore(storeId){
     $('#filter_store_id').val(storeId);
     loadReport();
 }
+
+$('#btn_export').click(function(){
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/export_customers_excel/';
+    if(storeId) url += '?store_id='+storeId;
+    window.location.href = url;
+});
 </script>
 {% endblock %}

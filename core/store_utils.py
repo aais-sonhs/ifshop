@@ -96,3 +96,37 @@ def get_managed_store_ids(user):
 def can_manage_users(user):
     """Check if user can manage other users (superadmin or brand owner)."""
     return user.is_superuser or is_brand_owner(user)
+
+
+def can_access_module(user, module, action='view'):
+    """Check if user has permission to access a module/action.
+    Brand owners always have access.
+    Regular users need ModulePermission via their role group.
+    """
+    if user.is_superuser:
+        return False  # Superadmin = platform only
+    if is_brand_owner(user):
+        return True  # Brand owner full access
+    # Check via role group
+    from system_management.models import ModulePermission
+    groups = user.groups.all()
+    if not groups.exists():
+        return True  # No role group = default allow (legacy users)
+    return ModulePermission.objects.filter(
+        role_group__group__in=groups,
+        module=module, action=action, is_allowed=True
+    ).exists()
+
+
+def report_permission_required(view_func):
+    """Block users without report access permission."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not can_access_module(request.user, 'reports', 'view'):
+            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'error': 'Bạn không có quyền xem báo cáo'}, status=403)
+            from django.contrib import messages
+            messages.error(request, '⛔ Bạn không có quyền truy cập báo cáo. Liên hệ quản lý để được cấp quyền.')
+            return redirect('/')
+        return view_func(request, *args, **kwargs)
+    return wrapper

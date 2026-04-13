@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/orders/save/', views.api_save_order, name='api_save_order'),
     path('api/orders/delete/', views.api_delete_order, name='api_delete_order'),
     path('api/orders/cancel/', views.api_cancel_order, name='api_cancel_order'),
+    path('api/orders/update_note/', views.api_update_order_note, name='api_update_order_note'),
     path('api/orders/approve/', views.api_approve_order, name='api_approve_order'),
     path('order_approvals/', views.order_approvals, name='order_approvals'),
     path('api/orders/pending_approvals/', views.api_pending_approvals, name='api_pending_approvals'),

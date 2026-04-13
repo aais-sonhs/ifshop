@@ -92,13 +92,27 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');
-        $('#inp_code,#inp_note').val('');
+        $('#inp_note').val('');
         $('#inp_supplier_id,#inp_warehouse_id').val('');
-        $('#inp_receipt_date').val('');
+        // Tự động điền ngày hôm nay
+        var today = new Date().toISOString().split('T')[0];
+        $('#inp_receipt_date').val(today);
         $('#inp_status').val('0');
         $('#items_body').html('');
         itemRowIndex = 0;
         updateTotal();
+        // Tự động sinh mã phiếu nhập: PN-001, PN-002...
+        var prefix = 'PN-';
+        var maxNum = 0;
+        // Tìm mã lớn nhất từ dữ liệu hiện có
+        $('#data_tbl tbody tr').each(function(){
+            var code = $(this).find('td:eq(1)').text();
+            if(code.indexOf(prefix) === 0){
+                var num = parseInt(code.replace(prefix, ''));
+                if(num > maxNum) maxNum = num;
+            }
+        });
+        $('#inp_code').val(prefix + String(maxNum + 1).padStart(3, '0'));
         $('#modal_title').text('Tạo phiếu nhập');
         $('#modal_form').modal('show');
         setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
@@ -289,10 +303,9 @@ function loadData(){
             h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
                 '<td>'+d.receipt_date+'</td><td class="text-center">'+d.items.length+'</td><td class="text-right">'+fmt(d.total_amount)+'</td>'+
                 '<td class="text-center">'+statusBadge+'</td>'+
-                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>\u003ci class="fas fa-edit">\u003c/i>\u003c/button> '+
-                '<button class="btn btn-xs btn-success" onclick=\'printGR('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\'>\u003ci class="fas fa-print">\u003c/i>\u003c/button> '+
-                '<button class="btn btn-xs btn-danger" onclick=\'downloadGRPDF('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\' title="Tải PDF">\u003ci class="fas fa-file-pdf">\u003c/i>\u003c/button> '+
-                '\u003cbutton class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"\u003e\u003ci class="fas fa-trash">\u003c/i>\u003c/button></td></tr>';
+                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-success" onclick=\'printGR('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\'>In</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });

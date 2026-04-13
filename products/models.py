@@ -100,6 +100,7 @@ class Product(SoftDeleteModel):
     is_service = models.BooleanField(default=False, verbose_name='Sản phẩm dịch vụ')
     is_combo = models.BooleanField(default=False, verbose_name='Sản phẩm combo')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
+    location = models.CharField(max_length=100, blank=True, null=True, verbose_name='Vị trí sản phẩm')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='products_created')
@@ -117,7 +118,7 @@ class Product(SoftDeleteModel):
 class ProductVariant(models.Model):
     """Biến thể sản phẩm (theo kích thước/size)"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', verbose_name='Sản phẩm')
-    size_name = models.CharField(max_length=50, verbose_name='Kích thước')
+    size_name = models.CharField(max_length=50, verbose_name='Quy cách')
     sku = models.CharField(max_length=100, unique=True, verbose_name='Mã SKU')
     barcode = models.CharField(max_length=100, blank=True, null=True, verbose_name='Barcode')
     cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')

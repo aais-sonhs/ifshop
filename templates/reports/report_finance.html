@@ -98,6 +98,22 @@
             </div>
         </div>
 
+        <!-- BIỂU ĐỒ THU CHI -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="card card-outline card-primary">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i> Thu chi theo danh mục</h6></div>
+                    <div class="card-body" style="height:280px;"><canvas id="chart_categories"></canvas></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card card-outline card-info">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i> Tỷ lệ thu chi</h6></div>
+                    <div class="card-body" style="height:280px;"><canvas id="chart_ratio"></canvas></div>
+                </div>
+            </div>
+        </div>
+
         <!-- BẢNG SO SÁNH CỬA HÀNG -->
         <div id="store_breakdown_wrap" style="display:none;" class="mb-3">
             <div class="card card-outline card-purple">
@@ -210,8 +226,83 @@ function loadReport(){
         $('#ft_expense').text(fmtD(tE));
         var tDiff = tI - tE;
         $('#ft_diff').html('<span class="'+(tDiff>=0?'text-success':'text-danger')+'">'+fmtD(tDiff)+'</span>');
+
+        // Render charts
+        renderFinanceCharts(res.categories, res.summary);
     });
 }
 function viewStore(storeId){ $('#filter_store_id').val(storeId); loadReport(); }
+
+var catChart = null;
+var ratioChart = null;
+
+function renderFinanceCharts(categories, summary){
+    // Category bar chart
+    if(catChart) catChart.destroy();
+    if(categories.length === 0) return;
+    var labels = categories.map(function(c){ return c.name; });
+    var incomes = categories.map(function(c){ return c.income; });
+    var expenses = categories.map(function(c){ return c.expense; });
+
+    var ctx = document.getElementById('chart_categories').getContext('2d');
+    catChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Thu', data: incomes, backgroundColor: 'rgba(40, 167, 69, 0.7)', borderRadius: 4 },
+                { label: 'Chi', data: expenses, backgroundColor: 'rgba(220, 53, 69, 0.7)', borderRadius: 4 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: { label: function(ctx){ return ctx.dataset.label + ': ' + Number(ctx.raw||0).toLocaleString('vi-VN') + 'đ'; } }
+                },
+                legend: { position: 'top', labels: { usePointStyle: true } }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: function(v){ return (v/1000000).toFixed(0) + 'tr'; } } }
+            }
+        }
+    });
+
+    // Ratio doughnut
+    if(ratioChart) ratioChart.destroy();
+    var ctx2 = document.getElementById('chart_ratio').getContext('2d');
+    ratioChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+            labels: ['Tổng thu', 'Tổng chi'],
+            datasets: [{
+                data: [summary.total_income, summary.total_expense],
+                backgroundColor: ['#28a745', '#dc3545'],
+                borderWidth: 3,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: { label: function(ctx){ return ctx.label + ': ' + Number(ctx.raw||0).toLocaleString('vi-VN') + 'đ'; } }
+                }
+            }
+        }
+    });
+}
+
+$('#btn_export').click(function(){
+    var from = $('#filter_from_date').val();
+    var to = $('#filter_to_date').val();
+    var storeId = $('#filter_store_id').val();
+    var url = '/api/export_finance_excel/?from_date='+from+'&to_date='+to;
+    if(storeId) url += '&store_id='+storeId;
+    window.location.href = url;
+});
 </script>
 {% endblock %}

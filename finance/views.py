@@ -96,7 +96,7 @@ def api_get_orders_for_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_receipts(request):
-    receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order').all()
+    receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order', 'created_by').all()
     receipts = filter_by_store(receipts, request)
     data = [{
         'id': r.id, 'code': r.code,
@@ -115,6 +115,7 @@ def api_get_receipts(request):
         'status': r.status, 'status_display': r.get_status_display(),
         'payment_method': r.payment_method, 'payment_method_display': r.get_payment_method_display(),
         'note': r.note or '',
+        'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
     } for r in receipts]
     return JsonResponse({'data': data})
 

@@ -15,4 +15,10 @@ urlpatterns = [
     path('report_staff_sales/', views.report_staff_sales, name='report_staff_sales'),
     path('api/report_staff_sales/', views.api_report_staff_sales, name='api_report_staff_sales'),
     path('api/export_staff_sales_excel/', views.export_staff_sales_excel, name='export_staff_sales_excel'),
+    path('api/export_sales_excel/', views.export_sales_excel, name='export_sales_excel'),
+    path('api/export_inventory_excel/', views.export_inventory_excel, name='export_inventory_excel'),
+    path('api/export_orders_excel/', views.export_orders_excel, name='export_orders_excel'),
+    path('api/export_customers_excel/', views.export_customers_excel, name='export_customers_excel'),
+    path('api/export_purchases_excel/', views.export_purchases_excel, name='export_purchases_excel'),
+    path('api/export_finance_excel/', views.export_finance_excel, name='export_finance_excel'),
 ]

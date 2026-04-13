@@ -220,6 +220,7 @@ class BusinessConfig(models.Model):
     opt_loyalty_points = models.BooleanField(default=False, verbose_name='Tích điểm khách hàng')
     opt_loyalty_rate = models.IntegerField(default=10000, verbose_name='Mỗi X đồng = 1 điểm')
     opt_commission = models.BooleanField(default=False, verbose_name='Hoa hồng nhân viên')
+    opt_allow_negative_stock = models.BooleanField(default=False, verbose_name='Cho phép tồn âm (bán khi hết hàng)')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

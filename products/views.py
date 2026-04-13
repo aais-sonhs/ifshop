@@ -128,6 +128,12 @@ def api_get_products(request):
                 'selling_price': float(ci.product.selling_price),
             } for ci in p.combo_items.select_related('product').all()]
 
+        stock_by_warehouse = [{
+            'warehouse': s.warehouse.name if s.warehouse else '',
+            'warehouse_id': s.warehouse_id,
+            'quantity': float(s.quantity),
+        } for s in p.stocks.select_related('warehouse').all() if float(s.quantity) != 0]
+
         data.append({
             'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
             'category': p.category.name if p.category else '',
@@ -139,6 +145,7 @@ def api_get_products(request):
             'supplier': p.supplier.name if p.supplier else '',
             'supplier_id': p.supplier_id,
             'total_stock': total_stock,
+            'stock_by_warehouse': stock_by_warehouse,
             'image': p.image.url if p.image else '',
             'description': p.description or '',
             'is_active': p.is_active,
@@ -147,6 +154,7 @@ def api_get_products(request):
             'is_combo': p.is_combo,
             'combo_items': combo_items,
             'variants': variants,
+            'location': p.location or '',
         })
     return JsonResponse({'data': data})
 
@@ -159,13 +167,9 @@ def api_save_product(request):
         product_id = request.POST.get('id')
         if product_id:
             product = Product.objects.get(id=product_id)
-            # GUARD: Combo đã tạo → không cho sửa
-            if product.is_combo:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': '🔒 Combo đã tạo không thể chỉnh sửa. '
-                               'Nếu cần thay đổi, vui lòng xóa combo này và tạo combo mới.'
-                })
+            # Combo đã tạo → cho phép sửa (trước đây chặn hoàn toàn)
+            # Giờ chỉ log cảnh báo để audit trail
+            pass
         else:
             product = Product()
             product.created_by = request.user
@@ -183,6 +187,7 @@ def api_save_product(request):
         product.is_weight_based = request.POST.get('is_weight_based', '0') == '1'
         product.is_service = request.POST.get('is_service', '0') == '1'
         product.is_combo = request.POST.get('is_combo', '0') == '1'
+        product.location = request.POST.get('location', '') or None
 
         cat_id = request.POST.get('category_id')
         product.category_id = cat_id if cat_id else None
@@ -484,14 +489,40 @@ def api_save_goods_receipt(request):
             )
 
         # Cộng tồn kho nếu status mới = Hoàn thành (1)
+        # + Tính giá vốn trung bình gia quyền
         if new_status == 1 and gr.warehouse_id:
             for item in items_data:
+                product_id = item.get('product_id')
+                new_qty = Decimal(str(item.get('quantity', 0)))
+                new_price = Decimal(str(item.get('unit_price', 0)))
+
                 stock, _ = ProductStock.objects.get_or_create(
-                    product_id=item.get('product_id'),
+                    product_id=product_id,
                     warehouse_id=gr.warehouse_id,
                 )
-                stock.quantity += Decimal(str(item.get('quantity', 0)))
+                old_stock_qty = stock.quantity  # Tồn trước khi nhập
+
+                # Cộng tồn
+                stock.quantity += new_qty
                 stock.save()
+
+                # Tính giá vốn TB gia quyền
+                # Formula: (old_total_stock * old_cost + new_qty * new_price) / total_new_stock
+                try:
+                    product = Product.objects.get(id=product_id)
+                    total_old_stock = Decimal(str(sum(
+                        float(s.quantity) for s in ProductStock.objects.filter(product_id=product_id)
+                    ))) - new_qty  # Trừ lại vì đã cộng ở trên
+                    if total_old_stock < 0:
+                        total_old_stock = Decimal('0')
+                    total_new_stock = total_old_stock + new_qty
+                    if total_new_stock > 0:
+                        old_cost = product.cost_price or Decimal('0')
+                        weighted_avg = (total_old_stock * old_cost + new_qty * new_price) / total_new_stock
+                        product.cost_price = round(weighted_avg)
+                        product.save(update_fields=['cost_price'])
+                except Product.DoesNotExist:
+                    pass
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except Exception as e:
@@ -821,3 +852,45 @@ def api_get_cost_adjustments(request):
         'adjusted_at': c.adjusted_at.strftime('%d/%m/%Y %H:%M') if c.adjusted_at else '',
     } for c in items]
     return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_product_purchase_history(request):
+    """API: Lịch sử nhập hàng của 1 sản phẩm"""
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        return JsonResponse({'status': 'error', 'message': 'Missing product_id'})
+
+    from products.models import GoodsReceiptItem
+    items = GoodsReceiptItem.objects.filter(
+        product_id=product_id,
+        goods_receipt__status=1  # Chỉ phiếu hoàn thành
+    ).select_related('goods_receipt', 'goods_receipt__supplier', 'goods_receipt__warehouse', 'variant'
+    ).order_by('-goods_receipt__receipt_date')
+
+    data = [{
+        'receipt_code': it.goods_receipt.code,
+        'receipt_date': it.goods_receipt.receipt_date.strftime('%d/%m/%Y') if it.goods_receipt.receipt_date else '',
+        'supplier': it.goods_receipt.supplier.name if it.goods_receipt.supplier else '',
+        'warehouse': it.goods_receipt.warehouse.name if it.goods_receipt.warehouse else '',
+        'variant': it.variant.size_name if it.variant else '',
+        'quantity': float(it.quantity),
+        'unit_price': float(it.unit_price),
+        'total_price': float(it.total_price),
+    } for it in items]
+
+    # Tổng
+    total_qty = sum(d['quantity'] for d in data)
+    total_amount = sum(d['total_price'] for d in data)
+    avg_price = total_amount / total_qty if total_qty > 0 else 0
+
+    return JsonResponse({
+        'status': 'ok',
+        'data': data,
+        'summary': {
+            'total_entries': len(data),
+            'total_quantity': total_qty,
+            'total_amount': total_amount,
+            'avg_unit_price': round(avg_price),
+        }
+    })

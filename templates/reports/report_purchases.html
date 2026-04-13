@@ -75,5 +75,11 @@ function loadReport(){
         $('#ft_total').text(fmtD(total));
     });
 }
+
+$('#btn_export').click(function(){
+    var from = $('#filter_from_date').val();
+    var to = $('#filter_to_date').val();
+    window.location.href = '/api/export_purchases_excel/?from_date='+from+'&to_date='+to;
+});
 </script>
 {% endblock %}

@@ -94,12 +94,22 @@
                 <!-- Chọn sản phẩm -->
                 <div class="card card-outline card-info mt-2">
                     <div class="card-header py-1">
-                        <h6 class="card-title mb-0">Chi tiết sản phẩm</h6>
+                        <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
                         <div class="card-tools">
-                            <button type="button" class="btn btn-xs btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm SP</button>
+                            <small class="text-muted mr-2"><kbd>F3</kbd> Tạo SP mới</small>
                         </div>
                     </div>
                     <div class="card-body p-0">
+                        <!-- THANH TÌM KIẾM SẢN PHẨM NHANH -->
+                        <div class="p-2 bg-light border-bottom">
+                            <div class="input-group input-group-sm">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-white"><i class="fas fa-search text-primary"></i></span>
+                                </div>
+                                <input type="text" class="form-control" id="quick_search_product" placeholder="Gõ tên hoặc mã SP để thêm nhanh... (Enter để thêm)" autocomplete="off">
+                            </div>
+                            <div id="quick_search_results" style="display:none; position:absolute; z-index:9999; width:calc(100% - 1rem); max-height:250px; overflow-y:auto; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 4px 4px; box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>
+                        </div>
                         <table class="table table-sm table-bordered mb-0" id="items_tbl">
                             <thead class="bg-light">
                                 <tr>
@@ -232,6 +242,49 @@ $(document).ready(function(){
 
     $('#btn_add_item').click(function(){ addItemRow(null); });
     $('#inp_discount_amount').on('input', function(){ calcTotal(); });
+
+    // Quick search product
+    var searchTimeout = null;
+    $('#quick_search_product').on('input', function(){
+        var term = $(this).val().trim().toLowerCase();
+        clearTimeout(searchTimeout);
+        if(term.length < 1){ $('#quick_search_results').hide(); return; }
+        searchTimeout = setTimeout(function(){
+            var results = allProducts.filter(function(p){
+                return p.name.toLowerCase().indexOf(term)>=0 || p.code.toLowerCase().indexOf(term)>=0;
+            }).slice(0, 10);
+            if(results.length === 0){
+                $('#quick_search_results').html('<div class="p-2 text-muted text-center"><i class="fas fa-search mr-1"></i>Không tìm thấy.</div>').show();
+                return;
+            }
+            var html = '';
+            results.forEach(function(p){
+                var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:32px;height:32px;object-fit:cover;border-radius:4px;margin-right:8px;">' : '<span style="display:inline-block;width:32px;height:32px;background:#eee;border-radius:4px;margin-right:8px;text-align:center;line-height:32px;"><i class="fas fa-box text-muted"></i></span>';
+                var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
+                html += '<div class="quick-search-item d-flex align-items-center p-2 border-bottom" data-product-id="'+p.id+'" style="cursor:pointer;">' +
+                    imgHtml + '<div class="flex-grow-1"><strong>'+p.code+'</strong> - '+p.name+'<br><small>'+priceHtml+' · '+p.unit+'</small></div>' +
+                    '<button class="btn btn-xs btn-outline-primary ml-2"><i class="fas fa-plus"></i></button></div>';
+            });
+            $('#quick_search_results').html(html).show();
+        }, 200);
+    });
+    $(document).on('click', '.quick-search-item', function(){
+        var pid = $(this).data('product-id');
+        var product = allProducts.find(function(p){ return p.id == pid; });
+        if(product){
+            var item = {product_id:product.id, variant_id:null, unit:product.unit, quantity:1, unit_price:product.selling_price, discount_percent:0};
+            addItemRow(item); calcTotal();
+        }
+        $('#quick_search_product').val('').focus();
+        $('#quick_search_results').hide();
+    });
+    $('#quick_search_product').on('keydown', function(e){
+        if(e.key === 'Enter'){ e.preventDefault(); var $first = $('#quick_search_results .quick-search-item:first'); if($first.length) $first.click(); }
+    });
+    $(document).on('click', function(e){
+        if(!$(e.target).closest('#quick_search_product, #quick_search_results').length) $('#quick_search_results').hide();
+    });
+
 
     // Tạo nhanh khách hàng
     $('#btn_quick_customer').click(function(){
@@ -454,11 +507,10 @@ function loadData(){
                 '<td class="text-center">'+d.item_count+'</td>'+
                 '<td class="text-right">'+fmt(d.final_amount)+'</td><td>'+d.valid_until+'</td>'+
                 '<td>'+d.status_display+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')"><i class="fas fa-edit"></i></button> '+
-                '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')" title="Sao chép báo giá"><i class="fas fa-copy"></i></button> '+
-                '<button class="btn btn-xs btn-success" onclick="printQuotation('+d.id+')"><i class="fas fa-print"></i></button> '+
-                '<button class="btn btn-xs btn-danger" onclick="downloadQuotationPDF('+d.id+')" title="Tải PDF"><i class="fas fa-file-pdf"></i></button> '+
-                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+                '<td><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')">Sao chép</button> '+
+                '<button class="btn btn-xs btn-outline-success" onclick="printQuotation('+d.id+')">In</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
         });
         var cols = {% if biz.opt_quotation_salesperson %}10{% else %}9{% endif %};
         $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');

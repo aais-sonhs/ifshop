@@ -13,13 +13,87 @@ from core.store_utils import filter_by_store, get_user_store, brand_owner_requir
 
 logger = logging.getLogger(__name__)
 
+GUEST_CUSTOMER_CODE_PREFIX = 'KHLE-'
+GUEST_CUSTOMER_NAME = 'Khách lẻ / khách vãng lai'
+
+
+def _get_sales_customers_queryset(request):
+    from core.store_utils import get_managed_store_ids
+
+    store_ids = get_managed_store_ids(request.user)
+    return Customer.objects.filter(
+        is_active=True,
+        store_id__in=store_ids,
+    ).exclude(code__startswith=GUEST_CUSTOMER_CODE_PREFIX)
+
+
+def _is_guest_customer(customer):
+    return bool(customer and customer.code and customer.code.startswith(GUEST_CUSTOMER_CODE_PREFIX))
+
+
+def _get_default_store_for_request(request):
+    from core.store_utils import get_managed_store_ids as _get_store_ids
+    from system_management.models import Store as _Store
+
+    user_store = get_user_store(request)
+    if user_store:
+        return user_store
+
+    store_ids = _get_store_ids(request.user)
+    if not store_ids:
+        return None
+    return _Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _get_or_create_guest_customer(request):
+    store = _get_default_store_for_request(request)
+    store_key = store.id if store else 0
+    guest_code = f'{GUEST_CUSTOMER_CODE_PREFIX}{store_key:03d}'
+
+    guest = Customer.all_objects.filter(code=guest_code).first()
+    if guest:
+        update_fields = []
+        if guest.is_deleted:
+            guest.is_deleted = False
+            guest.deleted_at = None
+            update_fields.extend(['is_deleted', 'deleted_at'])
+        if not guest.is_active:
+            guest.is_active = True
+            update_fields.append('is_active')
+        if guest.name != GUEST_CUSTOMER_NAME:
+            guest.name = GUEST_CUSTOMER_NAME
+            update_fields.append('name')
+        if store and guest.store_id != store.id:
+            guest.store = store
+            update_fields.append('store')
+        if update_fields:
+            guest.save(update_fields=update_fields)
+        return guest
+
+    return Customer.objects.create(
+        code=guest_code,
+        name=GUEST_CUSTOMER_NAME,
+        customer_type=1,
+        store=store,
+        is_active=True,
+        created_by=request.user,
+    )
+
+
+def _resolve_sale_customer(request, customer_id):
+    if customer_id:
+        customer = _get_sales_customers_queryset(request).filter(id=customer_id).first()
+        if customer:
+            return customer
+    return _get_or_create_guest_customer(request)
+
 
 @login_required(login_url="/login/")
 @brand_owner_required
 def order_tbl(request):
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
-    customers = list(Customer.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'code', 'name'))
+    customers = list(_get_sales_customers_queryset(request).values('id', 'code', 'name', 'phone'))
     warehouses = list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name'))
     # Báo giá chưa hủy VÀ chưa tạo đơn hàng (hoặc đơn hàng đã hủy)
     # Lấy ID báo giá đã có đơn hàng chưa hủy
@@ -135,7 +209,7 @@ def quotation_tbl(request):
     from django.contrib.auth.models import User as AuthUser
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
-    customers = list(Customer.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'code', 'name'))
+    customers = list(_get_sales_customers_queryset(request).values('id', 'code', 'name', 'phone'))
     brand_users = AuthUser.objects.filter(
         is_active=True,
         profile__store_id__in=store_ids
@@ -284,10 +358,27 @@ def api_quick_create_customer(request):
         if not name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên khách hàng'})
 
+        existing_customer = None
+        if phone:
+            existing_customer = _get_sales_customers_queryset(request).filter(phone=phone).first()
+        if existing_customer:
+            return JsonResponse({
+                'status': 'ok',
+                'message': f'Khách hàng {existing_customer.name} đã tồn tại, đã chọn lại.',
+                'customer': {
+                    'id': existing_customer.id,
+                    'code': existing_customer.code,
+                    'name': existing_customer.name,
+                    'phone': existing_customer.phone or '',
+                }
+            })
+
         # Tự sinh mã khách hàng
         import re
         prefix = 'KH'
-        last_cust = Customer.objects.filter(code__startswith=prefix).order_by('-id').first()
+        last_cust = Customer.all_objects.filter(code__startswith=prefix).exclude(
+            code__startswith=GUEST_CUSTOMER_CODE_PREFIX
+        ).order_by('-id').first()
         next_num = 1
         if last_cust:
             match = re.search(r'KH(\d+)', last_cust.code)
@@ -295,7 +386,7 @@ def api_quick_create_customer(request):
                 next_num = int(match.group(1)) + 1
         while True:
             cust_code = f'{prefix}{next_num:03d}'
-            if not Customer.objects.filter(code=cust_code).exists():
+            if not Customer.all_objects.filter(code=cust_code).exists():
                 break
             next_num += 1
 
@@ -307,16 +398,7 @@ def api_quick_create_customer(request):
         c.address = data.get('address', '').strip()
         c.company = data.get('company', '').strip()
         c.created_by = request.user
-        # Auto-assign store
-        from core.store_utils import get_user_store, get_managed_store_ids as _get_sids
-        from system_management.models import Store as _Store
-        user_store = get_user_store(request)
-        if user_store:
-            c.store = user_store
-        else:
-            _sids = _get_sids(request.user)
-            if _sids:
-                c.store = _Store.objects.filter(id__in=_sids).first()
+        c.store = _get_default_store_for_request(request)
         c.save()
 
         return JsonResponse({
@@ -326,6 +408,7 @@ def api_quick_create_customer(request):
                 'id': c.id,
                 'code': c.code,
                 'name': c.name,
+                'phone': c.phone or '',
             }
         })
     except Exception as e:
@@ -340,7 +423,7 @@ def api_get_orders(request):
     orders = filter_by_store(orders, request)
     data = [{
         'id': o.id, 'code': o.code,
-        'customer': o.customer.name if o.customer else '',
+        'customer': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
         'customer_id': o.customer_id,
         'warehouse': o.warehouse.name if o.warehouse else '',
         'warehouse_id': o.warehouse_id,
@@ -392,7 +475,10 @@ def api_get_order_detail(request):
         return JsonResponse({
             'status': 'ok',
             'order': {
-                'id': o.id, 'code': o.code, 'customer_id': o.customer_id,
+                'id': o.id,
+                'code': o.code,
+                'customer_id': None if _is_guest_customer(o.customer) else o.customer_id,
+                'customer_label': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
                 'warehouse_id': o.warehouse_id,
                 'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
                 'discount_amount': float(o.discount_amount),
@@ -436,17 +522,8 @@ def api_save_order(request):
             else:
                 o = Order()
                 o.created_by = request.user
-                # Gán store từ profile user
                 if not o.store_id:
-                    from core.store_utils import get_user_store, get_managed_store_ids as _get_store_ids
-                    from system_management.models import Store as _Store
-                    user_store = get_user_store(request)
-                    if user_store:
-                        o.store = user_store
-                    else:
-                        _sids = _get_store_ids(request.user)
-                        if _sids:
-                            o.store = _Store.objects.filter(id__in=_sids).first()
+                    o.store = _get_default_store_for_request(request)
             o.code = data.get('code', '')
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
             dup = Order.all_objects.filter(code=o.code)
@@ -454,7 +531,7 @@ def api_save_order(request):
                 dup = dup.exclude(id=oid)
             if dup.exists():
                 return JsonResponse({'status': 'error', 'message': f'Mã đơn hàng "{o.code}" đã tồn tại. Vui lòng chọn mã khác.'})
-            o.customer_id = data.get('customer_id') or None
+            o.customer = _resolve_sale_customer(request, data.get('customer_id'))
             o.warehouse_id = data.get('warehouse_id') or None
             o.quotation_id = data.get('quotation_id') or None
             o.order_date = data.get('order_date')
@@ -867,7 +944,7 @@ def api_get_quotations(request):
     quotes = filter_by_store(quotes, request)
     data = [{
         'id': q.id, 'code': q.code,
-        'customer': q.customer.name if q.customer else '',
+        'customer': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
         'customer_id': q.customer_id,
         'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
         'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
@@ -907,7 +984,10 @@ def api_get_quotation_detail(request):
         return JsonResponse({
             'status': 'ok',
             'quotation': {
-                'id': q.id, 'code': q.code, 'customer_id': q.customer_id,
+                'id': q.id,
+                'code': q.code,
+                'customer_id': None if _is_guest_customer(q.customer) else q.customer_id,
+                'customer_label': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
                 'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
                 'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
                 'discount_amount': float(q.discount_amount),
@@ -934,17 +1014,7 @@ def api_save_quotation(request):
             else:
                 q = Quotation()
                 q.created_by = request.user
-                # Gán store từ profile user
-                from core.store_utils import get_user_store, get_managed_store_ids as _get_store_ids
-                from system_management.models import Store as _Store
-                user_store = get_user_store(request)
-                if user_store:
-                    q.store = user_store
-                else:
-                    # Brand owner có thể không có profile.store → lấy store đầu tiên của brand
-                    _sids = _get_store_ids(request.user)
-                    if _sids:
-                        q.store = _Store.objects.filter(id__in=_sids).first()
+                q.store = _get_default_store_for_request(request)
             q.code = data.get('code', '')
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
             dup = Quotation.all_objects.filter(code=q.code)
@@ -952,7 +1022,7 @@ def api_save_quotation(request):
                 dup = dup.exclude(id=qid)
             if dup.exists():
                 return JsonResponse({'status': 'error', 'message': f'Mã báo giá "{q.code}" đã tồn tại. Vui lòng chọn mã khác.'})
-            q.customer_id = data.get('customer_id') or None
+            q.customer = _resolve_sale_customer(request, data.get('customer_id'))
             q.quotation_date = data.get('quotation_date')
             q.valid_until = data.get('valid_until') or None
             q.discount_amount = data.get('discount_amount', 0) or 0

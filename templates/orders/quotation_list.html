@@ -43,11 +43,14 @@
                                 </button>
                             </label>
                             <select class="form-control form-control-sm select2" id="inp_customer_id">
-                                <option value="">-- Chọn --</option>
+                                <option value="">Khách lẻ / khách vãng lai</option>
                                 {% for c in customers %}
-                                <option value="{{ c.id }}">{{ c.code }} - {{ c.name }}</option>
+                                <option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone|default:'' }}" data-code="{{ c.code }}">
+                                    {{ c.name }}{% if c.phone %} - {{ c.phone }}{% endif %} — {{ c.code }}
+                                </option>
                                 {% endfor %}
                             </select>
+                            <small class="form-text text-muted">Có thể tìm theo tên hoặc số điện thoại. Để trống sẽ lưu vào khách lẻ / khách vãng lai.</small>
                         </div>
                     </div>
                     <div class="col-md-2">
@@ -215,10 +218,139 @@
 {% block extra_js %}
 <script>
 var allProducts = [];
+var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+function normalizeCustomerSearch(value){
+    var text = (value || '').toString().toLowerCase().trim();
+    if(text.normalize){
+        text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    return text;
+}
+
+function guessCustomerDraft(term){
+    var raw = (term || '').trim();
+    var digits = raw.replace(/\D/g, '');
+    var looksLikePhone = digits.length >= 7 && digits === raw.replace(/\s/g, '');
+    return {
+        name: looksLikePhone ? '' : raw,
+        phone: digits.length >= 7 ? digits : ''
+    };
+}
+
+function openQuickCustomerModalWithTerm(term){
+    var draft = guessCustomerDraft(term);
+    $('#qc_name').val(draft.name);
+    $('#qc_phone').val(draft.phone);
+    $('#qc_email,#qc_company,#qc_address').val('');
+    $('#modal_quick_customer').modal('show');
+    setTimeout(function(){
+        if(draft.name){
+            $('#qc_name').focus().select();
+        } else {
+            $('#qc_phone').focus().select();
+        }
+    }, 200);
+}
+
+function customerMatcher(params, data){
+    var term = normalizeCustomerSearch(params.term);
+    if(!term){ return data; }
+    if(!data.id){ return data; }
+
+    var $option = $(data.element);
+    var optionText = normalizeCustomerSearch(data.text);
+    var optionName = normalizeCustomerSearch($option.data('name'));
+    var optionCode = normalizeCustomerSearch($option.data('code'));
+    var optionPhone = (($option.data('phone') || '').toString()).replace(/\D/g, '');
+    var termDigits = ((params.term || '').toString()).replace(/\D/g, '');
+
+    if(optionText.indexOf(term) >= 0 || optionName.indexOf(term) >= 0 || optionCode.indexOf(term) >= 0){
+        return data;
+    }
+    if(termDigits && optionPhone.indexOf(termDigits) >= 0){
+        return data;
+    }
+    return null;
+}
+
+function initCustomerPicker(){
+    var $customer = $('#inp_customer_id');
+    if(!$customer.length){ return; }
+    if($customer.hasClass('select2-hidden-accessible')){
+        $customer.select2('destroy');
+    }
+
+    $customer.select2({
+        width: '100%',
+        theme: 'bootstrap4',
+        allowClear: true,
+        placeholder: 'Khách lẻ / khách vãng lai',
+        dropdownParent: $('#modal_form'),
+        matcher: customerMatcher,
+        escapeMarkup: function(markup){ return markup; },
+        language: {
+            noResults: function(){
+                if(currentCustomerSearchTerm){
+                    return '<button type="button" class="btn btn-link p-0 select2-create-customer">+ Tạo khách hàng mới: "' +
+                        $('<div>').text(currentCustomerSearchTerm).html() + '"</button>';
+                }
+                return '<span class="text-muted">Nhập tên hoặc số điện thoại để tìm khách hàng</span>';
+            }
+        },
+        templateResult: function(data){
+            if(!data.id){
+                return '<span class="text-muted">Khách lẻ / khách vãng lai</span>';
+            }
+            var $option = $(data.element);
+            var name = $option.data('name') || data.text;
+            var phone = $option.data('phone');
+            var code = $option.data('code');
+            var meta = [];
+            if(phone){ meta.push(phone); }
+            if(code){ meta.push(code); }
+            return '<div><strong>' + $('<div>').text(name).html() + '</strong>' +
+                (meta.length ? '<br><small class="text-muted">' + $('<div>').text(meta.join(' • ')).html() + '</small>' : '') +
+                '</div>';
+        },
+        templateSelection: function(data){
+            if(!data.id){
+                return 'Khách lẻ / khách vãng lai';
+            }
+            var $option = $(data.element);
+            var name = $option.data('name') || data.text;
+            var phone = $option.data('phone');
+            return phone ? (name + ' - ' + phone) : name;
+        }
+    });
+
+    $customer.off('select2:open.customerSearch').on('select2:open.customerSearch', function(){
+        setTimeout(function(){
+            var $search = $('.select2-container--open .select2-search__field');
+            $search.attr('placeholder', 'Tìm theo tên hoặc số điện thoại');
+            currentCustomerSearchTerm = ($search.val() || '').trim();
+            $search.off('input.customerSearch').on('input.customerSearch', function(){
+                currentCustomerSearchTerm = ($(this).val() || '').trim();
+            });
+        }, 0);
+    });
+
+    $customer.off('select2:close.customerSearch').on('select2:close.customerSearch', function(){
+        currentCustomerSearchTerm = '';
+    });
+}
+
+$(document).on('mousedown', '.select2-create-customer', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    $('#inp_customer_id').select2('close');
+    openQuickCustomerModalWithTerm(currentCustomerSearchTerm);
+});
 
 $(document).ready(function(){
     $.get('/api/products_select/', function(res){ allProducts = res.data; });
+    initCustomerPicker();
     loadData();
 
     $('#btn_add').click(function(){
@@ -288,8 +420,7 @@ $(document).ready(function(){
 
     // Tạo nhanh khách hàng
     $('#btn_quick_customer').click(function(){
-        $('#qc_name,#qc_phone,#qc_email,#qc_company,#qc_address').val('');
-        $('#modal_quick_customer').modal('show');
+        openQuickCustomerModalWithTerm(currentCustomerSearchTerm);
     });
     $('#btn_save_quick_customer').click(function(){
         var name = $('#qc_name').val().trim();
@@ -308,11 +439,18 @@ $(document).ready(function(){
             data: JSON.stringify(data),
             success: function(r){
                 if(r.status === 'ok'){
-                    // Thêm option mới vào select2
-                    var newOpt = new Option(r.code + ' - ' + r.name, r.id, true, true);
-                    $('#inp_customer_id').append(newOpt).trigger('change');
+                    var c = r.customer;
+                    var $existingOpt = $('#inp_customer_id option[value="' + c.id + '"]');
+                    if(!$existingOpt.length){
+                        $existingOpt = $(new Option(c.name + (c.phone ? ' - ' + c.phone : '') + ' — ' + c.code, c.id, true, true));
+                        $existingOpt.attr('data-name', c.name);
+                        $existingOpt.attr('data-phone', c.phone || '');
+                        $existingOpt.attr('data-code', c.code);
+                        $('#inp_customer_id').append($existingOpt);
+                    }
+                    $('#inp_customer_id').val(c.id).trigger('change');
                     $('#modal_quick_customer').modal('hide');
-                    alert('✅ Đã tạo khách hàng: ' + r.code + ' - ' + r.name);
+                    toastr ? toastr.success(r.message) : alert(r.message);
                 } else {
                     alert(r.message);
                 }
@@ -523,7 +661,7 @@ function editItem(id){
         var q = res.quotation;
         $('#edit_id').val(q.id);
         $('#inp_code').val(q.code);
-        $('#inp_customer_id').val(q.customer_id);
+        $('#inp_customer_id').val(q.customer_id || '').trigger('change');
         $('#inp_quotation_date').val(q.quotation_date);
         $('#inp_valid_until').val(q.valid_until);
         setMoneyValue('#inp_discount_amount', q.discount_amount);
@@ -581,7 +719,7 @@ function buildQuotationHTML(res){
     });
     var discount = q.discount_amount || 0;
     var finalAmt = total - discount;
-    var custName = q.customer_id ? $('#inp_customer_id option[value="'+q.customer_id+'"]').text() : '';
+    var custName = q.customer_label || '';
     var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
     var colSpan = hasAnyImage ? 7 : 6;
     var html = getPrintHeader() +
@@ -628,7 +766,7 @@ function copyQuotation(id){
         var q = res.quotation;
         // Reset form cho tạo mới
         $('#edit_id').val('');
-        $('#inp_customer_id').val(q.customer_id).trigger('change');
+        $('#inp_customer_id').val(q.customer_id || '').trigger('change');
         setMoneyValue('#inp_discount_amount', q.discount_amount);
         $('#inp_status').val('0'); // Nháp
         $('#inp_note').val('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : ''));

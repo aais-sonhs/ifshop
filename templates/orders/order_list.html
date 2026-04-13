@@ -80,9 +80,14 @@
                                 </button>
                             </label>
                             <select class="form-control form-control-sm select2" id="inp_customer_id">
-                                <option value="">-- Chọn --</option>
-                                {% for c in customers %}<option value="{{ c.id }}">{{ c.code }} - {{ c.name }}</option>{% endfor %}
+                                <option value="">Khách lẻ / khách vãng lai</option>
+                                {% for c in customers %}
+                                <option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone|default:'' }}" data-code="{{ c.code }}">
+                                    {{ c.name }}{% if c.phone %} - {{ c.phone }}{% endif %} — {{ c.code }}
+                                </option>
+                                {% endfor %}
                             </select>
+                            <small class="form-text text-muted">Có thể tìm theo tên hoặc số điện thoại. Để trống sẽ lưu vào khách lẻ / khách vãng lai.</small>
                         </div>
                     </div>
                     <div class="col-md-2"><div class="form-group"><label>Kho xuất</label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
@@ -329,10 +334,139 @@
 <script>
 var allProducts = [];
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
+var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+function normalizeCustomerSearch(value){
+    var text = (value || '').toString().toLowerCase().trim();
+    if(text.normalize){
+        text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    return text;
+}
+
+function guessCustomerDraft(term){
+    var raw = (term || '').trim();
+    var digits = raw.replace(/\D/g, '');
+    var looksLikePhone = digits.length >= 7 && digits === raw.replace(/\s/g, '');
+    return {
+        name: looksLikePhone ? '' : raw,
+        phone: digits.length >= 7 ? digits : ''
+    };
+}
+
+function openQuickCustomerModalWithTerm(term){
+    var draft = guessCustomerDraft(term);
+    $('#qc_name').val(draft.name);
+    $('#qc_phone').val(draft.phone);
+    $('#qc_email,#qc_company,#qc_address').val('');
+    $('#modal_quick_customer').modal('show');
+    setTimeout(function(){
+        if(draft.name){
+            $('#qc_name').focus().select();
+        } else {
+            $('#qc_phone').focus().select();
+        }
+    }, 200);
+}
+
+function customerMatcher(params, data){
+    var term = normalizeCustomerSearch(params.term);
+    if(!term){ return data; }
+    if(!data.id){ return data; }
+
+    var $option = $(data.element);
+    var optionText = normalizeCustomerSearch(data.text);
+    var optionName = normalizeCustomerSearch($option.data('name'));
+    var optionCode = normalizeCustomerSearch($option.data('code'));
+    var optionPhone = (($option.data('phone') || '').toString()).replace(/\D/g, '');
+    var termDigits = ((params.term || '').toString()).replace(/\D/g, '');
+
+    if(optionText.indexOf(term) >= 0 || optionName.indexOf(term) >= 0 || optionCode.indexOf(term) >= 0){
+        return data;
+    }
+    if(termDigits && optionPhone.indexOf(termDigits) >= 0){
+        return data;
+    }
+    return null;
+}
+
+function initCustomerPicker(){
+    var $customer = $('#inp_customer_id');
+    if(!$customer.length){ return; }
+    if($customer.hasClass('select2-hidden-accessible')){
+        $customer.select2('destroy');
+    }
+
+    $customer.select2({
+        width: '100%',
+        theme: 'bootstrap4',
+        allowClear: true,
+        placeholder: 'Khách lẻ / khách vãng lai',
+        dropdownParent: $('#modal_form'),
+        matcher: customerMatcher,
+        escapeMarkup: function(markup){ return markup; },
+        language: {
+            noResults: function(){
+                if(currentCustomerSearchTerm){
+                    return '<button type="button" class="btn btn-link p-0 select2-create-customer">+ Tạo khách hàng mới: "' +
+                        $('<div>').text(currentCustomerSearchTerm).html() + '"</button>';
+                }
+                return '<span class="text-muted">Nhập tên hoặc số điện thoại để tìm khách hàng</span>';
+            }
+        },
+        templateResult: function(data){
+            if(!data.id){
+                return '<span class="text-muted">Khách lẻ / khách vãng lai</span>';
+            }
+            var $option = $(data.element);
+            var name = $option.data('name') || data.text;
+            var phone = $option.data('phone');
+            var code = $option.data('code');
+            var meta = [];
+            if(phone){ meta.push(phone); }
+            if(code){ meta.push(code); }
+            return '<div><strong>' + $('<div>').text(name).html() + '</strong>' +
+                (meta.length ? '<br><small class="text-muted">' + $('<div>').text(meta.join(' • ')).html() + '</small>' : '') +
+                '</div>';
+        },
+        templateSelection: function(data){
+            if(!data.id){
+                return 'Khách lẻ / khách vãng lai';
+            }
+            var $option = $(data.element);
+            var name = $option.data('name') || data.text;
+            var phone = $option.data('phone');
+            return phone ? (name + ' - ' + phone) : name;
+        }
+    });
+
+    $customer.off('select2:open.customerSearch').on('select2:open.customerSearch', function(){
+        setTimeout(function(){
+            var $search = $('.select2-container--open .select2-search__field');
+            $search.attr('placeholder', 'Tìm theo tên hoặc số điện thoại');
+            currentCustomerSearchTerm = ($search.val() || '').trim();
+            $search.off('input.customerSearch').on('input.customerSearch', function(){
+                currentCustomerSearchTerm = ($(this).val() || '').trim();
+            });
+        }, 0);
+    });
+
+    $customer.off('select2:close.customerSearch').on('select2:close.customerSearch', function(){
+        currentCustomerSearchTerm = '';
+    });
+}
+
+$(document).on('mousedown', '.select2-create-customer', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    $('#inp_customer_id').select2('close');
+    openQuickCustomerModalWithTerm(currentCustomerSearchTerm);
+});
 
 $(document).ready(function(){
     $.get('/api/products_select/', function(res){ allProducts = res.data; });
+    initCustomerPicker();
     loadData();
 
     // Khi thay đổi kho → cập nhật tồn kho hiển thị
@@ -383,9 +517,7 @@ $(document).ready(function(){
             if(res.status !== 'ok'){ alert(res.message); return; }
             var q = res.quotation;
             // Fill khách hàng
-            if(q.customer_id){
-                $('#inp_customer_id').val(q.customer_id).trigger('change');
-            }
+            $('#inp_customer_id').val(q.customer_id || '').trigger('change');
             // Fill chiết khấu
             setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
             // Fill ghi chú
@@ -408,8 +540,7 @@ $(document).ready(function(){
 
     // Nút tạo nhanh khách hàng
     $('#btn_quick_customer').click(function(){
-        $('#qc_name,#qc_phone,#qc_email,#qc_company,#qc_address').val('');
-        $('#modal_quick_customer').modal('show');
+        openQuickCustomerModalWithTerm(currentCustomerSearchTerm);
     });
     $('#btn_save_quick_customer').click(function(){
         var name = $('#qc_name').val().trim();
@@ -430,8 +561,15 @@ $(document).ready(function(){
                 if(r.status === 'ok'){
                     // Thêm option mới vào select và chọn nó
                     var c = r.customer;
-                    var newOpt = new Option(c.code + ' - ' + c.name, c.id, true, true);
-                    $('#inp_customer_id').append(newOpt).trigger('change');
+                    var $existingOpt = $('#inp_customer_id option[value="' + c.id + '"]');
+                    if(!$existingOpt.length){
+                        $existingOpt = $(new Option(c.name + (c.phone ? ' - ' + c.phone : '') + ' — ' + c.code, c.id, true, true));
+                        $existingOpt.attr('data-name', c.name);
+                        $existingOpt.attr('data-phone', c.phone || '');
+                        $existingOpt.attr('data-code', c.code);
+                        $('#inp_customer_id').append($existingOpt);
+                    }
+                    $('#inp_customer_id').val(c.id).trigger('change');
                     $('#modal_quick_customer').modal('hide');
                     toastr ? toastr.success(r.message) : alert(r.message);
                 } else {
@@ -936,7 +1074,7 @@ function editItem(id){
         if(o.status === 5 || o.status === 6){
             viewItem(id); return;
         }
-        $('#edit_id').val(o.id);$('#inp_code').val(o.code);$('#inp_customer_id').val(o.customer_id);
+        $('#edit_id').val(o.id);$('#inp_code').val(o.code);$('#inp_customer_id').val(o.customer_id || '').trigger('change');
         $('#inp_warehouse_id').val(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         setMoneyValue('#inp_discount_amount', o.discount_amount);$('#inp_status').val(o.status);$('#inp_note').val(o.note);
         // Populate staff fields if they exist
@@ -971,7 +1109,7 @@ function viewItem(id){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
         var o=res.order;
-        $('#edit_id').val(o.id);$('#inp_code').val(o.code);$('#inp_customer_id').val(o.customer_id);
+        $('#edit_id').val(o.id);$('#inp_code').val(o.code);$('#inp_customer_id').val(o.customer_id || '').trigger('change');
         $('#inp_warehouse_id').val(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         setMoneyValue('#inp_discount_amount', o.discount_amount);$('#inp_status').val(o.status);$('#inp_note').val(o.note);
         $('#items_tbl tbody').html('');
@@ -1063,7 +1201,7 @@ function printOrder(id){
             '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
             '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +
             '<div class="print-info"><table>' +
-            '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + (res.order.customer_id ? $('#inp_customer_id option[value="'+res.order.customer_id+'"]').text() : '') + '</td></tr>' +
+            '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + (res.order.customer_label || '') + '</td></tr>' +
             '<tr><td class="label">Ng\u00E0y \u0111\u1EB7t:</td><td>' + (o.order_date||'') + '</td><td class="label">Kho xu\u1EA5t:</td><td>' + (o.warehouse_id ? $('#inp_warehouse_id option[value="'+o.warehouse_id+'"]').text() : '') + '</td></tr>' +
             '</table></div>' +
             '<table class="print-table"><thead><tr><th>STT</th><th>S\u1EA3n ph\u1EA9m</th><th>\u0110VT</th><th>SL</th><th>\u0110\u01A1n gi\u00E1</th><th>CK</th><th>Th\u00E0nh ti\u1EC1n</th></tr></thead>' +
@@ -1100,7 +1238,7 @@ function downloadOrderPDF(id){
             '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
             '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +
             '<div class="print-info"><table>' +
-            '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + (res.order.customer_id ? $('#inp_customer_id option[value="'+res.order.customer_id+'"]').text() : '') + '</td></tr>' +
+            '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + (res.order.customer_label || '') + '</td></tr>' +
             '<tr><td class="label">Ng\u00E0y \u0111\u1EB7t:</td><td>' + (o.order_date||'') + '</td><td class="label">Kho xu\u1EA5t:</td><td>' + (o.warehouse_id ? $('#inp_warehouse_id option[value="'+o.warehouse_id+'"]').text() : '') + '</td></tr>' +
             '</table></div>' +
             '<table class="print-table"><thead><tr><th>STT</th><th>S\u1EA3n ph\u1EA9m</th><th>\u0110VT</th><th>SL</th><th>\u0110\u01A1n gi\u00E1</th><th>CK</th><th>Th\u00E0nh ti\u1EC1n</th></tr></thead>' +

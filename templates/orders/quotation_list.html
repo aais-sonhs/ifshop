@@ -8,6 +8,11 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="row mb-2">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã BG, tên KH, SĐT, tag...">
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã BG</th><th>Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th>Người BG</th>{% endif %}<th>Ngày BG</th><th>Số SP</th><th>Tổng tiền</th><th>Hiệu lực</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
@@ -138,16 +143,27 @@
                                     <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td>
                                     <td></td>
                                 </tr>
+                                <tr>
+                                    <td colspan="6" class="text-right">Phí vận chuyển:</td>
+                                    <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td>
+                                    <td></td>
+                                </tr>
                                 <tr class="bg-warning font-weight-bold">
                                     <td colspan="6" class="text-right">Thành tiền:</td>
                                     <td class="text-right" id="lbl_final">0</td>
                                     <td></td>
                                 </tr>
+                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="8" class="text-center"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng báo giá.</span></td></tr>
+                                <tr id="cost_warning_row" style="display:none;"><td colspan="8" class="text-center"><span class="badge badge-danger py-1 px-3"><i class="fas fa-exclamation-triangle mr-1"></i> Cảnh báo: Có sản phẩm đang để giá dưới giá vốn!</span></td></tr>
                             </tfoot>
                         </table>
                     </div>
                 </div>
 
+                <div class="form-group mt-2">
+                    <label>Tag báo giá</label>
+                    <input type="text" class="form-control form-control-sm" id="inp_tags" placeholder="Ví dụ: online, khách sỉ, cần follow">
+                </div>
                 <div class="form-group mt-2">
                     <label>Ghi chú</label>
                     <textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea>
@@ -260,6 +276,10 @@
                 <div class="alert alert-info py-2 mb-0">
                     <small><i class="fas fa-info-circle mr-1"></i> Tạo nhanh SP tối giản. Bạn có thể bổ sung thêm thông tin chi tiết ở trang Sản phẩm sau.</small>
                 </div>
+                <div class="custom-control custom-checkbox mt-2">
+                    <input type="checkbox" class="custom-control-input" id="qp_is_service">
+                    <label class="custom-control-label" for="qp_is_service">Đây là dịch vụ / thẻ trống, không quản lý tồn kho</label>
+                </div>
             </div>
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Hủy</button>
@@ -271,10 +291,94 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+#items_tbl .select2-container--bootstrap4 .select2-selection--single {
+    min-height: 31px;
+    height: auto;
+}
+#items_tbl .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered,
+#items_tbl .select2-results__option {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.25;
+}
+#items_tbl tbody tr.row-duplicate {
+    background: #fff8e1;
+}
+</style>
 <script>
 var allProducts = [];
 var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+function getSelectedProductKey($row){
+    var $selected = $row.find('.sel_product option:selected');
+    var pid = $row.find('.sel_product').val();
+    if(!pid){ return ''; }
+    return pid + ':' + ($selected.data('variant-id') || '');
+}
+
+function flashExistingRow($row){
+    if(!$row || !$row.length){ return; }
+    $row.addClass('table-warning');
+    setTimeout(function(){ $row.removeClass('table-warning'); }, 1500);
+}
+
+function findDuplicateRowForKey(productKey, currentRow){
+    var $duplicate = $();
+    $('#items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        if(currentRow && $row.is(currentRow)){ return; }
+        if(getSelectedProductKey($row) === productKey){
+            $duplicate = $row;
+            return false;
+        }
+    });
+    return $duplicate;
+}
+
+function syncDuplicateWarnings(){
+    var seen = {};
+    var hasDuplicate = false;
+    $('#items_tbl tbody tr').removeClass('row-duplicate');
+    $('#items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        var key = getSelectedProductKey($row);
+        if(!key){ return; }
+        if(seen[key]){
+            hasDuplicate = true;
+            $row.addClass('row-duplicate');
+            seen[key].addClass('row-duplicate');
+        } else {
+            seen[key] = $row;
+        }
+    });
+    $('#duplicate_warning_row').toggle(hasDuplicate);
+    return hasDuplicate;
+}
+
+function syncStatusOptions(currentStatus){
+    var minStatus = parseInt(currentStatus, 10);
+    minStatus = Number.isNaN(minStatus) ? 0 : minStatus;
+    $('#inp_status option').each(function(){
+        var value = parseInt($(this).val(), 10);
+        var disabled = minStatus > 0 && value < minStatus && value !== 4;
+        $(this).prop('disabled', disabled);
+    });
+    if($('#inp_status option:selected').prop('disabled')){
+        $('#inp_status').val(String(minStatus));
+    }
+}
+
+function getQuotationStatusBadgeHtml(status, statusDisplay){
+    var badgeClass = 'badge badge-secondary';
+    if(status === 0) badgeClass = 'badge badge-light border text-dark';
+    if(status === 1) badgeClass = 'badge badge-info';
+    if(status === 2) badgeClass = 'badge badge-primary';
+    if(status === 3) badgeClass = 'badge badge-success';
+    if(status === 4) badgeClass = 'badge badge-danger';
+    return '<span class="' + badgeClass + '">' + statusDisplay + '</span>';
+}
 
 function normalizeCustomerSearch(value){
     var text = (value || '').toString().toLowerCase().trim();
@@ -414,6 +518,9 @@ $(document).ready(function(){
         $('#inp_valid_until').val('');
         $('#inp_status').val('0'); $('#inp_note').val('');
         setMoneyValue('#inp_discount_amount', 0);
+        setMoneyValue('#inp_shipping_fee', 0);
+        $('#inp_tags').val('');
+        syncStatusOptions(0);
         if($('#inp_salesperson').length) $('#inp_salesperson').val('').trigger('change');
         $('#items_tbl tbody').html('');
         calcTotal();
@@ -428,7 +535,8 @@ $(document).ready(function(){
     });
 
     $('#btn_add_item').click(function(){ addItemRow(null); });
-    $('#inp_discount_amount').on('input', function(){ calcTotal(); });
+    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
+    $('#filter_text').on('input', function(){ loadData(); });
 
     // Quick search product
     var searchTimeout = null;
@@ -448,8 +556,9 @@ $(document).ready(function(){
             results.forEach(function(p){
                 var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:32px;height:32px;object-fit:cover;border-radius:4px;margin-right:8px;">' : '<span style="display:inline-block;width:32px;height:32px;background:#eee;border-radius:4px;margin-right:8px;text-align:center;line-height:32px;"><i class="fas fa-box text-muted"></i></span>';
                 var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
+                var stockHtml = '<span class="' + (p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger') + '">Thực: ' + fmt(p.total_stock) + ' · Bán: ' + fmt(p.total_sellable_stock) + '</span>';
                 html += '<div class="quick-search-item d-flex align-items-center p-2 border-bottom" data-product-id="'+p.id+'" style="cursor:pointer;">' +
-                    imgHtml + '<div class="flex-grow-1"><strong>'+p.code+'</strong> - '+p.name+'<br><small>'+priceHtml+' · '+p.unit+'</small></div>' +
+                    imgHtml + '<div class="flex-grow-1"><strong>'+p.code+'</strong> - '+p.name+'<br><small>'+priceHtml+' · '+stockHtml+' · '+p.unit+'</small></div>' +
                     '<button class="btn btn-xs btn-outline-primary ml-2"><i class="fas fa-plus"></i></button></div>';
             });
             $('#quick_search_results').html(html).show();
@@ -481,6 +590,7 @@ $(document).ready(function(){
             $('#qp_unit').val('Cái');
             setMoneyValue('#qp_cost_price', 0);
             setMoneyValue('#qp_selling_price', 0);
+            $('#qp_is_service').prop('checked', false);
             $('#modal_quick_product').modal('show');
             setTimeout(function(){ $('#qp_name').focus(); }, 300);
         }
@@ -498,6 +608,7 @@ $(document).ready(function(){
         formData.append('cost_price', getMoneyValue('#qp_cost_price'));
         formData.append('selling_price', getMoneyValue('#qp_selling_price'));
         formData.append('listed_price', getMoneyValue('#qp_selling_price'));
+        formData.append('is_service', $('#qp_is_service').is(':checked') ? '1' : '0');
         formData.append('variants', '[]');
         $.ajax({
             url: '/api/products/save/', type: 'POST',
@@ -568,7 +679,7 @@ $(document).ready(function(){
         var hasError = false;
         $('#items_tbl tbody tr').each(function(){
             var pid = $(this).find('.sel_product').val();
-            var qty = parseInt($(this).find('.inp_qty').val()) || 0;
+            var qty = parseFloat($(this).find('.inp_qty').val()) || 0;
             var price = getMoneyValue($(this).find('.inp_price')) || 0;
             var disc = parseFloat($(this).find('.inp_disc').val()) || 0;
             if(!pid){ hasError = true; return; }
@@ -577,6 +688,13 @@ $(document).ready(function(){
         });
         if(hasError){ alert('Vui lòng chọn sản phẩm cho tất cả dòng'); return; }
         if(items.length === 0){ alert('Vui lòng thêm ít nhất 1 sản phẩm'); return; }
+        if(syncDuplicateWarnings()){
+            alert('Báo giá đang có sản phẩm trùng nhau. Vui lòng gộp lại trước khi lưu.');
+            return;
+        }
+        if($('#cost_warning_row').is(':visible')){
+            if(!confirm('Có sản phẩm đang để giá dưới giá vốn. Bạn có muốn tiếp tục lưu báo giá?')) return;
+        }
 
         var data = {
             id: $('#edit_id').val() || null,
@@ -585,7 +703,9 @@ $(document).ready(function(){
             quotation_date: date,
             valid_until: $('#inp_valid_until').val(),
             discount_amount: getMoneyValue('#inp_discount_amount'),
+            shipping_fee: getMoneyValue('#inp_shipping_fee'),
             status: parseInt($('#inp_status').val()),
+            tags: $('#inp_tags').val(),
             note: $('#inp_note').val(),
             items: items
         };
@@ -606,12 +726,28 @@ $(document).ready(function(){
 
 function getStockForProduct(productId){
     var product = allProducts.find(function(p){return p.id == productId;});
-    if(!product) return {stock: 0, label: '-', isService: false};
-    if(product.is_service) return {stock: 999999, label: 'DV', isService: true};
-    return {stock: product.total_stock, label: product.total_stock.toString(), isService: false};
+    if(!product) return {stock: 0, actualStock: 0, sellableStock: 0, label: '-', isService: false};
+    if(product.is_service) return {stock: 999999, actualStock: 999999, sellableStock: 999999, label: 'DV', isService: true};
+    return {
+        stock: product.total_sellable_stock,
+        actualStock: product.total_stock,
+        sellableStock: product.total_sellable_stock,
+        label: 'T:' + fmt(product.total_stock) + ' / B:' + fmt(product.total_sellable_stock),
+        isService: false
+    };
 }
 
 function addItemFromProduct(product){
+    var existingKey = product.id + ':';
+    var $existingRow = findDuplicateRowForKey(existingKey);
+    if($existingRow.length){
+        var $qty = $existingRow.find('.inp_qty');
+        $qty.val((parseFloat($qty.val()) || 0) + 1);
+        calcLine($existingRow);
+        flashExistingRow($existingRow);
+        toastr ? toastr.info('Sản phẩm đã có trong báo giá, đã tăng số lượng thêm 1.') : alert('Sản phẩm đã có trong báo giá, đã tăng số lượng thêm 1.');
+        return;
+    }
     var item = {
         product_id: product.id,
         variant_id: null,
@@ -631,11 +767,11 @@ function addItemRow(item){
             p.variants.forEach(function(v){
                 var sel=(item&&item.product_id==p.id&&item.variant_id==v.id)?'selected':'';
                 if(!sel) sel=(item&&item.product_id==p.id&&!item.variant_id&&p.variants.length==1)?'selected':'';
-                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+v.selling_price+'" data-variant-id="'+v.id+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+v.selling_price+'" data-cost="'+v.cost_price+'" data-variant-id="'+v.id+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
             });
         } else {
             var sel = (item && item.product_id == p.id) ? 'selected' : '';
-            opts += '<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+p.selling_price+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
+            opts += '<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+p.selling_price+'" data-cost="'+p.cost_price+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
         }
     });
 
@@ -690,8 +826,21 @@ function addItemRow(item){
     $row.find('.sel_product').on('change', function(){
         var $opt = $(this).find('option:selected');
         var pid = $(this).val();
+        var productKey = getSelectedProductKey($row);
         $row.find('.lbl_unit').text($opt.data('unit') || '');
         setMoneyValue($row.find('.inp_price'), $opt.data('price') || 0);
+        if(pid){
+            var $duplicate = findDuplicateRowForKey(productKey, $row);
+            if($duplicate.length){
+                $(this).val('').trigger('change.select2');
+                $row.find('.lbl_unit').text('');
+                $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
+                flashExistingRow($duplicate);
+                syncDuplicateWarnings();
+                alert('Sản phẩm này đã có trong báo giá. Vui lòng chỉnh sửa dòng cũ thay vì thêm trùng.');
+                return;
+            }
+        }
         if(pid){
             var info = getStockForProduct(parseInt(pid));
             if(info.isService){
@@ -714,7 +863,7 @@ function addItemRow(item){
         if(pid){
             var info = getStockForProduct(parseInt(pid));
             if(!info.isService){
-                var qty = parseInt($(this).val()) || 0;
+                var qty = parseFloat($(this).val()) || 0;
                 if(qty > info.stock){
                     $row.find('.lbl_stock').removeClass('text-success').addClass('text-danger font-weight-bold');
                 } else {
@@ -724,11 +873,11 @@ function addItemRow(item){
         }
     });
     $row.find('.inp_price, .inp_disc').on('input', function(){ calcLine($row); });
-    $row.find('.btn_remove_item').click(function(){ $row.remove(); calcTotal(); });
+    $row.find('.btn_remove_item').click(function(){ $row.remove(); calcTotal(); syncDuplicateWarnings(); });
 }
 
 function calcLine($row){
-    var qty = parseInt($row.find('.inp_qty').val()) || 0;
+    var qty = parseFloat($row.find('.inp_qty').val()) || 0;
     var price = getMoneyValue($row.find('.inp_price')) || 0;
     var disc = parseFloat($row.find('.inp_disc').val()) || 0;
     var total = qty * price * (1 - disc / 100);
@@ -738,27 +887,51 @@ function calcLine($row){
 
 function calcTotal(){
     var total = 0;
+    var hasLossItem = false;
     $('#items_tbl tbody tr').each(function(){
-        var qty = parseInt($(this).find('.inp_qty').val()) || 0;
+        var qty = parseFloat($(this).find('.inp_qty').val()) || 0;
         var price = getMoneyValue($(this).find('.inp_price')) || 0;
         var disc = parseFloat($(this).find('.inp_disc').val()) || 0;
         total += qty * price * (1 - disc / 100);
+        var costPrice = parseFloat($(this).find('.sel_product option:selected').data('cost')) || 0;
+        var effectivePrice = price * (1 - disc / 100);
+        if(costPrice > 0 && effectivePrice < costPrice){
+            hasLossItem = true;
+            $(this).find('.inp_price').css('color', '#d32f2f');
+        } else {
+            $(this).find('.inp_price').css('color', '');
+        }
     });
     var discount = getMoneyValue('#inp_discount_amount');
+    var shippingFee = getMoneyValue('#inp_shipping_fee');
     $('#lbl_total').text(fmt(total));
-    $('#lbl_final').text(fmt(total - discount));
+    $('#lbl_final').text(fmt(total - discount + shippingFee));
+    $('#cost_warning_row').toggle(hasLossItem);
+    syncDuplicateWarnings();
 }
 
 function loadData(){
     $.get('/api/quotations/', function(res){
+        var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
         var h = '';
-        res.data.forEach(function(d, i){
+        res.data.filter(function(d){
+            if(!filterText){ return true; }
+            var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + (d.tags || '')).toLowerCase();
+            return searchable.indexOf(filterText) >= 0;
+        }).forEach(function(d, i){
             var sp = {% if biz.opt_quotation_salesperson %}'<td>'+(d.salesperson||'')+'</td>'{% else %}''{% endif %};
-            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.customer+'</td>'+sp+
+            var customerHtml = d.customer;
+            if(d.customer_phone){
+                customerHtml += '<br><small class="text-muted">' + d.customer_phone + '</small>';
+            }
+            if(d.tags){
+                customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
+            }
+            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+customerHtml+'</td>'+sp+
                 '<td>'+d.quotation_date+'</td>'+
                 '<td class="text-center">'+d.item_count+'</td>'+
                 '<td class="text-right">'+fmt(d.final_amount)+'</td><td>'+d.valid_until+'</td>'+
-                '<td>'+d.status_display+'</td>'+
+                '<td>'+getQuotationStatusBadgeHtml(d.status, d.status_display)+'</td>'+
                 '<td><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')">Sao chép</button> '+
                 '<button class="btn btn-xs btn-outline-success" onclick="printQuotation('+d.id+')">In</button> '+
@@ -779,8 +952,11 @@ function editItem(id){
         $('#inp_quotation_date').val(q.quotation_date);
         $('#inp_valid_until').val(q.valid_until);
         setMoneyValue('#inp_discount_amount', q.discount_amount);
+        setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
         $('#inp_status').val(q.status);
+        $('#inp_tags').val(q.tags || '');
         $('#inp_note').val(q.note);
+        syncStatusOptions(q.status);
         if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
 
         $('#items_tbl tbody').html('');
@@ -832,7 +1008,8 @@ function buildQuotationHTML(res){
             '<td class="text-right">'+fmtMoney(lineTotal)+'</td></tr>';
     });
     var discount = q.discount_amount || 0;
-    var finalAmt = total - discount;
+    var shippingFee = q.shipping_fee || 0;
+    var finalAmt = total - discount + shippingFee;
     var custName = q.customer_label || '';
     var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
     var colSpan = hasAnyImage ? 7 : 6;
@@ -847,6 +1024,7 @@ function buildQuotationHTML(res){
         '<tbody>' + itemsHtml + '</tbody>' +
         '<tfoot><tr><td colspan="'+colSpan+'" class="text-right">T\u1ED5ng c\u1ED9ng:</td><td class="text-right">' + fmtMoney(total) + '</td></tr>' +
         (discount > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Chi\u1EBFt kh\u1EA5u:</td><td class="text-right">-' + fmtMoney(discount) + '</td></tr>' : '') +
+        (shippingFee > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Ph\u00ED v\u1EADn chuy\u1EC3n:</td><td class="text-right">' + fmtMoney(shippingFee) + '</td></tr>' : '') +
         '<tr><td colspan="'+colSpan+'" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
         '</tfoot></table>' +
         '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +
@@ -882,7 +1060,9 @@ function copyQuotation(id){
         $('#edit_id').val('');
         $('#inp_customer_id').val(q.customer_id || '').trigger('change');
         setMoneyValue('#inp_discount_amount', q.discount_amount);
+        setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
         $('#inp_status').val('0'); // Nháp
+        $('#inp_tags').val(q.tags || '');
         $('#inp_note').val('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : ''));
         if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
         // Auto-fill mã mới + ngày hôm nay

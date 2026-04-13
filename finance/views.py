@@ -5,7 +5,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction
-from .models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment
+from .models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment, PaymentMethodOption
 from customers.models import Customer
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier
@@ -14,11 +14,27 @@ from core.store_utils import filter_by_store, get_user_store, brand_owner_requir
 logger = logging.getLogger(__name__)
 
 
+def _serialize_payment_methods():
+    return [{
+        'id': m.id,
+        'code': m.code,
+        'name': m.name,
+        'description': m.description or '',
+        'legacy_type': m.legacy_type,
+        'legacy_type_display': m.get_legacy_type_display(),
+        'default_cash_book_id': m.default_cash_book_id,
+        'default_cash_book': m.default_cash_book.name if m.default_cash_book else '',
+        'sort_order': m.sort_order,
+        'is_active': m.is_active,
+    } for m in PaymentMethodOption.objects.select_related('default_cash_book').filter(is_active=True)]
+
+
 @login_required(login_url="/login/")
 @brand_owner_required
 def receipt_tbl(request):
     categories = list(FinanceCategory.objects.filter(type=1, is_active=True).values('id', 'name'))
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    payment_methods = _serialize_payment_methods()
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
     customers = list(Customer.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'code', 'name'))
@@ -26,6 +42,7 @@ def receipt_tbl(request):
         'active_tab': 'receipt_tbl',
         'categories': categories,
         'cashbooks': cashbooks,
+        'payment_methods': payment_methods,
         'customers': customers,
     }
     return render(request, "finance/receipt_list.html", context)
@@ -36,6 +53,7 @@ def receipt_tbl(request):
 def payment_tbl(request):
     categories = list(FinanceCategory.objects.filter(type=2, is_active=True).values('id', 'name'))
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    payment_methods = _serialize_payment_methods()
     suppliers = list(Supplier.objects.filter(is_active=True).values('id', 'code', 'name'))
     goods_receipts = list(GoodsReceipt.objects.select_related('supplier').values(
         'id', 'code', 'supplier__name', 'total_amount', 'status'
@@ -44,6 +62,7 @@ def payment_tbl(request):
         'active_tab': 'payment_tbl',
         'categories': categories,
         'cashbooks': cashbooks,
+        'payment_methods': payment_methods,
         'suppliers': suppliers,
         'goods_receipts': goods_receipts,
     }
@@ -96,7 +115,7 @@ def api_get_orders_for_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_receipts(request):
-    receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order', 'created_by').all()
+    receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option').all()
     receipts = filter_by_store(receipts, request)
     data = [{
         'id': r.id, 'code': r.code,
@@ -113,11 +132,51 @@ def api_get_receipts(request):
         'description': r.description or '',
         'receipt_date': r.receipt_date.strftime('%Y-%m-%d') if r.receipt_date else '',
         'status': r.status, 'status_display': r.get_status_display(),
-        'payment_method': r.payment_method, 'payment_method_display': r.get_payment_method_display(),
+        'payment_method': r.payment_method,
+        'payment_method_option_id': r.payment_method_option_id,
+        'payment_method_display': r.get_payment_method_label(),
         'note': r.note or '',
         'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
     } for r in receipts]
     return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_receipt_summary(request):
+    receipts = Receipt.objects.select_related('cash_book').filter(status=1)
+    receipts = filter_by_store(receipts, request)
+
+    by_cashbook = {}
+    by_method = {}
+    total_amount = 0
+
+    for receipt in receipts:
+        amount = float(receipt.amount or 0)
+        total_amount += amount
+
+        cashbook_name = receipt.cash_book.name if receipt.cash_book else 'Chưa gán tài khoản'
+        by_cashbook[cashbook_name] = by_cashbook.get(cashbook_name, 0) + amount
+
+        method_name = receipt.get_payment_method_label()
+        by_method[method_name] = by_method.get(method_name, 0) + amount
+
+    cashbook_rows = [
+        {'name': name, 'amount': amount}
+        for name, amount in sorted(by_cashbook.items(), key=lambda item: item[1], reverse=True)
+    ]
+    method_rows = [
+        {'name': name, 'amount': amount}
+        for name, amount in sorted(by_method.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return JsonResponse({
+        'status': 'ok',
+        'summary': {
+            'total_amount': total_amount,
+            'receipt_count': receipts.count(),
+            'by_cashbook': cashbook_rows,
+            'by_method': method_rows,
+        }
+    })
 
 
 @login_required(login_url="/login/")
@@ -151,7 +210,14 @@ def api_save_receipt(request):
             r.receipt_date = data.get('receipt_date')
             r.status = data.get('status', 0)
             r.payment_method = data.get('payment_method', 2)
+            r.payment_method_option_id = data.get('payment_method_option_id') or None
             r.note = data.get('note', '')
+            if r.payment_method_option_id:
+                method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=r.payment_method_option_id).first()
+                if method:
+                    r.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
+                    if not r.cash_book_id and method.default_cash_book_id:
+                        r.cash_book_id = method.default_cash_book_id
 
             new_amount = float(r.amount)
             new_status = int(r.status)
@@ -240,7 +306,7 @@ def api_delete_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_payments(request):
-    payments = Payment.objects.select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt').all()
+    payments = Payment.objects.select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option').all()
     payments = filter_by_store(payments, request)
     data = [{
         'id': p.id, 'code': p.code,
@@ -258,7 +324,9 @@ def api_get_payments(request):
         'description': p.description or '',
         'payment_date': p.payment_date.strftime('%Y-%m-%d') if p.payment_date else '',
         'status': p.status, 'status_display': p.get_status_display(),
-        'payment_method': p.payment_method, 'payment_method_display': p.get_payment_method_display(),
+        'payment_method': p.payment_method,
+        'payment_method_option_id': p.payment_method_option_id,
+        'payment_method_display': p.get_payment_method_label(),
         'note': p.note or '',
     } for p in payments]
     return JsonResponse({'data': data})
@@ -293,7 +361,14 @@ def api_save_payment(request):
             p.payment_date = data.get('payment_date')
             p.status = data.get('status', 0)
             p.payment_method = data.get('payment_method', 2)
+            p.payment_method_option_id = data.get('payment_method_option_id') or None
             p.note = data.get('note', '')
+            if p.payment_method_option_id:
+                method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=p.payment_method_option_id).first()
+                if method:
+                    p.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
+                    if not p.cash_book_id and method.default_cash_book_id:
+                        p.cash_book_id = method.default_cash_book_id
 
             new_amount = float(p.amount)
             new_status = int(p.status)
@@ -393,5 +468,48 @@ def api_save_cashbook(request):
         b.description = data.get('description', '')
         b.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_get_payment_methods(request):
+    data = [{
+        'id': m.id,
+        'code': m.code,
+        'name': m.name,
+        'description': m.description or '',
+        'legacy_type': m.legacy_type,
+        'legacy_type_display': m.get_legacy_type_display(),
+        'default_cash_book_id': m.default_cash_book_id,
+        'default_cash_book': m.default_cash_book.name if m.default_cash_book else '',
+        'sort_order': m.sort_order,
+        'is_active': m.is_active,
+    } for m in PaymentMethodOption.objects.select_related('default_cash_book').all()]
+    return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_save_payment_method(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        mid = data.get('id')
+        if mid:
+            method = PaymentMethodOption.objects.get(id=mid)
+        else:
+            method = PaymentMethodOption()
+        method.code = (data.get('code') or '').strip().upper()
+        method.name = (data.get('name') or '').strip()
+        method.description = data.get('description', '')
+        method.legacy_type = int(data.get('legacy_type', 3) or 3)
+        method.default_cash_book_id = data.get('default_cash_book_id') or None
+        method.sort_order = int(data.get('sort_order', 0) or 0)
+        method.is_active = bool(data.get('is_active', True))
+        if not method.code or not method.name:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập mã và tên phương thức'})
+        method.save()
+        return JsonResponse({'status': 'ok', 'message': 'Lưu phương thức thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

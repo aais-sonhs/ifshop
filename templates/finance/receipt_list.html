@@ -4,10 +4,38 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-hand-holding-usd mr-2"></i>Phiếu thu</h3>
         <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-outline-info mr-1" id="btn_manage_payment_methods"><i class="fas fa-list"></i> Phương thức nhận tiền</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu thu</button>
         </div>
     </div>
     <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <div class="small-box bg-light">
+                    <div class="inner">
+                        <h4 id="receipt_summary_total">0</h4>
+                        <p>Tổng tiền đã thu</p>
+                    </div>
+                    <div class="icon"><i class="fas fa-wallet"></i></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-outline card-info h-100 mb-0">
+                    <div class="card-header py-2"><strong>Theo tài khoản</strong></div>
+                    <div class="card-body py-2" id="receipt_summary_cashbooks">
+                        <span class="text-muted small">Đang tải...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-outline card-success h-100 mb-0">
+                    <div class="card-header py-2"><strong>Theo hình thức</strong></div>
+                    <div class="card-body py-2" id="receipt_summary_methods">
+                        <span class="text-muted small">Đang tải...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>Khách hàng</th><th>Đơn hàng</th><th>Số tiền</th><th>HTTT</th><th>Ngày thu</th><th>Quỹ</th><th>Người tạo</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
@@ -89,8 +117,9 @@
                     <div class="col-md-2">
                         <div class="form-group"><label>Hình thức TT</label>
                         <select class="form-control form-control-sm" id="inp_payment_method">
-                            <option value="2">🏦 Chuyển khoản</option>
-                            <option value="1">💵 Tiền mặt</option>
+                            {% for m in payment_methods %}
+                            <option value="{{ m.id }}" data-legacy-type="{{ m.legacy_type }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}</option>
+                            {% endfor %}
                         </select></div>
                     </div>
                     <div class="col-md-3">
@@ -121,6 +150,7 @@ var allOrders = [];
 
 $(document).ready(function(){
     loadData();
+    loadSummary();
 
     // Khi chọn danh mục → hiện/ẩn phần đơn hàng
     $('#inp_category_id').change(function(){
@@ -226,7 +256,7 @@ $(document).ready(function(){
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
             success: function(r){
-                if(r.status === 'ok'){ $('#modal_form').modal('hide'); loadData(); }
+                if(r.status === 'ok'){ $('#modal_form').modal('hide'); loadData(); loadSummary(); }
                 alert(r.message);
             }
         });
@@ -265,6 +295,30 @@ function loadData(){
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="12" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function loadSummary(){
+    $.get('/api/receipts/summary/', function(res){
+        if(res.status !== 'ok'){ return; }
+        $('#receipt_summary_total').text(fmt(res.summary.total_amount));
+        var cashbookHtml = '';
+        res.summary.by_cashbook.forEach(function(row){
+            cashbookHtml += '<div class="d-flex justify-content-between small border-bottom py-1"><span>' + row.name + '</span><strong>' + fmt(row.amount) + '</strong></div>';
+        });
+        if(!cashbookHtml){
+            cashbookHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
+        }
+        $('#receipt_summary_cashbooks').html(cashbookHtml);
+
+        var methodHtml = '';
+        res.summary.by_method.forEach(function(row){
+            methodHtml += '<div class="d-flex justify-content-between small border-bottom py-1"><span>' + row.name + '</span><strong>' + fmt(row.amount) + '</strong></div>';
+        });
+        if(!methodHtml){
+            methodHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
+        }
+        $('#receipt_summary_methods').html(methodHtml);
     });
 }
 
@@ -307,7 +361,7 @@ function deleteItem(id){
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
         data: JSON.stringify({id: id}),
-        success: function(r){ loadData(); alert(r.message); }
+        success: function(r){ loadData(); loadSummary(); alert(r.message); }
     });
 }
 </script>

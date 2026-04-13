@@ -46,6 +46,37 @@ class CashBook(SoftDeleteModel):
         return self.name
 
 
+class PaymentMethodOption(SoftDeleteModel):
+    """Danh mục phương thức nhận/chi tiền mở rộng"""
+    LEGACY_CHOICES = [
+        (1, 'Tiền mặt'),
+        (2, 'Chuyển khoản'),
+        (3, 'Khác'),
+    ]
+
+    code = models.CharField(max_length=30, unique=True, verbose_name='Mã phương thức')
+    name = models.CharField(max_length=255, verbose_name='Tên phương thức')
+    description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
+    legacy_type = models.IntegerField(choices=LEGACY_CHOICES, default=3, verbose_name='Loại chuẩn')
+    default_cash_book = models.ForeignKey(
+        CashBook, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payment_method_defaults', verbose_name='Tài khoản mặc định'
+    )
+    is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
+    sort_order = models.IntegerField(default=0, verbose_name='Thứ tự')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payment_method_options'
+        verbose_name = 'Phương thức thanh toán'
+        verbose_name_plural = 'Phương thức thanh toán'
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class Receipt(SoftDeleteModel):
     """Phiếu thu"""
     STATUS_CHOICES = [
@@ -64,6 +95,10 @@ class Receipt(SoftDeleteModel):
                                   related_name='receipts', verbose_name='Danh mục')
     cash_book = models.ForeignKey(CashBook, on_delete=models.SET_NULL, null=True,
                                    related_name='receipts', verbose_name='Quỹ')
+    payment_method_option = models.ForeignKey(
+        PaymentMethodOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='receipts', verbose_name='Phương thức thanh toán'
+    )
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True,
                                   related_name='receipts', verbose_name='Khách hàng')
     order = models.ForeignKey('orders.Order', on_delete=models.SET_NULL, null=True, blank=True,
@@ -87,6 +122,9 @@ class Receipt(SoftDeleteModel):
 
     def __str__(self):
         return self.code
+
+    def get_payment_method_label(self):
+        return self.payment_method_option.name if self.payment_method_option else self.get_payment_method_display()
 
 
 class ReceiptItem(models.Model):
@@ -126,6 +164,10 @@ class Payment(SoftDeleteModel):
                                   related_name='payments', verbose_name='Danh mục')
     cash_book = models.ForeignKey(CashBook, on_delete=models.SET_NULL, null=True,
                                    related_name='payments', verbose_name='Quỹ')
+    payment_method_option = models.ForeignKey(
+        PaymentMethodOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payments', verbose_name='Phương thức thanh toán'
+    )
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True,
                                   related_name='payments', verbose_name='Nhà cung cấp')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True,
@@ -151,3 +193,6 @@ class Payment(SoftDeleteModel):
 
     def __str__(self):
         return self.code
+
+    def get_payment_method_label(self):
+        return self.payment_method_option.name if self.payment_method_option else self.get_payment_method_display()

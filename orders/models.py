@@ -22,7 +22,9 @@ class Quotation(SoftDeleteModel):
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
+    shipping_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Phí vận chuyển')
     final_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Thành tiền')
+    tags = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tags')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     valid_until = models.DateField(blank=True, null=True, verbose_name='Hiệu lực đến')
     quotation_date = models.DateField(verbose_name='Ngày báo giá')
@@ -91,10 +93,12 @@ class Order(SoftDeleteModel):
                                           verbose_name='Trạng thái thanh toán')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền hàng')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
+    shipping_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Phí vận chuyển')
     tax_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Thuế')
     final_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng thanh toán')
     paid_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Đã thanh toán')
     shipping_address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ giao')
+    tags = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tags')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     order_date = models.DateField(verbose_name='Ngày đặt hàng')
     delivery_date = models.DateField(blank=True, null=True, verbose_name='Ngày giao hàng')
@@ -151,6 +155,35 @@ class OrderItem(models.Model):
         db_table = 'order_items'
         verbose_name = 'Chi tiết đơn hàng'
         verbose_name_plural = 'Chi tiết đơn hàng'
+
+
+class OrderEditHistory(models.Model):
+    """Lịch sử thao tác trên đơn hàng"""
+    ACTION_CHOICES = [
+        ('create', 'Tạo đơn'),
+        ('update', 'Cập nhật đơn'),
+        ('note', 'Sửa ghi chú'),
+        ('cancel', 'Hủy đơn'),
+        ('approve', 'Duyệt đơn'),
+        ('reject', 'Từ chối duyệt'),
+        ('bulk_collect', 'Thanh toán nhanh'),
+        ('bulk_cancel', 'Hủy nhanh'),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='history_entries', verbose_name='Đơn hàng')
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES, verbose_name='Hành động')
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name='order_edit_histories', verbose_name='Người thực hiện')
+    status_before = models.IntegerField(blank=True, null=True, verbose_name='Trạng thái trước')
+    status_after = models.IntegerField(blank=True, null=True, verbose_name='Trạng thái sau')
+    summary = models.TextField(blank=True, null=True, verbose_name='Diễn giải')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Thời gian')
+
+    class Meta:
+        db_table = 'order_edit_histories'
+        verbose_name = 'Lịch sử đơn hàng'
+        verbose_name_plural = 'Lịch sử đơn hàng'
+        ordering = ['-created_at', '-id']
 
 
 class OrderReturn(SoftDeleteModel):

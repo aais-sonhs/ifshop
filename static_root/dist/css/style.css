@@ -1,0 +1,131 @@
+.list-img {
+    max-height: 77vh;
+    overflow-y: auto !important;
+    padding: 3px;
+    margin-bottom: 10px;
+    border-radius: .25rem;
+    box-shadow: 0 0 1px rgba(0, 0, 0, .125), 0 1px 3px rgba(0, 0, 0, .2);
+}
+
+.list-img::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Hide scrollbar for IE, Edge and Firefox */
+.list-img  {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+.box-two {
+    min-height: 93vh;
+}
+
+.title {
+    font-size: 24px;
+}
+
+.img-box {
+    text-align: center;
+}
+
+.card-header, .card-body {
+    padding: 1px 2px !important;
+}
+.card-body-img {
+    min-height: 68px;
+}
+
+
+.div_hr {
+    padding: 2px 3px;
+    box-shadow: 0 0 1px rgb(205, 224, 233);
+}
+
+.hr_active:hover {
+    box-shadow: 0 0 2px rgba(68, 237, 26, 0.844) !important;
+    background-color: rgba(68, 237, 26, 0.844);
+}
+
+.camera_hr {
+    width: 100% !important;
+    min-height: 68px;
+}
+
+.hr_active {
+    background-color: rgba(255, 0, 0, 0.823);
+    box-shadow: 0 0 2px rgba(255, 0, 0, 0.823);
+
+}
+
+
+
+.container_img_hr {
+    margin-top: 3px;
+    padding: 5px 3px;
+    position: relative;
+    width: 98%;
+    border: 1px solid rgba(232, 34, 34, 0.734);
+}
+
+.image_view_hr {
+    cursor:  zoom-in;
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.overlay_img_hr {
+    cursor:  pointer;
+    position: absolute; 
+    bottom: 3px; 
+    background: rgba(0, 0, 0, 0.5); /* Black see-through */
+    color: #f1f1f1; 
+    width: 98%;
+    opacity:1;
+    color: white;
+    font-size: 100%;
+    padding: 3px;
+    text-align: center;
+  }
+
+.overlay_top_right {
+    cursor:  pointer;
+    position: absolute; 
+    top: 3px;
+    right: 3px; 
+    background: rgba(0, 0, 0, 0.5); /* Black see-through */
+    color: #f1f1f1; 
+    width: fit-content;
+    opacity:1;
+    color: white;
+    font-size: 116%;
+    padding: 2px;
+    text-align: center;
+  }
+
+
+#show_img_hr {
+    min-height: 83vh;
+    max-height: 93vh;
+    overflow-y: scroll;
+    padding: 3px;
+    margin-bottom: 10px;
+    border-radius: .25rem;
+    box-shadow: 0 0 1px rgba(0, 0, 0, .125), 0 1px 3px rgba(0, 0, 0, .2);
+}
+/* Hide scrollbar */
+.show_img_hr::-webkit-scrollbar {
+    display: none;
+  }
+  
+.show_img_hr  {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+@media screen and (max-width: 480px) {
+    .modal-dialog{
+        width: 100%;
+    }
+}

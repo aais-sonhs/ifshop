@@ -113,6 +113,39 @@ def _resolve_sale_customer(request, customer_id):
     return _get_or_create_guest_customer(request)
 
 
+def _get_order_for_user(request, order_id, queryset=None):
+    if not order_id:
+        return None
+    base_queryset = queryset if queryset is not None else Order.objects.all()
+    return filter_by_store(base_queryset.filter(id=order_id), request).first()
+
+
+def _get_quotation_for_user(request, quotation_id):
+    if not quotation_id:
+        return None
+    return filter_by_store(Quotation.objects.filter(id=quotation_id), request).first()
+
+
+def _mark_quotation_as_used(quotation_id):
+    if not quotation_id:
+        return
+    Quotation.objects.filter(id=quotation_id).exclude(status=4).update(status=3)
+
+
+def _reopen_quotation_if_unused(quotation_id, exclude_order_id=None):
+    if not quotation_id:
+        return
+
+    linked_orders = Order.objects.exclude(status=6).filter(quotation_id=quotation_id)
+    if exclude_order_id:
+        linked_orders = linked_orders.exclude(id=exclude_order_id)
+
+    if linked_orders.exists():
+        return
+
+    Quotation.objects.filter(id=quotation_id, status=3).update(status=2)
+
+
 def _validate_unique_line_items(items_data):
     seen = set()
     for item in items_data:
@@ -773,7 +806,13 @@ def api_get_order_detail(request):
     if not oid:
         return JsonResponse({'status': 'error', 'message': 'Missing id'})
     try:
-        o = Order.objects.select_related('customer', 'warehouse').get(id=oid)
+        o = _get_order_for_user(
+            request,
+            oid,
+            queryset=Order.objects.select_related('customer', 'warehouse'),
+        )
+        if not o:
+            raise Order.DoesNotExist
         items = [{
             'product_id': it.product_id,
             'variant_id': it.variant_id,
@@ -827,10 +866,19 @@ def api_save_order(request):
         with transaction.atomic():
             oid = data.get('id')
             old_status = None
+            old_quotation_id = None
             history_action = 'update' if oid else 'create'
             if oid:
-                o = Order.objects.get(id=oid)
+                o = _get_order_for_user(request, oid)
+                if not o:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
                 old_status = o.status
+                old_quotation_id = o.quotation_id
+                if Receipt.objects.filter(order=o).exists():
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Không thể sửa đơn hàng đã có phiếu thu. Nếu cần bù trừ, vui lòng dùng chức năng Trả hàng hoặc xử lý phiếu thu trước.'
+                    })
                 # KHÓA: Không cho sửa đơn hàng đã Hoàn thành hoặc Hủy
                 if old_status in (5, 6):
                     return JsonResponse({
@@ -853,9 +901,19 @@ def api_save_order(request):
                 # Auto-generate next available code instead of rejecting
                 requested_code = _auto_next_order_code()
             o.code = requested_code
+            requested_quotation_id = data.get('quotation_id') or None
+            quotation = None
+            if requested_quotation_id:
+                quotation = _get_quotation_for_user(request, requested_quotation_id)
+                if not quotation:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Báo giá không tồn tại hoặc không thuộc phạm vi cửa hàng của bạn.'
+                    })
+
             o.customer = _resolve_sale_customer(request, data.get('customer_id'))
             o.warehouse_id = data.get('warehouse_id') or None
-            o.quotation_id = data.get('quotation_id') or None
+            o.quotation = quotation
             o.order_date = data.get('order_date')
             o.discount_amount = data.get('discount_amount', 0) or 0
             o.shipping_fee = data.get('shipping_fee', 0) or 0
@@ -891,12 +949,8 @@ def api_save_order(request):
             o.creator_name = request.user.get_full_name() or request.user.username
             # NV bán hàng: nếu có quotation thì tự lấy từ người tạo báo giá
             sp = data.get('salesperson', '')
-            if not sp and o.quotation_id:
-                try:
-                    q = Quotation.objects.get(id=o.quotation_id)
-                    sp = q.salesperson or (q.created_by.get_full_name() if q.created_by else '')
-                except Quotation.DoesNotExist:
-                    pass
+            if not sp and quotation:
+                sp = quotation.salesperson or (quotation.created_by.get_full_name() if quotation.created_by else '')
             o.salesperson = sp or None
             o.server_staff = data.get('server_staff', '') or None
             new_approver_id = data.get('approver_id') or None
@@ -1070,9 +1124,13 @@ def api_save_order(request):
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=product.id, warehouse_id=o.warehouse_id)
                         _adjust_stock_quantity(stock, -qty)
-            # Cập nhật trạng thái báo giá → "Đã tạo đơn hàng"
-            if o.quotation_id:
-                Quotation.objects.filter(id=o.quotation_id).update(status=3)
+            # Đồng bộ trạng thái báo giá liên kết
+            if o.status != 6 and o.quotation_id:
+                _mark_quotation_as_used(o.quotation_id)
+            if old_quotation_id and (old_quotation_id != o.quotation_id or o.status == 6):
+                _reopen_quotation_if_unused(old_quotation_id, exclude_order_id=o.id)
+            if o.status == 6 and o.quotation_id and o.quotation_id != old_quotation_id:
+                _reopen_quotation_if_unused(o.quotation_id, exclude_order_id=o.id)
 
             summary_parts = [
                 f'Tổng thanh toán {int(float(o.final_amount or 0)):,}đ',
@@ -1115,7 +1173,9 @@ def api_update_order_note(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        order = Order.objects.get(id=data.get('id'))
+        order = _get_order_for_user(request, data.get('id'))
+        if not order:
+            raise Order.DoesNotExist
         old_note = order.note or ''
         order.note = data.get('note', '')
         order.save(update_fields=['note'])
@@ -1140,15 +1200,26 @@ def api_delete_order(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        order = Order.objects.get(id=data.get('id'))
+        order = _get_order_for_user(request, data.get('id'))
+        if not order:
+            raise Order.DoesNotExist
         # KHÓA: Không cho xóa đơn hàng đã Hoàn thành hoặc Hủy
         if order.status in (5, 6):
             return JsonResponse({
                 'status': 'error',
                 'message': 'Không thể xóa đơn hàng đã Hoàn thành/Hủy.'
             })
+        if Receipt.objects.filter(order=order).exists():
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Không thể xóa đơn hàng đã có phiếu thu. Vui lòng xử lý phiếu thu hoặc hủy đơn hàng theo đúng quy trình.'
+            })
+        quotation_id = order.quotation_id
         order.delete()
+        _reopen_quotation_if_unused(quotation_id)
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1164,7 +1235,9 @@ def api_cancel_order(request):
         reason = data.get('reason', '')
 
         with transaction.atomic():
-            order = Order.objects.get(id=order_id)
+            order = _get_order_for_user(request, order_id)
+            if not order:
+                raise Order.DoesNotExist
 
             if order.status == 6:
                 return JsonResponse({'status': 'error', 'message': 'Đơn hàng này đã bị hủy trước đó.'})
@@ -1216,6 +1289,7 @@ def api_cancel_order(request):
             order.paid_amount = 0
             order.note = f"{cancel_note}\n{old_note}".strip() if old_note else cancel_note
             order.save()
+            _reopen_quotation_if_unused(order.quotation_id, exclude_order_id=order.id)
             _log_order_history(
                 order=order,
                 actor=request.user,
@@ -1247,7 +1321,9 @@ def api_approve_order(request):
         note = data.get('note', '')
 
         with transaction.atomic():
-            order = Order.objects.get(id=order_id)
+            order = _get_order_for_user(request, order_id)
+            if not order:
+                raise Order.DoesNotExist
 
             # Kiểm tra quyền: chỉ người duyệt hoặc brand owner mới được duyệt
             from core.store_utils import is_brand_owner
@@ -1395,6 +1471,7 @@ def api_bulk_cancel_orders(request):
                 order.paid_amount = 0
                 order.note = (f'[HỦY NHANH] {reason}\n{order.note or ""}').strip()
                 order.save(update_fields=['status', 'payment_status', 'paid_amount', 'note'])
+                _reopen_quotation_if_unused(order.quotation_id, exclude_order_id=order.id)
                 _log_order_history(
                     order=order,
                     actor=request.user,

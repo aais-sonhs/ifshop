@@ -2986,23 +2986,23 @@ function loadData(){
             var actions = '<div class="btn-action-group">';
             if(d.status === 6){
                 // Đơn đã Hủy — chỉ Xem + Sao chép
-                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')" title="Xem"><i class="fas fa-eye"></i></button>' +
-                    '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')" title="Sao chép"><i class="fas fa-copy"></i></button>';
+                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')">Xem</button>' +
+                           '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')">Sao chép</button>';
             } else if(d.status === 5){
                 // Đơn Hoàn thành — Xem, In, Sao chép (không cho Sửa/Hủy)
-                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')" title="Xem"><i class="fas fa-eye"></i></button>' +
-                    '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')" title="In"><i class="fas fa-print"></i></button>' +
-                    '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')" title="Sao chép"><i class="fas fa-copy"></i></button>';
+                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')">Xem</button>' +
+                           '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')">In</button>' +
+                           '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')">Sao chép</button>';
             } else {
                 // Đơn chưa hoàn thành — Sửa, In, Hủy
-                actions += '<button class="btn btn-xs btn-info" onclick="editItem('+d.id+')" title="Sửa"><i class="fas fa-edit"></i></button>' +
-                    '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')" title="In"><i class="fas fa-print"></i></button>' +
-                    '<button class="btn btn-xs btn-outline-danger" onclick="cancelOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Hủy"><i class="fas fa-ban"></i></button>';
+                actions += '<button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button>' +
+                           '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')">In</button>' +
+                           '<button class="btn btn-xs btn-outline-danger" onclick="cancelOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')">Hủy</button>';
             }
             // Nút duyệt / từ chối (nếu đơn đang Chờ duyệt)
             if(d.approval_status === 1){
-                actions += '<button class="btn btn-xs btn-success" onclick="approveOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Duyệt"><i class="fas fa-check"></i></button>';
-                actions += '<button class="btn btn-xs btn-outline-danger" onclick="rejectOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Từ chối"><i class="fas fa-times"></i></button>';
+                actions += '<button class="btn btn-xs btn-success" onclick="approveOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')">Duyệt</button>';
+                actions += '<button class="btn btn-xs btn-outline-danger" onclick="rejectOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')">Từ chối</button>';
             }
             actions += '</div>';
             var rowStyle = d.status === 6 ? ' style="background:#fce4ec;"' : (d.status === 5 ? ' style="background:#f1f8e9;"' : '');

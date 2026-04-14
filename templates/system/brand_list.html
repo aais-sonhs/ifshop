@@ -67,7 +67,7 @@
 
 <!-- Modal Store -->
 <div class="modal fade" id="modal_store" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title" id="store_modal_title">Thêm cửa hàng</h5>
@@ -240,9 +240,9 @@ function renderBrands(){
         h += headerInfoHtml;
         h += '</div>';
         h += '<span class="badge badge-warning mr-2" style="font-size:12px;">'+filteredStores.length+' cửa hàng</span>';
-        h += '<div class="btn-action-group"><button class="btn btn-xs btn-outline-primary" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')">Sửa TH</button>';
-        h += '<button class="btn btn-xs btn-outline-danger" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa TH</button>';
-        h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')"><i class="fas fa-plus"></i> Thêm CH</button></div>';
+        h += '<button class="btn btn-xs btn-outline-primary mr-2" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')">Sửa</button>';
+        h += '<button class="btn btn-xs btn-outline-danger mr-2" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa</button>';
+        h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')"><i class="fas fa-plus"></i> Cửa hàng</button>';
         h += '</div>';
         h += '</div>';
 

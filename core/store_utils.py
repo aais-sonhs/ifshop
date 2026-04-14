@@ -129,7 +129,7 @@ def report_permission_required(view_func):
                 return JsonResponse({'error': 'Bạn không có quyền xem báo cáo'}, status=403)
             from django.contrib import messages
             messages.error(request, '⛔ Bạn không có quyền truy cập báo cáo. Liên hệ quản lý để được cấp quyền.')
-            return redirect('/')
+            return redirect('/dashboard/')
         return view_func(request, *args, **kwargs)
     return wrapper
 

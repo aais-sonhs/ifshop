@@ -4,10 +4,32 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.forms.utils import ErrorList
 from django.http import HttpResponse
+from django.utils.http import url_has_allowed_host_and_scheme
 from .forms import LoginForm, SignUpForm
 from django.contrib.sessions.models import Session
+from core.store_utils import can_view_sales_report
+
+
+def _get_post_login_redirect(request, user):
+    next_url = (request.POST.get('next') or request.GET.get('next') or '').strip()
+    if next_url and next_url not in ('/', '/login/'):
+        if url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return next_url
+
+    if user.is_superuser:
+        return "/brand_tbl/"
+    if can_view_sales_report(user):
+        return "/report_sales/"
+    return "/dashboard/"
 
 def login_view(request):
+    if request.user.is_authenticated:
+        return redirect(_get_post_login_redirect(request, request.user))
+
     if not request.session.session_key:
         request.session.save()
     else:
@@ -24,9 +46,7 @@ def login_view(request):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                if user.is_superuser:
-                    return redirect("/brand_tbl/")
-                return redirect("/report_sales/")
+                return redirect(_get_post_login_redirect(request, user))
             else:    
                 msg = 'Sai tên đăng nhập hoặc mật khẩu'    
         else:

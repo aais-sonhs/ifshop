@@ -40,7 +40,7 @@ def sales_report_privileged_required(view_func):
             return JsonResponse({'status': 'error', 'message': message}, status=403)
         messages.error(request, message)
         from django.shortcuts import redirect
-        return redirect('/')
+        return redirect('/dashboard/')
     return wrapper
 
 

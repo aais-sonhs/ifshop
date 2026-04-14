@@ -144,7 +144,7 @@ def business_config_tbl(request):
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/report_sales/')
+        return redirect('/dashboard/')
     return render(request, "system/business_config.html", {'active_tab': 'business_config_tbl'})
 
 
@@ -154,7 +154,7 @@ def setting_quotation(request):
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/report_sales/')
+        return redirect('/dashboard/')
     return render(request, "system/setting_quotation.html", {'active_tab': 'setting_quotation'})
 
 
@@ -164,7 +164,7 @@ def setting_order(request):
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/report_sales/')
+        return redirect('/dashboard/')
     return render(request, "system/setting_order.html", {'active_tab': 'setting_order'})
 
 

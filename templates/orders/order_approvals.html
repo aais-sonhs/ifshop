@@ -204,7 +204,7 @@ function loadApprovals(){
 
                 // Buttons
                 html += '<div class="approval-actions">';
-                html += '<button class="btn btn-approve" onclick="approveOrder('+d.id+',\''+d.code+'\')"><i class="fas fa-check-double mr-1"></i> Duyệt & Hoàn thành</button>';
+                html += '<button class="btn btn-approve" onclick="approveOrder('+d.id+',\''+d.code+'\')"><i class="fas fa-check-double mr-1"></i> Duyệt đơn</button>';
                 html += '<button class="btn btn-reject" onclick="rejectOrder('+d.id+',\''+d.code+'\')"><i class="fas fa-times mr-1"></i> Từ chối</button>';
                 html += '</div>';
 
@@ -237,7 +237,7 @@ function loadApprovals(){
 }
 
 function approveOrder(id, code){
-    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận đã nhận được tiền và duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Hoàn thành.')) return;
+    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Đang xử lý.')) return;
     var note = prompt('Ghi chú khi duyệt (có thể bỏ trống):', '');
     $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},

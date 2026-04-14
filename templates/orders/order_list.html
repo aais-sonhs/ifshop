@@ -16,6 +16,8 @@
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="0">Nháp <span class="badge badge-light border ml-1" id="tab_count_0">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="1">Xác nhận <span class="badge badge-light border ml-1" id="tab_count_1">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="2">Đang xử lý <span class="badge badge-light border ml-1" id="tab_count_2">0</span></button>
+                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="3">Đang đóng gói <span class="badge badge-light border ml-1" id="tab_count_3">0</span></button>
+                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="4">Đã giao <span class="badge badge-light border ml-1" id="tab_count_4">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="5">Hoàn thành <span class="badge badge-light border ml-1" id="tab_count_5">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="6">Đã hủy <span class="badge badge-light border ml-1" id="tab_count_6">0</span></button>
             </div>
@@ -1403,6 +1405,7 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
+        $.get('/api/products_select/', function(res){ allProducts = res.data; });
         $('#edit_id').val('');$('#inp_note').val('');clearCustomer();$('#inp_warehouse_id').val('').trigger('change');
         $('#inp_status').val('0');setMoneyValue('#inp_discount_amount',0);
         setMoneyValue('#inp_shipping_fee',0);$('#inp_tags').val('');
@@ -1583,7 +1586,8 @@ $(document).ready(function(){
             var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
             var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
             var stockColor = p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger';
-            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + '</span>';
+            var pendingText = p.total_pending_stock ? ' · Chờ duyệt: ' + fmt(p.total_pending_stock) : '';
+            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Đang GD: ' + fmt(p.total_reserved_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + pendingText + '</span>';
             html += '<div class="quick-search-item d-flex align-items-center px-3 py-2' + (idx === 0 && !isPopular ? ' qs-active' : '') + '" data-product-id="'+p.id+'" style="cursor:pointer; transition:background 0.15s;">' +
                 imgHtml +
                 '<div class="flex-grow-1">' +
@@ -1812,6 +1816,9 @@ $(document).ready(function(){
                 if(r.status==='ok'){
                     $('#modal_form').modal('hide');
                     loadData();
+                    if(r.message && r.message.indexOf('Cảnh báo') >= 0){
+                        toastr ? toastr.warning(r.message) : alert(r.message);
+                    }
                     // Show print modal
                     window._lastSavedOrderId = r.order_id;
                     window._lastSavedOrderSource = 'order';
@@ -1832,10 +1839,16 @@ function getStockForProduct(productId){
     if(product.is_service) return {stock: 999999, actualStock: 999999, sellableStock: 999999, label: 'DV', isService: true};
     if(whId){
         var actualStock = product.stocks[whId] || 0;
+        var reservedStock = product.reserved_stocks && product.reserved_stocks[whId] !== undefined ? product.reserved_stocks[whId] : 0;
+        var pendingStock = product.pending_stocks && product.pending_stocks[whId] !== undefined ? product.pending_stocks[whId] : 0;
         var sellableStock = product.sellable_stocks && product.sellable_stocks[whId] !== undefined ? product.sellable_stocks[whId] : actualStock;
-        return {stock: sellableStock, actualStock: actualStock, sellableStock: sellableStock, label: 'T:' + fmt(actualStock) + ' / B:' + fmt(sellableStock), isService: false};
+        var label = 'T:' + fmt(actualStock) + ' / GD:' + fmt(reservedStock) + ' / B:' + fmt(sellableStock);
+        if(pendingStock) label += ' / Chờ:' + fmt(pendingStock);
+        return {stock: sellableStock, actualStock: actualStock, reservedStock: reservedStock, pendingStock: pendingStock, sellableStock: sellableStock, label: label, isService: false};
     } else {
-        return {stock: product.total_sellable_stock, actualStock: product.total_stock, sellableStock: product.total_sellable_stock, label: 'T:' + fmt(product.total_stock) + ' / B:' + fmt(product.total_sellable_stock), isService: false};
+        var totalLabel = 'T:' + fmt(product.total_stock) + ' / GD:' + fmt(product.total_reserved_stock) + ' / B:' + fmt(product.total_sellable_stock);
+        if(product.total_pending_stock) totalLabel += ' / Chờ:' + fmt(product.total_pending_stock);
+        return {stock: product.total_sellable_stock, actualStock: product.total_stock, reservedStock: product.total_reserved_stock, pendingStock: product.total_pending_stock, sellableStock: product.total_sellable_stock, label: totalLabel, isService: false};
     }
 }
 
@@ -2083,6 +2096,8 @@ function loadData(){
         $('#tab_count_0').text(counts[0]||0);
         $('#tab_count_1').text(counts[1]||0);
         $('#tab_count_2').text(counts[2]||0);
+        $('#tab_count_3').text(counts[3]||0);
+        $('#tab_count_4').text(counts[4]||0);
         $('#tab_count_5').text(counts[5]||0);
         $('#tab_count_6').text(counts[6]||0);
 
@@ -2275,7 +2290,7 @@ $('#btn_bulk_cancel').click(function(){
 });
 
 function approveOrder(id, code){
-    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận đã nhận được tiền và duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Hoàn thành.')) return;
+    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Đang xử lý.')) return;
     var note = prompt('Ghi chú khi duyệt (có thể bỏ trống):', '');
     $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
@@ -2344,13 +2359,16 @@ function editItem(id){
         $('#quotation_section').hide();
         _timelineReadonly = false;
         loadOrderHistory(o.id);
-        $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
+        $.get('/api/products_select/?exclude_order_id=' + o.id, function(prodRes){
+            allProducts = prodRes.data;
+            $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
 
-        // Load items AFTER modal is fully shown so Select2 renders correctly
-        $('#modal_form').one('shown.bs.modal', function(){
-            res.items.forEach(function(it){addItemRow(it);});
-            calcTotal();
-            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
+            // Load items AFTER modal is fully shown so Select2 renders correctly
+            $('#modal_form').one('shown.bs.modal', function(){
+                res.items.forEach(function(it){addItemRow(it);});
+                calcTotal();
+                setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
+            });
         });
     });
 }
@@ -2525,6 +2543,7 @@ function downloadOrderPDF(id){
 function copyOrder(id){
     $.get('/api/orders/detail/?id='+id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
+        $.get('/api/products_select/', function(prodRes){ allProducts = prodRes.data; });
         var o = res.order;
         // Reset form cho tạo mới
         $('#edit_id').val('');

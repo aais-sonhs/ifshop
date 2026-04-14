@@ -109,6 +109,7 @@ class Receipt(SoftDeleteModel):
     reference = models.CharField(max_length=100, blank=True, null=True, verbose_name='Số tham chiếu')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     payment_method = models.IntegerField(choices=PAYMENT_METHOD_CHOICES, default=2, verbose_name='Hình thức thanh toán')
+    cashbook_applied = models.BooleanField(default=False, verbose_name='Đã ghi sổ quỹ')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

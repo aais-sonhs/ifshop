@@ -5,13 +5,44 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction
+from django.db.models import Q
 from .models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment, PaymentMethodOption
+from .services import (
+    capture_receipt_effect,
+    delete_receipt_with_effect,
+    save_receipt_with_effect,
+)
 from customers.models import Customer
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier
-from core.store_utils import filter_by_store, get_user_store, brand_owner_required
+from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required
 
 logger = logging.getLogger(__name__)
+
+
+def _get_default_store_for_request(request):
+    store = get_user_store(request)
+    if store:
+        return store
+
+    from system_management.models import Store
+
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return None
+    return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _filter_receipts_for_user(queryset, request):
+    if request.user.is_superuser:
+        return queryset.none()
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(store_id__in=store_ids) |
+        Q(store_id__isnull=True, order__store_id__in=store_ids)
+    )
 
 
 def _serialize_payment_methods():
@@ -116,7 +147,7 @@ def api_get_orders_for_receipt(request):
 @login_required(login_url="/login/")
 def api_get_receipts(request):
     receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option').all()
-    receipts = filter_by_store(receipts, request)
+    receipts = _filter_receipts_for_user(receipts, request)
     data = [{
         'id': r.id, 'code': r.code,
         'category': r.category.name if r.category else '',
@@ -144,7 +175,7 @@ def api_get_receipts(request):
 @login_required(login_url="/login/")
 def api_receipt_summary(request):
     receipts = Receipt.objects.select_related('cash_book').filter(status=1)
-    receipts = filter_by_store(receipts, request)
+    receipts = _filter_receipts_for_user(receipts, request)
     # Date filter
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
@@ -192,84 +223,49 @@ def api_save_receipt(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        with transaction.atomic():
-            rid = data.get('id')
-            old_order_id = None
-            old_amount = 0
-            old_cash_book_id = None
-            old_status = None
-            if rid:
-                r = Receipt.objects.get(id=rid)
-                old_order_id = r.order_id  # Lưu order cũ trước khi thay đổi
-                old_amount = float(r.amount)
-                old_cash_book_id = r.cash_book_id
-                old_status = r.status
-            else:
-                r = Receipt()
-                r.created_by = request.user
-            r.code = data.get('code', '')
-            r.category_id = data.get('category_id') or None
-            r.cash_book_id = data.get('cash_book_id') or None
-            r.customer_id = data.get('customer_id') or None
-            r.order_id = data.get('order_id') or None
-            r.amount = data.get('amount', 0) or 0
-            r.description = data.get('description', '')
-            r.receipt_date = data.get('receipt_date')
-            r.status = data.get('status', 0)
-            r.payment_method = data.get('payment_method', 2)
-            r.payment_method_option_id = data.get('payment_method_option_id') or None
-            r.note = data.get('note', '')
-            if r.payment_method_option_id:
-                method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=r.payment_method_option_id).first()
-                if method:
-                    r.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
-                    if not r.cash_book_id and method.default_cash_book_id:
-                        r.cash_book_id = method.default_cash_book_id
+        rid = data.get('id')
+        old_effect = None
+        if rid:
+            r = _filter_receipts_for_user(Receipt.objects.all(), request).get(id=rid)
+            old_effect = capture_receipt_effect(r)
+        else:
+            r = Receipt()
+            r.created_by = request.user
 
-            new_amount = float(r.amount)
-            new_status = int(r.status)
+        r.code = data.get('code', '')
+        r.category_id = data.get('category_id') or None
+        r.cash_book_id = data.get('cash_book_id') or None
+        r.customer_id = data.get('customer_id') or None
+        r.order_id = data.get('order_id') or None
+        r.amount = data.get('amount', 0) or 0
+        r.description = data.get('description', '')
+        r.receipt_date = data.get('receipt_date')
+        r.status = data.get('status', 0)
+        r.payment_method = data.get('payment_method', 2)
+        r.payment_method_option_id = data.get('payment_method_option_id') or None
+        r.note = data.get('note', '')
 
-            # Hoàn lại số dư quỹ cũ (nếu phiếu cũ đã hoàn thành)
-            if rid and old_status == 1 and old_cash_book_id:
-                old_book = CashBook.objects.select_for_update().get(id=old_cash_book_id)
-                old_book.balance -= Decimal(str(old_amount))
-                old_book.save(update_fields=['balance'])
+        linked_order = None
+        if r.order_id:
+            linked_order = filter_by_store(Order.objects.filter(id=r.order_id), request).first()
+            if not linked_order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng trong phạm vi cửa hàng'})
+            r.store_id = linked_order.store_id
+            if not r.customer_id:
+                r.customer_id = linked_order.customer_id
+        elif not r.store_id:
+            store = _get_default_store_for_request(request)
+            if store:
+                r.store = store
 
-            # Cộng số dư quỹ mới (nếu phiếu mới hoàn thành)
-            if new_status == 1 and r.cash_book_id:
-                book = CashBook.objects.select_for_update().get(id=r.cash_book_id)
-                book.balance += Decimal(str(new_amount))
-                book.save(update_fields=['balance'])
+        if r.payment_method_option_id:
+            method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=r.payment_method_option_id).first()
+            if method:
+                r.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
+                if not r.cash_book_id and method.default_cash_book_id:
+                    r.cash_book_id = method.default_cash_book_id
 
-            r.save()
-
-            # Helper: Cập nhật payment_status cho 1 order
-            def _update_order_payment(order_id):
-                if not order_id:
-                    return
-                try:
-                    order = Order.objects.get(id=order_id)
-                except Order.DoesNotExist:
-                    return
-                total_paid = sum(
-                    float(rec.amount)
-                    for rec in Receipt.objects.filter(order=order, status=1)
-                )
-                order.paid_amount = total_paid
-                if total_paid >= float(order.final_amount):
-                    order.payment_status = 2
-                elif total_paid > 0:
-                    order.payment_status = 1
-                else:
-                    order.payment_status = 0
-                order.save(update_fields=['paid_amount', 'payment_status'])
-
-            # Cập nhật order hiện tại
-            _update_order_payment(r.order_id)
-
-            # Nếu thay đổi order liên kết → cập nhật lại order cũ
-            if old_order_id and old_order_id != r.order_id:
-                _update_order_payment(old_order_id)
+        save_receipt_with_effect(r, old_effect=old_effect)
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except Exception as e:
@@ -282,27 +278,10 @@ def api_delete_receipt(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        receipt = Receipt.objects.filter(id=data.get('id')).first()
+        receipt = _filter_receipts_for_user(Receipt.objects.all(), request).filter(id=data.get('id')).first()
         if not receipt:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu thu'})
-
-        linked_order = receipt.order  # Lưu lại order trước khi xóa
-        receipt.delete()
-
-        # Cập nhật lại payment_status trên Order nếu có liên kết
-        if linked_order:
-            total_paid = sum(
-                float(rec.amount)
-                for rec in Receipt.objects.filter(order=linked_order, status=1)
-            )
-            linked_order.paid_amount = total_paid
-            if total_paid >= float(linked_order.final_amount):
-                linked_order.payment_status = 2  # Đã thanh toán
-            elif total_paid > 0:
-                linked_order.payment_status = 1  # Thanh toán một phần
-            else:
-                linked_order.payment_status = 0  # Chưa thanh toán
-            linked_order.save(update_fields=['paid_amount', 'payment_status'])
+        delete_receipt_with_effect(receipt)
 
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
@@ -567,7 +546,7 @@ def export_receipts_excel(request):
     receipts = Receipt.objects.select_related(
         'category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option'
     ).filter(status=1)
-    receipts = filter_by_store(receipts, request)
+    receipts = _filter_receipts_for_user(receipts, request)
 
     # Date filter
     date_from = request.GET.get('date_from')

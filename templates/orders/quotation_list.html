@@ -766,7 +766,8 @@ $(document).ready(function(){
             var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
             var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
             var stockColor = p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger';
-            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + '</span>';
+            var pendingText = p.total_pending_stock ? ' · Chờ duyệt: ' + fmt(p.total_pending_stock) : '';
+            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Đang GD: ' + fmt(p.total_reserved_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + pendingText + '</span>';
             html += '<div class="quick-search-item d-flex align-items-center px-3 py-2' + (idx === 0 && !isPopular ? ' qs-active' : '') + '" data-product-id="'+p.id+'" style="cursor:pointer; transition:background 0.15s;">' +
                 imgHtml +
                 '<div class="flex-grow-1">' +
@@ -981,6 +982,9 @@ $(document).ready(function(){
                 if(r.status === 'ok'){
                     $('#modal_form').modal('hide');
                     loadData();
+                    if(r.message && r.message.indexOf('Cảnh báo') >= 0){
+                        toastr ? toastr.warning(r.message) : alert(r.message);
+                    }
                     // Show print modal
                     window._lastSavedOrderId = r.order_id;
                     window._lastSavedOrderSource = 'quotation';
@@ -1001,8 +1005,10 @@ function getStockForProduct(productId){
     return {
         stock: product.total_sellable_stock,
         actualStock: product.total_stock,
+        reservedStock: product.total_reserved_stock,
+        pendingStock: product.total_pending_stock,
         sellableStock: product.total_sellable_stock,
-        label: 'T:' + fmt(product.total_stock) + ' / B:' + fmt(product.total_sellable_stock),
+        label: 'T:' + fmt(product.total_stock) + ' / GD:' + fmt(product.total_reserved_stock) + ' / B:' + fmt(product.total_sellable_stock) + (product.total_pending_stock ? ' / Chờ:' + fmt(product.total_pending_stock) : ''),
         isService: false
     };
 }

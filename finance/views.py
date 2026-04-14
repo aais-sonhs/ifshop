@@ -45,6 +45,100 @@ def _filter_receipts_for_user(queryset, request):
     )
 
 
+def _get_user_display_name(user):
+    if not user:
+        return ''
+    return user.get_full_name() or user.username or ''
+
+
+def _parse_decimal_filter(value):
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
+
+
+def _apply_receipt_filters(queryset, request):
+    search = (request.GET.get('search') or '').strip()
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    cash_book_id = request.GET.get('cash_book_id')
+    payment_method_option_id = request.GET.get('payment_method_option_id') or request.GET.get('method_id')
+    category_id = request.GET.get('category_id')
+    status = request.GET.get('status')
+    has_order = request.GET.get('has_order')
+    amount_from = _parse_decimal_filter(request.GET.get('amount_from'))
+    amount_to = _parse_decimal_filter(request.GET.get('amount_to'))
+    receipt_creator = (request.GET.get('receipt_creator') or '').strip()
+    order_creator = (request.GET.get('order_creator') or '').strip()
+
+    if date_from:
+        queryset = queryset.filter(receipt_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(receipt_date__lte=date_to)
+
+    if cash_book_id == '0':
+        queryset = queryset.filter(cash_book_id__isnull=True)
+    elif cash_book_id:
+        queryset = queryset.filter(cash_book_id=cash_book_id)
+
+    if payment_method_option_id:
+        queryset = queryset.filter(payment_method_option_id=payment_method_option_id)
+
+    if category_id:
+        queryset = queryset.filter(category_id=category_id)
+
+    if status not in (None, ''):
+        queryset = queryset.filter(status=status)
+
+    if has_order == 'yes':
+        queryset = queryset.filter(order_id__isnull=False)
+    elif has_order == 'no':
+        queryset = queryset.filter(order_id__isnull=True)
+
+    if amount_from is not None:
+        queryset = queryset.filter(amount__gte=amount_from)
+    if amount_to is not None:
+        queryset = queryset.filter(amount__lte=amount_to)
+
+    if receipt_creator:
+        queryset = queryset.filter(
+            Q(created_by__username__icontains=receipt_creator) |
+            Q(created_by__first_name__icontains=receipt_creator) |
+            Q(created_by__last_name__icontains=receipt_creator)
+        )
+
+    if order_creator:
+        queryset = queryset.filter(
+            Q(order__creator_name__icontains=order_creator) |
+            Q(order__salesperson__icontains=order_creator) |
+            Q(order__created_by__username__icontains=order_creator) |
+            Q(order__created_by__first_name__icontains=order_creator) |
+            Q(order__created_by__last_name__icontains=order_creator)
+        )
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search) |
+            Q(customer__name__icontains=search) |
+            Q(customer__code__icontains=search) |
+            Q(order__code__icontains=search) |
+            Q(category__name__icontains=search) |
+            Q(cash_book__name__icontains=search) |
+            Q(description__icontains=search) |
+            Q(note__icontains=search) |
+            Q(created_by__username__icontains=search) |
+            Q(created_by__first_name__icontains=search) |
+            Q(created_by__last_name__icontains=search) |
+            Q(order__creator_name__icontains=search) |
+            Q(order__salesperson__icontains=search)
+        )
+
+    return queryset
+
+
 def _serialize_payment_methods():
     return [{
         'id': m.id,
@@ -146,8 +240,11 @@ def api_get_orders_for_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_receipts(request):
-    receipts = Receipt.objects.select_related('category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option').all()
+    receipts = Receipt.objects.select_related(
+        'category', 'cash_book', 'customer', 'order', 'order__created_by', 'created_by', 'payment_method_option'
+    ).all()
     receipts = _filter_receipts_for_user(receipts, request)
+    receipts = _apply_receipt_filters(receipts, request)
     data = [{
         'id': r.id, 'code': r.code,
         'category': r.category.name if r.category else '',
@@ -167,7 +264,13 @@ def api_get_receipts(request):
         'payment_method_option_id': r.payment_method_option_id,
         'payment_method_display': r.get_payment_method_label(),
         'note': r.note or '',
-        'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
+        'created_by': _get_user_display_name(r.created_by),
+        'receipt_creator': _get_user_display_name(r.created_by),
+        'order_creator': (
+            r.order.creator_name or
+            _get_user_display_name(r.order.created_by)
+        ) if r.order else '',
+        'salesperson': r.order.salesperson if r.order else '',
     } for r in receipts]
     return JsonResponse({'data': data})
 
@@ -176,13 +279,7 @@ def api_get_receipts(request):
 def api_receipt_summary(request):
     receipts = Receipt.objects.select_related('cash_book').filter(status=1)
     receipts = _filter_receipts_for_user(receipts, request)
-    # Date filter
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
-    if date_from:
-        receipts = receipts.filter(receipt_date__gte=date_from)
-    if date_to:
-        receipts = receipts.filter(receipt_date__lte=date_to)
+    receipts = _apply_receipt_filters(receipts, request)
 
     by_cashbook = {}
     by_method = {}
@@ -544,17 +641,12 @@ def export_receipts_excel(request):
     from datetime import datetime
 
     receipts = Receipt.objects.select_related(
-        'category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option'
-    ).filter(status=1)
+        'category', 'cash_book', 'customer', 'order', 'order__created_by', 'created_by', 'payment_method_option'
+    )
     receipts = _filter_receipts_for_user(receipts, request)
-
-    # Date filter
+    receipts = _apply_receipt_filters(receipts, request)
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
-    if date_from:
-        receipts = receipts.filter(receipt_date__gte=date_from)
-    if date_to:
-        receipts = receipts.filter(receipt_date__lte=date_to)
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
@@ -562,11 +654,12 @@ def export_receipts_excel(request):
         {'key': 'category', 'label': 'Danh mục', 'width': 16},
         {'key': 'customer', 'label': 'Khách hàng', 'width': 22},
         {'key': 'order', 'label': 'Đơn hàng', 'width': 14},
+        {'key': 'order_creator', 'label': 'Người tạo đơn', 'width': 18},
         {'key': 'amount', 'label': 'Số tiền', 'width': 16},
         {'key': 'method', 'label': 'Hình thức TT', 'width': 16},
         {'key': 'date', 'label': 'Ngày thu', 'width': 13},
         {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
-        {'key': 'creator', 'label': 'Người tạo', 'width': 16},
+        {'key': 'creator', 'label': 'Người tạo phiếu', 'width': 16},
         {'key': 'description', 'label': 'Diễn giải', 'width': 30},
     ]
 
@@ -580,11 +673,12 @@ def export_receipts_excel(request):
             'category': r.category.name if r.category else '',
             'customer': r.customer.name if r.customer else '',
             'order': r.order.code if r.order else '',
+            'order_creator': (r.order.creator_name or _get_user_display_name(r.order.created_by)) if r.order else '',
             'amount': float(r.amount or 0),
             'method': r.get_payment_method_label(),
             'date': r.receipt_date,
             'cashbook': r.cash_book.name if r.cash_book else '',
-            'creator': (r.created_by.get_full_name() or r.created_by.username) if r.created_by else '',
+            'creator': _get_user_display_name(r.created_by),
             'description': r.description or '',
         })
 

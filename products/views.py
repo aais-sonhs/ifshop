@@ -1,10 +1,12 @@
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
+from django.utils import timezone
 from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
     GoodsReceipt, GoodsReceiptItem, PurchaseOrder, PurchaseOrderItem,
@@ -12,9 +14,206 @@ from .models import (
     ComboItem, ProductLocation
 )
 
-from core.store_utils import filter_by_store, get_user_store, brand_owner_required
+from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_next_goods_receipt_code():
+    last_receipt = (
+        GoodsReceipt.objects
+        .select_for_update()
+        .filter(code__startswith='P')
+        .order_by('-id')
+        .first()
+    )
+    if last_receipt and last_receipt.code and last_receipt.code.startswith('P'):
+        try:
+            next_number = int(last_receipt.code[1:]) + 1
+        except ValueError:
+            next_number = GoodsReceipt.objects.filter(code__startswith='P').count() + 1
+    else:
+        next_number = 1
+
+    candidate = f'P{next_number:05d}'
+    while GoodsReceipt.objects.filter(code=candidate).exists():
+        next_number += 1
+        candidate = f'P{next_number:05d}'
+    return candidate
+
+
+def _get_default_store_for_request(request):
+    """Return the store new business records should belong to."""
+    from system_management.models import Store
+
+    store = get_user_store(request)
+    if store:
+        return store
+
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return None
+    return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _product_queryset_for_request(request):
+    return filter_by_store(Product.objects.all(), request)
+
+
+def _parse_positive_decimal(value, default='0'):
+    try:
+        parsed = Decimal(str(value if value not in (None, '') else default))
+    except (InvalidOperation, TypeError, ValueError):
+        parsed = Decimal(default)
+    return parsed
+
+
+def _combo_signature(combo_product):
+    return {
+        (item.product_id, Decimal(str(item.quantity)).normalize())
+        for item in combo_product.combo_items.all()
+    }
+
+
+def _validate_combo_items(product, combo_data, request):
+    if not isinstance(combo_data, list):
+        raise ValueError('Danh sách thành phần combo không hợp lệ.')
+    if len(combo_data) > 20:
+        raise ValueError('Một combo chỉ nên có tối đa 20 sản phẩm thành phần.')
+
+    seen = set()
+    normalized = []
+    for item in combo_data:
+        product_id = item.get('product_id') if isinstance(item, dict) else None
+        if not product_id:
+            continue
+        product_id = int(product_id)
+        if product.id and product_id == product.id:
+            raise ValueError('Combo không được chứa chính nó trong thành phần.')
+        if product_id in seen:
+            raise ValueError('Không được chọn trùng sản phẩm trong cùng một combo.')
+        seen.add(product_id)
+
+        quantity = _parse_positive_decimal(item.get('quantity'), '1')
+        if quantity <= 0:
+            raise ValueError('Số lượng thành phần combo phải lớn hơn 0.')
+
+        component = _product_queryset_for_request(request).filter(
+            id=product_id,
+            is_active=True,
+        ).first()
+        if not component:
+            raise ValueError('Có sản phẩm thành phần không tồn tại hoặc không thuộc cửa hàng hiện tại.')
+        if component.is_combo:
+            raise ValueError(f'Không thể dùng combo "{component.name}" làm thành phần của combo khác.')
+        normalized.append((component, quantity))
+
+    if not normalized:
+        raise ValueError('Vui lòng chọn ít nhất 1 sản phẩm thành phần cho combo.')
+    return normalized
+
+
+def _combo_stock_by_warehouse(product):
+    """
+    Combo không có tồn kho riêng; tồn khả dụng = min(tồn thành phần / định lượng)
+    theo từng kho. Thành phần dịch vụ không giới hạn tồn combo.
+    """
+    capacities = None
+    warehouse_names = {}
+
+    combo_items = product.combo_items.select_related('product').prefetch_related(
+        'product__stocks__warehouse'
+    )
+    for item in combo_items:
+        component = item.product
+        if not component or component.is_service:
+            continue
+        required_qty = _parse_positive_decimal(item.quantity, '0')
+        if required_qty <= 0:
+            continue
+
+        component_capacity = {}
+        for stock in component.stocks.all():
+            if not stock.warehouse_id:
+                continue
+            warehouse_names[stock.warehouse_id] = stock.warehouse.name if stock.warehouse else ''
+            stock_qty = _parse_positive_decimal(stock.quantity, '0')
+            capacity = (stock_qty / required_qty).to_integral_value(rounding=ROUND_FLOOR)
+            component_capacity[stock.warehouse_id] = int(capacity)
+
+        if capacities is None:
+            capacities = component_capacity
+        else:
+            warehouse_ids = set(capacities.keys()) | set(component_capacity.keys())
+            capacities = {
+                warehouse_id: min(capacities.get(warehouse_id, 0), component_capacity.get(warehouse_id, 0))
+                for warehouse_id in warehouse_ids
+            }
+
+    if capacities is None:
+        return [], 0
+
+    rows = []
+    total_stock = 0
+    for warehouse_id, quantity in sorted(capacities.items(), key=lambda row: warehouse_names.get(row[0], '')):
+        total_stock += quantity
+        if quantity != 0:
+            rows.append({
+                'warehouse': warehouse_names.get(warehouse_id, ''),
+                'warehouse_id': warehouse_id,
+                'quantity': float(quantity),
+            })
+    return rows, float(total_stock)
+
+
+def _build_receipt_history_map(products):
+    product_ids = [p.id for p in products]
+    if not product_ids:
+        return {}
+
+    all_receipt_items = (
+        GoodsReceiptItem.objects
+        .filter(
+            product_id__in=product_ids,
+            goods_receipt__status=1,
+        )
+        .select_related('goods_receipt', 'goods_receipt__supplier', 'goods_receipt__warehouse', 'variant')
+        .order_by('-goods_receipt__receipt_date', '-goods_receipt__id', '-id')
+    )
+
+    receipt_map = {}
+    for receipt_item in all_receipt_items:
+        receipt_map.setdefault(receipt_item.product_id, []).append(receipt_item)
+    return receipt_map
+
+
+def _calc_on_hand_cost_price(product_id, total_stock, receipt_map):
+    """
+    Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại.
+    Duyệt phiếu nhập mới nhất -> cũ nhất để xác định những lô còn nằm trong số tồn.
+    """
+    if total_stock <= 0:
+        return 0
+
+    receipt_items = receipt_map.get(product_id, [])
+    if not receipt_items:
+        return 0
+
+    remaining = total_stock
+    weighted_sum = 0.0
+    for receipt_item in receipt_items:
+        quantity = float(receipt_item.quantity)
+        unit_price = float(receipt_item.unit_price)
+        if quantity <= 0:
+            continue
+
+        allocated = min(remaining, quantity)
+        weighted_sum += allocated * unit_price
+        remaining -= allocated
+        if remaining <= 0:
+            break
+
+    return round(weighted_sum / total_stock) if total_stock > 0 else 0
 
 
 # ============ PAGE VIEWS ============
@@ -22,11 +221,13 @@ logger = logging.getLogger(__name__)
 @login_required(login_url="/login/")
 @brand_owner_required
 def product_tbl(request):
+    store_ids = get_managed_store_ids(request.user)
     context = {
         'active_tab': 'product_tbl',
         'categories': list(ProductCategory.objects.filter(is_active=True).values('id', 'name')),
         'suppliers': list(Supplier.objects.filter(is_active=True).values('id', 'name')),
         'locations': list(ProductLocation.objects.filter(is_active=True).values('id', 'name')),
+        'warehouses': list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name')),
     }
     return render(request, "products/product_list.html", context)
 
@@ -102,55 +303,15 @@ def cost_adjustment_tbl(request):
 @login_required(login_url="/login/")
 def api_get_products(request):
     products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related(
-        'variants', 'stocks', 'combo_items__product',
-        'receipt_items__goods_receipt',  # For FIFO cost calculation
+        'variants', 'stocks__warehouse', 'combo_items__product__stocks__warehouse',
+        'receipt_items__goods_receipt',
     ).all()
     products = filter_by_store(products, request)
-
-    # ===== FIFO weighted average cost calculation =====
-    # Precompute per product: get all completed goods receipt items ordered newest→oldest
-    from products.models import GoodsReceiptItem
-    all_receipt_items = (
-        GoodsReceiptItem.objects
-        .filter(
-            product_id__in=[p.id for p in products],
-            goods_receipt__status=1,
-        )
-        .select_related('goods_receipt')
-        .order_by('-goods_receipt__receipt_date', '-goods_receipt__id')
-    )
-    # Group by product_id
-    receipt_map = {}
-    for ri in all_receipt_items:
-        receipt_map.setdefault(ri.product_id, []).append(ri)
-
-    def calc_fifo_cost(product_id, total_stock):
-        """
-        Giá vốn FIFO = trung bình gia quyền theo tồn kho hiện tại.
-        Lấy từ phiếu nhập mới nhất → cũ nhất, phân bổ số tồn vào từng lô.
-        """
-        if total_stock <= 0:
-            return 0
-        items = receipt_map.get(product_id, [])
-        if not items:
-            return 0
-        remaining = total_stock
-        weighted_sum = 0.0
-        for ri in items:
-            qty = float(ri.quantity)
-            price = float(ri.unit_price)
-            if qty <= 0:
-                continue
-            allocated = min(remaining, qty)
-            weighted_sum += allocated * price
-            remaining -= allocated
-            if remaining <= 0:
-                break
-        return round(weighted_sum / total_stock) if total_stock > 0 else 0
+    receipt_map = _build_receipt_history_map(products)
 
     data = []
     for p in products:
-        total_stock = float(sum(s.quantity for s in p.stocks.all()))
+        receipt_items = receipt_map.get(p.id, [])
         variants = [{
             'id': v.id,
             'size_name': v.size_name,
@@ -169,11 +330,11 @@ def api_get_products(request):
         if p.is_combo:
             combo_items = [{
                 'product_id': ci.product_id,
-                'product_code': ci.product.code,
-                'product_name': ci.product.name,
-                'is_service': ci.product.is_service,
+                'product_code': ci.product.code if ci.product else '',
+                'product_name': ci.product.name if ci.product else '',
+                'is_service': ci.product.is_service if ci.product else False,
                 'quantity': float(ci.quantity),
-                'selling_price': float(ci.product.selling_price),
+                'selling_price': float(ci.product.selling_price) if ci.product else 0,
             } for ci in p.combo_items.select_related('product').all()]
 
         stock_by_warehouse = [{
@@ -182,10 +343,41 @@ def api_get_products(request):
             'quantity': float(s.quantity),
         } for s in p.stocks.select_related('warehouse').all() if float(s.quantity) != 0]
 
-        # Giá vốn FIFO
-        fifo_cost = calc_fifo_cost(p.id, total_stock)
-        # Fallback to stored cost_price if no receipt data
-        effective_cost = fifo_cost if fifo_cost > 0 else float(p.cost_price)
+        if p.is_combo:
+            stock_by_warehouse, total_stock = _combo_stock_by_warehouse(p)
+        else:
+            total_stock = float(sum(s.quantity for s in p.stocks.all()))
+
+        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
+        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
+
+        latest_purchase = None
+        recent_import_prices = []
+        purchase_receipt_count = 0
+        purchase_total_quantity = 0
+        if receipt_items:
+            latest_item = receipt_items[0]
+            latest_purchase = {
+                'receipt_code': latest_item.goods_receipt.code if latest_item.goods_receipt else '',
+                'receipt_date': latest_item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
+                'receipt_date_raw': latest_item.goods_receipt.receipt_date.strftime('%Y-%m-%d') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
+                'supplier': latest_item.goods_receipt.supplier.name if latest_item.goods_receipt and latest_item.goods_receipt.supplier else '',
+                'warehouse': latest_item.goods_receipt.warehouse.name if latest_item.goods_receipt and latest_item.goods_receipt.warehouse else '',
+                'variant': latest_item.variant.size_name if latest_item.variant else '',
+                'quantity': float(latest_item.quantity),
+                'unit_price': float(latest_item.unit_price),
+            }
+            seen_receipts = set()
+            for item in receipt_items:
+                purchase_total_quantity += float(item.quantity or 0)
+                if item.goods_receipt_id:
+                    seen_receipts.add(item.goods_receipt_id)
+            purchase_receipt_count = len(seen_receipts)
+            recent_import_prices = [{
+                'date': item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if item.goods_receipt and item.goods_receipt.receipt_date else '',
+                'price': float(item.unit_price),
+                'quantity': float(item.quantity),
+            } for item in receipt_items[:3]]
 
         data.append({
             'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
@@ -214,6 +406,11 @@ def api_get_products(request):
             'location_id': p.location_id,
             'location': p.location.name if p.location else '',
             'specification': p.specification or '',
+            'created_at': p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
+            'latest_purchase': latest_purchase,
+            'recent_import_prices': recent_import_prices,
+            'purchase_receipt_count': purchase_receipt_count,
+            'purchase_total_quantity': purchase_total_quantity,
         })
     return JsonResponse({'data': data})
 
@@ -223,88 +420,111 @@ def api_save_product(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
-        product_id = request.POST.get('id')
-        if product_id:
-            product = Product.objects.get(id=product_id)
-            # Combo đã tạo → cho phép sửa (trước đây chặn hoàn toàn)
-            # Giờ chỉ log cảnh báo để audit trail
-            pass
-        else:
-            product = Product()
-            product.created_by = request.user
+        with transaction.atomic():
+            product_id = request.POST.get('id')
+            if product_id:
+                product = _product_queryset_for_request(request).get(id=product_id)
+                was_combo = product.is_combo
+                existing_combo_signature = _combo_signature(product) if was_combo else set()
+            else:
+                product = Product(created_by=request.user, store=_get_default_store_for_request(request))
+                was_combo = False
+                existing_combo_signature = set()
 
-        product.code = request.POST.get('code', '')
-        product.name = request.POST.get('name', '')
-        product.barcode = request.POST.get('barcode', '')
-        product.unit = request.POST.get('unit', 'Cái')
-        product.cost_price = request.POST.get('cost_price', 0) or 0
-        product.import_price = request.POST.get('import_price', 0) or 0
-        product.selling_price = request.POST.get('selling_price', 0) or 0
-        product.wholesale_price_no_warranty = request.POST.get('wholesale_price_no_warranty', 0) or 0
-        product.wholesale_price_warranty = request.POST.get('wholesale_price_warranty', 0) or 0
-        product.min_stock = request.POST.get('min_stock', 0) or 0
-        product.max_stock = request.POST.get('max_stock', 0) or 0
-        product.description = request.POST.get('description', '')
-        product.is_weight_based = request.POST.get('is_weight_based', '0') == '1'
-        product.is_service = request.POST.get('is_service', '0') == '1'
-        product.is_combo = request.POST.get('is_combo', '0') == '1'
-        product.specification = request.POST.get('specification', '') or None
+            product.code = (request.POST.get('code', '') or '').strip()
+            product.name = (request.POST.get('name', '') or '').strip()
+            if not product.code or not product.name:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập mã và tên SP'})
 
-        cat_id = request.POST.get('category_id')
-        product.category_id = cat_id if cat_id else None
-        sup_id = request.POST.get('supplier_id')
-        product.supplier_id = sup_id if sup_id else None
-        loc_id = request.POST.get('location_id')
-        product.location_id = loc_id if loc_id else None
+            product.barcode = request.POST.get('barcode', '')
+            product.unit = request.POST.get('unit', 'Cái')
+            product.import_price = request.POST.get('import_price', 0) or 0
+            product.selling_price = request.POST.get('selling_price', 0) or 0
+            product.wholesale_price_no_warranty = request.POST.get('wholesale_price_no_warranty', 0) or 0
+            product.wholesale_price_warranty = request.POST.get('wholesale_price_warranty', 0) or 0
+            product.min_stock = request.POST.get('min_stock', 0) or 0
+            product.max_stock = request.POST.get('max_stock', 0) or 0
+            product.description = request.POST.get('description', '')
+            product.is_weight_based = request.POST.get('is_weight_based', '0') == '1'
+            product.is_service = request.POST.get('is_service', '0') == '1'
+            product.is_combo = request.POST.get('is_combo', '0') == '1'
+            product.specification = request.POST.get('specification', '') or None
+            if product.is_combo:
+                product.is_service = False
 
-        if 'image' in request.FILES:
-            product.image = request.FILES['image']
+            cat_id = request.POST.get('category_id')
+            product.category_id = cat_id if cat_id else None
+            sup_id = request.POST.get('supplier_id')
+            product.supplier_id = sup_id if sup_id else None
+            loc_id = request.POST.get('location_id')
+            product.location_id = loc_id if loc_id else None
 
-        product.save()
+            skip_variants = request.POST.get('skip_variants', '0') == '1'
+            variants_data = json.loads(request.POST.get('variants', '[]') or '[]')
+            combo_data = json.loads(request.POST.get('combo_items', '[]') or '[]')
+            normalized_combo_items = _validate_combo_items(product, combo_data, request) if product.is_combo else []
+            if was_combo and existing_combo_signature and not product.is_combo:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Combo đã lưu không nên chuyển về sản phẩm thường. Hãy ẩn combo cũ và tạo sản phẩm mới nếu cần.',
+                })
+            if product.is_combo and was_combo and existing_combo_signature:
+                new_signature = {
+                    (component.id, quantity.normalize())
+                    for component, quantity in normalized_combo_items
+                }
+                if new_signature != existing_combo_signature:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Combo đã lưu không nên đổi thành phần. Hãy tạo combo mới nếu cần cấu hình khác.',
+                    })
 
-        # Save variants
-        variants_json = request.POST.get('variants', '[]')
-        import json as json_lib
-        variants_data = json_lib.loads(variants_json)
-        product.variants.all().delete()
-        for v in variants_data:
-            ProductVariant.objects.create(
-                product=product,
-                size_name=v.get('size_name', ''),
-                sku=v.get('sku', ''),
-                barcode=v.get('barcode', ''),
-                import_price=v.get('import_price', 0) or 0,
-                cost_price=v.get('cost_price', 0) or 0,
-                selling_price=v.get('selling_price', 0) or 0,
-                wholesale_price_no_warranty=v.get('wholesale_price_no_warranty', 0) or 0,
-                wholesale_price_warranty=v.get('wholesale_price_warranty', 0) or 0,
-            )
+            if 'image' in request.FILES:
+                product.image = request.FILES['image']
 
-        # Save combo items
-        if product.is_combo:
-            combo_json = request.POST.get('combo_items', '[]')
-            combo_data = json_lib.loads(combo_json)
-            product.combo_items.all().delete()
-            for ci in combo_data:
-                pid = ci.get('product_id')
-                qty = float(ci.get('quantity', 1))
-                if pid and qty > 0:
-                    ComboItem.objects.create(
-                        combo=product,
-                        product_id=pid,
-                        quantity=qty,
+            product.save()
+
+            # Luồng form mới không còn chỉnh biến thể/kích thước.
+            # Nếu client không yêu cầu sửa biến thể, giữ nguyên dữ liệu cũ.
+            if not skip_variants:
+                product.variants.all().delete()
+                for v in variants_data:
+                    ProductVariant.objects.create(
+                        product=product,
+                        size_name=v.get('size_name', ''),
+                        sku=v.get('sku', ''),
+                        barcode=v.get('barcode', ''),
+                        import_price=v.get('import_price', 0) or 0,
+                        cost_price=v.get('cost_price', 0) or 0,
+                        selling_price=v.get('selling_price', 0) or 0,
+                        wholesale_price_no_warranty=v.get('wholesale_price_no_warranty', 0) or 0,
+                        wholesale_price_warranty=v.get('wholesale_price_warranty', 0) or 0,
                     )
-            # Tự tính giá vốn combo = tổng giá vốn thành phần
-            total_cost = sum(
-                float(Product.objects.get(id=ci.get('product_id')).cost_price) * float(ci.get('quantity', 1))
-                for ci in combo_data if ci.get('product_id')
-            )
-            product.cost_price = total_cost
-            product.save(update_fields=['cost_price'])
-        else:
-            product.combo_items.all().delete()
+
+            if product.is_combo:
+                if not existing_combo_signature:
+                    product.combo_items.all().delete()
+                    for component, quantity in normalized_combo_items:
+                        ComboItem.objects.create(
+                            combo=product,
+                            product=component,
+                            quantity=quantity,
+                        )
+
+                total_cost = sum(
+                    Decimal(str(component.cost_price or 0)) * quantity
+                    for component, quantity in normalized_combo_items
+                )
+                product.cost_price = total_cost
+                product.save(update_fields=['cost_price'])
+            else:
+                product.combo_items.all().delete()
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except Product.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -315,7 +535,7 @@ def api_delete_product(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        product = Product.objects.get(id=data.get('id'))
+        product = _product_queryset_for_request(request).get(id=data.get('id'))
 
         # Kiểm tra SP đã được dùng trong đơn hàng chưa
         from orders.models import OrderItem
@@ -506,113 +726,108 @@ def api_save_goods_receipt(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        gr_id = data.get('id')
-        old_status = None
-        if gr_id:
-            gr = GoodsReceipt.objects.get(id=gr_id)
-            old_status = gr.status
-        else:
-            gr = GoodsReceipt()
-            gr.created_by = request.user
-
-        # Auto-generate code if empty (P00001, P00002, ...)
-        code = (data.get('code', '') or '').strip()
-        if not code:
-            from django.db.models import Max
-            last = GoodsReceipt.objects.filter(code__startswith='P').order_by('-id').first()
-            if last and last.code.startswith('P'):
-                try:
-                    num = int(last.code[1:]) + 1
-                except ValueError:
-                    num = GoodsReceipt.objects.count() + 1
+        with transaction.atomic():
+            gr_id = data.get('id')
+            old_status = None
+            if gr_id:
+                gr = GoodsReceipt.objects.select_for_update().get(id=gr_id)
+                old_status = gr.status
             else:
-                num = 1
-            code = f'P{num:05d}'
-        gr.code = code
+                gr = GoodsReceipt()
+                gr.created_by = request.user
 
-        gr.supplier_id = data.get('supplier_id') or None
-        gr.warehouse_id = data.get('warehouse_id') or None
+            # Mã phiếu được giữ nguyên khi sửa; chỉ tự tăng khi tạo mới hoặc chưa có mã.
+            code = (data.get('code', '') or '').strip()
+            if not code:
+                code = gr.code or _generate_next_goods_receipt_code()
+            gr.code = code
 
-        # Auto-set date to today if empty
-        receipt_date = data.get('receipt_date', '') or ''
-        if not receipt_date:
-            from datetime import date as _date
-            receipt_date = _date.today().strftime('%Y-%m-%d')
-        gr.receipt_date = receipt_date
+            gr.supplier_id = data.get('supplier_id') or None
+            gr.warehouse_id = data.get('warehouse_id') or None
 
-        new_status = int(data.get('status', 1))
-        gr.status = new_status
-        gr.note = data.get('note', '')
+            # Nếu UI không gửi ngày, giữ nguyên ngày cũ khi sửa; tạo mới thì lấy ngày local hiện tại.
+            receipt_date = (data.get('receipt_date', '') or '').strip()
+            if not receipt_date:
+                if gr.receipt_date:
+                    receipt_date = gr.receipt_date.strftime('%Y-%m-%d')
+                else:
+                    receipt_date = timezone.now().date().strftime('%Y-%m-%d')
+            gr.receipt_date = receipt_date
 
-        # Save items
-        items_data = data.get('items', [])
-        total = 0
-        for item in items_data:
-            tp = float(item.get('quantity', 0)) * float(item.get('unit_price', 0))
-            total += tp
-        gr.total_amount = total
-        gr.save()
+            new_status = int(data.get('status', 1))
+            gr.status = new_status
+            gr.note = data.get('note', '')
 
-        # Hoàn tác tồn kho nếu trước đó đã hoàn thành
-        if old_status == 1 and gr.warehouse_id:
-            for old_item in gr.items.all():
-                stock, _ = ProductStock.objects.get_or_create(
-                    product_id=old_item.product_id, warehouse_id=gr.warehouse_id)
-                stock.quantity -= old_item.quantity
-                stock.save()
-
-        # Delete old items and create new ones
-        gr.items.all().delete()
-        for item in items_data:
-            qty = float(item.get('quantity', 0))
-            price = float(item.get('unit_price', 0))
-            GoodsReceiptItem.objects.create(
-                goods_receipt=gr,
-                product_id=item.get('product_id'),
-                variant_id=item.get('variant_id') or None,
-                quantity=qty,
-                unit_price=price,
-                total_price=qty * price,
-            )
-
-        # Cộng tồn kho nếu status mới = Hoàn thành (1)
-        # + Tính giá vốn trung bình gia quyền
-        # + Cập nhật giá nhập (import_price) = giá mới nhất
-        if new_status == 1 and gr.warehouse_id:
+            items_data = data.get('items', [])
+            total = 0
             for item in items_data:
-                product_id = item.get('product_id')
-                new_qty = Decimal(str(item.get('quantity', 0)))
-                new_price = Decimal(str(item.get('unit_price', 0)))
+                tp = float(item.get('quantity', 0)) * float(item.get('unit_price', 0))
+                total += tp
+            gr.total_amount = total
+            gr.save()
 
-                stock, _ = ProductStock.objects.get_or_create(
-                    product_id=product_id,
-                    warehouse_id=gr.warehouse_id,
+            # Hoàn tác tồn kho nếu trước đó đã hoàn thành
+            if old_status == 1 and gr.warehouse_id:
+                for old_item in gr.items.all():
+                    stock, _ = ProductStock.objects.get_or_create(
+                        product_id=old_item.product_id, warehouse_id=gr.warehouse_id)
+                    stock.quantity -= old_item.quantity
+                    stock.save()
+
+            # Delete old items and create new ones
+            gr.items.all().delete()
+            for item in items_data:
+                qty = float(item.get('quantity', 0))
+                price = float(item.get('unit_price', 0))
+                GoodsReceiptItem.objects.create(
+                    goods_receipt=gr,
+                    product_id=item.get('product_id'),
+                    variant_id=item.get('variant_id') or None,
+                    quantity=qty,
+                    unit_price=price,
+                    total_price=qty * price,
                 )
-                old_stock_qty = stock.quantity  # Tồn trước khi nhập
 
-                # Cộng tồn
-                stock.quantity += new_qty
-                stock.save()
+            # Cộng tồn kho nếu status mới = Hoàn thành (1)
+            # + Cập nhật giá vốn tham chiếu/fallback trong DB
+            # + Cập nhật giá nhập (import_price) = giá mới nhất
+            if new_status == 1 and gr.warehouse_id:
+                for item in items_data:
+                    product_id = item.get('product_id')
+                    new_qty = Decimal(str(item.get('quantity', 0)))
+                    new_price = Decimal(str(item.get('unit_price', 0)))
 
-                # Tính giá vốn TB gia quyền + Cập nhật giá nhập
-                try:
-                    product = Product.objects.get(id=product_id)
-                    total_old_stock = Decimal(str(sum(
-                        float(s.quantity) for s in ProductStock.objects.filter(product_id=product_id)
-                    ))) - new_qty  # Trừ lại vì đã cộng ở trên
-                    if total_old_stock < 0:
-                        total_old_stock = Decimal('0')
-                    total_new_stock = total_old_stock + new_qty
-                    if total_new_stock > 0:
-                        old_cost = product.cost_price or Decimal('0')
-                        weighted_avg = (total_old_stock * old_cost + new_qty * new_price) / total_new_stock
-                        product.cost_price = round(weighted_avg)
+                    stock, _ = ProductStock.objects.get_or_create(
+                        product_id=product_id,
+                        warehouse_id=gr.warehouse_id,
+                    )
+                    old_stock_qty = stock.quantity  # Tồn trước khi nhập
 
-                    # Cập nhật giá nhập = giá từ phiếu nhập mới nhất
-                    product.import_price = new_price
-                    product.save(update_fields=['cost_price', 'import_price'])
-                except Product.DoesNotExist:
-                    pass
+                    # Cộng tồn
+                    stock.quantity += new_qty
+                    stock.save()
+
+                    # Lưu giá vốn tham chiếu/fallback trong DB và cập nhật giá nhập mới nhất.
+                    # Màn hình danh sách sản phẩm/export sẽ ưu tiên tính giá vốn của tồn hiện tại
+                    # từ lịch sử các phiếu nhập còn lại.
+                    try:
+                        product = Product.objects.get(id=product_id)
+                        total_old_stock = Decimal(str(sum(
+                            float(s.quantity) for s in ProductStock.objects.filter(product_id=product_id)
+                        ))) - new_qty  # Trừ lại vì đã cộng ở trên
+                        if total_old_stock < 0:
+                            total_old_stock = Decimal('0')
+                        total_new_stock = total_old_stock + new_qty
+                        if total_new_stock > 0:
+                            old_cost = product.cost_price or Decimal('0')
+                            weighted_avg = (total_old_stock * old_cost + new_qty * new_price) / total_new_stock
+                            product.cost_price = round(weighted_avg)
+
+                        # Cập nhật giá nhập = giá từ phiếu nhập mới nhất
+                        product.import_price = new_price
+                        product.save(update_fields=['cost_price', 'import_price'])
+                    except Product.DoesNotExist:
+                        pass
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
     except Exception as e:
@@ -951,23 +1166,50 @@ def api_product_purchase_history(request):
     if not product_id:
         return JsonResponse({'status': 'error', 'message': 'Missing product_id'})
 
-    from products.models import GoodsReceiptItem
+    product = _product_queryset_for_request(request).filter(id=product_id).first()
+    if not product:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
+
+    store_ids = get_managed_store_ids(request.user)
     items = GoodsReceiptItem.objects.filter(
-        product_id=product_id,
-        goods_receipt__status=1  # Chỉ phiếu hoàn thành
-    ).select_related('goods_receipt', 'goods_receipt__supplier', 'goods_receipt__warehouse', 'variant'
-    ).order_by('-goods_receipt__receipt_date')
+        product=product,
+        goods_receipt__status=1,
+        goods_receipt__warehouse__store_id__in=store_ids,
+    ).select_related('goods_receipt', 'goods_receipt__supplier', 'goods_receipt__warehouse', 'variant')
+
+    date_from = request.GET.get('date_from') or ''
+    date_to = request.GET.get('date_to') or ''
+    supplier_id = request.GET.get('supplier_id') or ''
+    warehouse_id = request.GET.get('warehouse_id') or ''
+    receipt_code = (request.GET.get('receipt_code') or '').strip()
+    if date_from:
+        items = items.filter(goods_receipt__receipt_date__gte=date_from)
+    if date_to:
+        items = items.filter(goods_receipt__receipt_date__lte=date_to)
+    if supplier_id:
+        items = items.filter(goods_receipt__supplier_id=supplier_id)
+    if warehouse_id:
+        items = items.filter(goods_receipt__warehouse_id=warehouse_id)
+    if receipt_code:
+        items = items.filter(goods_receipt__code__icontains=receipt_code)
 
     data = [{
         'receipt_code': it.goods_receipt.code,
         'receipt_date': it.goods_receipt.receipt_date.strftime('%d/%m/%Y') if it.goods_receipt.receipt_date else '',
+        'receipt_date_raw': it.goods_receipt.receipt_date.strftime('%Y-%m-%d') if it.goods_receipt.receipt_date else '',
         'supplier': it.goods_receipt.supplier.name if it.goods_receipt.supplier else '',
         'warehouse': it.goods_receipt.warehouse.name if it.goods_receipt.warehouse else '',
         'variant': it.variant.size_name if it.variant else '',
         'quantity': float(it.quantity),
         'unit_price': float(it.unit_price),
         'total_price': float(it.total_price),
-    } for it in items]
+    } for it in items.order_by('-goods_receipt__receipt_date', '-goods_receipt__id')]
+
+    price_timeline = [{
+        'date': it.goods_receipt.receipt_date.strftime('%d/%m/%Y') if it.goods_receipt.receipt_date else '',
+        'price': float(it.unit_price),
+        'quantity': float(it.quantity),
+    } for it in items.order_by('goods_receipt__receipt_date', 'goods_receipt__id')]
 
     # Tổng
     total_qty = sum(d['quantity'] for d in data)
@@ -982,7 +1224,8 @@ def api_product_purchase_history(request):
             'total_quantity': total_qty,
             'total_amount': total_amount,
             'avg_unit_price': round(avg_price),
-        }
+        },
+        'price_timeline': price_timeline,
     })
 
 
@@ -993,12 +1236,26 @@ def api_product_sales_history(request):
     if not product_id:
         return JsonResponse({'status': 'error', 'message': 'Missing product_id'})
 
+    product = _product_queryset_for_request(request).filter(id=product_id).first()
+    if not product:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
+
     from orders.models import OrderItem
+    store_ids = get_managed_store_ids(request.user)
     items = OrderItem.objects.filter(
-        product_id=product_id,
+        product=product,
+        order__store_id__in=store_ids,
         order__status__in=[3, 4, 5],  # Đã duyệt / Đã giao / Hoàn thành
-    ).select_related('order', 'order__customer', 'variant'
-    ).order_by('-order__order_date', '-order__id')
+    ).select_related('order', 'order__customer', 'variant')
+
+    date_from = request.GET.get('date_from') or ''
+    date_to = request.GET.get('date_to') or ''
+    if date_from:
+        items = items.filter(order__order_date__gte=date_from)
+    if date_to:
+        items = items.filter(order__order_date__lte=date_to)
+
+    items = items.order_by('-order__order_date', '-order__id')
 
     data = [{
         'order_code': it.order.code,
@@ -1017,24 +1274,6 @@ def api_product_sales_history(request):
     total_amount = sum(d['total_price'] for d in data)
     avg_price = total_amount / total_qty if total_qty > 0 else 0
 
-    # Price timeline (giá nhập theo thời gian từ GoodsReceiptItem)
-    from products.models import GoodsReceiptItem
-    price_entries = GoodsReceiptItem.objects.filter(
-        product_id=product_id,
-        goods_receipt__status=1,
-    ).select_related('goods_receipt'
-    ).order_by('goods_receipt__receipt_date').values_list(
-        'goods_receipt__receipt_date', 'unit_price', 'quantity'
-    )
-    price_timeline = []
-    for dt, price, qty in price_entries:
-        date_str = dt.strftime('%d/%m/%Y') if dt else ''
-        price_timeline.append({
-            'date': date_str,
-            'price': float(price),
-            'quantity': float(qty),
-        })
-
     return JsonResponse({
         'status': 'ok',
         'data': data,
@@ -1045,7 +1284,6 @@ def api_product_sales_history(request):
             'total_amount': total_amount,
             'avg_unit_price': round(avg_price),
         },
-        'price_timeline': price_timeline,
     })
 
 # ============ API: PRODUCT LOCATION ============
@@ -1115,8 +1353,12 @@ def export_products_excel(request):
     from core.excel_export import excel_response
     from datetime import datetime
 
-    products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related('stocks').all()
+    products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related(
+        'stocks__warehouse',
+        'combo_items__product__stocks__warehouse',
+    ).all()
     products = filter_by_store(products, request)
+    receipt_map = _build_receipt_history_map(products)
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
@@ -1137,7 +1379,12 @@ def export_products_excel(request):
 
     rows = []
     for i, p in enumerate(products, 1):
-        total_stock = float(sum(s.quantity for s in p.stocks.all()))
+        if p.is_combo:
+            _, total_stock = _combo_stock_by_warehouse(p)
+        else:
+            total_stock = float(sum(s.quantity for s in p.stocks.all()))
+        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
+        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
         rows.append({
             'stt': i,
             'code': p.code,
@@ -1147,7 +1394,7 @@ def export_products_excel(request):
             'unit': p.unit or '',
             'spec': p.specification or '',
             'import_price': float(p.import_price),
-            'cost_price': float(p.cost_price),
+            'cost_price': effective_cost,
             'wholesale_no_w': float(p.wholesale_price_no_warranty),
             'wholesale_w': float(p.wholesale_price_warranty),
             'stock': total_stock,
@@ -1395,4 +1642,3 @@ def export_suppliers_excel(request):
         columns=columns, rows=rows,
         filename=f'NCC_{datetime.now().strftime("%Y%m%d")}',
     )
-

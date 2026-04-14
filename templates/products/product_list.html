@@ -9,10 +9,10 @@
         </div>
     </div>
     <div class="card-body">
-        <!-- BỘ LỌc NÂNG CAO -->
+        <!-- BỘ LỌC NÂNG CAO -->
         <div class="row mb-2">
             <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã, tên SP...">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="Tìm mã, tên, barcode, NCC...">
             </div>
             <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_category">
@@ -23,13 +23,14 @@
             <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_stock">
                     <option value="">-- Tồn kho --</option>
-                    <option value="low">⚠️ Sắp hết hàng</option>
-                    <option value="out">❌ Hết hàng</option>
-                    <option value="instock">✅ Còn hàng</option>
+                    <option value="low">Sắp hết hàng</option>
+                    <option value="out">Hết hàng</option>
+                    <option value="instock">Còn hàng</option>
                 </select>
             </div>
             <div class="col-md-5 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <button class="btn btn-sm btn-info" id="btn_search_product"><i class="fas fa-search"></i> Tìm</button>
+                <button class="btn btn-sm btn-outline-secondary" id="btn_clear_product_filters">Xóa lọc</button>
                 <button class="btn btn-sm btn-outline-primary" id="btn_save_product_filter" title="Lưu bộ lọc hiện tại"><i class="fas fa-save"></i> Lưu</button>
                 <div class="dropdown d-inline-block">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-toggle="dropdown" title="Bộ lọc đã lưu"><i class="fas fa-bookmark"></i></button>
@@ -39,9 +40,45 @@
                 <span id="col_config_container"></span>
             </div>
         </div>
+        <div class="row mb-3">
+            <div class="col-md-2 mb-1">
+                <select class="form-control form-control-sm" id="filter_supplier">
+                    <option value="">-- Nhà cung cấp --</option>
+                    {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 mb-1">
+                <select class="form-control form-control-sm" id="filter_location">
+                    <option value="">-- Vị trí --</option>
+                    {% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 mb-1">
+                <select class="form-control form-control-sm" id="filter_type">
+                    <option value="">-- Loại sản phẩm --</option>
+                    <option value="normal">Sản phẩm thường</option>
+                    <option value="combo">Combo</option>
+                    <option value="service">Dịch vụ</option>
+                    <option value="weight">Cân/đong</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-1">
+                <select class="form-control form-control-sm" id="filter_status">
+                    <option value="">-- Trạng thái --</option>
+                    <option value="active">Đang hoạt động</option>
+                    <option value="inactive">Ngừng hoạt động</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-1">
+                <input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày">
+            </div>
+            <div class="col-md-2 mb-1">
+                <input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày">
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá đang nhập tại thời điểm gần nhất (từ phiếu nhập mới nhất)" style="cursor:help;">Giá nhập</th><th data-col="cost_price" title="Giá vốn trung bình gia quyền = tổng giá trị tồn / tổng số lượng tồn" style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock">Tồn kho</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá nhập tại thời điểm gần nhất, lấy theo phiếu nhập mới nhất" style="cursor:help;">Giá nhập</th><th data-col="purchase_history">LS nhập/giá</th><th data-col="cost_price" title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng số lượng tồn hiện tại" style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock">Tồn kho</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -67,7 +104,7 @@
                             <div class="col-md-3"><div class="form-group"><label>ĐVT</label><input type="text" class="form-control form-control-sm" id="inp_unit" value="Cái"></div></div>
                             <div class="col-md-3"><div class="form-group"><label>Danh mục</label><select class="form-control form-control-sm select2" id="inp_category_id"><option value="">-- Chọn --</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div></div>
                             <div class="col-md-3"><div class="form-group"><label>NCC</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div></div>
-                            <div class="col-md-3"><div class="form-group"><label><i class="fas fa-map-marker-alt text-info mr-1"></i>Vị trí SP</label><select class="form-control form-control-sm select2" id="inp_location_id"><option value="">-- Chọn --</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></div></div>
+                            <div class="col-md-3"><div class="form-group"><label><i class="fas fa-map-marker-alt text-info mr-1"></i>Vị trí sản phẩm</label><select class="form-control form-control-sm select2" id="inp_location_id"><option value="">-- Chọn --</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></div></div>
                         </div>
                         <div class="row mb-2">
                             <div class="col-md-12">
@@ -89,13 +126,26 @@
                         </div>
                         <div class="row">
                             <div class="col-md-3"><div class="form-group"><label>Barcode</label><input type="text" class="form-control form-control-sm" id="inp_barcode"></div></div>
-                            <div class="col-md-3"><div class="form-group"><label><i class="fas fa-box text-success mr-1"></i>Quy cách SP</label><input type="text" class="form-control form-control-sm" id="inp_specification" placeholder="VD: 20c/thùng, 12c/hộp"></div></div>
-                            <div class="col-md-3"><div class="form-group"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
-                            <div class="col-md-3"><div class="form-group"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
+                            <div class="col-md-5">
+                                <div class="form-group">
+                                    <label><i class="fas fa-box text-success mr-1"></i>Quy cách sản phẩm</label>
+                                    <input type="text" class="form-control form-control-sm" id="inp_specification" list="product_specification_suggestions" placeholder="Ví dụ: 20c/thùng, 12c/hộp, chai 330ml">
+                                    <small class="text-muted">Nhập tự do theo cách đóng gói / quy chuẩn bán hàng của sản phẩm.</small>
+                                    <datalist id="product_specification_suggestions">
+                                        <option value="20c/thùng"></option>
+                                        <option value="12c/hộp"></option>
+                                        <option value="24 lon/thùng"></option>
+                                        <option value="6 chai/lốc"></option>
+                                        <option value="chai 330ml"></option>
+                                    </datalist>
+                                </div>
+                            </div>
+                            <div class="col-md-2"><div class="form-group"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
+                            <div class="col-md-2"><div class="form-group"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
                         </div>
                         <div class="row" id="price_row">
-                            <div class="col-md-6"><div class="form-group"><label><i class="fas fa-tag text-info mr-1"></i>Giá nhập <small class="text-muted">(giá đang nhập tại thời điểm gần nhất)</small></label><input type="number" class="form-control form-control-sm" id="inp_import_price" value="0"></div></div>
-                            <div class="col-md-6"><div class="form-group"><label><i class="fas fa-calculator text-primary mr-1"></i>Giá vốn <small class="text-muted">(TB gia quyền — tự tính)</small></label><input type="number" class="form-control form-control-sm" id="inp_cost_price" value="0" readonly title="Giá vốn = tổng giá trị tồn kho / tổng SL tồn kho&#10;Tự tính khi nhập hàng, không sửa được" style="background:#f0f4ff;"></div></div>
+                            <div class="col-md-6"><div class="form-group"><label><i class="fas fa-tag text-info mr-1"></i>Giá nhập <small class="text-muted">(giá tại thời điểm nhập gần nhất)</small></label><input type="number" class="form-control form-control-sm" id="inp_import_price" value="0"></div></div>
+                            <div class="col-md-6"><div class="form-group"><label><i class="fas fa-calculator text-primary mr-1"></i>Giá vốn <small class="text-muted">(tự tính theo các lô nhập còn tồn)</small></label><input type="number" class="form-control form-control-sm" id="inp_cost_price" value="0" readonly title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại&#10;Hệ thống tự tính, không sửa trực tiếp" style="background:#f0f4ff;"></div></div>
                         </div>
                         <input type="hidden" id="inp_selling_price" value="0">
                         <div class="row" id="price_row_2">
@@ -138,29 +188,13 @@
                 </div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control form-control-sm" id="inp_description" rows="2"></textarea></div>
 
-                <!-- Biến thể sản phẩm (quy cách) -->
-                <hr>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0"><i class="fas fa-ruler mr-1"></i>Biến thể theo quy cách <small class="text-muted">(bỏ trống nếu SP chỉ có 1 quy cách)</small></h6>
-                    <button type="button" class="btn btn-sm btn-success" id="btn_add_variant"><i class="fas fa-plus"></i> Thêm quy cách</button>
+                <div id="variant_legacy_notice" class="alert alert-light border py-2 px-3 mt-3 mb-0" style="display:none;">
+                    <strong>Dữ liệu kích thước cũ đang được giữ nguyên.</strong>
+                    Form này đã chuyển sang nhập bằng <strong>Quy cách sản phẩm</strong>, nên không còn chỉnh kích thước/biến thể ở đây.
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-sm" id="variants_tbl">
-                        <thead class="bg-light">
-                            <tr>
-                                <th style="width:5%">#</th>
-                                <th style="width:15%">Quy cách</th>
-                                <th style="width:13%">Mã SKU</th>
-                                <th style="width:12%">Barcode</th>
-                                <th style="width:13%">Giá nhập</th>
-                                <th style="width:13%">Sỉ KBH</th>
-                                <th style="width:13%">Sỉ BH</th>
-                                <th style="width:5%"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="variants_body"></tbody>
-                    </table>
-                </div>
+                <table id="variants_tbl" style="display:none;">
+                    <tbody id="variants_body"></tbody>
+                </table>
 
                 <!-- Thành phần Combo -->
                 <div id="combo_section" style="display:none;">
@@ -168,6 +202,9 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h6 class="mb-0"><i class="fas fa-cubes mr-1 text-warning"></i>Thành phần Combo <small class="text-muted">(chọn các SP/DV trong combo)</small></h6>
                     <button type="button" class="btn btn-sm btn-warning" id="btn_add_combo_item"><i class="fas fa-plus"></i> Thêm SP</button>
+                </div>
+                <div id="combo_lock_note" class="alert alert-warning py-1 px-2 small" style="display:none;">
+                    Combo đã lưu: chỉ sửa thông tin chung, không đổi thành phần. Tạo combo mới nếu cần cấu hình khác.
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="combo_tbl">
@@ -224,7 +261,7 @@
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header py-2" style="background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;">
-                <h5 class="modal-title"><i class="fas fa-chart-line mr-2"></i>Lịch sử sản phẩm: <span id="ph_product_name"></span></h5>
+                <h5 class="modal-title"><i class="fas fa-chart-line mr-2"></i>Lịch sử nhập hàng / giá nhập: <span id="ph_product_name"></span></h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body p-0">
@@ -234,6 +271,27 @@
                     <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab_sales"><i class="fas fa-shopping-cart mr-1"></i>Lịch sử bán hàng</a></li>
                     <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab_price_chart"><i class="fas fa-chart-area mr-1"></i>Biến động giá nhập</a></li>
                 </ul>
+                <div class="px-3 py-2 border-bottom bg-light">
+                    <div class="row">
+                        <div class="col-md-2 mb-1"><input type="date" class="form-control form-control-sm ph-filter" id="ph_filter_from" title="Từ ngày"></div>
+                        <div class="col-md-2 mb-1"><input type="date" class="form-control form-control-sm ph-filter" id="ph_filter_to" title="Đến ngày"></div>
+                        <div class="col-md-2 mb-1">
+                            <select class="form-control form-control-sm ph-filter" id="ph_filter_supplier">
+                                <option value="">-- NCC --</option>
+                                {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2 mb-1">
+                            <select class="form-control form-control-sm ph-filter" id="ph_filter_warehouse">
+                                <option value="">-- Kho --</option>
+                                {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-1"><input type="text" class="form-control form-control-sm ph-filter" id="ph_filter_receipt" placeholder="Mã phiếu nhập"></div>
+                        <div class="col-md-1 mb-1"><button type="button" class="btn btn-sm btn-outline-secondary btn-block" id="btn_clear_history_filters">Xóa</button></div>
+                    </div>
+                </div>
+                <div class="px-3 py-2 border-bottom" id="ph_stock_summary"></div>
                 <div class="tab-content p-3">
                     <!-- TAB 1: LỊCH SỬ NHẬP HÀNG -->
                     <div class="tab-pane fade show active" id="tab_import">
@@ -279,7 +337,15 @@
 <script src="/static/js/column_config.js"></script>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function escapeHtml(value){ return $('<div>').text(value || '').html(); }
+function escapeAttr(value){ return escapeHtml(value).replace(/"/g, '&quot;'); }
 var variantRowIndex = 0;
+var PRODUCT_WAREHOUSES = [
+    {% for w in warehouses %}
+    {id: {{ w.id }}, name: "{{ w.name|escapejs }}"}{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+var PRODUCT_DATA_MAP = {};
 
 // Column Config
 var productColConfig = new ColumnConfig({
@@ -296,6 +362,7 @@ var productColConfig = new ColumnConfig({
         {key: 'category',         label: 'Danh mục',        default: true},
         {key: 'unit',             label: 'ĐVT',             default: true},
         {key: 'import_price',     label: 'Giá nhập',        default: true},
+        {key: 'purchase_history', label: 'LS nhập/giá',     default: true},
         {key: 'cost_price',       label: 'Giá vốn',         default: true},
         {key: 'ws_no_warranty',   label: 'Giá sỉ KBH',      default: true},
         {key: 'ws_warranty',      label: 'Giá sỉ BH',       default: true},
@@ -339,6 +406,8 @@ $(document).ready(function(){
         $('#inp_is_combo').prop('checked', false);
         $('#combo_section').hide();
         $('#combo_body').html('');
+        $('#combo_lock_note').hide();
+        $('#btn_add_combo_item').show();
         $('#inp_cost_price,#inp_import_price,#inp_selling_price,#inp_wholesale_no_warranty,#inp_wholesale_warranty,#inp_min_stock,#inp_max_stock').val(0);
         $('#inp_category_id,#inp_supplier_id,#inp_location_id').val('').trigger('change');
         $('#inp_specification').val('');
@@ -348,14 +417,11 @@ $(document).ready(function(){
         // Reset variants
         $('#variants_body').html('');
         variantRowIndex = 0;
+        $('#variant_legacy_notice').hide().removeData('has-legacy-variants');
         $('#price_row, #price_row_2').show();
         $('#stock_detail_section').hide();
         $('#modal_title').text('Thêm sản phẩm');
         $('#modal_form').modal('show');
-    });
-
-    $('#btn_add_variant').click(function(){
-        addVariantRow();
     });
 
     // Combo toggle
@@ -372,6 +438,12 @@ $(document).ready(function(){
         if(!$('#inp_code').val() || !$('#inp_name').val()){
             alert('Vui lòng nhập mã và tên SP'); return;
         }
+        var comboItems = [];
+        if($('#inp_is_combo').is(':checked')){
+            comboItems = getComboItemsData();
+            var comboError = validateComboItemsData(comboItems);
+            if(comboError){ alert(comboError); return; }
+        }
 
         var fd = new FormData();
         fd.append('id', $('#edit_id').val());
@@ -381,7 +453,6 @@ $(document).ready(function(){
         fd.append('barcode', $('#inp_barcode').val());
         fd.append('category_id', $('#inp_category_id').val());
         fd.append('supplier_id', $('#inp_supplier_id').val());
-        fd.append('cost_price', $('#inp_cost_price').val());
         fd.append('import_price', $('#inp_import_price').val());
         fd.append('selling_price', $('#inp_selling_price').val());
         fd.append('wholesale_price_no_warranty', $('#inp_wholesale_no_warranty').val());
@@ -401,12 +472,9 @@ $(document).ready(function(){
             fd.append('image', imageFile);
         }
 
-        // Variants
-        var variants = getVariantsData();
-        fd.append('variants', JSON.stringify(variants));
+        fd.append('skip_variants', '1');
 
         // Combo items
-        var comboItems = getComboItemsData();
         fd.append('combo_items', JSON.stringify(comboItems));
 
         $.ajax({
@@ -418,13 +486,6 @@ $(document).ready(function(){
                 alert(r.message);
             }
         });
-    });
-
-    // Remove variant row
-    $(document).on('click', '.btn-remove-variant', function(){
-        $(this).closest('tr').remove();
-        reindexVariantRows();
-        togglePriceRow();
     });
 });
 
@@ -459,64 +520,67 @@ function reindexVariantRows(){
 }
 
 function togglePriceRow(){
-    // Nếu có variant → ẩn giá gốc (vì giá nằm trong variant)
-    if($('#variants_body tr').length > 0){
-        $('#price_row, #price_row_2').hide();
-    } else {
-        $('#price_row, #price_row_2').show();
-    }
+    $('#price_row, #price_row_2').show();
 }
 
 function getVariantsData(){
-    var variants = [];
-    $('#variants_body tr').each(function(){
-        var sizeName = $(this).find('.v-size').val();
-        var sku = $(this).find('.v-sku').val();
-        if(sizeName && sku){
-            variants.push({
-                size_name: sizeName,
-                sku: sku,
-                barcode: $(this).find('.v-barcode').val(),
-                import_price: parseFloat($(this).find('.v-import').val()) || 0,
-                selling_price: 0,
-                wholesale_price_no_warranty: parseFloat($(this).find('.v-ws-no-w').val()) || 0,
-                wholesale_price_warranty: parseFloat($(this).find('.v-ws-w').val()) || 0,
-            });
-        }
-    });
-    return variants;
+    return [];
 }
 
 function loadData(){
     $.get('/api/products/', function(res){
+        PRODUCT_DATA_MAP = {};
         var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
         var filterCat = $('#filter_category').val();
         var filterStock = $('#filter_stock').val();
+        var filterSupplier = $('#filter_supplier').val();
+        var filterLocation = $('#filter_location').val();
+        var filterType = $('#filter_type').val();
+        var filterStatus = $('#filter_status').val();
+        var filterCreatedFrom = $('#filter_created_from').val();
+        var filterCreatedTo = $('#filter_created_to').val();
+
+        res.data.forEach(function(d){
+            PRODUCT_DATA_MAP[d.id] = d;
+        });
 
         var filtered = res.data.filter(function(d){
             if(filterText){
-                var searchable = (d.code + ' ' + d.name).toLowerCase();
+                var searchable = [
+                    d.code, d.name, d.barcode, d.category, d.supplier, d.location, d.specification
+                ].join(' ').toLowerCase();
                 if(searchable.indexOf(filterText) < 0) return false;
             }
             if(filterCat && d.category !== filterCat) return false;
             if(filterStock === 'out' && d.total_stock > 0) return false;
             if(filterStock === 'low' && (d.total_stock <= 0 || d.total_stock > (d.min_stock || 5))) return false;
             if(filterStock === 'instock' && d.total_stock <= 0) return false;
+            if(filterSupplier && String(d.supplier_id || '') !== filterSupplier) return false;
+            if(filterLocation && String(d.location_id || '') !== filterLocation) return false;
+            if(filterType === 'normal' && (d.is_combo || d.is_service || d.is_weight_based)) return false;
+            if(filterType === 'combo' && !d.is_combo) return false;
+            if(filterType === 'service' && !d.is_service) return false;
+            if(filterType === 'weight' && !d.is_weight_based) return false;
+            if(filterStatus === 'active' && !d.is_active) return false;
+            if(filterStatus === 'inactive' && d.is_active) return false;
+            if(filterCreatedFrom && (!d.created_at || d.created_at < filterCreatedFrom)) return false;
+            if(filterCreatedTo && (!d.created_at || d.created_at > filterCreatedTo)) return false;
             return true;
         });
 
         var h = '';
         filtered.forEach(function(d, i){
+            var productNameJs = JSON.stringify(d.name || '');
             var imgTd = d.image
                 ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" class="img-thumbnail product-zoom-img" onclick="openImageZoom(this.src)" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'" title="Click để phóng to">'
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
             var costDisplay = fmt(d.cost_price);
-            var costTooltip = 'Giá vốn TB gia quyền\n= Tổng giá trị tồn / Tổng SL tồn';
+            var costTooltip = 'Giá vốn tồn hiện tại\n= Tổng giá trị các lô nhập còn lại / Tổng SL tồn hiện tại';
             if(d.cost_price_stored && d.cost_price !== d.cost_price_stored){
-                costTooltip += '\n(Giá vốn lưu DB: ' + fmt(d.cost_price_stored) + ')';
+                costTooltip += '\n(Giá vốn DB dự phòng: ' + fmt(d.cost_price_stored) + ')';
             }
-            var importDisplay = fmt(d.import_price);
+            var importDisplay = '<div class="font-weight-bold">'+fmt(d.import_price)+'</div>';
             var wsNoWDisplay = fmt(d.wholesale_price_no_warranty);
             var wsWDisplay = fmt(d.wholesale_price_warranty);
             if(d.variants && d.variants.length > 0){
@@ -531,6 +595,9 @@ function loadData(){
                 wsWDisplay = minWsW === maxWsW ? fmt(minWsW) : fmt(minWsW) + ' ~ ' + fmt(maxWsW);
                 costDisplay = fmt(d.cost_price);
             }
+            if(d.latest_purchase && d.latest_purchase.receipt_date){
+                importDisplay += '<small class="text-muted d-block">Cập nhật: '+escapeHtml(d.latest_purchase.receipt_date)+'</small>';
+            }
 
             var variantBadge = '';
             if(d.variants && d.variants.length > 0){
@@ -542,60 +609,195 @@ function loadData(){
             if(d.is_service){
                 variantBadge += ' <span class="badge badge-secondary">DV</span>';
             }
+            var productNameHtml = '<span title="'+escapeAttr(d.name)+'">'+escapeHtml(d.name)+'</span>' + variantBadge;
 
-            var stockClass = d.total_stock <= 0 ? 'text-danger font-weight-bold' : (d.total_stock <= (d.min_stock || 5) ? 'text-warning font-weight-bold' : '');
+            var stockHtml = renderInlineStockBreakdown(d, productNameJs);
 
-            // Stock tooltip with warehouse breakdown
-            var stockTooltip = '';
-            if(d.stock_by_warehouse && d.stock_by_warehouse.length > 0){
-                stockTooltip = d.stock_by_warehouse.map(function(s){ return s.warehouse + ': ' + s.quantity; }).join('\n');
-            }
-            var stockHtml = '<span class="'+stockClass+'" style="cursor:pointer;" title="'+stockTooltip+'" onclick="viewPurchaseHistory('+d.id+',\''+d.name.replace(/'/g,'')+'\')">' + d.total_stock + '</span>';
-            if(d.stock_by_warehouse && d.stock_by_warehouse.length > 1){
-                stockHtml += ' <i class="fas fa-warehouse text-muted" style="font-size:10px;" title="'+stockTooltip+'"></i>';
+            var purchaseHistoryHtml = '<span class="text-muted small">Chưa có lịch sử nhập hàng</span>';
+            if(d.latest_purchase){
+                var latestMeta = [];
+                if(d.latest_purchase.supplier) latestMeta.push(escapeHtml(d.latest_purchase.supplier));
+                if(d.latest_purchase.warehouse) latestMeta.push(escapeHtml(d.latest_purchase.warehouse));
+                var recentPricesHtml = '';
+                if(d.recent_import_prices && d.recent_import_prices.length){
+                    recentPricesHtml = d.recent_import_prices.map(function(item){
+                        return '<span class="badge badge-light border mr-1 mb-1" title="'+escapeAttr((item.date || '') + ' | SL: ' + fmt(item.quantity))+'">'+fmt(item.price)+'đ</span>';
+                    }).join('');
+                }
+                purchaseHistoryHtml =
+                    '<div class="small" style="min-width:220px;">' +
+                        '<div class="font-weight-bold text-primary" style="cursor:pointer;" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')">' +
+                            escapeHtml(d.latest_purchase.receipt_date || 'Không rõ ngày') +
+                        '</div>' +
+                        '<div class="text-muted">' + (latestMeta.join(' · ') || 'Chưa rõ nguồn nhập') + '</div>' +
+                        '<div>SL gần nhất: <strong>' + fmt(d.latest_purchase.quantity) + '</strong> · Giá: <strong>' + fmt(d.latest_purchase.unit_price) + 'đ</strong></div>' +
+                        (d.latest_purchase.variant ? '<div class="text-muted">QC: ' + escapeHtml(d.latest_purchase.variant) + '</div>' : '') +
+                        '<div class="mt-1">' +
+                            '<span class="badge badge-info mr-1">' + fmt(d.purchase_receipt_count || 0) + ' lần nhập</span>' +
+                            '<span class="badge badge-light border">Tổng SL nhập ' + fmt(d.purchase_total_quantity || 0) + '</span>' +
+                        '</div>' +
+                        (recentPricesHtml ? '<div class="mt-1">' + recentPricesHtml + '</div>' : '') +
+                    '</div>';
             }
 
             var actionsHtml = (d.is_combo
                 ? '<button class="btn btn-xs btn-warning" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i> Sửa</button> '
                 : '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i> Sửa</button> ') +
-                '<button class="btn btn-xs btn-outline-primary" onclick="viewPurchaseHistory('+d.id+',\''+d.name.replace(/'/g,'')+'\')" title="Lịch sử nhập/bán hàng + biến động giá"><i class="fas fa-chart-line"></i> Lịch sử</button> ' +
+                '<button class="btn btn-xs btn-outline-primary" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')" title="Lịch sử nhập hàng và biến động giá nhập"><i class="fas fa-chart-line"></i> Nhập/giá</button> ' +
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button>';
 
             h += '<tr>'+
                 productColConfig.td('stt', (i+1))+
                 productColConfig.td('image', imgTd, 'class="text-center"')+
                 productColConfig.td('code', d.code)+
-                productColConfig.td('name', d.name+variantBadge)+
+                productColConfig.td('name', productNameHtml, 'style="white-space:normal;min-width:220px;word-break:break-word;"')+
                 productColConfig.td('spec', '<small>'+(d.specification||'')+'</small>')+
                 productColConfig.td('location', '<small>'+(d.location||'')+'</small>')+
                 productColConfig.td('category', d.category)+
                 productColConfig.td('unit', d.unit)+
                 productColConfig.td('import_price', importDisplay, 'class="text-right"')+
+                productColConfig.td('purchase_history', purchaseHistoryHtml, 'style="white-space:normal;"')+
                 productColConfig.td('cost_price', costDisplay, 'class="text-right" style="color:#1a73e8;cursor:help;" title="'+costTooltip+'"')+
                 productColConfig.td('ws_no_warranty', wsNoWDisplay, 'class="text-right"')+
                 productColConfig.td('ws_warranty', wsWDisplay, 'class="text-right"')+
-                productColConfig.td('stock', stockHtml, 'class="text-center"')+
+                productColConfig.td('stock', stockHtml, 'style="white-space:normal;min-width:200px;"')+
                 productColConfig.td('actions', actionsHtml, 'class="text-center text-nowrap"')+
                 '</tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#data_tbl tbody').html(h || '<tr><td colspan="15" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        productColConfig.apply();
     });
 }
 
 $('#btn_search_product').click(function(){ loadData(); });
 $('#filter_text').on('input', function(){ loadData(); });
-$('#filter_category, #filter_stock').change(function(){ loadData(); });
+$('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status, #filter_created_from, #filter_created_to').change(function(){ loadData(); });
+$('#btn_clear_product_filters').click(function(){
+    $('#filter_text').val('');
+    $('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status').val('');
+    $('#filter_created_from, #filter_created_to').val('');
+    loadData();
+});
 $('#btn_export_products').click(function(){
     window.location.href = '/api/export_inventory_excel/';
 });
 
+function getProductStockRows(product){
+    var stockMap = {};
+    if(product && product.stock_by_warehouse){
+        product.stock_by_warehouse.forEach(function(item){
+            stockMap[String(item.warehouse_id)] = {
+                warehouse_id: item.warehouse_id,
+                warehouse: item.warehouse || '',
+                quantity: Number(item.quantity || 0)
+            };
+        });
+    }
+
+    var rows = PRODUCT_WAREHOUSES.map(function(warehouse){
+        var existing = stockMap[String(warehouse.id)];
+        return existing || {
+            warehouse_id: warehouse.id,
+            warehouse: warehouse.name,
+            quantity: 0
+        };
+    });
+
+    Object.keys(stockMap).forEach(function(key){
+        var exists = rows.some(function(row){ return String(row.warehouse_id) === key; });
+        if(!exists){
+            rows.push(stockMap[key]);
+        }
+    });
+
+    return rows;
+}
+
+function getStockValueClass(quantity){
+    if(quantity < 0) return 'text-danger font-weight-bold';
+    if(quantity > 0) return 'text-success font-weight-bold';
+    return 'text-muted';
+}
+
+function renderInlineStockBreakdown(product, productNameJs){
+    var totalStock = Number(product.total_stock || 0);
+    var stockRows = getProductStockRows(product);
+    var stockTooltip = stockRows.map(function(s){ return s.warehouse + ': ' + fmt(s.quantity); }).join('\n');
+    var detailHtml = stockRows.map(function(row){
+        var qtyClass = row.quantity < 0 ? 'text-danger' : (row.quantity > 0 ? 'text-success' : 'text-muted');
+        return '<div class="d-flex justify-content-between small" title="' + escapeAttr(row.warehouse + ': ' + fmt(row.quantity)) + '">' +
+            '<span class="text-muted mr-2">' + escapeHtml(row.warehouse) + '</span>' +
+            '<span class="' + qtyClass + '">' + fmt(row.quantity) + '</span>' +
+        '</div>';
+    }).join('');
+
+    return '<div style="min-width:180px;text-align:left;">' +
+        '<div class="d-flex justify-content-between align-items-center">' +
+            '<span class="small text-muted">Tổng</span>' +
+            '<span class="' + getStockValueClass(totalStock) + '" style="cursor:pointer;" title="' + stockTooltip + '" onclick="viewPurchaseHistory(' + product.id + ',' + productNameJs + ')">' + fmt(totalStock) + '</span>' +
+        '</div>' +
+        '<div class="mt-1">' + detailHtml + '</div>' +
+    '</div>';
+}
+
+function renderStockDetailTable(product){
+    if(!product){
+        $('#stock_detail_tbl tbody').html('');
+        $('#stock_detail_total').attr('class', 'text-right text-muted').text('0');
+        $('#stock_detail_section').hide();
+        return;
+    }
+
+    var rows = getProductStockRows(product);
+    var html = rows.map(function(row){
+        return '<tr><td><i class="fas fa-box-open text-muted mr-1"></i>' + escapeHtml(row.warehouse) + '</td><td class="text-right ' + getStockValueClass(row.quantity) + '">' + fmt(row.quantity) + '</td></tr>';
+    }).join('');
+
+    $('#stock_detail_tbl tbody').html(html);
+    $('#stock_detail_total')
+        .attr('class', 'text-right ' + getStockValueClass(Number(product.total_stock || 0)))
+        .text(fmt(product.total_stock || 0));
+    $('#stock_detail_section').show();
+}
+
+function renderProductStockSnapshot(product){
+    if(!product){
+        $('#ph_stock_summary').html('<div class="text-muted small">Không tìm thấy dữ liệu tồn kho theo sản phẩm.</div>');
+        return;
+    }
+
+    var rows = getProductStockRows(product);
+    var chips = rows.map(function(row){
+        var badgeClass = row.quantity < 0 ? 'badge-danger' : (row.quantity > 0 ? 'badge-success' : 'badge-light border');
+        return '<span class="badge ' + badgeClass + ' mr-1 mb-1 p-2">' + escapeHtml(row.warehouse) + ': ' + fmt(row.quantity) + '</span>';
+    }).join('');
+    var totalStock = Number(product.total_stock || 0);
+    var totalClass = totalStock < 0 ? 'text-danger' : (totalStock > 0 ? 'text-success' : 'text-muted');
+
+    $('#ph_stock_summary').html(
+        '<div class="d-flex flex-wrap align-items-start justify-content-between" style="gap:10px;">' +
+            '<div>' +
+                '<div class="small text-muted mb-1">Tồn theo từng kho</div>' +
+                '<div>' + chips + '</div>' +
+            '</div>' +
+            '<div class="text-right">' +
+                '<div class="small text-muted">Tổng tồn</div>' +
+                '<div class="h5 mb-0 ' + totalClass + '">' + fmt(totalStock) + '</div>' +
+            '</div>' +
+        '</div>'
+    );
+}
+
 // Lịch sử sản phẩm (3 tab)
 var _priceChart = null;
+var _currentHistoryProductId = null;
 function viewPurchaseHistory(productId, productName){
+    _currentHistoryProductId = productId;
     $('#ph_product_name').text(productName);
     $('#ph_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
     $('#sh_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
     $('#ph_summary, #sh_summary').empty();
+    renderProductStockSnapshot(PRODUCT_DATA_MAP[productId] || null);
     // Reset to first tab
     $('#modal_purchase_history .nav-link').removeClass('active');
     $('#modal_purchase_history .nav-link:first').addClass('active');
@@ -603,8 +805,24 @@ function viewPurchaseHistory(productId, productName){
     $('#tab_import').addClass('show active');
     $('#modal_purchase_history').modal('show');
 
-    // ---- TAB 1: Lịch sử nhập hàng ----
-    $.get('/api/products/purchase_history/?product_id='+productId, function(res){
+    loadProductPurchaseHistory();
+    loadProductSalesHistory();
+}
+
+function getProductHistoryParams(){
+    var params = ['product_id=' + encodeURIComponent(_currentHistoryProductId || '')];
+    if($('#ph_filter_from').val()) params.push('date_from=' + encodeURIComponent($('#ph_filter_from').val()));
+    if($('#ph_filter_to').val()) params.push('date_to=' + encodeURIComponent($('#ph_filter_to').val()));
+    if($('#ph_filter_supplier').val()) params.push('supplier_id=' + encodeURIComponent($('#ph_filter_supplier').val()));
+    if($('#ph_filter_warehouse').val()) params.push('warehouse_id=' + encodeURIComponent($('#ph_filter_warehouse').val()));
+    if($('#ph_filter_receipt').val()) params.push('receipt_code=' + encodeURIComponent($('#ph_filter_receipt').val()));
+    return params.join('&');
+}
+
+function loadProductPurchaseHistory(){
+    if(!_currentHistoryProductId) return;
+    $('#ph_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
+    $.get('/api/products/purchase_history/?' + getProductHistoryParams(), function(res){
         if(res.status !== 'ok'){ $('#ph_tbody').html('<tr><td colspan="9" class="text-center text-danger">Lỗi</td></tr>'); return; }
         var s = res.summary;
         $('#ph_summary').html(
@@ -623,10 +841,15 @@ function viewPurchaseHistory(productId, productName){
         });
         if(!h) h = '<tr><td colspan="9" class="text-center text-muted">Chưa có lịch sử nhập hàng</td></tr>';
         $('#ph_tbody').html(h);
+        renderPriceChart(res.price_timeline || []);
     });
+}
 
-    // ---- TAB 2: Lịch sử bán hàng ----
-    $.get('/api/products/sales_history/?product_id='+productId, function(res){
+function loadProductSalesHistory(){
+    if(!_currentHistoryProductId) return;
+    $('#sh_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
+    var params = getProductHistoryParams();
+    $.get('/api/products/sales_history/?' + params, function(res){
         if(res.status !== 'ok'){ $('#sh_tbody').html('<tr><td colspan="9" class="text-center text-danger">Lỗi</td></tr>'); return; }
         var s = res.summary;
         $('#sh_summary').html(
@@ -648,11 +871,20 @@ function viewPurchaseHistory(productId, productName){
         });
         if(!h) h = '<tr><td colspan="9" class="text-center text-muted">Chưa có lịch sử bán hàng</td></tr>';
         $('#sh_tbody').html(h);
-
-        // ---- TAB 3: Price Chart ----
-        renderPriceChart(res.price_timeline || []);
     });
 }
+
+$('.ph-filter').on('change input', function(){
+    if(!_currentHistoryProductId) return;
+    loadProductPurchaseHistory();
+    loadProductSalesHistory();
+});
+$('#btn_clear_history_filters').click(function(){
+    $('#ph_filter_from, #ph_filter_to, #ph_filter_receipt').val('');
+    $('#ph_filter_supplier, #ph_filter_warehouse').val('');
+    loadProductPurchaseHistory();
+    loadProductSalesHistory();
+});
 
 function renderPriceChart(timeline){
     if(_priceChart){ _priceChart.destroy(); _priceChart = null; }
@@ -663,6 +895,9 @@ function renderPriceChart(timeline){
     }
     $('#price_chart_area').show();
     $('#price_chart_fallback').hide();
+    if(!document.getElementById('price_chart_canvas')){
+        $('#price_chart_area').html('<canvas id="price_chart_canvas"></canvas>');
+    }
 
     // Check if Chart.js is loaded
     if(typeof Chart === 'undefined'){
@@ -738,9 +973,15 @@ function editItem(d){
         d.combo_items.forEach(function(ci){
             addComboItemRow(ci);
         });
+        $('#combo_body .combo-product, #combo_body .combo-qty').prop('disabled', true);
+        $('#combo_body .btn-remove-combo').hide();
+        $('#btn_add_combo_item').hide();
+        $('#combo_lock_note').show();
         calcComboTotal();
     } else {
         $('#combo_section').hide();
+        $('#btn_add_combo_item').show();
+        $('#combo_lock_note').hide();
     }
 
     // Hiển thị ảnh hiện tại
@@ -757,30 +998,13 @@ function editItem(d){
         $('#lbl_image').text('Chọn ảnh...');
     }
 
-    // Load variants
     $('#variants_body').html('');
     variantRowIndex = 0;
-    if(d.variants && d.variants.length > 0){
-        d.variants.forEach(function(v){
-            addVariantRow(v);
-        });
-    }
+    $('#variant_legacy_notice').toggle(!!(d.variants && d.variants.length > 0));
     togglePriceRow();
 
     // === Tồn kho chi tiết theo kho ===
-    if(d.stock_by_warehouse && d.stock_by_warehouse.length > 0){
-        var sh = '';
-        d.stock_by_warehouse.forEach(function(s){
-            var cls = s.quantity < 0 ? 'text-danger font-weight-bold' : (s.quantity > 0 ? 'text-success' : 'text-muted');
-            sh += '<tr><td><i class="fas fa-box-open text-muted mr-1"></i>' + s.warehouse + '</td><td class="text-right ' + cls + '">' + Number(s.quantity).toLocaleString('vi-VN') + '</td></tr>';
-        });
-        $('#stock_detail_tbl tbody').html(sh);
-        var totalCls = d.total_stock < 0 ? 'text-danger' : 'text-success';
-        $('#stock_detail_total').attr('class', 'text-right ' + totalCls).text(Number(d.total_stock).toLocaleString('vi-VN'));
-        $('#stock_detail_section').show();
-    } else {
-        $('#stock_detail_section').hide();
-    }
+    renderStockDetailTable(d);
 
     $('#modal_title').text('Sửa sản phẩm');
     $('#modal_form').modal('show');
@@ -880,11 +1104,10 @@ function viewCombo(d){
         $('#combo_savings').text(savings > 0 ? fmt(savings) + 'đ' : '0');
     }
     $('#btn_add_combo_item').hide();
-    // Variants
     $('#variants_body').html('');
+    $('#variant_legacy_notice').hide();
     // Hide save button, change title
     $('#btn_save').hide();
-    $('#btn_add_variant').hide();
     $('#modal_title').html('<i class="fas fa-cubes mr-1"></i>🔒 Xem Combo — ' + d.code + ' <small class="text-white-50">(Không thể sửa)</small>');
     $('#modal_form').modal('show');
 }
@@ -892,7 +1115,9 @@ function viewCombo(d){
 // Reset modal on close: re-enable all fields
 $('#modal_form').on('hidden.bs.modal', function(){
     $('#modal_form').find('input, select, textarea').prop('disabled', false);
-    $('#btn_save,#btn_add_variant,#btn_add_combo_item,#btn_remove_image,#inp_image').show();
+    $('#btn_save,#btn_add_combo_item,#btn_remove_image,#inp_image').show();
+    $('#combo_lock_note').hide();
+    $('#variant_legacy_notice').hide();
 });
 
 // ========== COMBO ITEMS ==========
@@ -901,7 +1126,9 @@ $.get('/api/products/', function(res){ allProductsForCombo = res.data.filter(fun
 
 function addComboItemRow(data){
     var opts = '<option value="">-- Chọn SP --</option>';
+    var editingProductId = parseInt($('#edit_id').val()) || 0;
     allProductsForCombo.forEach(function(p){
+        if(editingProductId && p.id === editingProductId) return;
         var sel = (data && data.product_id == p.id) ? 'selected' : '';
         var typeLabel = p.is_service ? ' [DV]' : '';
         opts += '<option value="'+p.id+'" data-price="'+p.selling_price+'" data-service="'+(p.is_service?1:0)+'" '+sel+'>'+p.code+' - '+p.name+typeLabel+'</option>';
@@ -976,6 +1203,18 @@ function getComboItemsData(){
     return items;
 }
 
+function validateComboItemsData(items){
+    if(!items.length) return 'Vui lòng chọn ít nhất 1 sản phẩm thành phần cho combo.';
+    if(items.length > 20) return 'Một combo chỉ nên có tối đa 20 sản phẩm thành phần.';
+    var seen = {};
+    for(var i = 0; i < items.length; i++){
+        if(items[i].quantity <= 0) return 'Số lượng thành phần combo phải lớn hơn 0.';
+        if(seen[items[i].product_id]) return 'Không được chọn trùng sản phẩm trong cùng một combo.';
+        seen[items[i].product_id] = true;
+    }
+    return '';
+}
+
 // Recalc savings when combo price changes
 $('#inp_selling_price').on('input', function(){ if($('#inp_is_combo').is(':checked')) calcComboTotal(); });
 
@@ -998,6 +1237,11 @@ function renderProductSavedFilters(){
         if(f.text) desc.push('"'+f.text+'"');
         if(f.category) desc.push(f.category);
         if(f.stock) desc.push(f.stock === 'out' ? 'Hết hàng' : f.stock === 'low' ? 'Sắp hết' : 'Còn hàng');
+        if(f.supplier && f.supplier_text) desc.push(f.supplier_text);
+        if(f.location && f.location_text) desc.push(f.location_text);
+        if(f.type) desc.push(f.type === 'normal' ? 'SP thường' : f.type === 'combo' ? 'Combo' : f.type === 'service' ? 'Dịch vụ' : 'Cân/đong');
+        if(f.status) desc.push(f.status === 'active' ? 'Đang hoạt động' : 'Ngừng hoạt động');
+        if(f.created_from || f.created_to) desc.push((f.created_from || '...') + ' - ' + (f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">'+desc.join(' · ')+'</small>' : '';
         $menu.append(
             '<div class="dropdown-item d-flex justify-content-between align-items-center px-3 py-2" style="cursor:pointer;border-bottom:1px solid #f0f0f0;">' +
@@ -1014,7 +1258,15 @@ $('#btn_save_product_filter').click(function(){
         name: name,
         text: $('#filter_text').val() || '',
         category: $('#filter_category').val() || '',
-        stock: $('#filter_stock').val() || ''
+        stock: $('#filter_stock').val() || '',
+        supplier: $('#filter_supplier').val() || '',
+        supplier_text: $('#filter_supplier').val() ? ($('#filter_supplier option:selected').text() || '') : '',
+        location: $('#filter_location').val() || '',
+        location_text: $('#filter_location').val() ? ($('#filter_location option:selected').text() || '') : '',
+        type: $('#filter_type').val() || '',
+        status: $('#filter_status').val() || '',
+        created_from: $('#filter_created_from').val() || '',
+        created_to: $('#filter_created_to').val() || ''
     };
     var filters = getProductSavedFilters();
     filters.push(preset);
@@ -1030,6 +1282,12 @@ $(document).on('click', '.pf-load-btn', function(){
     $('#filter_text').val(f.text || '');
     $('#filter_category').val(f.category || '');
     $('#filter_stock').val(f.stock || '');
+    $('#filter_supplier').val(f.supplier || '');
+    $('#filter_location').val(f.location || '');
+    $('#filter_type').val(f.type || '');
+    $('#filter_status').val(f.status || '');
+    $('#filter_created_from').val(f.created_from || '');
+    $('#filter_created_to').val(f.created_to || '');
     loadData();
     if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
 });

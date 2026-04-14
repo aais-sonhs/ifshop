@@ -191,14 +191,14 @@ $('#btn_save_avatar').click(function(){
                 <li class="nav-item">
                     <a href="{% url 'quotation_tbl' %}" class="nav-link {% if active_tab == 'quotation_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-file-invoice"></i>
-                        <p>Báo giá</p>
+                        <p>DS báo giá</p>
                     </a>
                 </li>
                 {% endif %}
                 <li class="nav-item">
                     <a href="{% url 'order_tbl' %}" class="nav-link {% if active_tab == 'order_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-shopping-cart"></i>
-                        <p>Đơn hàng</p>
+                        <p>Bán hàng / BG</p>
                     </a>
                 </li>
                 {% if biz.opt_order_approver and pending_approval_count > 0 or active_tab == 'order_approvals' %}
@@ -346,12 +346,14 @@ $('#btn_save_avatar').click(function(){
                 <!-- V. BÁO CÁO -->
                 {% if not biz or biz.mod_reports %}
                 <li class="nav-header">BÁO CÁO</li>
+                {% if can_view_sales_report %}
                 <li class="nav-item">
                     <a href="{% url 'report_sales' %}" class="nav-link {% if active_tab == 'report_sales' %} active{% endif %}">
                         <i class="nav-icon fas fa-chart-line"></i>
                         <p>BC Bán hàng</p>
                     </a>
                 </li>
+                {% endif %}
                 <li class="nav-item">
                     <a href="{% url 'report_purchases' %}" class="nav-link {% if active_tab == 'report_purchases' %} active{% endif %}">
                         <i class="nav-icon fas fa-chart-bar"></i>

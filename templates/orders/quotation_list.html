@@ -8,12 +8,43 @@
         </div>
     </div>
     <div class="card-body">
-        <div class="row mb-2">
-            <div class="col-md-4">
-                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã BG, tên KH, SĐT, tag...">
+        <div class="row mb-2" style="gap:6px 0;">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="Tìm mã BG, tên KH, SĐT, tag...">
             </div>
-            <div class="col-md-4 d-flex align-items-center" style="gap:6px;">
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_status">
+                    <option value="">-- Trạng thái --</option>
+                    <option value="0">Nháp</option>
+                    <option value="1">Đã gửi</option>
+                    <option value="2">Đã duyệt</option>
+                    <option value="3">Đã tạo ĐH</option>
+                    <option value="4">Hủy</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_customer_group">
+                    <option value="">-- Nhóm KH --</option>
+                    {% for g in customer_groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date" title="Từ ngày"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date" title="Đến ngày"></div>
+            <div class="col-md-1 d-flex align-items-center" style="gap:6px;">
+                <button class="btn btn-sm btn-info" id="btn_search_quote"><i class="fas fa-search"></i></button>
+                <button class="btn btn-sm btn-outline-secondary" id="btn_clear_quote_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
+            </div>
+        </div>
+        <div class="row mb-2">
+            <div class="col-md-12 d-flex align-items-center" style="gap:6px;">
                 <span id="col_config_container"></span>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" id="btn_save_quote_filter" title="Lưu bộ lọc"><i class="fas fa-save"></i> Lưu</button>
+                    <button class="btn btn-outline-info dropdown-toggle" data-toggle="dropdown" title="Bộ lọc đã lưu"><i class="fas fa-bookmark"></i></button>
+                    <div class="dropdown-menu" id="saved_quote_filters_menu" style="max-height:200px;overflow-y:auto;min-width:220px;">
+                        <span class="dropdown-item text-muted">Chưa có bộ lọc nào</span>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="table-responsive">
@@ -132,6 +163,12 @@
                                 <small class="text-muted" id="search_status_hint"><i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay</small>
                                 <small class="text-muted" id="search_count_hint"></small>
                             </div>
+                            <div class="quick-search-filter-bar mt-2">
+                                <button type="button" class="btn btn-xs btn-light quick-search-filter-btn active" data-filter="all" data-label="Tất cả">Tất cả</button>
+                                <button type="button" class="btn btn-xs btn-light quick-search-filter-btn" data-filter="available" data-label="Còn hàng">Còn hàng</button>
+                                <button type="button" class="btn btn-xs btn-light quick-search-filter-btn" data-filter="negative" data-label="Âm kho">Âm kho</button>
+                                <button type="button" class="btn btn-xs btn-light quick-search-filter-btn" data-filter="oversold" data-label="Vượt tồn">Vượt tồn</button>
+                            </div>
                             <div id="quick_search_results" style="display:none; position:absolute; left:0; right:0; z-index:9999; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #42a5f5; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 6px 20px rgba(0,0,0,0.18);"></div>
                         </div>
                         <table class="table table-sm table-bordered mb-0" id="items_tbl">
@@ -139,7 +176,7 @@
                                 <tr>
                                     <th style="width:28%">Sản phẩm</th>
                                     <th style="width:6%">ĐVT</th>
-                                    <th style="width:8%">Tồn kho</th>
+                                    <th style="width:18%">Tồn theo kho</th>
                                     <th style="width:9%">Số lượng</th>
                                     <th style="width:14%">Đơn giá</th>
                                     <th style="width:8%">CK (%)</th>
@@ -447,12 +484,476 @@
 #quick_search_product:focus:placeholder-shown {
     animation: searchPulse 2s infinite;
 }
+#items_tbl .lbl_stock {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.35;
+    text-align: left !important;
+    min-width: 240px;
+}
+#items_tbl .stock-breakdown {
+    min-width: 220px;
+}
+#items_tbl .stock-summary {
+    font-size: 12px;
+}
+#items_tbl .stock-breakdown-rows {
+    border-top: 1px dashed #d7dee7;
+    margin-top: 4px;
+    padding-top: 4px;
+}
+#items_tbl .stock-breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+}
+#items_tbl .stock-breakdown-name {
+    color: #6c757d;
+    min-width: 82px;
+}
+#quick_search_results .quick-search-stock-block {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.3;
+}
+#quick_search_results .quick-search-stock-breakdown {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed #d7dee7;
+}
+#quick_search_results .quick-search-stock-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+#quick_search_results .quick-search-stock-name {
+    color: #6c757d;
+    min-width: 72px;
+}
+#quick_search_results .quick-search-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+#quick_search_results .quick-search-alert-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+#quick_search_results .quick-search-alert-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+#quick_search_results .quick-search-alert-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+#quick_search_results .quick-search-alert-badge.is-negative {
+    background: #fff1f0;
+    border-color: #ffa39e;
+    color: #cf1322;
+}
+#quick_search_results .quick-search-alert-badge.is-oversold {
+    background: #fff7e6;
+    border-color: #ffd591;
+    color: #d46b08;
+}
+.quick-search-active-filter {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #eef7ff;
+    color: #1565c0;
+    font-size: 11px;
+    font-weight: 600;
+}
+.quick-search-reset-filter {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    color: #1565c0;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.quick-search-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.quick-search-filter-btn {
+    border-radius: 999px;
+    border: 1px solid #cfd8e3;
+    padding: 2px 10px;
+}
+.quick-search-filter-btn.active {
+    background: #1976d2;
+    border-color: #1976d2;
+    color: #fff;
+}
 </style>
 <script src="/static/js/column_config.js"></script>
 <script>
 var allProducts = [];
+var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_quotation_quick_search_stock_filter';
+var QUOTATION_WAREHOUSES = [
+{% for w in warehouses %}
+    {id: {{ w.id }}, name: '{{ w.name|escapejs }}'},
+{% endfor %}
+];
+var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
+
+function normalizeQuickSearchStockFilter(filterKey){
+    var allowed = ['all', 'available', 'negative', 'oversold'];
+    return allowed.indexOf(filterKey) >= 0 ? filterKey : 'all';
+}
+
+function getStoredQuickSearchStockFilter(){
+    try {
+        return normalizeQuickSearchStockFilter(localStorage.getItem(QUICK_SEARCH_FILTER_STORAGE_KEY));
+    } catch(e){
+        return 'all';
+    }
+}
+
+function persistQuickSearchStockFilter(filterKey){
+    try {
+        localStorage.setItem(QUICK_SEARCH_FILTER_STORAGE_KEY, normalizeQuickSearchStockFilter(filterKey));
+    } catch(e){}
+}
+
+function getWarehouseNameById(warehouseId){
+    var matched = QUOTATION_WAREHOUSES.find(function(warehouse){
+        return String(warehouse.id) === String(warehouseId);
+    });
+    return matched ? matched.name : ('Kho #' + warehouseId);
+}
+
+function getSignedStockClass(value){
+    if(value < 0) return 'text-danger font-weight-bold';
+    if(value > 0) return 'text-success';
+    return 'text-muted';
+}
+
+function getFlowStockClass(value){
+    if(value > 0) return 'text-warning font-weight-bold';
+    return 'text-muted';
+}
+
+function formatStockMetric(label, value, className){
+    return '<span class="text-muted">' + label + ':</span> <span class="' + className + '">' + fmt(value) + '</span>';
+}
+
+function getProductWarehouseRows(product){
+    if(!product || product.is_service) return [];
+
+    var keysMap = {};
+    ['stocks', 'reserved_stocks', 'pending_stocks', 'sellable_stocks'].forEach(function(field){
+        var stockMap = product[field] || {};
+        Object.keys(stockMap).forEach(function(key){
+            keysMap[String(key)] = true;
+        });
+    });
+
+    var rows = Object.keys(keysMap).map(function(warehouseId){
+        return {
+            warehouseId: warehouseId,
+            warehouseName: getWarehouseNameById(warehouseId),
+            actualStock: Number((product.stocks || {})[warehouseId] || 0),
+            reservedStock: Number((product.reserved_stocks || {})[warehouseId] || 0),
+            pendingStock: Number((product.pending_stocks || {})[warehouseId] || 0),
+            sellableStock: Number((product.sellable_stocks || {})[warehouseId] || 0)
+        };
+    });
+
+    rows.sort(function(left, right){
+        var leftIndex = QUOTATION_WAREHOUSES.findIndex(function(warehouse){ return String(warehouse.id) === String(left.warehouseId); });
+        var rightIndex = QUOTATION_WAREHOUSES.findIndex(function(warehouse){ return String(warehouse.id) === String(right.warehouseId); });
+        if(leftIndex === -1 && rightIndex === -1) return left.warehouseName.localeCompare(right.warehouseName);
+        if(leftIndex === -1) return 1;
+        if(rightIndex === -1) return -1;
+        return leftIndex - rightIndex;
+    });
+
+    return rows;
+}
+
+function getStockDisplayState(info, qty){
+    if(info.isService){
+        return {cellClass: 'text-muted', title: ''};
+    }
+    if(info.actualStock < 0 || info.sellableStock < 0){
+        return {cellClass: 'text-danger font-weight-bold', title: 'Tồn kho đang âm.'};
+    }
+    if(qty > info.stock){
+        return {cellClass: 'text-danger font-weight-bold', title: 'Số lượng đang vượt tồn có thể bán.'};
+    }
+    if(info.stock > 0 || info.actualStock > 0){
+        return {cellClass: 'text-success', title: ''};
+    }
+    return {cellClass: 'text-muted', title: ''};
+}
+
+function buildStockSummaryHtml(info, summaryClass){
+    var html = '<div class="stock-summary ' + summaryClass + '">' +
+        '<span class="mr-1">Tổng tất cả kho</span>' +
+        formatStockMetric('T', info.actualStock, getSignedStockClass(info.actualStock)) +
+        ' / ' + formatStockMetric('GD', info.reservedStock, getFlowStockClass(info.reservedStock)) +
+        ' / ' + formatStockMetric('B', info.sellableStock, getSignedStockClass(info.sellableStock));
+    if(info.pendingStock){
+        html += ' / ' + formatStockMetric('Chờ', info.pendingStock, getFlowStockClass(info.pendingStock));
+    }
+    html += '</div>';
+    return html;
+}
+
+function renderStockCellHtml(product, info, qty){
+    if(info.isService){
+        return '<span class="text-muted">DV</span>';
+    }
+
+    var displayState = getStockDisplayState(info, qty);
+    var detailsHtml = getProductWarehouseRows(product).map(function(row){
+        var rowHtml = '<div class="stock-breakdown-row">' +
+            '<span class="stock-breakdown-name">' + escapeHtml(row.warehouseName) + '</span>' +
+            '<span>' +
+                formatStockMetric('T', row.actualStock, getSignedStockClass(row.actualStock)) +
+                ' / ' + formatStockMetric('GD', row.reservedStock, getFlowStockClass(row.reservedStock)) +
+                ' / ' + formatStockMetric('B', row.sellableStock, getSignedStockClass(row.sellableStock));
+        if(row.pendingStock){
+            rowHtml += ' / ' + formatStockMetric('Chờ', row.pendingStock, getFlowStockClass(row.pendingStock));
+        }
+        rowHtml += '</span></div>';
+        return rowHtml;
+    }).join('');
+
+    return '<div class="stock-breakdown">' +
+        buildStockSummaryHtml(info, displayState.cellClass) +
+        (detailsHtml ? '<div class="stock-breakdown-rows">' + detailsHtml + '</div>' : '') +
+    '</div>';
+}
+
+function renderStockCellForRow($row){
+    var productId = parseInt($row.find('.sel_product').val(), 10);
+    var $stockCell = $row.find('.lbl_stock');
+    if(!productId){
+        $stockCell.html('-').attr('title', '').removeClass('text-success text-danger text-muted font-weight-bold');
+        return;
+    }
+
+    var product = allProducts.find(function(item){ return item.id === productId; });
+    if(!product){
+        $stockCell.html('-').attr('title', '').removeClass('text-success text-danger text-muted font-weight-bold');
+        return;
+    }
+
+    var qty = parseFloat($row.find('.inp_qty').val()) || 0;
+    var info = getStockForProduct(productId);
+    var displayState = getStockDisplayState(info, qty);
+    $stockCell
+        .html(renderStockCellHtml(product, info, qty))
+        .attr('title', displayState.title || '')
+        .removeClass('text-success text-danger text-muted font-weight-bold')
+        .addClass(displayState.cellClass);
+}
+
+function renderQuickSearchStockText(product){
+    var info = getStockForProduct(product.id);
+    if(info.isService){
+        return '<span class="text-muted">Dịch vụ</span>';
+    }
+
+    var summaryClass = getStockDisplayState(info, 0).cellClass;
+    var rowsHtml = getProductWarehouseRows(product).map(function(row){
+        var html = '<div class="quick-search-stock-row">' +
+            '<span class="quick-search-stock-name">' + escapeHtml(row.warehouseName) + '</span>' +
+            '<span>' +
+                formatStockMetric('T', row.actualStock, getSignedStockClass(row.actualStock)) +
+                ' / ' + formatStockMetric('GD', row.reservedStock, getFlowStockClass(row.reservedStock)) +
+                ' / ' + formatStockMetric('B', row.sellableStock, getSignedStockClass(row.sellableStock));
+        if(row.pendingStock){
+            html += ' / ' + formatStockMetric('Chờ', row.pendingStock, getFlowStockClass(row.pendingStock));
+        }
+        html += '</span></div>';
+        return html;
+    }).join('');
+
+    var html = '<div class="quick-search-stock-block">' +
+        '<div class="' + summaryClass + '">Tổng kho: T ' + fmt(info.actualStock) +
+        ' · GD ' + fmt(info.reservedStock) +
+        ' · B ' + fmt(info.sellableStock);
+    if(info.pendingStock){
+        html += ' · Chờ ' + fmt(info.pendingStock);
+    }
+    html += '</div>';
+    if(rowsHtml){
+        html += '<div class="quick-search-stock-breakdown">' + rowsHtml + '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function renderQuickSearchAlertBadges(product){
+    if(!product) return '';
+    var info = getStockForProduct(product.id);
+    if(info.isService){
+        return '';
+    }
+
+    var badges = [];
+    if(info.actualStock < 0){
+        badges.push('<span class="quick-search-alert-badge is-negative" data-filter="negative" title="Bấm để lọc các mã đang âm kho.">Âm ' + fmt(Math.abs(info.actualStock)) + '</span>');
+    }
+    if(info.sellableStock < 0){
+        badges.push('<span class="quick-search-alert-badge is-oversold" data-filter="oversold" title="Bấm để lọc các mã đang vượt tồn bán được.">Vượt ' + fmt(Math.abs(info.sellableStock)) + '</span>');
+    }
+
+    if(!badges.length){
+        return '';
+    }
+    return '<span class="quick-search-alert-badges">' + badges.join('') + '</span>';
+}
+
+function getQuickSearchFilterStatusHtml(){
+    if(currentQuickSearchStockFilter === 'all'){
+        return '';
+    }
+    var activeFilterLabel = $('.quick-search-filter-btn[data-filter="' + currentQuickSearchStockFilter + '"]').attr('data-label') || 'Đang lọc';
+    return '<span class="quick-search-active-filter"><i class="fas fa-filter mr-1"></i>' + escapeHtml(activeFilterLabel) + '</span>' +
+        '<a href="#" class="quick-search-reset-filter">Tất cả</a>';
+}
+
+function setQuickSearchStatusHint(contentHtml){
+    $('#search_status_hint').html(contentHtml + getQuickSearchFilterStatusHtml());
+}
+
+function syncQuickSearchStockFilterUI(){
+    currentQuickSearchStockFilter = normalizeQuickSearchStockFilter(currentQuickSearchStockFilter);
+    $('.quick-search-filter-btn').removeClass('active');
+    $('.quick-search-filter-btn[data-filter="' + currentQuickSearchStockFilter + '"]').addClass('active');
+}
+
+function setQuickSearchStockFilter(filterKey){
+    currentQuickSearchStockFilter = normalizeQuickSearchStockFilter(filterKey);
+    persistQuickSearchStockFilter(currentQuickSearchStockFilter);
+    syncQuickSearchStockFilterUI();
+    if($('#quick_search_product').val().trim() || $('#quick_search_results').is(':visible')){
+        $('#quick_search_product').trigger('input');
+    } else {
+        $('#quick_search_product').trigger('focus');
+    }
+}
+
+function matchesQuickSearchStockFilter(product){
+    if(!product) return false;
+    var info = getStockForProduct(product.id);
+    if(currentQuickSearchStockFilter === 'available'){
+        return info.isService || info.stock > 0;
+    }
+    if(currentQuickSearchStockFilter === 'negative'){
+        return !info.isService && info.actualStock < 0;
+    }
+    if(currentQuickSearchStockFilter === 'oversold'){
+        return !info.isService && info.actualStock >= 0 && info.sellableStock < 0;
+    }
+    return true;
+}
+
+function sortQuickSearchResults(results){
+    var items = (results || []).map(function(product, index){
+        var info = getStockForProduct(product.id);
+        var sortMeta = {
+            product: product,
+            index: index,
+            bucket: 0,
+            primary: 0,
+            secondary: 0,
+        };
+
+        if(currentQuickSearchStockFilter === 'negative'){
+            sortMeta.bucket = (!info.isService && info.actualStock < 0) ? 0 : 1;
+            sortMeta.primary = info.actualStock;
+            sortMeta.secondary = info.sellableStock;
+        } else if(currentQuickSearchStockFilter === 'oversold'){
+            sortMeta.bucket = (!info.isService && info.actualStock >= 0 && info.sellableStock < 0) ? 0 : 1;
+            sortMeta.primary = info.sellableStock;
+            sortMeta.secondary = info.actualStock;
+        } else if(currentQuickSearchStockFilter === 'available'){
+            sortMeta.bucket = info.isService ? 1 : 0;
+            sortMeta.primary = info.isService ? 0 : (0 - info.stock);
+            sortMeta.secondary = info.isService ? 0 : (0 - info.sellableStock);
+        }
+
+        return sortMeta;
+    });
+
+    if(currentQuickSearchStockFilter === 'all'){
+        return items.map(function(item){ return item.product; });
+    }
+
+    items.sort(function(left, right){
+        if(left.bucket !== right.bucket){
+            return left.bucket - right.bucket;
+        }
+        if(left.primary !== right.primary){
+            return left.primary - right.primary;
+        }
+        if(left.secondary !== right.secondary){
+            return left.secondary - right.secondary;
+        }
+        var codeCompare = String(left.product.code || '').localeCompare(String(right.product.code || ''), 'vi');
+        if(codeCompare !== 0){
+            return codeCompare;
+        }
+        return left.index - right.index;
+    });
+
+    return items.map(function(item){ return item.product; });
+}
+
+function updateQuickSearchFilterLabels(){
+    var counts = {
+        all: allProducts.length,
+        available: 0,
+        negative: 0,
+        oversold: 0
+    };
+
+    allProducts.forEach(function(product){
+        var info = getStockForProduct(product.id);
+        if(info.isService || info.stock > 0){
+            counts.available += 1;
+        }
+        if(!info.isService && info.actualStock < 0){
+            counts.negative += 1;
+        }
+        if(!info.isService && info.actualStock >= 0 && info.sellableStock < 0){
+            counts.oversold += 1;
+        }
+    });
+
+    $('.quick-search-filter-btn').each(function(){
+        var $btn = $(this);
+        var filterKey = $btn.data('filter') || 'all';
+        var label = $btn.attr('data-label') || $btn.text();
+        $btn.text(label + ' (' + (counts[filterKey] || 0) + ')');
+    });
+}
 
 // Column Config
 var quotationColConfig = new ColumnConfig({
@@ -591,12 +1092,20 @@ function searchCustomers(term){
     return allCustomers.filter(function(c){
         var nameNorm = normalizeCustomerSearch(c.name);
         var phoneNorm = (c.phone || '').replace(/\D/g, '');
-        var codeNorm = normalizeCustomerSearch(c.code);
         if(nameNorm.indexOf(t) >= 0) return true;
-        if(codeNorm.indexOf(t) >= 0) return true;
         if(digits && phoneNorm.indexOf(digits) >= 0) return true;
         return false;
     }).slice(0, 20);
+}
+
+function hasExactCustomerMatch(results, term){
+    var t = normalizeCustomerSearch(term);
+    var digits = (term || '').replace(/\D/g, '');
+    return results.some(function(c){
+        var nameNorm = normalizeCustomerSearch(c.name);
+        var phoneNorm = (c.phone || '').replace(/\D/g, '');
+        return (t && nameNorm === t) || (digits && phoneNorm === digits);
+    });
 }
 
 function renderCustomerDropdown(results, term){
@@ -607,13 +1116,13 @@ function renderCustomerDropdown(results, term){
             var phonePart = c.phone ? ' <small class="text-muted">— ' + $('<span>').text(c.phone).html() + '</small>' : '';
             html += '<div class="px-3 py-2 border-bottom customer-dd-item" style="cursor:pointer;" data-id="'+c.id+'" data-name="'+$('<span>').text(c.name).html()+'" data-phone="'+$('<span>').text(c.phone||'').html()+'">' +
                 '<div><strong>' + $('<span>').text(c.name).html() + '</strong>' + phonePart + '</div>' +
-                '<small class="text-muted">' + $('<span>').text(c.code).html() + '</small></div>';
+                '<small class="text-muted">Chọn khách hàng đã lưu</small></div>';
         });
     }
     if(!results.length && term){
         html += '<div class="px-3 py-2 text-muted text-center"><i class="fas fa-search mr-1"></i> Không tìm thấy</div>';
     }
-    if(term){
+    if(term && !hasExactCustomerMatch(results, term)){
         html += '<div class="px-3 py-2 border-top bg-light customer-dd-create" style="cursor:pointer;">' +
             '<i class="fas fa-user-plus text-success mr-1"></i> <strong class="text-success">Tạo khách hàng mới</strong>' +
             ' <small class="text-muted">"' + $('<span>').text(term).html() + '"</small></div>';
@@ -639,6 +1148,7 @@ function initCustomerPicker(){
     var debounceTimer;
     $('#inp_customer_search').off('input.cust').on('input.cust', function(){
         var term = $(this).val().trim();
+        currentCustomerSearchTerm = term;
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function(){
             $('#inp_customer_id').val('');
@@ -672,34 +1182,15 @@ function initCustomerPicker(){
 // Customer create handler moved to initCustomerPicker()
 
 $(document).ready(function(){
-    $.get('/api/products_select/', function(res){ allProducts = res.data; });
+    currentQuickSearchStockFilter = getStoredQuickSearchStockFilter();
+    syncQuickSearchStockFilterUI();
+    setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
+    $.get('/api/products_select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
     initCustomerPicker();
     loadData();
 
     $('#btn_add').click(function(){
-        $('#edit_id').val('');
-        clearCustomer();
-        $('#inp_valid_until').val('');
-        $('#inp_status').val('0'); $('#inp_note').val('');
-        setMoneyValue('#inp_discount_amount', 0);
-        setMoneyValue('#inp_shipping_fee', 0);
-        $('#inp_tags').val('');
-        syncStatusOptions(0);
-        if($('#inp_salesperson').length) $('#inp_salesperson').val('').trigger('change');
-        $('#items_tbl tbody').html('');
-        calcTotal();
-        // Auto-fill mã mới + ngày hôm nay
-        $.get('/api/quotations/next_code/', function(res){
-            $('#inp_code').val(res.code);
-        });
-        var today = new Date().toISOString().split('T')[0];
-        $('#inp_quotation_date').val(today);
-        $('#modal_title').text('Tạo báo giá');
-        $('#modal_form').modal('show');
-        // Auto-focus vào ô tìm SP khi modal mở xong
-        $('#modal_form').one('shown.bs.modal', function(){
-            $('#quick_search_product').focus();
-        });
+        window.location.href = '/order_tbl/?create=quotation';
     });
 
     $('#btn_add_item').click(function(){ addItemRow(null); });
@@ -713,7 +1204,7 @@ $(document).ready(function(){
     $('#quick_search_product').on('focus', function(){
         var term = $(this).val().trim();
         if(!term && allProducts.length > 0){
-            var popular = allProducts.slice(0, 8);
+            var popular = sortQuickSearchResults(allProducts.filter(matchesQuickSearchStockFilter)).slice(0, 8);
             renderProductSearchResults(popular, '', true);
         }
     });
@@ -722,40 +1213,49 @@ $(document).ready(function(){
         var term = $(this).val().trim().toLowerCase();
         clearTimeout(searchTimeout);
         if(term.length < 1){
-            $('#quick_search_results').hide();
-            $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
-            $('#search_count_hint').text('');
+            var fallbackResults = sortQuickSearchResults(allProducts.filter(matchesQuickSearchStockFilter)).slice(0, 8);
+            if(fallbackResults.length){
+                renderProductSearchResults(fallbackResults, '', true);
+                $('#search_count_hint').text(fallbackResults.length + ' SP');
+            } else {
+                $('#quick_search_results').hide();
+                $('#search_count_hint').text('');
+            }
+            setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
             return;
         }
         searchTimeout = setTimeout(function(){
             var results = allProducts.filter(function(p){
                 return p.name.toLowerCase().indexOf(term)>=0 || p.code.toLowerCase().indexOf(term)>=0;
             });
+            results = results.filter(matchesQuickSearchStockFilter);
 
             // Exact code match → auto-add (barcode scanner)
             if(results.length === 1 && results[0].code.toLowerCase() === term){
                 addItemFromProduct(results[0]);
                 $('#quick_search_product').val('');
                 $('#quick_search_results').hide();
-                $('#search_status_hint').html('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + results[0].name + '</b>');
-                setTimeout(function(){ $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+                setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + results[0].name + '</b>');
+                setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
                 return;
             }
 
             $('#search_count_hint').text(results.length + ' SP');
+            results = sortQuickSearchResults(results);
             renderProductSearchResults(results.slice(0, 12), term, false);
         }, 150);
     });
 
     function renderProductSearchResults(results, term, isPopular){
+        results = sortQuickSearchResults((results || []).filter(matchesQuickSearchStockFilter));
         if(results.length === 0){
             var noResultHtml = '<div class="p-3 text-center">' +
                 '<i class="fas fa-search text-muted" style="font-size:24px;"></i>' +
-                '<div class="mt-1 text-muted">Không tìm thấy sản phẩm</div>' +
+                '<div class="mt-1 text-muted">Không có sản phẩm phù hợp bộ lọc</div>' +
                 '<button class="btn btn-sm btn-outline-info mt-2" onclick="$(document).trigger(jQuery.Event(\'keydown\',{key:\'F3\'}))"><i class="fas fa-plus-circle mr-1"></i>Tạo sản phẩm mới</button>' +
                 '</div>';
             $('#quick_search_results').html(noResultHtml).show();
-            $('#search_status_hint').html('<i class="fas fa-times-circle text-danger mr-1"></i>Không tìm thấy — nhấn <kbd>F3</kbd> để tạo mới');
+            setQuickSearchStatusHint('<i class="fas fa-times-circle text-danger mr-1"></i>Không có sản phẩm phù hợp bộ lọc');
             return;
         }
         var html = '';
@@ -765,21 +1265,21 @@ $(document).ready(function(){
         results.forEach(function(p, idx){
             var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
             var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
-            var stockColor = p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger';
-            var pendingText = p.total_pending_stock ? ' · Chờ duyệt: ' + fmt(p.total_pending_stock) : '';
-            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Đang GD: ' + fmt(p.total_reserved_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + pendingText + '</span>';
+            var stockHtml = renderQuickSearchStockText(p);
+            var alertBadgesHtml = renderQuickSearchAlertBadges(p);
             html += '<div class="quick-search-item d-flex align-items-center px-3 py-2' + (idx === 0 && !isPopular ? ' qs-active' : '') + '" data-product-id="'+p.id+'" style="cursor:pointer; transition:background 0.15s;">' +
                 imgHtml +
                 '<div class="flex-grow-1">' +
-                '<div><strong>' + p.code + '</strong> — ' + p.name + '</div>' +
-                '<small>' + priceHtml + ' · ' + stockHtml + ' · <span class="text-muted">' + p.unit + '</span></small>' +
+                '<div class="quick-search-title"><strong>' + p.code + '</strong> — ' + p.name + alertBadgesHtml + '</div>' +
+                '<div class="small mt-1">' + priceHtml + ' · <span class="text-muted">' + p.unit + '</span></div>' +
+                stockHtml +
                 '</div>' +
                 '<span class="btn btn-sm btn-primary ml-2" style="min-width:32px;"><i class="fas fa-plus"></i></span>' +
                 '</div>';
         });
         $('#quick_search_results').html(html).show();
         if(!isPopular){
-            $('#search_status_hint').html('<i class="fas fa-check text-success mr-1"></i>' + results.length + ' kết quả — <b>↑↓</b> chọn, <b>Enter</b> thêm');
+            setQuickSearchStatusHint('<i class="fas fa-check text-success mr-1"></i>' + results.length + ' kết quả — <b>↑↓</b> chọn, <b>Enter</b> thêm');
         }
     }
 
@@ -789,8 +1289,21 @@ $(document).ready(function(){
         if(product) addItemFromProduct(product);
         $('#quick_search_product').val('').focus();
         $('#quick_search_results').hide();
-        $('#search_status_hint').html('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + (product ? product.name : '') + '</b>');
-        setTimeout(function(){ $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+        setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + (product ? product.name : '') + '</b>');
+        setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+    });
+    $(document).on('click', '.quick-search-alert-badge', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setQuickSearchStockFilter($(this).data('filter') || 'all');
+    });
+    $(document).on('click', '.quick-search-reset-filter', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setQuickSearchStockFilter('all');
+    });
+    $(document).on('click', '.quick-search-filter-btn', function(){
+        setQuickSearchStockFilter($(this).data('filter') || 'all');
     });
     $('#quick_search_product').on('keydown', function(e){
         var $items = $('#quick_search_results .quick-search-item');
@@ -885,6 +1398,7 @@ $(document).ready(function(){
                 if(r.status === 'ok'){
                     $.get('/api/products_select/', function(res){
                         allProducts = res.data;
+                        updateQuickSearchFilterLabels();
                         var newProduct = allProducts.find(function(p){ return p.code === code; });
                         if(newProduct) addItemFromProduct(newProduct);
                     });
@@ -1057,23 +1571,10 @@ function addItemRow(item){
     var unit = item ? item.unit : '';
     var lineTotal = qty * price * (1 - disc / 100);
 
-    // Stock info
-    var stockLabel = '-';
-    var stockClass = '';
-    if(item && item.product_id){
-        var info = getStockForProduct(item.product_id);
-        stockLabel = info.label;
-        if(info.isService){
-            stockClass = 'text-muted';
-        } else {
-            stockClass = qty > info.stock ? 'text-danger font-weight-bold' : 'text-success';
-        }
-    }
-
     var html = '<tr>' +
         '<td><select class="form-control form-control-sm sel_product">' + opts + '</select></td>' +
         '<td class="lbl_unit text-center">' + unit + '</td>' +
-        '<td class="lbl_stock text-center ' + stockClass + '">' + stockLabel + '</td>' +
+        '<td class="lbl_stock align-middle">-</td>' +
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
@@ -1122,21 +1623,16 @@ function addItemRow(item){
                 } else {
                     $(this).val('').trigger('change.select2');
                     $row.find('.lbl_unit').text('');
-                    $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
+                    $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-muted');
                 }
                 syncDuplicateWarnings();
                 return;
             }
         }
         if(pid){
-            var info = getStockForProduct(parseInt(pid));
-            if(info.isService){
-                $row.find('.lbl_stock').text(info.label).removeClass('text-danger font-weight-bold text-success').addClass('text-muted');
-            } else {
-                $row.find('.lbl_stock').text(info.label).removeClass('text-danger font-weight-bold text-muted').addClass('text-success');
-            }
+            renderStockCellForRow($row);
         } else {
-            $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
+            $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-muted');
         }
         // Set qty step based on weight
         var product = allProducts.find(function(pp){return pp.id==parseInt(pid);});
@@ -1146,21 +1642,11 @@ function addItemRow(item){
 
     $row.find('.inp_qty').on('input', function(){
         calcLine($row);
-        var pid = $row.find('.sel_product').val();
-        if(pid){
-            var info = getStockForProduct(parseInt(pid));
-            if(!info.isService){
-                var qty = parseFloat($(this).val()) || 0;
-                if(qty > info.stock){
-                    $row.find('.lbl_stock').removeClass('text-success').addClass('text-danger font-weight-bold');
-                } else {
-                    $row.find('.lbl_stock').removeClass('text-danger font-weight-bold').addClass('text-success');
-                }
-            }
-        }
+        renderStockCellForRow($row);
     });
     $row.find('.inp_price, .inp_disc').on('input', function(){ calcLine($row); });
     $row.find('.btn_remove_item').click(function(){ $row.remove(); calcTotal(); syncDuplicateWarnings(); });
+    renderStockCellForRow($row);
 }
 
 function calcLine($row){
@@ -1200,16 +1686,29 @@ function calcTotal(){
 function loadData(){
     $.get('/api/quotations/', function(res){
         var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
+        var filterStatus = $('#filter_status').val();
+        var filterGroup = $('#filter_customer_group').val();
+        var filterFrom = $('#filter_from_date').val();
+        var filterTo = $('#filter_to_date').val();
         var h = '';
         res.data.filter(function(d){
-            if(!filterText){ return true; }
-            var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + (d.tags || '')).toLowerCase();
-            return searchable.indexOf(filterText) >= 0;
+            if(filterStatus !== '' && String(d.status) !== filterStatus) return false;
+            if(filterGroup && String(d.customer_group_id || '') !== filterGroup) return false;
+            if(filterFrom && d.quotation_date < filterFrom) return false;
+            if(filterTo && d.quotation_date > filterTo) return false;
+            if(filterText){
+                var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + (d.tags || '') + ' ' + (d.customer_group || '')).toLowerCase();
+                if(searchable.indexOf(filterText) < 0) return false;
+            }
+            return true;
         }).forEach(function(d, i){
             var sp = {% if biz.opt_quotation_salesperson %}'<td>'+(d.salesperson||'')+'</td>'{% else %}''{% endif %};
             var customerHtml = d.customer;
             if(d.customer_phone){
                 customerHtml += '<br><small class="text-muted">' + d.customer_phone + '</small>';
+            }
+            if(d.customer_group){
+                customerHtml += '<br><small class="badge badge-outline-info" style="border:1px solid #17a2b8;color:#17a2b8;font-weight:normal;">' + d.customer_group + '</small>';
             }
             if(d.tags){
                 customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
@@ -1235,6 +1734,81 @@ function loadData(){
         $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
 }
+
+$('#btn_search_quote').click(function(){ loadData(); });
+$('#filter_status, #filter_customer_group, #filter_from_date, #filter_to_date').on('change', function(){ loadData(); });
+$('#btn_clear_quote_filter').click(function(){
+    $('#filter_text').val('');
+    $('#filter_status, #filter_customer_group').val('');
+    $('#filter_from_date, #filter_to_date').val('');
+    loadData();
+});
+
+var QUOTE_FILTER_STORAGE_KEY = 'ifshop_quotation_filters';
+function getQuoteSavedFilters(){
+    try { return JSON.parse(localStorage.getItem(QUOTE_FILTER_STORAGE_KEY)) || []; }
+    catch(e){ return []; }
+}
+function renderQuoteSavedFiltersMenu(){
+    var filters = getQuoteSavedFilters();
+    var $menu = $('#saved_quote_filters_menu'); $menu.html('');
+    if(filters.length === 0){
+        $menu.html('<span class="dropdown-item text-muted">Chưa có bộ lọc nào</span>');
+        return;
+    }
+    filters.forEach(function(f, idx){
+        var desc = [];
+        if(f.text) desc.push('"' + f.text + '"');
+        if(f.status !== undefined && f.status !== '') desc.push($('#filter_status option[value="'+f.status+'"]').text() || 'Trạng thái');
+        if(f.customer_group_text) desc.push(f.customer_group_text);
+        if(f.from_date || f.to_date) desc.push((f.from_date || '...') + ' - ' + (f.to_date || '...'));
+        var descText = desc.length ? '<br><small class="text-muted">' + desc.join(' · ') + '</small>' : '';
+        $menu.append(
+            '<div class="dropdown-item d-flex justify-content-between align-items-center" style="cursor:pointer;">' +
+            '<span class="quote-filter-load-btn flex-grow-1" data-idx="'+idx+'">' + (f.name || ('Bộ lọc '+(idx+1))) + descText + '</span>' +
+            '<button class="btn btn-xs btn-outline-danger ml-2 quote-filter-del-btn" data-idx="'+idx+'" title="Xóa"><i class="fas fa-times"></i></button>' +
+            '</div>'
+        );
+    });
+}
+$('#btn_save_quote_filter').click(function(){
+    var name = prompt('Đặt tên bộ lọc:', '');
+    if(!name) return;
+    var preset = {
+        name: name,
+        text: $('#filter_text').val() || '',
+        status: $('#filter_status').val() || '',
+        customer_group: $('#filter_customer_group').val() || '',
+        customer_group_text: $('#filter_customer_group').val() ? ($('#filter_customer_group option:selected').text() || '') : '',
+        from_date: $('#filter_from_date').val() || '',
+        to_date: $('#filter_to_date').val() || ''
+    };
+    var filters = getQuoteSavedFilters();
+    filters.push(preset);
+    localStorage.setItem(QUOTE_FILTER_STORAGE_KEY, JSON.stringify(filters));
+    renderQuoteSavedFiltersMenu();
+    if(typeof toastr !== 'undefined') toastr.success('Đã lưu bộ lọc: ' + name);
+});
+$(document).on('click', '.quote-filter-load-btn', function(){
+    var filters = getQuoteSavedFilters();
+    var f = filters[$(this).data('idx')];
+    if(!f) return;
+    $('#filter_text').val(f.text || '');
+    $('#filter_status').val(f.status || '');
+    $('#filter_customer_group').val(f.customer_group || '');
+    $('#filter_from_date').val(f.from_date || '');
+    $('#filter_to_date').val(f.to_date || '');
+    loadData();
+    if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
+});
+$(document).on('click', '.quote-filter-del-btn', function(e){
+    e.stopPropagation();
+    var filters = getQuoteSavedFilters();
+    filters.splice($(this).data('idx'), 1);
+    localStorage.setItem(QUOTE_FILTER_STORAGE_KEY, JSON.stringify(filters));
+    renderQuoteSavedFiltersMenu();
+});
+renderQuoteSavedFiltersMenu();
 
 function editItem(id){
     $.get('/api/quotations/detail/?id=' + id, function(res){

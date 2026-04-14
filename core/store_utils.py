@@ -5,6 +5,8 @@ Regular user sees only their store's data.
 Brand owner sees all stores under their brand.
 """
 from functools import wraps
+import re
+import unicodedata
 from django.http import JsonResponse
 from django.shortcuts import redirect
 
@@ -130,3 +132,42 @@ def report_permission_required(view_func):
             return redirect('/')
         return view_func(request, *args, **kwargs)
     return wrapper
+
+
+def _normalize_role_text(value):
+    raw = unicodedata.normalize('NFKD', str(value or ''))
+    raw = ''.join(ch for ch in raw if not unicodedata.combining(ch)).lower()
+    return re.sub(r'[^a-z0-9]+', ' ', raw).strip()
+
+
+def can_view_sales_report(user):
+    """
+    Báo cáo bán hàng chỉ cho tài khoản có vai trò/chức vụ:
+    - Giám đốc
+    - Kế toán
+    """
+    if not user or not user.is_authenticated or user.is_superuser:
+        return False
+
+    labels = list(user.groups.values_list('name', flat=True))
+    try:
+        if user.profile.position:
+            labels.append(user.profile.position)
+    except Exception:
+        pass
+
+    keywords = (
+        'giam doc',
+        'giamdoc',
+        'ke toan',
+        'ketoan',
+        'director',
+        'accountant',
+    )
+
+    for label in labels:
+        normalized = _normalize_role_text(label)
+        compact = normalized.replace(' ', '')
+        if any(keyword in normalized or keyword.replace(' ', '') in compact for keyword in keywords):
+            return True
+    return False

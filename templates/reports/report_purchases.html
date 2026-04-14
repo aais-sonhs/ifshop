@@ -13,10 +13,16 @@
             <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
             <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
         </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+            <div class="small text-muted">
+                Số liệu cập nhật ngay khi lưu phiếu nhập hoàn thành. Nếu chưa thấy, kiểm tra lại khoảng ngày đang lọc.
+            </div>
+            <div class="small text-muted">Cập nhật lúc: <span id="report_refreshed_at">--</span></div>
+        </div>
         <div class="row mb-3">
             <div class="col-md-4">
                 <div class="small-box bg-primary">
-                    <div class="inner"><h4 id="total_count">0</h4><p>Phiếu nhập</p></div>
+                    <div class="inner"><h4 id="total_count">0</h4><p>Phiếu hoàn thành</p></div>
                     <div class="icon"><i class="fas fa-truck-loading"></i></div>
                 </div>
             </div>
@@ -46,20 +52,32 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
+function localDateInputValue(date){
+    var d = date || new Date();
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + month + '-' + day;
+}
 $(document).ready(function(){
     var today = new Date();
     var first = new Date(today.getFullYear(), today.getMonth(), 1);
-    $('#filter_from_date').val(first.toISOString().split('T')[0]);
-    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+    $('#filter_from_date').val(localDateInputValue(first));
+    $('#filter_to_date').val(localDateInputValue(today));
     loadReport();
     $('#btn_search').click(function(){ loadReport(); });
+    $(window).on('pageshow', function(event){
+        if(event.originalEvent && event.originalEvent.persisted){
+            loadReport();
+        }
+    });
 });
 function loadReport(){
-    var url = '/api/report_purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val();
+    var url = '/api/report_purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val()+'&_ts='+Date.now();
     $.get(url, function(res){
         if(res.status !== 'ok') return;
         $('#total_count').text(res.summary.total_count);
         $('#total_amount').text(fmtD(res.summary.total_amount));
+        $('#report_refreshed_at').text(res.summary.refreshed_at || '--');
         var h='', total=0;
         res.data.forEach(function(d,i){
             var badge = d.status===2 ? '<span class="badge badge-dark">Hủy</span>' :
@@ -68,7 +86,7 @@ function loadReport(){
             h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.date+'</td>'+
                 '<td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
                 '<td class="text-right">'+fmtD(d.total_amount)+'</td><td class="text-center">'+badge+'</td></tr>';
-            if(d.status !== 2) total += d.total_amount;
+            if(d.status === 1) total += d.total_amount;
         });
         if(!h) h = '<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
         $('#report_tbl tbody').html(h);

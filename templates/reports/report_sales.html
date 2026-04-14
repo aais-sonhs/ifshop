@@ -32,6 +32,26 @@
                         <div class="col-md-2"><label class="small text-muted mb-1">LN gộp từ</label><input type="number" class="form-control form-control-sm" id="filter_profit_min" placeholder="Âm = lỗ"></div>
                         <div class="col-md-2"><label class="small text-muted mb-1">LN gộp đến</label><input type="number" class="form-control form-control-sm" id="filter_profit_max" placeholder="Không giới hạn"></div>
                     </div>
+                    <div class="row mt-2">
+                        <div class="col-md-3"><label class="small text-muted mb-1">Khách hàng</label><select class="form-control form-control-sm" id="filter_customer_id"><option value="">👤 Tất cả</option></select></div>
+                        <div class="col-md-3"><label class="small text-muted mb-1">Mặt hàng</label><select class="form-control form-control-sm" id="filter_product_id"><option value="">🧾 Tất cả</option></select></div>
+                        <div class="col-md-2"><label class="small text-muted mb-1">Nhân viên</label><select class="form-control form-control-sm" id="filter_salesperson"><option value="">🧑‍💼 Tất cả</option></select></div>
+                        <div class="col-md-4"><label class="small text-muted mb-1">Tìm nhanh</label><input type="text" class="form-control form-control-sm" id="filter_search" placeholder="Mã đơn, khách hàng, mặt hàng, NV bán hàng..."></div>
+                    </div>
+                    <div class="d-flex align-items-center flex-wrap mt-2" style="gap:6px;">
+                        <span class="small text-muted">Xem theo:</span>
+                        <select class="form-control form-control-sm" id="filter_time_group" style="width:auto;min-width:110px;">
+                            <option value="day">Ngày</option>
+                            <option value="month">Tháng</option>
+                            <option value="year">Năm</option>
+                        </select>
+                        <span class="small text-muted">Mốc nhanh:</span>
+                        <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="today">Hôm nay</button>
+                        <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="7d">7 ngày</button>
+                        <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="30d">30 ngày</button>
+                        <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="month">Tháng này</button>
+                    </div>
+                    <div class="mt-2 d-flex align-items-center flex-wrap" id="sales_report_filter_summary" style="gap:6px;"></div>
                     <div class="row mt-2"><div class="col-md-12 text-right">
                         <button class="btn btn-sm btn-outline-secondary mr-1" id="btn_reset_filter"><i class="fas fa-undo"></i> Xóa lọc</button>
                         <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
@@ -41,11 +61,13 @@
         </div>
 
         <!-- TABS -->
-        <ul class="nav nav-tabs nav-justified mb-3" id="reportTabs" style="border-bottom:2px solid #dee2e6;">
+        <ul class="nav nav-tabs mb-3" id="reportTabs" style="border-bottom:2px solid #dee2e6;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;">
             <li class="nav-item"><a class="nav-link active font-weight-bold" data-toggle="tab" href="#tab_overview"><i class="fas fa-tachometer-alt mr-1"></i>Tổng quan</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_products"><i class="fas fa-boxes mr-1"></i>DT Mặt hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_customers"><i class="fas fa-users mr-1"></i>DT Khách hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_staff"><i class="fas fa-user-tie mr-1"></i>DT Nhân viên</a></li>
+            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_orders"><i class="fas fa-file-invoice-dollar mr-1"></i>Theo đơn</a></li>
+            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_returns"><i class="fas fa-undo mr-1"></i>Trả hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_profit"><i class="fas fa-coins mr-1"></i>Lợi nhuận gộp</a></li>
         </ul>
 
@@ -69,15 +91,42 @@
                 </div>
                 <!-- Biểu đồ doanh thu theo ngày -->
                 <div class="row mb-3">
-                    <div class="col-md-8"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_daily"></canvas></div></div></div>
+                    <div class="col-md-8"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0" id="timeline_chart_title"><i class="fas fa-chart-bar mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_daily"></canvas></div></div></div>
                     <div class="col-md-4"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Top sản phẩm</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_products"></canvas></div></div></div>
                 </div>
                 <!-- Bảng doanh thu ngày + chi tiết -->
                 <div class="row mb-3">
-                    <div class="col-md-8"><div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body p-0"><div class="table-responsive"><table id="report_tbl" class="table table-bordered table-striped table-sm mb-0"><thead class="bg-light"><tr><th>STT</th><th>Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th>Trả hàng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light"><tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_returns">0</td></tr></tfoot></table></div></div></div></div>
+                    <div class="col-md-8"><div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0" id="timeline_table_title"><i class="fas fa-table mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body p-0"><div class="table-responsive"><table id="report_tbl" class="table table-bordered table-striped table-sm mb-0"><thead class="bg-light"><tr><th>STT</th><th id="timeline_col_label">Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th>Trả hàng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light"><tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_returns">0</td></tr></tfoot></table></div></div></div></div>
                     <div class="col-md-4">
                         <div class="card card-outline card-success mb-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-trophy mr-1"></i>Top SP bán chạy</h6></div><div class="card-body p-0"><table class="table table-sm mb-0" id="top_products_tbl"><thead class="bg-light"><tr><th>#</th><th>Sản phẩm</th><th>SL</th><th>Doanh thu</th><th>LN</th></tr></thead><tbody></tbody></table></div></div>
                         <div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-users mr-1"></i>Top khách hàng</h6></div><div class="card-body p-0"><table class="table table-sm mb-0" id="top_customers_tbl"><thead class="bg-light"><tr><th>#</th><th>Khách hàng</th><th>ĐH</th><th>Doanh thu</th></tr></thead><tbody></tbody></table></div></div>
+                    </div>
+                </div>
+                <div class="card card-outline card-secondary mb-3" id="store_breakdown_section" style="display:none;">
+                    <div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-store mr-1"></i>Doanh thu theo chi nhánh / cửa hàng</h6></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-5 mb-3 mb-md-0"><div style="height:320px;"><canvas id="chart_store_revenue"></canvas></div></div>
+                            <div class="col-md-7">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-sm mb-0" id="store_breakdown_tbl">
+                                        <thead class="bg-light">
+                                            <tr>
+                                                <th>Cửa hàng</th>
+                                                <th class="text-right">Số ĐH</th>
+                                                <th class="text-right">Doanh thu</th>
+                                                <th class="text-right">Đã thu</th>
+                                                <th class="text-right">Công nợ</th>
+                                                <th class="text-right">Giá vốn</th>
+                                                <th class="text-right">Lợi nhuận</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <!-- Chi tiết đơn -->
@@ -92,6 +141,7 @@
                     <div class="col-md-5"><div class="card card-outline card-teal"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Tỷ trọng danh mục</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_category_pie"></canvas></div></div></div>
                 </div>
                 <div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="product_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Sản phẩm</th><th>Danh mục</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="3">TỔNG</td><td id="pd_ft_qty" class="text-right">0</td><td id="pd_ft_rev" class="text-right">0</td><td id="pd_ft_cost" class="text-right">0</td><td id="pd_ft_profit" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-info mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-layer-group mr-1"></i>Doanh thu theo nhóm mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="category_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Nhóm mặt hàng</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="cat_ft_qty" class="text-right">0</td><td id="cat_ft_rev" class="text-right">0</td><td id="cat_ft_cost" class="text-right">0</td><td id="cat_ft_profit" class="text-right">0</td><td></td><td></td></tr></tfoot></table></div></div></div>
             </div>
 
             <!-- TAB 3: DT KHÁCH HÀNG -->
@@ -100,7 +150,8 @@
                     <div class="col-md-7"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Top 15 khách hàng theo doanh thu</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_customer_revenue"></canvas></div></div></div>
                     <div class="col-md-5"><div class="card card-outline card-indigo"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Tỷ trọng nhóm KH</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_group_pie"></canvas></div></div></div>
                 </div>
-                <div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Khách hàng</th><th>Nhóm</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="3">TỔNG</td><td id="cd_ft_orders" class="text-right">0</td><td id="cd_ft_rev" class="text-right">0</td><td id="cd_ft_paid" class="text-right">0</td><td id="cd_ft_debt" class="text-right">0</td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Khách hàng</th><th>Nhóm</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="3">TỔNG</td><td id="cd_ft_orders" class="text-right">0</td><td id="cd_ft_rev" class="text-right">0</td><td id="cd_ft_cost" class="text-right">0</td><td id="cd_ft_profit" class="text-right">0</td><td id="cd_ft_paid" class="text-right">0</td><td id="cd_ft_debt" class="text-right">0</td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-secondary mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-users-cog mr-1"></i>Doanh thu theo nhóm khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_group_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Nhóm KH</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="cg_ft_orders" class="text-right">0</td><td id="cg_ft_rev" class="text-right">0</td><td id="cg_ft_cost" class="text-right">0</td><td id="cg_ft_profit" class="text-right">0</td><td id="cg_ft_paid" class="text-right">0</td><td id="cg_ft_debt" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
             </div>
 
             <!-- TAB 4: DT NHÂN VIÊN -->
@@ -112,7 +163,39 @@
                 <div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu nhân viên</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="staff_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>#</th><th>Nhân viên</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Trả hàng</th><th class="text-right">Tỷ lệ</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="2">TỔNG</td><td id="sf_ft_orders" class="text-right">0</td><td id="sf_ft_rev" class="text-right">0</td><td id="sf_ft_cost" class="text-right">0</td><td id="sf_ft_profit" class="text-right">0</td><td id="sf_ft_returns" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
             </div>
 
-            <!-- TAB 5: LỢI NHUẬN GỘP -->
+            <!-- TAB 5: THEO ĐƠN HÀNG -->
+            <div class="tab-pane fade" id="tab_orders">
+                <div class="row mb-3">
+                    <div class="col-lg-4 col-6"><div class="small-box bg-info"><div class="inner"><h4 id="or_avg_order">0</h4><p>GT đơn trung bình</p></div><div class="icon"><i class="fas fa-shopping-basket"></i></div></div></div>
+                    <div class="col-lg-4 col-6"><div class="small-box bg-success"><div class="inner"><h4 id="or_avg_profit">0</h4><p>LN trung bình / đơn</p></div><div class="icon"><i class="fas fa-chart-line"></i></div></div></div>
+                    <div class="col-lg-4 col-6"><div class="small-box bg-warning"><div class="inner"><h4 id="or_collect_rate">0%</h4><p>Tỷ lệ đã thu</p></div><div class="icon"><i class="fas fa-wallet"></i></div></div></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Trạng thái đơn hàng</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_order_status"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-doughnut mr-1"></i>Trạng thái thanh toán</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_payment_status"></canvas></div></div></div>
+                </div>
+                <div class="card card-outline card-info"><div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết đơn hàng</h6><small class="text-muted">Đơn báo lỗ sẽ được tô đỏ và hiện ký hiệu `🔴` ở cột lợi nhuận.</small></div><div class="card-body p-0"><div class="table-responsive" style="max-height:520px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="order_report_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Khách hàng</th><th>Nhân viên</th><th>Cửa hàng</th><th class="text-right">Doanh thu</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th>TT đơn</th><th>TT thanh toán</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;"><tr><td colspan="6">TỔNG</td><td id="or_ft_revenue" class="text-right">0</td><td id="or_ft_paid" class="text-right">0</td><td id="or_ft_debt" class="text-right">0</td><td id="or_ft_cost" class="text-right">0</td><td id="or_ft_profit" class="text-right">0</td><td colspan="2"></td></tr></tfoot></table></div></div></div>
+            </div>
+
+            <!-- TAB 6: TRẢ HÀNG -->
+            <div class="tab-pane fade" id="tab_returns">
+                <div class="row mb-3">
+                    <div class="col-lg-3 col-6"><div class="small-box bg-danger"><div class="inner"><h4 id="rt_total_amount">0</h4><p>Tổng hoàn trả</p></div><div class="icon"><i class="fas fa-hand-holding-usd"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-warning"><div class="inner"><h4 id="rt_return_count">0</h4><p>Phiếu trả</p></div><div class="icon"><i class="fas fa-receipt"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-info"><div class="inner"><h4 id="rt_product_count">0</h4><p>Mặt hàng bị trả</p></div><div class="icon"><i class="fas fa-box-open"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-secondary"><div class="inner"><h4 id="rt_return_rate">0%</h4><p>Tỷ lệ trả hàng</p></div><div class="icon"><i class="fas fa-percentage"></i></div></div></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6"><div class="card card-outline card-danger"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Top mặt hàng bị trả</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_return_products"></canvas></div></div></div>
+                    <div class="col-md-6"><div class="card card-outline card-warning"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Top phiếu trả theo giá trị</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_return_orders"></canvas></div></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-7 mb-3"><div class="card card-outline card-danger"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Trả hàng theo đơn</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:520px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="return_order_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Mã phiếu</th><th>Ngày</th><th>Đơn gốc</th><th>Khách hàng</th><th>Nhân viên</th><th class="text-right">SL trả</th><th class="text-right">Hoàn tiền</th><th>Trạng thái</th></tr></thead><tbody></tbody></table></div></div></div></div>
+                    <div class="col-md-5 mb-3"><div class="card card-outline card-warning"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Trả hàng theo sản phẩm</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:520px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="return_product_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Sản phẩm</th><th class="text-right">SL trả</th><th class="text-right">Hoàn tiền</th><th class="text-right">Số phiếu</th></tr></thead><tbody></tbody></table></div></div></div></div>
+                </div>
+            </div>
+
+            <!-- TAB 7: LỢI NHUẬN GỘP -->
             <div class="tab-pane fade" id="tab_profit">
                 <div class="row mb-3">
                     <div class="col-lg-4 col-6"><div class="small-box bg-success"><div class="inner"><h4 id="gp_revenue">0</h4><p>Doanh thu thuần</p></div><div class="icon"><i class="fas fa-dollar-sign"></i></div></div></div>
@@ -120,7 +203,7 @@
                     <div class="col-lg-4 col-6"><div class="small-box bg-warning" id="gp_profit_box"><div class="inner"><h4 id="gp_profit">0</h4><p>Lợi nhuận gộp <small id="gp_margin" class="badge badge-light ml-1"></small></p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
                 </div>
                 <div class="row mb-3">
-                    <div class="col-md-8"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-area mr-1"></i>Xu hướng lợi nhuận gộp</h6></div><div class="card-body" style="height:350px;"><canvas id="chart_profit_trend"></canvas></div></div></div>
+                    <div class="col-md-8"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0" id="profit_trend_title"><i class="fas fa-chart-area mr-1"></i>Xu hướng lợi nhuận gộp theo ngày</h6></div><div class="card-body" style="height:350px;"><canvas id="chart_profit_trend"></canvas></div></div></div>
                     <div class="col-md-4"><div class="card card-outline card-teal"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>LN theo danh mục</h6></div><div class="card-body" style="height:350px;"><canvas id="chart_profit_category"></canvas></div></div></div>
                 </div>
                 <div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Lợi nhuận gộp theo danh mục</h6></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-bordered table-sm mb-0" id="profit_category_tbl"><thead class="bg-light"><tr><th>Danh mục</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th></tr></thead><tbody></tbody></table></div></div></div>
@@ -135,47 +218,186 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n)+'đ';}
+function escapeHtml(value){return $('<div>').text(value || '').html();}
+function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
+function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
 var _filtersLoaded=false, _charts={};
 var COLORS=['#36A2EB','#FF6384','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#7BC8A4','#E7646A','#8B5CF6','#10B981','#F59E0B','#3B82F6','#EF4444','#6366F1'];
 
 function destroyChart(name){if(_charts[name]){_charts[name].destroy();delete _charts[name];}}
+function populateSelect(selector, rows, placeholder, mapFn){
+    var current=$(selector).val()||'';
+    var html='<option value="">'+placeholder+'</option>';
+    (rows||[]).forEach(function(row){
+        var mapped=mapFn(row);
+        html+='<option value="'+mapped.value+'">'+escapeHtml(mapped.text)+'</option>';
+    });
+    $(selector).html(html).val(current);
+}
+function toIsoDate(d){return d.toISOString().split('T')[0];}
+function applyQuickRangeState(){
+    $('.btn-quick-range').removeClass('btn-primary').addClass('btn-outline-primary');
+    var today=new Date();
+    var from=$('#filter_from_date').val(), to=$('#filter_to_date').val();
+    var monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
+    var date7=new Date(today); date7.setDate(date7.getDate()-6);
+    var date30=new Date(today); date30.setDate(date30.getDate()-29);
+    var matched='';
+    if(from===toIsoDate(today) && to===toIsoDate(today)) matched='today';
+    else if(from===toIsoDate(date7) && to===toIsoDate(today)) matched='7d';
+    else if(from===toIsoDate(date30) && to===toIsoDate(today)) matched='30d';
+    else if(from===toIsoDate(monthStart) && to===toIsoDate(today)) matched='month';
+    if(matched){
+        $('.btn-quick-range[data-range="'+matched+'"]').removeClass('btn-outline-primary').addClass('btn-primary');
+    }
+}
+function setQuickRange(range){
+    var today=new Date(), from=new Date(today), to=new Date(today);
+    if(range==='month'){ from=new Date(today.getFullYear(), today.getMonth(), 1); }
+    else if(range==='7d'){ from.setDate(from.getDate()-6); }
+    else if(range==='30d'){ from.setDate(from.getDate()-29); }
+    $('#filter_from_date').val(toIsoDate(from));
+    $('#filter_to_date').val(toIsoDate(to));
+    applyQuickRangeState();
+    loadReport();
+}
+function applyTimeGroupUi(label){
+    var groupLabel=label||'Ngày';
+    var lower=groupLabel.toLowerCase();
+    $('#timeline_chart_title').html('<i class="fas fa-chart-bar mr-1"></i>Doanh thu theo '+escapeHtml(lower));
+    $('#timeline_table_title').html('<i class="fas fa-table mr-1"></i>Doanh thu theo '+escapeHtml(lower));
+    $('#timeline_col_label').text(groupLabel);
+    $('#profit_trend_title').html('<i class="fas fa-chart-area mr-1"></i>Xu hướng lợi nhuận gộp theo '+escapeHtml(lower));
+}
+function renderSalesReportFilterSummary(summary){
+    var chips=[];
+    if($('#filter_from_date').val()||$('#filter_to_date').val()) chips.push('<span class="badge badge-light border px-2 py-1">Ngày: '+escapeHtml($('#filter_from_date').val()||'...')+' → '+escapeHtml($('#filter_to_date').val()||'...')+'</span>');
+    chips.push('<span class="badge badge-light border px-2 py-1">Theo '+escapeHtml(getTimeGroupText())+'</span>');
+    if($('#filter_store_id').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_store_id'))+'</span>');
+    if($('#filter_customer_group').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_group'))+'</span>');
+    if($('#filter_category').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_category'))+'</span>');
+    if($('#filter_customer_id').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_id'))+'</span>');
+    if($('#filter_product_id').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_product_id'))+'</span>');
+    if($('#filter_salesperson').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_salesperson'))+'</span>');
+    if($('#filter_profit').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_profit'))+'</span>');
+    if($('#filter_search').val()) chips.push('<span class="badge badge-light border px-2 py-1">Từ khóa: '+escapeHtml($('#filter_search').val())+'</span>');
+    if($('#filter_revenue_min').val()||$('#filter_revenue_max').val()) chips.push('<span class="badge badge-light border px-2 py-1">DT: '+escapeHtml($('#filter_revenue_min').val()||'...')+' → '+escapeHtml($('#filter_revenue_max').val()||'...')+'</span>');
+    if($('#filter_cost_min').val()||$('#filter_cost_max').val()) chips.push('<span class="badge badge-light border px-2 py-1">GV: '+escapeHtml($('#filter_cost_min').val()||'...')+' → '+escapeHtml($('#filter_cost_max').val()||'...')+'</span>');
+    if($('#filter_profit_min').val()||$('#filter_profit_max').val()) chips.push('<span class="badge badge-light border px-2 py-1">LN: '+escapeHtml($('#filter_profit_min').val()||'...')+' → '+escapeHtml($('#filter_profit_max').val()||'...')+'</span>');
+    if(!chips.length) chips.push('<span class="text-muted small">Đang hiển thị toàn bộ dữ liệu trong kỳ.</span>');
+    if(summary){ chips.push('<span class="badge badge-info px-2 py-1">'+fmt(summary.total_orders||0)+' đơn</span>'); }
+    $('#sales_report_filter_summary').html(chips.join(''));
+}
+
+function getMetricRangeFilters(){
+    function parseNumber(selector){
+        var value = $(selector).val();
+        if(value === '' || value === null || typeof value === 'undefined'){
+            return null;
+        }
+        var parsed = parseFloat(value);
+        return isNaN(parsed) ? null : parsed;
+    }
+    return {
+        revenueMin: parseNumber('#filter_revenue_min'),
+        revenueMax: parseNumber('#filter_revenue_max'),
+        costMin: parseNumber('#filter_cost_min'),
+        costMax: parseNumber('#filter_cost_max'),
+        profitMin: parseNumber('#filter_profit_min'),
+        profitMax: parseNumber('#filter_profit_max')
+    };
+}
+
+function matchesMetricRanges(row){
+    var filters = getMetricRangeFilters();
+    var revenue = Number(row.revenue != null ? row.revenue : (row.amount != null ? row.amount : 0)) || 0;
+    var cost = Number(row.cost || 0) || 0;
+    var profit = Number(row.profit != null ? row.profit : (revenue - cost)) || 0;
+    if(filters.revenueMin !== null && revenue < filters.revenueMin) return false;
+    if(filters.revenueMax !== null && revenue > filters.revenueMax) return false;
+    if(filters.costMin !== null && cost < filters.costMin) return false;
+    if(filters.costMax !== null && cost > filters.costMax) return false;
+    if(filters.profitMin !== null && profit < filters.profitMin) return false;
+    if(filters.profitMax !== null && profit > filters.profitMax) return false;
+    return true;
+}
+
+function appendMetricFiltersToUrl(url){
+    var filters = getMetricRangeFilters();
+    if(filters.revenueMin !== null) url += '&revenue_min=' + encodeURIComponent(filters.revenueMin);
+    if(filters.revenueMax !== null) url += '&revenue_max=' + encodeURIComponent(filters.revenueMax);
+    if(filters.costMin !== null) url += '&cost_min=' + encodeURIComponent(filters.costMin);
+    if(filters.costMax !== null) url += '&cost_max=' + encodeURIComponent(filters.costMax);
+    if(filters.profitMin !== null) url += '&profit_min=' + encodeURIComponent(filters.profitMin);
+    if(filters.profitMax !== null) url += '&profit_max=' + encodeURIComponent(filters.profitMax);
+    return url;
+}
 
 $(document).ready(function(){
     var today=new Date(), firstDay=new Date(today.getFullYear(),today.getMonth(),1);
     $('#filter_from_date').val(firstDay.toISOString().split('T')[0]);
     $('#filter_to_date').val(today.toISOString().split('T')[0]);
+    $('#filter_time_group').val('day');
+    applyQuickRangeState();
+    applyTimeGroupUi(getTimeGroupText());
     loadReport();
     $('#btn_search').click(function(){loadReport();});
-    $('#filter_store_id').change(function(){loadReport();});
-    $('#btn_reset_filter').click(function(){$('#filter_customer_group,#filter_category,#filter_profit,#filter_store_id').val('');$('#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_profit_min,#filter_profit_max').val('');loadReport();});
-    $('#btn_view_loss').click(function(e){e.preventDefault();$('#filter_profit').val('loss');loadReport();setTimeout(function(){$('#reportTabs a[href="#tab_overview"]').tab('show');$('#orderDetailCollapse').collapse('show');},500);});
+    $('#filter_store_id, #filter_customer_group, #filter_category, #filter_profit, #filter_customer_id, #filter_product_id, #filter_salesperson, #filter_time_group').change(function(){loadReport();});
+    $('#filter_from_date, #filter_to_date').change(function(){applyQuickRangeState();});
+    $('#filter_revenue_min, #filter_revenue_max, #filter_cost_min, #filter_cost_max, #filter_profit_min, #filter_profit_max').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
+    $('#filter_search').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
+    $('.btn-quick-range').click(function(){ setQuickRange($(this).data('range')); });
+    $('#btn_reset_filter').click(function(){
+        var resetToday=new Date(), resetFirstDay=new Date(resetToday.getFullYear(),resetToday.getMonth(),1);
+        $('#filter_customer_group,#filter_category,#filter_profit,#filter_store_id,#filter_customer_id,#filter_product_id,#filter_salesperson').val('');
+        $('#filter_time_group').val('day');
+        $('#filter_search,#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_profit_min,#filter_profit_max').val('');
+        $('#filter_from_date').val(toIsoDate(resetFirstDay));
+        $('#filter_to_date').val(toIsoDate(resetToday));
+        applyQuickRangeState();
+        applyTimeGroupUi(getTimeGroupText());
+        loadReport();
+    });
+    $('#btn_view_loss').click(function(e){e.preventDefault();$('#filter_profit').val('loss');loadReport();setTimeout(function(){$('#reportTabs a[href="#tab_orders"]').tab('show');},500);});
 });
 
 function loadReport(){
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
-    var url='/api/report_sales/?from_date='+from+'&to_date='+to;
+    var timeGroup=$('#filter_time_group').val()||'day';
+    var url='/api/report_sales/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
     if(storeId)url+='&store_id='+storeId;
     var groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),profitF=$('#filter_profit').val();
+    var customerId=$('#filter_customer_id').val(),productId=$('#filter_product_id').val(),salesperson=$('#filter_salesperson').val(),search=$('#filter_search').val();
     if(groupId)url+='&customer_group_id='+groupId;if(catId)url+='&category_id='+catId;if(profitF)url+='&profit_filter='+profitF;
+    if(customerId)url+='&customer_id='+customerId;if(productId)url+='&product_id='+productId;if(salesperson)url+='&salesperson='+encodeURIComponent(salesperson);if(search)url+='&search='+encodeURIComponent(search);
+    url = appendMetricFiltersToUrl(url);
 
     $.get(url, function(res){
         if(res.status!=='ok')return;
         // Filters
-        if(!_filtersLoaded&&res.filter_options){
-            var gO='<option value="">👥 Tất cả</option>';(res.filter_options.customer_groups||[]).forEach(function(g){gO+='<option value="'+g.id+'">'+g.name+'</option>';});$('#filter_customer_group').html(gO).val(groupId);
-            var cO='<option value="">📦 Tất cả</option>';(res.filter_options.categories||[]).forEach(function(c){cO+='<option value="'+c.id+'">'+c.name+'</option>';});$('#filter_category').html(cO).val(catId);_filtersLoaded=true;
+        if(res.filter_options){
+            populateSelect('#filter_customer_group', res.filter_options.customer_groups || [], '👥 Tất cả', function(g){ return {value:g.id, text:g.name}; });
+            populateSelect('#filter_category', res.filter_options.categories || [], '📦 Tất cả', function(c){ return {value:c.id, text:c.name}; });
+            populateSelect('#filter_customer_id', res.filter_options.customers || [], '👤 Tất cả', function(c){ return {value:c.id, text:(c.code ? c.code + ' - ' : '') + c.name}; });
+            populateSelect('#filter_product_id', res.filter_options.products || [], '🧾 Tất cả', function(p){ return {value:p.id, text:(p.code ? p.code + ' - ' : '') + p.name}; });
+            populateSelect('#filter_salesperson', (res.filter_options.salespersons || []).map(function(name){ return {name:name}; }), '🧑‍💼 Tất cả', function(s){ return {value:s.name, text:s.name}; });
+            _filtersLoaded=true;
         }
         if(res.has_multiple_stores&&res.stores&&res.stores.length>1){$('#store_filter_wrap').show();var cv=$('#filter_store_id').val(),os='<option value="">🏢 Tất cả</option>';res.stores.forEach(function(s){os+='<option value="'+s.id+'"'+(s.id==cv?' selected':'')+'>'+s.name+'</option>';});$('#filter_store_id').html(os);}else{$('#store_filter_wrap').hide();}
+        if(res.time_group){$('#filter_time_group').val(res.time_group);}
+        applyTimeGroupUi(res.time_group_label||getTimeGroupText());
+        renderSalesReportFilterSummary(res.summary);
 
         var s=res.summary;
         $('#total_orders').text(s.total_orders);$('#total_revenue').text(fmtD(s.total_revenue));$('#total_profit').text(fmtD(s.total_profit));$('#profit_margin_badge').text(s.profit_margin+'%');
         var pB=$('#profit_box').removeClass('bg-warning bg-danger bg-success');if(s.total_profit<0)pB.addClass('bg-danger');else if(s.total_profit>0)pB.addClass('bg-success');else pB.addClass('bg-warning');
         $('#total_debt').text(fmtD(s.total_debt));$('#total_cost').text(fmtD(s.total_cost));$('#total_returns').text(fmtD(s.total_returns));$('#returns_count').text(s.returns_count);$('#total_purchases').text(fmtD(s.total_purchases));$('#total_paid').text(fmtD(s.total_revenue-s.total_debt));
         if(s.loss_count>0){$('#loss_box').show();$('#loss_count').text(s.loss_count+' đơn');}else{$('#loss_box').hide();}
+        var timeline=res.timeline||res.daily||[];
 
         // Tab overview tables
-        renderDailyTable(res.daily);renderTopProducts(res.top_products);renderTopCustomers(res.top_customers);renderOrderDetails(res.order_details);
-        renderDailyChart(res.daily);renderProductsPieChart(res.top_products);
+        renderDailyTable(timeline);renderTopProducts(res.top_products);renderTopCustomers(res.top_customers);renderOrderDetails(res.order_details);renderStoreBreakdown(res.store_breakdown||[]);
+        renderDailyChart(timeline);renderProductsPieChart(res.top_products);
 
         // Tab 2: Product detail
         renderProductTab(res.product_breakdown||res.top_products||[], res.category_breakdown||[]);
@@ -183,8 +405,12 @@ function loadReport(){
         renderCustomerTab(res.customer_breakdown||res.top_customers||[], res.group_breakdown||[]);
         // Tab 4: Staff
         renderStaffTab(res.staff_breakdown||[]);
-        // Tab 5: Profit
-        renderProfitTab(s, res.daily, res.category_breakdown||[]);
+        // Tab 5: Orders
+        renderOrderTab(s, res.order_details||[], res.order_status_breakdown||[], res.payment_status_breakdown||[]);
+        // Tab 6: Returns
+        renderReturnTab(res.return_summary||{}, res.return_orders||[], res.return_products||[]);
+        // Tab 7: Profit
+        renderProfitTab(s, timeline, res.category_breakdown||[]);
     });
 }
 
@@ -196,20 +422,29 @@ function renderDailyTable(daily){
 }
 function renderTopProducts(tp){var h='';(tp||[]).forEach(function(p,i){var c=p.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td title="'+p.name+'">'+(p.name||'').substring(0,20)+(p.name.length>20?'...':'')+'</td><td class="text-center"><strong>'+fmt(p.qty)+'</strong></td><td class="text-right">'+fmtD(p.amount)+'</td><td class="text-right '+c+'">'+fmtD(p.profit)+'</td></tr>';});if(!h)h='<tr><td colspan="5" class="text-center text-muted">Chưa có</td></tr>';$('#top_products_tbl tbody').html(h);}
 function renderTopCustomers(tc){var h='';(tc||[]).forEach(function(c,i){h+='<tr><td>'+(i+1)+'</td><td>'+c.name+'</td><td class="text-center">'+c.orders+'</td><td class="text-right">'+fmtD(c.amount)+'</td></tr>';});if(!h)h='<tr><td colspan="4" class="text-center text-muted">Chưa có</td></tr>';$('#top_customers_tbl tbody').html(h);}
+function renderStoreBreakdown(stores){
+    if(!stores||!stores.length){
+        $('#store_breakdown_section').hide();
+        $('#store_breakdown_tbl tbody').empty();
+        destroyChart('storeRevenue');
+        return;
+    }
+    $('#store_breakdown_section').show();
+    var h='';
+    (stores||[]).forEach(function(s){
+        var cls=s.profit>=0?'text-success':'text-danger';
+        var action=s.store_id?'<a href="#" onclick="viewStore('+s.store_id+');return false;">Lọc</a>':'';
+        h+='<tr><td><strong>'+escapeHtml(s.store_name||'Chưa gán cửa hàng')+'</strong></td><td class="text-right">'+fmt(s.orders||0)+'</td><td class="text-right">'+fmtD(s.revenue||0)+'</td><td class="text-right">'+fmtD(s.paid||0)+'</td><td class="text-right '+((s.debt||0)>0?'text-danger':'')+'">'+fmtD(s.debt||0)+'</td><td class="text-right">'+fmtD(s.cost||0)+'</td><td class="text-right '+cls+'">'+fmtD(s.profit||0)+'</td><td class="text-center">'+action+'</td></tr>';
+    });
+    $('#store_breakdown_tbl tbody').html(h);
+    destroyChart('storeRevenue');
+    var ctx=document.getElementById('chart_store_revenue').getContext('2d');
+    _charts.storeRevenue=new Chart(ctx,{type:'bar',data:{labels:stores.map(function(s){return s.store_name||'Chưa gán';}),datasets:[{label:'Doanh thu',data:stores.map(function(s){return s.revenue||0;}),backgroundColor:'rgba(54,162,235,0.75)',borderRadius:4},{label:'Lợi nhuận',data:stores.map(function(s){return s.profit||0;}),backgroundColor:'rgba(40,167,69,0.75)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{x:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});
+}
 function renderOrderDetails(od){
-    var revMin=parseFloat($('#filter_revenue_min').val())||null, revMax=parseFloat($('#filter_revenue_max').val())||null;
-    var costMin=parseFloat($('#filter_cost_min').val())||null, costMax=parseFloat($('#filter_cost_max').val())||null;
-    var profMin=parseFloat($('#filter_profit_min').val()), profMax=parseFloat($('#filter_profit_max').val());
-    if(isNaN(profMin)) profMin=null; if(isNaN(profMax)) profMax=null;
     var h='',r=0,c=0,p=0,cnt=0;
     (od||[]).forEach(function(o){
-        // Client-side range filter
-        if(revMin!==null && o.revenue<revMin) return;
-        if(revMax!==null && o.revenue>revMax) return;
-        if(costMin!==null && o.cost<costMin) return;
-        if(costMax!==null && o.cost>costMax) return;
-        if(profMin!==null && o.profit<profMin) return;
-        if(profMax!==null && o.profit>profMax) return;
+        if(!matchesMetricRanges(o)) return;
         cnt++;r+=o.revenue;c+=o.cost;p+=o.profit;
         var rc=o.is_loss?'style="background:#fce4ec;"':'';var pc=o.is_loss?'text-danger font-weight-bold':'text-success';
         var sb=o.status===5?'<span class="badge badge-success">'+o.status_display+'</span>':(o.status===6?'<span class="badge badge-dark">'+o.status_display+'</span>':'<span class="badge badge-info">'+o.status_display+'</span>');
@@ -231,45 +466,158 @@ function renderProductsPieChart(tp){
 
 // TAB 2: Product breakdown
 function renderProductTab(products, catBreakdown){
+    var filteredProducts=(products||[]).filter(matchesMetricRanges);
+    var filteredCategories=(catBreakdown||[]).filter(matchesMetricRanges);
     // Table
-    var h='',tq=0,tr=0,tc=0,tp=0;(products||[]).forEach(function(p,i){var profit=p.profit||(p.amount-p.cost);var margin=p.amount>0?((profit/p.amount)*100).toFixed(1)+'%':'0%';var cls=profit>=0?'text-success':'text-danger';tq+=(p.qty||p.total_qty||0);tr+=(p.amount||0);tc+=(p.cost||0);tp+=profit;h+='<tr><td>'+(i+1)+'</td><td title="'+(p.name||'')+'">'+((p.name||'').substring(0,30))+((p.name||'').length>30?'...':'')+'</td><td><small>'+(p.category||'')+'</small></td><td class="text-right">'+fmt(p.qty||p.total_qty||0)+'</td><td class="text-right">'+fmtD(p.amount||0)+'</td><td class="text-right">'+fmtD(p.cost||0)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
+    var h='',tq=0,tr=0,tc=0,tp=0;(filteredProducts||[]).forEach(function(p,i){var profit=p.profit||(p.amount-p.cost);var margin=p.amount>0?((profit/p.amount)*100).toFixed(1)+'%':'0%';var cls=profit>=0?'text-success':'text-danger';tq+=(p.qty||p.total_qty||0);tr+=(p.amount||0);tc+=(p.cost||0);tp+=profit;h+='<tr><td>'+(i+1)+'</td><td title="'+(p.name||'')+'">'+((p.name||'').substring(0,30))+((p.name||'').length>30?'...':'')+'</td><td><small>'+(p.category||'')+'</small></td><td class="text-right">'+fmt(p.qty||p.total_qty||0)+'</td><td class="text-right">'+fmtD(p.amount||0)+'</td><td class="text-right">'+fmtD(p.cost||0)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
     if(!h)h='<tr><td colspan="8" class="text-center text-muted">Không có dữ liệu</td></tr>';
     $('#product_detail_tbl tbody').html(h);$('#pd_ft_qty').text(fmt(tq));$('#pd_ft_rev').text(fmtD(tr));$('#pd_ft_cost').text(fmtD(tc));$('#pd_ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');
     // Bar chart
-    destroyChart('productRev');var top15=(products||[]).slice(0,15);
+    destroyChart('productRev');var top15=(filteredProducts||[]).slice(0,15);
     if(top15.length){var ctx=document.getElementById('chart_product_revenue').getContext('2d');_charts.productRev=new Chart(ctx,{type:'bar',data:{labels:top15.map(function(p){return(p.name||'').substring(0,12);}),datasets:[{label:'Doanh thu',data:top15.map(function(p){return p.amount||0;}),backgroundColor:'rgba(54,162,235,0.7)',borderRadius:4},{label:'Lợi nhuận',data:top15.map(function(p){return p.profit||(p.amount-p.cost)||0;}),backgroundColor:'rgba(40,167,69,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{x:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}}); }
     // Category pie
     destroyChart('catPie');
-    if(catBreakdown&&catBreakdown.length){var ctx2=document.getElementById('chart_category_pie').getContext('2d');_charts.catPie=new Chart(ctx2,{type:'doughnut',data:{labels:catBreakdown.map(function(c){return c.name;}),datasets:[{data:catBreakdown.map(function(c){return c.revenue;}),backgroundColor:COLORS.slice(0,catBreakdown.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
+    if(filteredCategories&&filteredCategories.length){var ctx2=document.getElementById('chart_category_pie').getContext('2d');_charts.catPie=new Chart(ctx2,{type:'doughnut',data:{labels:filteredCategories.map(function(c){return c.name;}),datasets:[{data:filteredCategories.map(function(c){return c.revenue;}),backgroundColor:COLORS.slice(0,filteredCategories.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
+    // Category table
+    var totalCategoryRevenue=0, catHtml='',catQty=0,catRev=0,catCost=0,catProfit=0;
+    (filteredCategories||[]).forEach(function(c){ totalCategoryRevenue += Number(c.revenue||0); });
+    (filteredCategories||[]).forEach(function(c){
+        var revenue=Number(c.revenue||0), cost=Number(c.cost||0), profit=Number(c.profit||0), qty=Number(c.qty||0);
+        var margin=revenue>0?((profit/revenue)*100).toFixed(1)+'%':'0%';
+        var contribution=totalCategoryRevenue>0?((revenue/totalCategoryRevenue)*100).toFixed(1)+'%':'0%';
+        var cls=profit>=0?'text-success':'text-danger';
+        catQty+=qty;catRev+=revenue;catCost+=cost;catProfit+=profit;
+        catHtml+='<tr><td><strong>'+escapeHtml(c.name||'Không DM')+'</strong></td><td class="text-right">'+fmt(qty)+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(cost)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td><td class="text-right"><span class="badge badge-light border">'+contribution+'</span></td></tr>';
+    });
+    if(!catHtml)catHtml='<tr><td colspan="7" class="text-center text-muted">Không có dữ liệu</td></tr>';
+    $('#category_detail_tbl tbody').html(catHtml);$('#cat_ft_qty').text(fmt(catQty));$('#cat_ft_rev').text(fmtD(catRev));$('#cat_ft_cost').text(fmtD(catCost));$('#cat_ft_profit').html('<span class="'+(catProfit>=0?'text-success':'text-danger')+'">'+fmtD(catProfit)+'</span>');
 }
 
 // TAB 3: Customer breakdown
 function renderCustomerTab(customers, groupBreakdown){
-    var h='',to=0,tr=0,tp=0,td=0;(customers||[]).forEach(function(c,i){to+=(c.orders||c.order_count||0);tr+=(c.amount||c.total_amount||0);var paid=c.paid||0;var debt=c.debt||(c.amount-paid)||0;tp+=paid;td+=debt;h+='<tr><td>'+(i+1)+'</td><td>'+c.name+'</td><td><small>'+(c.group||'')+'</small></td><td class="text-right">'+(c.orders||c.order_count||0)+'</td><td class="text-right">'+fmtD(c.amount||c.total_amount||0)+'</td><td class="text-right">'+fmtD(paid)+'</td><td class="text-right '+(debt>0?'text-danger':'')+'">'+fmtD(debt)+'</td></tr>';});
-    if(!h)h='<tr><td colspan="7" class="text-center text-muted">Không có dữ liệu</td></tr>';
-    $('#customer_detail_tbl tbody').html(h);$('#cd_ft_orders').text(to);$('#cd_ft_rev').text(fmtD(tr));$('#cd_ft_paid').text(fmtD(tp));$('#cd_ft_debt').text(fmtD(td));
+    var filteredCustomers=(customers||[]).filter(matchesMetricRanges);
+    var filteredGroups=(groupBreakdown||[]).filter(matchesMetricRanges);
+    var h='',to=0,tr=0,tc=0,tp=0,tpaid=0,td=0;
+    (filteredCustomers||[]).forEach(function(c,i){
+        var orders=Number(c.orders||c.order_count||0), revenue=Number(c.amount||c.total_amount||0), cost=Number(c.cost||0), profit=Number(c.profit||0), paid=Number(c.paid||0), debt=Number(c.debt||(revenue-paid)||0);
+        var profitClass=profit>=0?'text-success':'text-danger';
+        to+=orders;tr+=revenue;tc+=cost;tp+=profit;tpaid+=paid;td+=debt;
+        h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(c.name||'')+'</td><td><small>'+(escapeHtml(c.group||''))+'</small></td><td class="text-right">'+orders+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(cost)+'</td><td class="text-right '+profitClass+'">'+fmtD(profit)+'</td><td class="text-right">'+fmtD(paid)+'</td><td class="text-right '+(debt>0?'text-danger':'')+'">'+fmtD(debt)+'</td></tr>';
+    });
+    if(!h)h='<tr><td colspan="9" class="text-center text-muted">Không có dữ liệu</td></tr>';
+    $('#customer_detail_tbl tbody').html(h);$('#cd_ft_orders').text(to);$('#cd_ft_rev').text(fmtD(tr));$('#cd_ft_cost').text(fmtD(tc));$('#cd_ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');$('#cd_ft_paid').text(fmtD(tpaid));$('#cd_ft_debt').text(fmtD(td));
     // Bar chart
-    destroyChart('custRev');var top15=(customers||[]).slice(0,15);
+    destroyChart('custRev');var top15=(filteredCustomers||[]).slice(0,15);
     if(top15.length){var ctx=document.getElementById('chart_customer_revenue').getContext('2d');_charts.custRev=new Chart(ctx,{type:'bar',data:{labels:top15.map(function(c){return(c.name||'').substring(0,15);}),datasets:[{label:'Doanh thu',data:top15.map(function(c){return c.amount||c.total_amount||0;}),backgroundColor:'rgba(54,162,235,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{tooltip:{callbacks:{label:function(c){return fmtD(c.raw);}}},legend:{display:false}},scales:{x:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}}); }
     // Group pie
     destroyChart('groupPie');
-    if(groupBreakdown&&groupBreakdown.length){var ctx2=document.getElementById('chart_group_pie').getContext('2d');_charts.groupPie=new Chart(ctx2,{type:'doughnut',data:{labels:groupBreakdown.map(function(g){return g.name;}),datasets:[{data:groupBreakdown.map(function(g){return g.amount;}),backgroundColor:COLORS.slice(0,groupBreakdown.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
+    if(filteredGroups&&filteredGroups.length){var ctx2=document.getElementById('chart_group_pie').getContext('2d');_charts.groupPie=new Chart(ctx2,{type:'doughnut',data:{labels:filteredGroups.map(function(g){return g.name;}),datasets:[{data:filteredGroups.map(function(g){return g.amount;}),backgroundColor:COLORS.slice(0,filteredGroups.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
+    // Group table
+    var gh='',go=0,gr=0,gc=0,gp=0,gpaid=0,gd=0,totalGroupRevenue=0;
+    (filteredGroups||[]).forEach(function(g){ totalGroupRevenue += Number(g.amount||0); });
+    (filteredGroups||[]).forEach(function(g){
+        var orders=Number(g.orders||0), revenue=Number(g.amount||0), cost=Number(g.cost||0), profit=Number(g.profit||0), paid=Number(g.paid||0), debt=Number(g.debt||0);
+        var contribution=totalGroupRevenue>0?((revenue/totalGroupRevenue)*100):0;
+        var profitClass=profit>=0?'text-success':'text-danger';
+        go+=orders;gr+=revenue;gc+=cost;gp+=profit;gpaid+=paid;gd+=debt;
+        gh+='<tr><td><strong>'+escapeHtml(g.name||'Không nhóm')+'</strong></td><td class="text-right">'+orders+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(cost)+'</td><td class="text-right '+profitClass+'">'+fmtD(profit)+'</td><td class="text-right">'+fmtD(paid)+'</td><td class="text-right '+(debt>0?'text-danger':'')+'">'+fmtD(debt)+'</td><td class="text-right"><span class="badge badge-light border">'+contribution.toFixed(1)+'%</span></td></tr>';
+    });
+    if(!gh)gh='<tr><td colspan="8" class="text-center text-muted">Không có dữ liệu</td></tr>';
+    $('#customer_group_tbl tbody').html(gh);$('#cg_ft_orders').text(go);$('#cg_ft_rev').text(fmtD(gr));$('#cg_ft_cost').text(fmtD(gc));$('#cg_ft_profit').html('<span class="'+(gp>=0?'text-success':'text-danger')+'">'+fmtD(gp)+'</span>');$('#cg_ft_paid').text(fmtD(gpaid));$('#cg_ft_debt').text(fmtD(gd));
 }
 
 // TAB 4: Staff
 function renderStaffTab(staff){
-    var h='',to=0,tr=0,tc=0,tp=0,tre=0;(staff||[]).forEach(function(s,i){to+=s.order_count;tr+=s.revenue;tc+=s.cost;tp+=s.profit;tre+=s.returns_amount;var pc=s.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td><strong>'+s.salesperson+'</strong></td><td class="text-right">'+s.order_count+'</td><td class="text-right">'+fmtD(s.revenue)+'</td><td class="text-right">'+fmtD(s.cost)+'</td><td class="text-right '+pc+'">'+fmtD(s.profit)+'</td><td class="text-right">'+(s.returns_amount>0?'<span class="text-danger">'+fmtD(s.returns_amount)+'</span>':'0')+'</td><td class="text-right"><span class="badge badge-primary">'+s.contribution+'%</span></td></tr>';});
+    var filteredStaff=(staff||[]).filter(matchesMetricRanges);
+    var h='',to=0,tr=0,tc=0,tp=0,tre=0;(filteredStaff||[]).forEach(function(s,i){to+=s.order_count;tr+=s.revenue;tc+=s.cost;tp+=s.profit;tre+=s.returns_amount;var pc=s.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td><strong>'+s.salesperson+'</strong></td><td class="text-right">'+s.order_count+'</td><td class="text-right">'+fmtD(s.revenue)+'</td><td class="text-right">'+fmtD(s.cost)+'</td><td class="text-right '+pc+'">'+fmtD(s.profit)+'</td><td class="text-right">'+(s.returns_amount>0?'<span class="text-danger">'+fmtD(s.returns_amount)+'</span>':'0')+'</td><td class="text-right"><span class="badge badge-primary">'+s.contribution+'%</span></td></tr>';});
     if(!h)h='<tr><td colspan="8" class="text-center text-muted">Không có dữ liệu</td></tr>';
     $('#staff_detail_tbl tbody').html(h);$('#sf_ft_orders').text(to);$('#sf_ft_rev').text(fmtD(tr));$('#sf_ft_cost').text(fmtD(tc));$('#sf_ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');$('#sf_ft_returns').text(fmtD(tre));
     // Bar chart
     destroyChart('staffRev');
-    if(staff&&staff.length){var ctx=document.getElementById('chart_staff_revenue').getContext('2d');_charts.staffRev=new Chart(ctx,{type:'bar',data:{labels:staff.map(function(s){return s.salesperson;}),datasets:[{label:'Doanh thu',data:staff.map(function(s){return s.revenue;}),backgroundColor:'rgba(54,162,235,0.7)',borderRadius:4},{label:'Lợi nhuận',data:staff.map(function(s){return s.profit;}),backgroundColor:'rgba(40,167,69,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{y:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});}
+    if(filteredStaff&&filteredStaff.length){var ctx=document.getElementById('chart_staff_revenue').getContext('2d');_charts.staffRev=new Chart(ctx,{type:'bar',data:{labels:filteredStaff.map(function(s){return s.salesperson;}),datasets:[{label:'Doanh thu',data:filteredStaff.map(function(s){return s.revenue;}),backgroundColor:'rgba(54,162,235,0.7)',borderRadius:4},{label:'Lợi nhuận',data:filteredStaff.map(function(s){return s.profit;}),backgroundColor:'rgba(40,167,69,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{y:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});}
     // Pie
     destroyChart('staffPie');
-    if(staff&&staff.length){var ctx2=document.getElementById('chart_staff_pie').getContext('2d');_charts.staffPie=new Chart(ctx2,{type:'doughnut',data:{labels:staff.map(function(s){return s.salesperson;}),datasets:[{data:staff.map(function(s){return s.revenue;}),backgroundColor:COLORS.slice(0,staff.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
+    if(filteredStaff&&filteredStaff.length){var ctx2=document.getElementById('chart_staff_pie').getContext('2d');_charts.staffPie=new Chart(ctx2,{type:'doughnut',data:{labels:filteredStaff.map(function(s){return s.salesperson;}),datasets:[{data:filteredStaff.map(function(s){return s.revenue;}),backgroundColor:COLORS.slice(0,filteredStaff.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
 }
 
-// TAB 5: Gross Profit
+// TAB 5: Orders
+function renderOrderTab(summary, orders, statusBreakdown, paymentBreakdown){
+    var totalOrders=Number(summary.total_orders||0), totalRevenue=Number(summary.total_revenue||0), totalProfit=Number(summary.total_profit||0), totalDebt=Number(summary.total_debt||0);
+    $('#or_avg_order').text(fmtD(totalOrders?totalRevenue/totalOrders:0));
+    $('#or_avg_profit').text(fmtD(totalOrders?totalProfit/totalOrders:0));
+    $('#or_collect_rate').text((totalRevenue?(((totalRevenue-totalDebt)/totalRevenue)*100).toFixed(1):0)+'%');
+
+    var h='',sumRevenue=0,sumPaid=0,sumDebt=0,sumCost=0,sumProfit=0;
+    var filteredOrders=(orders||[]).filter(matchesMetricRanges);
+    (filteredOrders||[]).forEach(function(o,i){
+        var profitClass=o.profit>=0?'text-success':'text-danger';
+        var debtClass=o.debt>0?'text-danger':'';
+        var statusBadge='<span class="badge badge-info">'+(o.status_display||'')+'</span>';
+        if(o.status===5) statusBadge='<span class="badge badge-success">'+(o.status_display||'')+'</span>';
+        else if(o.status===6) statusBadge='<span class="badge badge-dark">'+(o.status_display||'')+'</span>';
+        var payBadge='<span class="badge badge-secondary">'+(o.payment_status_display||'')+'</span>';
+        if(o.payment_status===2) payBadge='<span class="badge badge-success">'+(o.payment_status_display||'')+'</span>';
+        else if(o.payment_status===1) payBadge='<span class="badge badge-warning">'+(o.payment_status_display||'')+'</span>';
+        sumRevenue+=Number(o.revenue||0);sumPaid+=Number(o.paid||0);sumDebt+=Number(o.debt||0);sumCost+=Number(o.cost||0);sumProfit+=Number(o.profit||0);
+        h+='<tr '+(o.is_loss?'style="background:#fff3f3;"':'')+'><td>'+(i+1)+'</td><td><strong>'+escapeHtml(o.code||'')+'</strong></td><td>'+escapeHtml(o.date||'')+'</td><td>'+escapeHtml(o.customer||'')+'</td><td>'+escapeHtml(o.salesperson||'')+'</td><td>'+escapeHtml(o.store_name||'')+'</td><td class="text-right">'+fmtD(o.revenue||0)+'</td><td class="text-right">'+fmtD(o.paid||0)+'</td><td class="text-right '+debtClass+'">'+fmtD(o.debt||0)+'</td><td class="text-right">'+fmtD(o.cost||0)+'</td><td class="text-right '+profitClass+'">'+(o.is_loss?'🔴 ':'')+fmtD(o.profit||0)+'</td><td class="text-center">'+statusBadge+'</td><td class="text-center">'+payBadge+'</td></tr>';
+    });
+    if(!h)h='<tr><td colspan="13" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+    $('#order_report_tbl tbody').html(h);
+    $('#or_ft_revenue').text(fmtD(sumRevenue));$('#or_ft_paid').text(fmtD(sumPaid));$('#or_ft_debt').text(fmtD(sumDebt));$('#or_ft_cost').text(fmtD(sumCost));$('#or_ft_profit').html('<span class="'+(sumProfit>=0?'text-success':'text-danger')+'">'+fmtD(sumProfit)+'</span>');
+
+    destroyChart('orderStatus');
+    if(statusBreakdown&&statusBreakdown.length){
+        var ctx=document.getElementById('chart_order_status').getContext('2d');
+        _charts.orderStatus=new Chart(ctx,{type:'doughnut',data:{labels:statusBreakdown.map(function(r){return r.name;}),datasets:[{data:statusBreakdown.map(function(r){return r.count;}),backgroundColor:COLORS.slice(0,statusBreakdown.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmt(c.raw)+' đơn';}}}}}});
+    }
+
+    destroyChart('paymentStatus');
+    if(paymentBreakdown&&paymentBreakdown.length){
+        var ctx2=document.getElementById('chart_payment_status').getContext('2d');
+        _charts.paymentStatus=new Chart(ctx2,{type:'bar',data:{labels:paymentBreakdown.map(function(r){return r.name;}),datasets:[{label:'Doanh thu',data:paymentBreakdown.map(function(r){return r.revenue||0;}),backgroundColor:'rgba(54,162,235,0.75)',borderRadius:4},{label:'Công nợ',data:paymentBreakdown.map(function(r){return r.debt||0;}),backgroundColor:'rgba(220,53,69,0.75)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{y:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});
+    }
+}
+
+// TAB 6: Returns
+function renderReturnTab(returnSummary, returnOrders, returnProducts){
+    $('#rt_total_amount').text(fmtD(returnSummary.total_returns||0));
+    $('#rt_return_count').text(fmt(returnSummary.return_count||0));
+    $('#rt_product_count').text(fmt(returnSummary.return_products||0));
+    $('#rt_return_rate').text((returnSummary.return_rate||0)+'%');
+
+    var orderHtml='';
+    (returnOrders||[]).forEach(function(r,i){
+        var statusBadge='<span class="badge badge-info">'+escapeHtml(r.status_display||'')+'</span>';
+        if(r.status===2) statusBadge='<span class="badge badge-success">'+escapeHtml(r.status_display||'')+'</span>';
+        else if(r.status===3) statusBadge='<span class="badge badge-dark">'+escapeHtml(r.status_display||'')+'</span>';
+        orderHtml+='<tr><td>'+(i+1)+'</td><td><strong>'+escapeHtml(r.code||'')+'</strong></td><td>'+escapeHtml(r.date||'')+'</td><td>'+escapeHtml(r.order_code||'')+'</td><td>'+escapeHtml(r.customer||'')+'</td><td>'+escapeHtml(r.salesperson||'')+'</td><td class="text-right">'+fmt(r.qty||0)+'</td><td class="text-right text-danger">'+fmtD(r.amount||0)+'</td><td class="text-center">'+statusBadge+'</td></tr>';
+    });
+    if(!orderHtml)orderHtml='<tr><td colspan="9" class="text-center text-muted py-3">Không có dữ liệu trả hàng</td></tr>';
+    $('#return_order_tbl tbody').html(orderHtml);
+
+    var productHtml='';
+    (returnProducts||[]).forEach(function(p,i){
+        productHtml+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(p.name||'')+'</td><td class="text-right">'+fmt(p.qty||0)+'</td><td class="text-right text-danger">'+fmtD(p.amount||0)+'</td><td class="text-right">'+fmt(p.return_count||0)+'</td></tr>';
+    });
+    if(!productHtml)productHtml='<tr><td colspan="5" class="text-center text-muted py-3">Không có dữ liệu trả hàng</td></tr>';
+    $('#return_product_tbl tbody').html(productHtml);
+
+    destroyChart('returnProducts');
+    var topProducts=(returnProducts||[]).slice(0,10);
+    if(topProducts.length){
+        var ctx=document.getElementById('chart_return_products').getContext('2d');
+        _charts.returnProducts=new Chart(ctx,{type:'bar',data:{labels:topProducts.map(function(p){return (p.name||'').substring(0,18);}),datasets:[{label:'Hoàn tiền',data:topProducts.map(function(p){return p.amount||0;}),backgroundColor:'rgba(220,53,69,0.75)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{tooltip:{callbacks:{label:function(c){return fmtD(c.raw);}}},legend:{display:false}},scales:{x:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});
+    }
+
+    destroyChart('returnOrders');
+    var topOrders=(returnOrders||[]).slice().sort(function(a,b){return (b.amount||0)-(a.amount||0);}).slice(0,10);
+    if(topOrders.length){
+        var ctx2=document.getElementById('chart_return_orders').getContext('2d');
+        _charts.returnOrders=new Chart(ctx2,{type:'bar',data:{labels:topOrders.map(function(r){return r.code||'';}),datasets:[{label:'Hoàn tiền',data:topOrders.map(function(r){return r.amount||0;}),backgroundColor:'rgba(255,193,7,0.8)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:function(c){return fmtD(c.raw);}}},legend:{display:false}},scales:{y:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}});
+    }
+}
+
+// TAB 7: Gross Profit
 function renderProfitTab(summary, daily, catBreakdown){
     $('#gp_revenue').text(fmtD(summary.total_revenue));$('#gp_cost').text(fmtD(summary.total_cost));$('#gp_profit').text(fmtD(summary.total_profit));$('#gp_margin').text(summary.profit_margin+'%');
     var gpb=$('#gp_profit_box').removeClass('bg-warning bg-danger bg-success');if(summary.total_profit<0)gpb.addClass('bg-danger');else if(summary.total_profit>0)gpb.addClass('bg-success');else gpb.addClass('bg-warning');
@@ -278,21 +626,25 @@ function renderProfitTab(summary, daily, catBreakdown){
     if(daily&&daily.length){var ctx=document.getElementById('chart_profit_trend').getContext('2d');_charts.profitTrend=new Chart(ctx,{type:'line',data:{labels:daily.map(function(d){return d.date;}),datasets:[{label:'Doanh thu',data:daily.map(function(d){return d.revenue;}),borderColor:'#36A2EB',backgroundColor:'rgba(54,162,235,0.1)',fill:true,tension:0.3},{label:'Giá vốn',data:daily.map(function(d){return d.cost;}),borderColor:'#FF6384',borderDash:[5,5],tension:0.3},{label:'Lợi nhuận gộp',data:daily.map(function(d){return d.profit;}),borderColor:'#28a745',backgroundColor:'rgba(40,167,69,0.15)',fill:true,tension:0.3,pointBackgroundColor:function(c){return c.raw>=0?'#28a745':'#dc3545';}}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top',labels:{usePointStyle:true}}},scales:{y:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}},x:{ticks:{maxRotation:45}}}}});}
     // Category profit pie
     destroyChart('profitCat');
-    var profitCats=(catBreakdown||[]).filter(function(c){return c.profit>0;});
+    var filteredCategories=(catBreakdown||[]).filter(matchesMetricRanges);
+    var profitCats=(filteredCategories||[]).filter(function(c){return c.profit>0;});
     if(profitCats.length){var ctx2=document.getElementById('chart_profit_category').getContext('2d');_charts.profitCat=new Chart(ctx2,{type:'doughnut',data:{labels:profitCats.map(function(c){return c.name;}),datasets:[{data:profitCats.map(function(c){return c.profit;}),backgroundColor:COLORS.slice(0,profitCats.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
     // Table
-    var h='';(catBreakdown||[]).forEach(function(c){var margin=c.revenue>0?((c.profit/c.revenue)*100).toFixed(1)+'%':'0%';var cls=c.profit>=0?'text-success':'text-danger';h+='<tr><td>'+c.name+'</td><td class="text-right">'+fmt(c.qty)+'</td><td class="text-right">'+fmtD(c.revenue)+'</td><td class="text-right">'+fmtD(c.cost)+'</td><td class="text-right '+cls+'"><strong>'+fmtD(c.profit)+'</strong></td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
+    var h='';(filteredCategories||[]).forEach(function(c){var margin=c.revenue>0?((c.profit/c.revenue)*100).toFixed(1)+'%':'0%';var cls=c.profit>=0?'text-success':'text-danger';h+='<tr><td>'+c.name+'</td><td class="text-right">'+fmt(c.qty)+'</td><td class="text-right">'+fmtD(c.revenue)+'</td><td class="text-right">'+fmtD(c.cost)+'</td><td class="text-right '+cls+'"><strong>'+fmtD(c.profit)+'</strong></td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
     if(!h)h='<tr><td colspan="6" class="text-center text-muted">Không có dữ liệu</td></tr>';$('#profit_category_tbl tbody').html(h);
 }
 
 function viewStore(sid){$('#filter_store_id').val(sid);loadReport();}
 
 $('#btn_export').click(function(){
-    var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
-    var url='/api/export_sales_excel/?from_date='+from+'&to_date='+to;
+    var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val(),timeGroup=$('#filter_time_group').val()||'day';
+    var url='/api/export_sales_excel/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
     if(storeId)url+='&store_id='+storeId;
     var groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),profitF=$('#filter_profit').val();
+    var customerId=$('#filter_customer_id').val(),productId=$('#filter_product_id').val(),salesperson=$('#filter_salesperson').val(),search=$('#filter_search').val();
     if(groupId)url+='&customer_group_id='+groupId;if(catId)url+='&category_id='+catId;if(profitF)url+='&profit_filter='+profitF;
+    if(customerId)url+='&customer_id='+customerId;if(productId)url+='&product_id='+productId;if(salesperson)url+='&salesperson='+encodeURIComponent(salesperson);if(search)url+='&search='+encodeURIComponent(search);
+    url = appendMetricFiltersToUrl(url);
     window.location.href=url;
 });
 </script>

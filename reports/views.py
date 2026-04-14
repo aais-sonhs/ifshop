@@ -1,20 +1,629 @@
 import logging
 import json
 from datetime import datetime, timedelta
+from functools import wraps
 from django.shortcuts import render
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db.models import Sum, Count, Q, F
-from orders.models import Order, OrderItem, OrderReturn
+from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from products.models import PurchaseOrder
-from core.store_utils import filter_by_store, brand_owner_required, report_permission_required
+from core.store_utils import (
+    filter_by_store,
+    brand_owner_required,
+    report_permission_required,
+    can_view_sales_report,
+    get_managed_store_ids,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_sales_report_number(value):
+    if value in (None, ''):
+        return None
+    try:
+        return float(str(value).replace(',', '').strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def sales_report_privileged_required(view_func):
+    """Báo cáo bán hàng chỉ cho Giám đốc / Kế toán."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if can_view_sales_report(request.user):
+            return view_func(request, *args, **kwargs)
+        message = 'Chỉ tài khoản Giám đốc hoặc Kế toán mới được xem báo cáo bán hàng.'
+        if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'status': 'error', 'message': message}, status=403)
+        messages.error(request, message)
+        from django.shortcuts import redirect
+        return redirect('/')
+    return wrapper
+
+
+def _get_sales_report_filters(request):
+    today = datetime.now().date()
+    from_date = request.GET.get('from_date') or today.replace(day=1).strftime('%Y-%m-%d')
+    to_date = request.GET.get('to_date') or today.strftime('%Y-%m-%d')
+    time_group = (request.GET.get('time_group') or 'day').strip().lower()
+    if time_group not in ('day', 'month', 'year'):
+        time_group = 'day'
+    return {
+        'from_date': from_date,
+        'to_date': to_date,
+        'time_group': time_group,
+        'store_id': request.GET.get('store_id') or '',
+        'customer_group_id': request.GET.get('customer_group_id') or '',
+        'category_id': request.GET.get('category_id') or '',
+        'profit_filter': request.GET.get('profit_filter', '').strip(),
+        'customer_id': request.GET.get('customer_id') or '',
+        'product_id': request.GET.get('product_id') or '',
+        'salesperson': request.GET.get('salesperson', '').strip(),
+        'search': request.GET.get('search', '').strip(),
+        'revenue_min': _parse_sales_report_number(request.GET.get('revenue_min')),
+        'revenue_max': _parse_sales_report_number(request.GET.get('revenue_max')),
+        'cost_min': _parse_sales_report_number(request.GET.get('cost_min')),
+        'cost_max': _parse_sales_report_number(request.GET.get('cost_max')),
+        'profit_min': _parse_sales_report_number(request.GET.get('profit_min')),
+        'profit_max': _parse_sales_report_number(request.GET.get('profit_max')),
+    }
+
+
+def _get_sales_report_time_group_meta(time_group):
+    if time_group == 'month':
+        return {'label': 'Tháng', 'key_format': '%Y-%m', 'display_format': '%m/%Y'}
+    if time_group == 'year':
+        return {'label': 'Năm', 'key_format': '%Y', 'display_format': '%Y'}
+    return {'label': 'Ngày', 'key_format': '%Y-%m-%d', 'display_format': '%d/%m/%Y'}
+
+
+def _build_sales_report_payload(request, include_filter_options=True):
+    from customers.models import CustomerGroup, Customer
+    from products.models import ProductCategory, Product, GoodsReceipt
+    from system_management.models import Store
+
+    filters = _get_sales_report_filters(request)
+    item_scope = bool(filters['category_id'] or filters['product_id'])
+
+    def _matches_metric_filters(row):
+        revenue = float(row.get('revenue', row.get('amount', 0)) or 0)
+        cost = float(row.get('cost', 0) or 0)
+        profit = float(row.get('profit', revenue - cost) or 0)
+        if filters['revenue_min'] is not None and revenue < filters['revenue_min']:
+            return False
+        if filters['revenue_max'] is not None and revenue > filters['revenue_max']:
+            return False
+        if filters['cost_min'] is not None and cost < filters['cost_min']:
+            return False
+        if filters['cost_max'] is not None and cost > filters['cost_max']:
+            return False
+        if filters['profit_min'] is not None and profit < filters['profit_min']:
+            return False
+        if filters['profit_max'] is not None and profit > filters['profit_max']:
+            return False
+        return True
+
+    orders_qs = Order.objects.filter(
+        order_date__gte=filters['from_date'],
+        order_date__lte=filters['to_date'],
+    ).exclude(status=6).select_related(
+        'customer', 'customer__group', 'warehouse', 'store'
+    )
+    orders_qs = filter_by_store(orders_qs, request)
+
+    if filters['store_id']:
+        orders_qs = orders_qs.filter(store_id=filters['store_id'])
+    if filters['customer_group_id']:
+        orders_qs = orders_qs.filter(customer__group_id=filters['customer_group_id'])
+    if filters['customer_id']:
+        orders_qs = orders_qs.filter(customer_id=filters['customer_id'])
+    if filters['salesperson']:
+        orders_qs = orders_qs.filter(salesperson__iexact=filters['salesperson'])
+    if filters['category_id']:
+        orders_qs = orders_qs.filter(items__product__category_id=filters['category_id'])
+    if filters['product_id']:
+        orders_qs = orders_qs.filter(items__product_id=filters['product_id'])
+    if filters['search']:
+        search = filters['search']
+        orders_qs = orders_qs.filter(
+            Q(code__icontains=search) |
+            Q(customer__name__icontains=search) |
+            Q(customer__phone__icontains=search) |
+            Q(tags__icontains=search) |
+            Q(note__icontains=search) |
+            Q(salesperson__icontains=search) |
+            Q(items__product__name__icontains=search) |
+            Q(items__product__code__icontains=search)
+        )
+    orders_qs = orders_qs.distinct()
+
+    orders_for_options = orders_qs
+    orders_list = list(orders_qs.order_by('-order_date', '-id'))
+
+    order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
+        'product', 'product__category', 'order', 'order__customer', 'order__customer__group'
+    )
+    if filters['category_id']:
+        order_items_qs = order_items_qs.filter(product__category_id=filters['category_id'])
+    if filters['product_id']:
+        order_items_qs = order_items_qs.filter(product_id=filters['product_id'])
+
+    order_item_summaries = order_items_qs.values('order_id').annotate(
+        revenue=Sum('total_price'),
+        cost=Sum(F('cost_price') * F('quantity')),
+    )
+    order_item_map = {
+        row['order_id']: {
+            'revenue': float(row['revenue'] or 0),
+            'cost': float(row['cost'] or 0),
+        }
+        for row in order_item_summaries
+    }
+
+    order_rows = []
+    for order in orders_list:
+        item_totals = order_item_map.get(order.id, {'revenue': 0, 'cost': 0})
+        revenue = item_totals['revenue'] if item_scope else float(order.final_amount or 0)
+        cost = item_totals['cost']
+
+        if item_scope:
+            base_amount = float(order.final_amount or 0)
+            if base_amount > 0:
+                paid = min(float(order.paid_amount or 0) * revenue / base_amount, revenue)
+            else:
+                paid = 0
+        else:
+            paid = float(order.paid_amount or 0)
+
+        profit = revenue - cost
+        order_rows.append({
+            'id': order.id,
+            'code': order.code,
+            'date': order.order_date.strftime('%d/%m/%Y') if order.order_date else '',
+            'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
+            'customer': order.customer.name if order.customer else '',
+            'customer_id': order.customer_id,
+            'customer_group': order.customer.group.name if order.customer and order.customer.group else '',
+            'customer_group_id': order.customer.group_id if order.customer else None,
+            'store_id': order.store_id,
+            'store_name': order.store.name if order.store else '',
+            'salesperson': order.salesperson or '',
+            'revenue': revenue,
+            'paid': paid,
+            'debt': revenue - paid,
+            'cost': cost,
+            'profit': profit,
+            'is_loss': profit < 0,
+            'status': order.status,
+            'status_display': order.get_status_display(),
+            'payment_status': order.payment_status,
+            'payment_status_display': order.get_payment_status_display(),
+        })
+
+    if filters['profit_filter'] == 'loss':
+        order_rows = [row for row in order_rows if row['profit'] < 0]
+    elif filters['profit_filter'] == 'profit':
+        order_rows = [row for row in order_rows if row['profit'] >= 0]
+    order_rows = [row for row in order_rows if _matches_metric_filters(row)]
+
+    order_row_map = {row['id']: row for row in order_rows}
+
+    allowed_order_ids = [row['id'] for row in order_rows]
+    if allowed_order_ids:
+        order_items_qs = order_items_qs.filter(order_id__in=allowed_order_ids)
+    else:
+        order_items_qs = order_items_qs.none()
+
+    total_orders = len(order_rows)
+    total_revenue = sum(row['revenue'] for row in order_rows)
+    total_paid = sum(row['paid'] for row in order_rows)
+    total_debt = sum(row['debt'] for row in order_rows)
+    total_cost = sum(row['cost'] for row in order_rows)
+    total_profit = sum(row['profit'] for row in order_rows)
+    loss_count = len([row for row in order_rows if row['is_loss']])
+
+    returns_qs = OrderReturn.objects.filter(
+        return_date__gte=filters['from_date'],
+        return_date__lte=filters['to_date'],
+    ).exclude(status=3)
+    returns_qs = filter_by_store(returns_qs, request, field_name='order__store')
+    if filters['store_id']:
+        returns_qs = returns_qs.filter(order__store_id=filters['store_id'])
+    if allowed_order_ids:
+        returns_qs = returns_qs.filter(order_id__in=allowed_order_ids)
+    else:
+        returns_qs = returns_qs.none()
+
+    returns_total = 0
+    returns_count = 0
+    returns_by_date = {}
+    return_items_qs = OrderReturnItem.objects.none()
+    if item_scope:
+        return_items_qs = OrderReturnItem.objects.filter(order_return__in=returns_qs)
+        if filters['category_id']:
+            return_items_qs = return_items_qs.filter(product__category_id=filters['category_id'])
+        if filters['product_id']:
+            return_items_qs = return_items_qs.filter(product_id=filters['product_id'])
+        returns_total = float(return_items_qs.aggregate(s=Sum('total_price'))['s'] or 0)
+        returns_count = return_items_qs.values('order_return_id').distinct().count()
+        for row in return_items_qs.values('order_return__return_date').annotate(
+            total=Sum('total_price')
+        ):
+            if not row['order_return__return_date']:
+                continue
+            returns_by_date[row['order_return__return_date'].strftime('%Y-%m-%d')] = float(row['total'] or 0)
+    else:
+        returns_total = float(returns_qs.aggregate(s=Sum('total_refund'))['s'] or 0)
+        returns_count = returns_qs.count()
+        for row in returns_qs.values('return_date').annotate(total=Sum('total_refund')):
+            if not row['return_date']:
+                continue
+            returns_by_date[row['return_date'].strftime('%Y-%m-%d')] = float(row['total'] or 0)
+
+    return_items_for_breakdown = OrderReturnItem.objects.filter(order_return__in=returns_qs)
+    if filters['category_id']:
+        return_items_for_breakdown = return_items_for_breakdown.filter(product__category_id=filters['category_id'])
+    if filters['product_id']:
+        return_items_for_breakdown = return_items_for_breakdown.filter(product_id=filters['product_id'])
+    return_items_for_breakdown = return_items_for_breakdown.select_related(
+        'product',
+        'order_return',
+        'order_return__order',
+        'order_return__customer',
+        'order_return__order__store',
+    )
+
+    purchases = GoodsReceipt.objects.filter(
+        receipt_date__gte=filters['from_date'],
+        receipt_date__lte=filters['to_date'],
+    ).exclude(status=2)
+    purchases = filter_by_store(purchases, request, field_name='warehouse__store')
+    if filters['store_id']:
+        purchases = purchases.filter(warehouse__store_id=filters['store_id'])
+    total_purchases = float(purchases.aggregate(s=Sum('total_amount'))['s'] or 0)
+
+    time_group_meta = _get_sales_report_time_group_meta(filters['time_group'])
+    daily_map = {}
+    for row in sorted(order_rows, key=lambda item: item['date_raw'] or ''):
+        if not row['date_raw']:
+            continue
+        date_obj = datetime.strptime(row['date_raw'], '%Y-%m-%d')
+        key = date_obj.strftime(time_group_meta['key_format'])
+        if key not in daily_map:
+            daily_map[key] = {
+                'date': date_obj.strftime(time_group_meta['display_format']),
+                'count': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'returns': 0,
+            }
+        daily_map[key]['count'] += 1
+        daily_map[key]['revenue'] += row['revenue']
+        daily_map[key]['cost'] += row['cost']
+        daily_map[key]['profit'] += row['profit']
+    for date_key, amount in returns_by_date.items():
+        date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+        bucket_key = date_obj.strftime(time_group_meta['key_format'])
+        bucket_label = date_obj.strftime(time_group_meta['display_format'])
+        if bucket_key in daily_map:
+            daily_map[bucket_key]['returns'] += amount
+        else:
+            daily_map[bucket_key] = {
+                'date': bucket_label,
+                'count': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'returns': amount,
+            }
+    daily_data = [daily_map[key] for key in sorted(daily_map.keys())]
+
+    product_breakdown_qs = order_items_qs.values(
+        'product__name', 'product__category__name'
+    ).annotate(
+        total_qty=Sum('quantity'),
+        total_amount=Sum('total_price'),
+        total_cost=Sum(F('cost_price') * F('quantity')),
+    ).order_by('-total_amount', '-total_qty', 'product__name')
+
+    category_breakdown_qs = order_items_qs.values(
+        'product__category__name'
+    ).annotate(
+        total_qty=Sum('quantity'),
+        total_revenue=Sum('total_price'),
+        total_cost=Sum(F('cost_price') * F('quantity')),
+    ).order_by('-total_revenue', 'product__category__name')
+
+    product_breakdown = [{
+        'name': row['product__name'],
+        'category': row['product__category__name'] or '',
+        'qty': float(row['total_qty'] or 0),
+        'amount': float(row['total_amount'] or 0),
+        'cost': float(row['total_cost'] or 0),
+        'profit': float(row['total_amount'] or 0) - float(row['total_cost'] or 0),
+    } for row in product_breakdown_qs]
+    product_breakdown = [row for row in product_breakdown if _matches_metric_filters(row)]
+
+    category_breakdown = [{
+        'name': row['product__category__name'] or 'Không DM',
+        'qty': float(row['total_qty'] or 0),
+        'revenue': float(row['total_revenue'] or 0),
+        'cost': float(row['total_cost'] or 0),
+        'profit': float(row['total_revenue'] or 0) - float(row['total_cost'] or 0),
+    } for row in category_breakdown_qs]
+    category_breakdown = [row for row in category_breakdown if _matches_metric_filters(row)]
+
+    customer_map = {}
+    group_map = {}
+    staff_map = {}
+    store_map = {}
+    for row in order_rows:
+        customer_key = row['customer_id'] or ('guest:' + (row['customer'] or 'Khách lẻ'))
+        if customer_key not in customer_map:
+            customer_map[customer_key] = {
+                'name': row['customer'] or 'Khách lẻ',
+                'group': row['customer_group'] or '',
+                'orders': 0,
+                'amount': 0,
+                'cost': 0,
+                'profit': 0,
+                'paid': 0,
+                'debt': 0,
+            }
+        customer_map[customer_key]['orders'] += 1
+        customer_map[customer_key]['amount'] += row['revenue']
+        customer_map[customer_key]['cost'] += row['cost']
+        customer_map[customer_key]['profit'] += row['profit']
+        customer_map[customer_key]['paid'] += row['paid']
+        customer_map[customer_key]['debt'] += row['debt']
+
+        group_name = row['customer_group'] or 'Không nhóm'
+        if group_name not in group_map:
+            group_map[group_name] = {
+                'name': group_name,
+                'orders': 0,
+                'amount': 0,
+                'cost': 0,
+                'profit': 0,
+                'paid': 0,
+                'debt': 0,
+            }
+        group_map[group_name]['orders'] += 1
+        group_map[group_name]['amount'] += row['revenue']
+        group_map[group_name]['cost'] += row['cost']
+        group_map[group_name]['profit'] += row['profit']
+        group_map[group_name]['paid'] += row['paid']
+        group_map[group_name]['debt'] += row['debt']
+
+        staff_name = row['salesperson'] or '(Chưa gán NV)'
+        if staff_name not in staff_map:
+            staff_map[staff_name] = {
+                'salesperson': staff_name,
+                'order_count': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'returns_amount': 0,
+            }
+        staff_map[staff_name]['order_count'] += 1
+        staff_map[staff_name]['revenue'] += row['revenue']
+        staff_map[staff_name]['cost'] += row['cost']
+        staff_map[staff_name]['profit'] += row['profit']
+
+        store_key = row['store_id'] or 0
+        if store_key not in store_map:
+            store_map[store_key] = {
+                'store_id': row['store_id'],
+                'store_name': row['store_name'] or 'Chưa gán cửa hàng',
+                'orders': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'debt': 0,
+                'paid': 0,
+            }
+        store_map[store_key]['orders'] += 1
+        store_map[store_key]['revenue'] += row['revenue']
+        store_map[store_key]['cost'] += row['cost']
+        store_map[store_key]['profit'] += row['profit']
+        store_map[store_key]['debt'] += row['debt']
+        store_map[store_key]['paid'] += row['paid']
+
+    if returns_qs.exists():
+        for ret in returns_qs.select_related('order'):
+            staff_name = (ret.order.salesperson if ret.order else '') or '(Chưa gán NV)'
+            if staff_name in staff_map:
+                if item_scope:
+                    ret_amount = float(
+                        OrderReturnItem.objects.filter(order_return=ret).filter(
+                            **({'product__category_id': filters['category_id']} if filters['category_id'] else {})
+                        ).filter(
+                            **({'product_id': filters['product_id']} if filters['product_id'] else {})
+                        ).aggregate(s=Sum('total_price'))['s'] or 0
+                    )
+                else:
+                    ret_amount = float(ret.total_refund or 0)
+                staff_map[staff_name]['returns_amount'] += ret_amount
+
+    customer_breakdown = sorted(customer_map.values(), key=lambda row: (-row['amount'], -row['orders'], row['name']))
+    customer_breakdown = [row for row in customer_breakdown if _matches_metric_filters(row)][:50]
+    top_customers = customer_breakdown[:5]
+    group_breakdown = sorted(group_map.values(), key=lambda row: (-row['amount'], row['name']))
+    group_breakdown = [row for row in group_breakdown if _matches_metric_filters(row)]
+    for row in customer_breakdown:
+        row['contribution'] = round(row['amount'] / total_revenue * 100, 1) if total_revenue > 0 else 0
+    for row in group_breakdown:
+        row['contribution'] = round(row['amount'] / total_revenue * 100, 1) if total_revenue > 0 else 0
+
+    staff_breakdown = sorted(staff_map.values(), key=lambda row: (-row['revenue'], row['salesperson']))
+    staff_breakdown = [row for row in staff_breakdown if _matches_metric_filters(row)]
+    for row in staff_breakdown:
+        row['contribution'] = round(row['revenue'] / total_revenue * 100, 1) if total_revenue > 0 else 0
+
+    order_status_map = {}
+    payment_status_map = {}
+    for row in order_rows:
+        status_key = row['status_display'] or 'Khác'
+        if status_key not in order_status_map:
+            order_status_map[status_key] = {'name': status_key, 'count': 0, 'revenue': 0}
+        order_status_map[status_key]['count'] += 1
+        order_status_map[status_key]['revenue'] += row['revenue']
+
+        payment_key = row['payment_status_display'] or 'Khác'
+        if payment_key not in payment_status_map:
+            payment_status_map[payment_key] = {'name': payment_key, 'count': 0, 'revenue': 0, 'debt': 0}
+        payment_status_map[payment_key]['count'] += 1
+        payment_status_map[payment_key]['revenue'] += row['revenue']
+        payment_status_map[payment_key]['debt'] += row['debt']
+
+    order_status_breakdown = sorted(order_status_map.values(), key=lambda row: (-row['count'], row['name']))
+    payment_status_breakdown = sorted(payment_status_map.values(), key=lambda row: (-row['count'], row['name']))
+
+    return_amount_by_return_id = {}
+    return_qty_by_return_id = {}
+    return_product_map = {}
+    for item in return_items_for_breakdown:
+        refund = float(item.total_price or 0)
+        qty = float(item.quantity or 0)
+        return_amount_by_return_id[item.order_return_id] = return_amount_by_return_id.get(item.order_return_id, 0) + refund
+        return_qty_by_return_id[item.order_return_id] = return_qty_by_return_id.get(item.order_return_id, 0) + qty
+
+        product_key = item.product_id or f"product:{item.product.name if item.product else 'N/A'}"
+        if product_key not in return_product_map:
+            return_product_map[product_key] = {
+                'product_id': item.product_id,
+                'name': item.product.name if item.product else 'N/A',
+                'qty': 0,
+                'amount': 0,
+                'return_ids': set(),
+            }
+        return_product_map[product_key]['qty'] += qty
+        return_product_map[product_key]['amount'] += refund
+        return_product_map[product_key]['return_ids'].add(item.order_return_id)
+
+    return_order_rows = []
+    for ret in returns_qs.select_related('order', 'customer', 'order__store').order_by('-return_date', '-id'):
+        refund = return_amount_by_return_id.get(ret.id, float(ret.total_refund or 0))
+        qty = return_qty_by_return_id.get(ret.id, 0)
+        if item_scope and refund <= 0 and qty <= 0:
+            continue
+        order_row = order_row_map.get(ret.order_id, {})
+        return_order_rows.append({
+            'id': ret.id,
+            'code': ret.code,
+            'date': ret.return_date.strftime('%d/%m/%Y') if ret.return_date else '',
+            'order_code': ret.order.code if ret.order else '',
+            'customer': ret.customer.name if ret.customer else '',
+            'salesperson': (ret.order.salesperson if ret.order else '') or '',
+            'store_name': ret.order.store.name if ret.order and ret.order.store else '',
+            'qty': qty,
+            'amount': refund,
+            'order_revenue': float(order_row.get('revenue') or (ret.order.final_amount if ret.order else 0) or 0),
+            'status': ret.status,
+            'status_display': ret.get_status_display(),
+            'reason': ret.reason or '',
+        })
+
+    return_product_breakdown = sorted(
+        [{
+            'product_id': row['product_id'],
+            'name': row['name'],
+            'qty': row['qty'],
+            'amount': row['amount'],
+            'return_count': len(row['return_ids']),
+        } for row in return_product_map.values()],
+        key=lambda row: (-row['amount'], -row['qty'], row['name'])
+    )
+
+    top_products = product_breakdown[:10]
+
+    managed_ids = get_managed_store_ids(request.user)
+    managed_stores = Store.objects.filter(id__in=managed_ids).select_related('brand')
+    has_multiple = managed_stores.count() > 1
+    stores_list = [{'id': store.id, 'name': store.name, 'brand': store.brand.name if store.brand else ''} for store in managed_stores]
+
+    store_breakdown = []
+    if has_multiple and not filters['store_id']:
+        store_breakdown = sorted(store_map.values(), key=lambda row: (-row['revenue'], row['store_name']))
+        store_breakdown = [row for row in store_breakdown if _matches_metric_filters(row)]
+
+    payload = {
+        'has_multiple_stores': has_multiple,
+        'stores': stores_list,
+        'summary': {
+            'total_orders': total_orders,
+            'total_revenue': total_revenue,
+            'total_cost': total_cost,
+            'total_profit': total_profit,
+            'profit_margin': round(total_profit / total_revenue * 100, 1) if total_revenue > 0 else 0,
+            'total_returns': returns_total,
+            'returns_count': returns_count,
+            'total_debt': total_debt,
+            'total_purchases': total_purchases,
+            'loss_count': loss_count,
+        },
+        'timeline': daily_data,
+        'daily': daily_data,
+        'time_group': filters['time_group'],
+        'time_group_label': time_group_meta['label'],
+        'order_details': order_rows,
+        'store_breakdown': store_breakdown,
+        'group_breakdown': group_breakdown,
+        'category_breakdown': category_breakdown,
+        'order_status_breakdown': order_status_breakdown,
+        'payment_status_breakdown': payment_status_breakdown,
+        'top_products': top_products,
+        'top_customers': top_customers,
+        'product_breakdown': product_breakdown,
+        'customer_breakdown': customer_breakdown,
+        'staff_breakdown': staff_breakdown,
+        'return_orders': return_order_rows,
+        'return_products': return_product_breakdown,
+        'return_summary': {
+            'total_returns': returns_total,
+            'return_count': returns_count,
+            'return_products': len(return_product_breakdown),
+            'returned_qty': sum(row['qty'] for row in return_product_breakdown),
+            'return_rate': round(returns_total / total_revenue * 100, 1) if total_revenue > 0 else 0,
+        },
+        'filters_applied': filters,
+    }
+
+    if include_filter_options:
+        groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
+        categories = list(ProductCategory.objects.filter(is_active=True).values('id', 'name').order_by('name'))
+
+        customers_qs = filter_by_store(Customer.objects.filter(is_active=True), request)
+        products_qs = filter_by_store(Product.objects.filter(is_active=True), request)
+        if filters['store_id']:
+            customers_qs = customers_qs.filter(store_id=filters['store_id'])
+            products_qs = products_qs.filter(store_id=filters['store_id'])
+
+        customers = list(customers_qs.values('id', 'code', 'name').order_by('name')[:300])
+        products = list(products_qs.values('id', 'code', 'name').order_by('name')[:300])
+        salespersons = sorted(set(
+            name for name in orders_for_options.exclude(salesperson__isnull=True).exclude(salesperson='').values_list('salesperson', flat=True)
+        ))
+
+        payload['filter_options'] = {
+            'customer_groups': groups,
+            'categories': categories,
+            'customers': customers,
+            'products': products,
+            'salespersons': salespersons,
+        }
+
+    return payload
 
 
 @login_required(login_url="/login/")
 @brand_owner_required
 @report_permission_required
+@sales_report_privileged_required
 def report_sales(request):
     """Báo cáo bán hàng"""
     context = {'active_tab': 'report_sales'}
@@ -23,304 +632,11 @@ def report_sales(request):
 
 @login_required(login_url="/login/")
 @report_permission_required
+@sales_report_privileged_required
 def api_report_sales(request):
-    """API báo cáo bán hàng — hỗ trợ lọc nhóm KH, danh mục, lãi/lỗ"""
-    from_date = request.GET.get('from_date')
-    to_date = request.GET.get('to_date')
-    store_id = request.GET.get('store_id')
-    customer_group_id = request.GET.get('customer_group_id')
-    category_id = request.GET.get('category_id')
-    profit_filter = request.GET.get('profit_filter', '')  # 'loss', 'profit', ''
-
-    # Mặc định: tháng hiện tại
-    today = datetime.now().date()
-    if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
-    if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
-
-    # Base queryset
-    orders = Order.objects.filter(
-        order_date__gte=from_date, order_date__lte=to_date
-    ).exclude(status=6).select_related('customer', 'customer__group', 'warehouse')
-    orders = filter_by_store(orders, request)
-
-    if store_id:
-        orders = orders.filter(store_id=store_id)
-    if customer_group_id:
-        orders = orders.filter(customer__group_id=customer_group_id)
-
-    # Nếu lọc theo danh mục → chỉ lấy đơn có SP thuộc danh mục đó
-    if category_id:
-        orders = orders.filter(items__product__category_id=category_id).distinct()
-
-    total_orders = orders.count()
-    total_revenue = float(orders.aggregate(s=Sum('final_amount'))['s'] or 0)
-    total_paid = float(orders.aggregate(s=Sum('paid_amount'))['s'] or 0)
-    total_debt = total_revenue - total_paid
-
-    # Giá vốn — nếu lọc danh mục, chỉ tính items trong danh mục
-    cost_qs = OrderItem.objects.filter(order__in=orders)
-    if category_id:
-        cost_qs = cost_qs.filter(product__category_id=category_id)
-    cost_agg = cost_qs.aggregate(total_cost=Sum(F('cost_price') * F('quantity')))
-    total_cost = float(cost_agg['total_cost'] or 0)
-    total_profit = total_revenue - total_cost
-
-    # Trả hàng
-    returns = OrderReturn.objects.filter(
-        return_date__gte=from_date, return_date__lte=to_date
-    ).exclude(status=3)
-    total_returns = float(returns.aggregate(s=Sum('total_refund'))['s'] or 0)
-    returns_count = returns.count()
-
-    # Nhập hàng (từ phiếu nhập kho thực tế)
-    from products.models import GoodsReceipt as GR
-    purchases = GR.objects.filter(
-        receipt_date__gte=from_date, receipt_date__lte=to_date
-    ).exclude(status=2)  # Exclude cancelled
-    purchases = filter_by_store(purchases, request, field_name='warehouse__store')
-    if store_id:
-        purchases = purchases.filter(warehouse__store_id=store_id)
-    total_purchases = float(purchases.aggregate(s=Sum('total_amount'))['s'] or 0)
-
-    # ======= CHI TIẾT TỪNG ĐƠN =======
-    order_details = []
-    loss_count = 0
-    for o in orders.order_by('-order_date', '-id')[:200]:  # Giới hạn 200 đơn
-        items_qs = o.items.all()
-        if category_id:
-            items_qs = items_qs.filter(product__category_id=category_id)
-        order_cost = float(items_qs.aggregate(
-            c=Sum(F('cost_price') * F('quantity'))
-        )['c'] or 0)
-        order_revenue = float(o.final_amount or 0)
-        order_profit = order_revenue - order_cost
-        is_loss = order_profit < 0
-
-        if profit_filter == 'loss' and not is_loss:
-            continue
-        if profit_filter == 'profit' and is_loss:
-            continue
-
-        if is_loss:
-            loss_count += 1
-
-        order_details.append({
-            'id': o.id,
-            'code': o.code,
-            'date': o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
-            'customer': o.customer.name if o.customer else '',
-            'customer_group': o.customer.group.name if o.customer and o.customer.group else '',
-            'revenue': order_revenue,
-            'cost': order_cost,
-            'profit': order_profit,
-            'is_loss': is_loss,
-            'status': o.status,
-            'status_display': o.get_status_display(),
-            'payment_status': o.payment_status,
-        })
-
-    # Doanh thu theo ngày
-    from django.db.models.functions import TruncDate
-    daily = orders.annotate(
-        day=TruncDate('order_date')
-    ).values('day').annotate(
-        count=Count('id'),
-        revenue=Sum('final_amount'),
-        paid=Sum('paid_amount'),
-    ).order_by('day')
-
-    daily_data = []
-    for d in daily:
-        day_cost_qs = OrderItem.objects.filter(
-            order__order_date=d['day'], order__status__in=[0,1,2,3,4,5]
-        ).exclude(order__status=6)
-        if store_id:
-            day_cost_qs = day_cost_qs.filter(order__store_id=store_id)
-        if customer_group_id:
-            day_cost_qs = day_cost_qs.filter(order__customer__group_id=customer_group_id)
-        if category_id:
-            day_cost_qs = day_cost_qs.filter(product__category_id=category_id)
-        day_cost = float(day_cost_qs.aggregate(c=Sum(F('cost_price') * F('quantity')))['c'] or 0)
-        day_revenue = float(d['revenue'] or 0)
-
-        day_returns = OrderReturn.objects.filter(
-            return_date=d['day']
-        ).exclude(status=3).aggregate(s=Sum('total_refund'))
-        day_ret = float(day_returns['s'] or 0)
-
-        daily_data.append({
-            'date': d['day'].strftime('%d/%m/%Y'),
-            'count': d['count'],
-            'revenue': day_revenue,
-            'cost': day_cost,
-            'profit': day_revenue - day_cost,
-            'returns': day_ret,
-        })
-
-    # Top sản phẩm
-    from products.models import Product
-    top_products_qs = OrderItem.objects.filter(order__in=orders)
-    if category_id:
-        top_products_qs = top_products_qs.filter(product__category_id=category_id)
-    top_products = top_products_qs.values('product__name').annotate(
-        total_qty=Sum('quantity'),
-        total_amount=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_qty')[:10]
-
-    # Top khách hàng
-    top_customers = orders.values(
-        'customer__name'
-    ).annotate(
-        order_count=Count('id'),
-        total_amount=Sum('final_amount'),
-    ).order_by('-total_amount')[:5]
-
-    # Breakdown theo nhóm khách hàng
-    group_breakdown = orders.values(
-        'customer__group__name'
-    ).annotate(
-        order_count=Count('id'),
-        total_amount=Sum('final_amount'),
-    ).order_by('-total_amount')
-
-    # Breakdown theo danh mục SP
-    category_breakdown = OrderItem.objects.filter(
-        order__in=orders
-    ).values('product__category__name').annotate(
-        total_qty=Sum('quantity'),
-        total_revenue=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_revenue')
-
-    # === STORE BREAKDOWN ===
-    from core.store_utils import get_managed_store_ids
-    from system_management.models import Store
-    managed_ids = get_managed_store_ids(request.user)
-    managed_stores = Store.objects.filter(id__in=managed_ids).select_related('brand')
-    has_multiple = managed_stores.count() > 1
-
-    stores_list = [{'id': s.id, 'name': s.name, 'brand': s.brand.name if s.brand else ''} for s in managed_stores]
-
-    store_breakdown = []
-    if has_multiple and not store_id:
-        all_orders_base = Order.objects.filter(
-            order_date__gte=from_date, order_date__lte=to_date
-        ).exclude(status=6)
-        all_orders_base = filter_by_store(all_orders_base, request)
-
-        for st in managed_stores:
-            st_orders = all_orders_base.filter(store=st)
-            st_count = st_orders.count()
-            st_revenue = float(st_orders.aggregate(s=Sum('final_amount'))['s'] or 0)
-            st_paid = float(st_orders.aggregate(s=Sum('paid_amount'))['s'] or 0)
-            st_cost_data = OrderItem.objects.filter(order__in=st_orders).aggregate(
-                c=Sum(F('cost_price') * F('quantity'))
-            )
-            st_cost = float(st_cost_data['c'] or 0)
-            store_breakdown.append({
-                'store_id': st.id,
-                'store_name': st.name,
-                'brand_name': st.brand.name if st.brand else '',
-                'orders': st_count,
-                'revenue': st_revenue,
-                'cost': st_cost,
-                'profit': st_revenue - st_cost,
-                'debt': st_revenue - st_paid,
-                'paid': st_paid,
-            })
-
-    # Danh sách nhóm KH + danh mục (cho filter dropdown)
-    from customers.models import CustomerGroup
-    from products.models import ProductCategory
-    groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
-    categories = list(ProductCategory.objects.filter(is_active=True).values('id', 'name').order_by('name'))
-
-    # === PRODUCT BREAKDOWN (for tab 2) ===
-    product_breakdown_qs = OrderItem.objects.filter(order__in=orders)
-    if category_id:
-        product_breakdown_qs = product_breakdown_qs.filter(product__category_id=category_id)
-    product_breakdown = product_breakdown_qs.values(
-        'product__name', 'product__category__name'
-    ).annotate(
-        total_qty=Sum('quantity'),
-        total_amount=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_amount')
-
-    # === CUSTOMER BREAKDOWN (for tab 3) ===
-    customer_breakdown = orders.values(
-        'customer__name', 'customer__group__name'
-    ).annotate(
-        order_count=Count('id'),
-        total_amount=Sum('final_amount'),
-        total_paid=Sum('paid_amount'),
-    ).order_by('-total_amount')[:50]
-
-    # === STAFF BREAKDOWN (for tab 4) ===
-    from django.db.models import Q as DQ
-    staff_names = list(orders.exclude(salesperson__isnull=True).exclude(salesperson='').values_list('salesperson', flat=True).distinct())
-    staff_breakdown = []
-    for sp_name in sorted(staff_names):
-        sp_orders = orders.filter(salesperson=sp_name)
-        sp_count = sp_orders.count()
-        if sp_count == 0:
-            continue
-        sp_revenue = float(sp_orders.aggregate(s=Sum('final_amount'))['s'] or 0)
-        sp_cost_d = OrderItem.objects.filter(order__in=sp_orders).aggregate(c=Sum(F('cost_price') * F('quantity')))
-        sp_cost = float(sp_cost_d['c'] or 0)
-        sp_returns = float(OrderReturn.objects.filter(
-            order__in=sp_orders, return_date__gte=from_date, return_date__lte=to_date
-        ).exclude(status=3).aggregate(s=Sum('total_refund'))['s'] or 0)
-        contribution = round(sp_revenue / total_revenue * 100, 1) if total_revenue > 0 else 0
-        staff_breakdown.append({
-            'salesperson': sp_name, 'order_count': sp_count,
-            'revenue': sp_revenue, 'cost': sp_cost, 'profit': sp_revenue - sp_cost,
-            'returns_amount': sp_returns, 'contribution': contribution,
-        })
-    # Chưa gán NV
-    no_sp = orders.filter(DQ(salesperson__isnull=True) | DQ(salesperson=''))
-    if no_sp.exists():
-        ns_count = no_sp.count()
-        ns_rev = float(no_sp.aggregate(s=Sum('final_amount'))['s'] or 0)
-        ns_cost_d = OrderItem.objects.filter(order__in=no_sp).aggregate(c=Sum(F('cost_price') * F('quantity')))
-        ns_cost = float(ns_cost_d['c'] or 0)
-        ns_ret = float(OrderReturn.objects.filter(order__in=no_sp, return_date__gte=from_date, return_date__lte=to_date).exclude(status=3).aggregate(s=Sum('total_refund'))['s'] or 0)
-        staff_breakdown.append({'salesperson': '(Chưa gán NV)', 'order_count': ns_count, 'revenue': ns_rev, 'cost': ns_cost, 'profit': ns_rev - ns_cost, 'returns_amount': ns_ret, 'contribution': round(ns_rev / total_revenue * 100, 1) if total_revenue > 0 else 0})
-
-    return JsonResponse({
-        'status': 'ok',
-        'has_multiple_stores': has_multiple,
-        'stores': stores_list,
-        'filter_options': {
-            'customer_groups': groups,
-            'categories': categories,
-        },
-        'summary': {
-            'total_orders': total_orders,
-            'total_revenue': total_revenue,
-            'total_cost': total_cost,
-            'total_profit': total_profit,
-            'profit_margin': round(total_profit / total_revenue * 100, 1) if total_revenue > 0 else 0,
-            'total_returns': total_returns,
-            'returns_count': returns_count,
-            'total_debt': total_debt,
-            'total_purchases': total_purchases,
-            'loss_count': loss_count,
-        },
-        'daily': daily_data,
-        'order_details': order_details,
-        'store_breakdown': store_breakdown,
-        'group_breakdown': [{'name': g['customer__group__name'] or 'Không nhóm', 'orders': g['order_count'], 'amount': float(g['total_amount'] or 0)} for g in group_breakdown],
-        'category_breakdown': [{'name': c['product__category__name'] or 'Không DM', 'qty': float(c['total_qty'] or 0), 'revenue': float(c['total_revenue'] or 0), 'cost': float(c['total_cost'] or 0), 'profit': float(c['total_revenue'] or 0) - float(c['total_cost'] or 0)} for c in category_breakdown],
-        'top_products': [{'name': p['product__name'], 'qty': float(p['total_qty'] or 0), 'amount': float(p['total_amount'] or 0), 'cost': float(p['total_cost'] or 0), 'profit': float(p['total_amount'] or 0) - float(p['total_cost'] or 0)} for p in top_products],
-        'top_customers': [{'name': c['customer__name'] or 'N/A', 'orders': c['order_count'], 'amount': float(c['total_amount'] or 0)} for c in top_customers],
-        'product_breakdown': [{'name': p['product__name'], 'category': p['product__category__name'] or '', 'qty': float(p['total_qty'] or 0), 'amount': float(p['total_amount'] or 0), 'cost': float(p['total_cost'] or 0), 'profit': float(p['total_amount'] or 0) - float(p['total_cost'] or 0)} for p in product_breakdown],
-        'customer_breakdown': [{'name': c['customer__name'] or 'N/A', 'group': c['customer__group__name'] or '', 'orders': c['order_count'], 'amount': float(c['total_amount'] or 0), 'paid': float(c['total_paid'] or 0), 'debt': float(c['total_amount'] or 0) - float(c['total_paid'] or 0)} for c in customer_breakdown],
-        'staff_breakdown': staff_breakdown,
-    })
+    """API báo cáo bán hàng — chuẩn hóa theo bộ lọc chung cho mọi tab."""
+    payload = _build_sales_report_payload(request, include_filter_options=True)
+    return JsonResponse({'status': 'ok', **payload})
 
 
 @login_required(login_url="/login/")
@@ -357,12 +673,16 @@ def api_report_purchases(request):
         'status': r.status, 'status_display': r.get_status_display(),
     } for r in receipts]
 
-    total = sum(d['total_amount'] for d in data if d['status'] != 2)
-    count = len([d for d in data if d['status'] != 2])
+    total = sum(d['total_amount'] for d in data if d['status'] == 1)
+    count = len([d for d in data if d['status'] == 1])
 
     return JsonResponse({
         'status': 'ok', 'data': data,
-        'summary': {'total_amount': total, 'total_count': count}
+        'summary': {
+            'total_amount': total,
+            'total_count': count,
+            'refreshed_at': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+        }
     })
 
 
@@ -978,40 +1298,28 @@ def export_staff_sales_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
+@sales_report_privileged_required
 def export_sales_excel(request):
-    """Xuất báo cáo bán hàng ra Excel — hỗ trợ lọc nhóm KH, danh mục, lãi/lỗ"""
+    """Xuất báo cáo bán hàng ra Excel theo đúng bộ lọc hiện tại."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
 
-    from_date = request.GET.get('from_date')
-    to_date = request.GET.get('to_date')
-    store_id = request.GET.get('store_id')
-    customer_group_id = request.GET.get('customer_group_id')
-    category_id = request.GET.get('category_id')
-    profit_filter = request.GET.get('profit_filter', '')
-
-    today = datetime.now().date()
-    if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
-    if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
-
-    orders = Order.objects.filter(
-        order_date__gte=from_date, order_date__lte=to_date
-    ).exclude(status=6).select_related('customer', 'customer__group')
-    orders = filter_by_store(orders, request)
-    if store_id:
-        orders = orders.filter(store_id=store_id)
-    if customer_group_id:
-        orders = orders.filter(customer__group_id=customer_group_id)
-    if category_id:
-        orders = orders.filter(items__product__category_id=category_id).distinct()
+    filters = _get_sales_report_filters(request)
+    payload = _build_sales_report_payload(request, include_filter_options=False)
+    summary = payload.get('summary', {})
+    daily = payload.get('daily', [])
+    product_breakdown = payload.get('product_breakdown', [])
+    category_breakdown = payload.get('category_breakdown', [])
+    group_breakdown = payload.get('group_breakdown', [])
+    order_details = payload.get('order_details', [])
+    time_group_label = payload.get('time_group_label', 'Ngày')
 
     # Styles
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = 'Doanh thu theo ngày'
+    ws.title = f"Doanh thu theo {time_group_label.lower()}"[:31]
     header_font = Font(bold=True, size=14, color='FFFFFF')
     header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
     sub_font = Font(bold=True, size=10, color='FFFFFF')
@@ -1028,11 +1336,36 @@ def export_sales_excel(request):
     ws['A1'].fill = header_fill
     ws['A1'].alignment = Alignment(horizontal='center')
     ws.merge_cells('A2:G2')
-    ws['A2'] = f'Từ {from_date} đến {to_date}'
+    ws['A2'] = f"Từ {filters['from_date']} đến {filters['to_date']}"
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    headers = ['STT', 'Ngày', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trả hàng']
+    filter_labels = []
+    if filters.get('store_id'):
+        filter_labels.append(f"Cửa hàng: {filters['store_id']}")
+    if filters.get('customer_group_id'):
+        filter_labels.append(f"Nhóm KH: {filters['customer_group_id']}")
+    if filters.get('category_id'):
+        filter_labels.append(f"Nhóm hàng: {filters['category_id']}")
+    if filters.get('profit_filter'):
+        filter_labels.append(f"Lợi nhuận: {filters['profit_filter']}")
+    for key, label in (
+        ('revenue_min', 'DT từ'),
+        ('revenue_max', 'DT đến'),
+        ('cost_min', 'GV từ'),
+        ('cost_max', 'GV đến'),
+        ('profit_min', 'LN từ'),
+        ('profit_max', 'LN đến'),
+    ):
+        if filters.get(key) is not None:
+            filter_labels.append(f"{label}: {int(filters[key]) if float(filters[key]).is_integer() else filters[key]}")
+    if filter_labels:
+        ws.merge_cells('A3:G3')
+        ws['A3'] = 'Bộ lọc: ' + ' | '.join(filter_labels)
+        ws['A3'].font = Font(italic=True, size=9)
+        ws['A3'].alignment = Alignment(horizontal='center')
+
+    headers = ['STT', time_group_label, 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trả hàng']
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=h)
         cell.font = sub_font
@@ -1040,27 +1373,9 @@ def export_sales_excel(request):
         cell.alignment = Alignment(horizontal='center')
         cell.border = thin
 
-    from django.db.models.functions import TruncDate
-    daily = orders.annotate(day=TruncDate('order_date')).values('day').annotate(
-        count=Count('id'), revenue=Sum('final_amount')
-    ).order_by('day')
-
     row = 5
-    grand = {'count': 0, 'revenue': 0, 'cost': 0, 'profit': 0, 'returns': 0}
     for idx, d in enumerate(daily, 1):
-        cost_qs = OrderItem.objects.filter(
-            order__order_date=d['day'], order__status__in=[0,1,2,3,4,5]
-        ).exclude(order__status=6)
-        if category_id:
-            cost_qs = cost_qs.filter(product__category_id=category_id)
-        day_cost = float(cost_qs.aggregate(c=Sum(F('cost_price') * F('quantity')))['c'] or 0)
-        day_revenue = float(d['revenue'] or 0)
-        day_returns = float(OrderReturn.objects.filter(
-            return_date=d['day']).exclude(status=3).aggregate(
-            s=Sum('total_refund'))['s'] or 0)
-
-        vals = [idx, d['day'].strftime('%d/%m/%Y'), d['count'], day_revenue,
-                day_cost, day_revenue - day_cost, day_returns]
+        vals = [idx, d['date'], d['count'], d['revenue'], d['cost'], d['profit'], d['returns']]
         for col, val in enumerate(vals, 1):
             cell = ws.cell(row=row, column=col, value=val)
             cell.border = thin
@@ -1069,15 +1384,13 @@ def export_sales_excel(request):
             # Highlight negative profit
             if col == 6 and val < 0:
                 cell.font = Font(bold=True, color='FF0000')
-        grand['count'] += d['count']
-        grand['revenue'] += day_revenue
-        grand['cost'] += day_cost
-        grand['profit'] += day_revenue - day_cost
-        grand['returns'] += day_returns
         row += 1
 
     # Total row
-    totals = ['', 'TỔNG', grand['count'], grand['revenue'], grand['cost'], grand['profit'], grand['returns']]
+    totals = [
+        '', 'TỔNG', summary.get('total_orders', 0), summary.get('total_revenue', 0),
+        summary.get('total_cost', 0), summary.get('total_profit', 0), summary.get('total_returns', 0)
+    ]
     for col, val in enumerate(totals, 1):
         cell = ws.cell(row=row, column=col, value=val)
         cell.font = Font(bold=True)
@@ -1089,86 +1402,129 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 20, 12, 18, 18, 18, 15], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 2: Top sản phẩm =====
-    ws2 = wb.create_sheet('Top sản phẩm')
-    sp_headers = ['STT', 'Sản phẩm', 'SL bán', 'Doanh thu', 'Giá vốn', 'Lợi nhuận']
+    # ===== Sheet 2: Mặt hàng =====
+    ws2 = wb.create_sheet('Mặt hàng')
+    sp_headers = ['STT', 'Sản phẩm', 'Danh mục', 'SL bán', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Biên LN']
     for col, h in enumerate(sp_headers, 1):
         cell = ws2.cell(row=1, column=col, value=h)
         cell.font = sub_font
         cell.fill = sub_fill
         cell.border = thin
 
-    top_qs = OrderItem.objects.filter(order__in=orders)
-    if category_id:
-        top_qs = top_qs.filter(product__category_id=category_id)
-    top_products = top_qs.values(
-        'product__code', 'product__name'
-    ).annotate(
-        total_qty=Sum('quantity'),
-        total_amount=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_qty')[:30]
-
-    for idx, p in enumerate(top_products, 1):
-        amt = float(p['total_amount'] or 0)
-        cst = float(p['total_cost'] or 0)
-        profit = amt - cst
+    for idx, p in enumerate(product_breakdown, 1):
+        amt = float(p.get('amount') or 0)
+        cst = float(p.get('cost') or 0)
+        profit = float(p.get('profit') or 0)
+        margin = round((profit / amt) * 100, 1) if amt > 0 else 0
         ws2.cell(row=idx+1, column=1, value=idx).border = thin
-        ws2.cell(row=idx+1, column=2, value=f"{p['product__code']} - {p['product__name']}").border = thin
-        ws2.cell(row=idx+1, column=3, value=float(p['total_qty'] or 0)).border = thin
-        c = ws2.cell(row=idx+1, column=4, value=amt)
+        ws2.cell(row=idx+1, column=2, value=p.get('name') or '').border = thin
+        ws2.cell(row=idx+1, column=3, value=p.get('category') or '').border = thin
+        ws2.cell(row=idx+1, column=4, value=float(p.get('qty') or 0)).border = thin
+        c = ws2.cell(row=idx+1, column=5, value=amt)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx+1, column=5, value=cst)
+        c = ws2.cell(row=idx+1, column=6, value=cst)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx+1, column=6, value=profit)
+        c = ws2.cell(row=idx+1, column=7, value=profit)
         c.number_format = money_fmt
         c.border = thin
+        ws2.cell(row=idx+1, column=8, value=margin / 100).number_format = '0.0%'
+        ws2.cell(row=idx+1, column=8).border = thin
         if profit < 0:
             c.font = Font(bold=True, color='FF0000')
 
-    for i, w in enumerate([6, 35, 12, 18, 18, 18], 1):
+    for i, w in enumerate([6, 35, 20, 12, 18, 18, 18, 12], 1):
         ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 3: Chi tiết đơn hàng =====
-    ws3 = wb.create_sheet('Chi tiết đơn hàng')
+    # ===== Sheet 3: Nhóm mặt hàng =====
+    ws3 = wb.create_sheet('Nhóm mặt hàng')
+    cat_headers = ['STT', 'Nhóm mặt hàng', 'SL bán', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Biên LN']
+    for col, h in enumerate(cat_headers, 1):
+        cell = ws3.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    for idx, row in enumerate(category_breakdown, 1):
+        revenue = float(row.get('revenue') or 0)
+        cost = float(row.get('cost') or 0)
+        profit = float(row.get('profit') or 0)
+        margin = round((profit / revenue) * 100, 1) if revenue > 0 else 0
+        values = [idx, row.get('name') or '', float(row.get('qty') or 0), revenue, cost, profit, margin / 100]
+        for col, val in enumerate(values, 1):
+            cell = ws3.cell(row=idx + 1, column=col, value=val)
+            cell.border = thin
+            if col in (4, 5, 6):
+                cell.number_format = money_fmt
+            if col == 7:
+                cell.number_format = '0.0%'
+            if col == 6 and profit < 0:
+                cell.font = Font(bold=True, color='FF0000')
+
+    for i, w in enumerate([6, 28, 12, 18, 18, 18, 12], 1):
+        ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet 4: Nhóm khách hàng =====
+    ws4 = wb.create_sheet('Nhóm khách hàng')
+    grp_headers = ['STT', 'Nhóm KH', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Đã thu', 'Công nợ', 'Tỷ trọng']
+    for col, h in enumerate(grp_headers, 1):
+        cell = ws4.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    for idx, row in enumerate(group_breakdown, 1):
+        values = [
+            idx,
+            row.get('name') or '',
+            int(row.get('orders') or 0),
+            float(row.get('amount') or 0),
+            float(row.get('cost') or 0),
+            float(row.get('profit') or 0),
+            float(row.get('paid') or 0),
+            float(row.get('debt') or 0),
+            (float(row.get('contribution') or 0) / 100),
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws4.cell(row=idx + 1, column=col, value=val)
+            cell.border = thin
+            if col in (4, 5, 6, 7, 8):
+                cell.number_format = money_fmt
+            if col == 9:
+                cell.number_format = '0.0%'
+            if col == 6 and float(row.get('profit') or 0) < 0:
+                cell.font = Font(bold=True, color='FF0000')
+
+    for i, w in enumerate([6, 24, 12, 18, 18, 18, 18, 18, 12], 1):
+        ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet 5: Chi tiết đơn hàng =====
+    ws5 = wb.create_sheet('Chi tiết đơn hàng')
     od_headers = ['STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Nhóm KH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trạng thái']
     for col, h in enumerate(od_headers, 1):
-        cell = ws3.cell(row=1, column=col, value=h)
+        cell = ws5.cell(row=1, column=col, value=h)
         cell.font = sub_font
         cell.fill = sub_fill
         cell.border = thin
 
     od_row = 2
     od_grand = {'revenue': 0, 'cost': 0, 'profit': 0}
-    for idx, o in enumerate(orders.order_by('-order_date', '-id'), 1):
-        items_qs = o.items.all()
-        if category_id:
-            items_qs = items_qs.filter(product__category_id=category_id)
-        o_cost = float(items_qs.aggregate(c=Sum(F('cost_price') * F('quantity')))['c'] or 0)
-        o_revenue = float(o.final_amount or 0)
-        o_profit = o_revenue - o_cost
-        is_loss = o_profit < 0
-
-        if profit_filter == 'loss' and not is_loss:
-            continue
-        if profit_filter == 'profit' and is_loss:
-            continue
-
+    for idx, o in enumerate(order_details, 1):
+        is_loss = bool(o.get('is_loss'))
         vals = [
             idx,
-            o.code,
-            o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
-            o.customer.name if o.customer else '',
-            o.customer.group.name if o.customer and o.customer.group else '',
-            o_revenue,
-            o_cost,
-            o_profit,
-            o.get_status_display(),
+            o.get('code') or '',
+            o.get('date') or '',
+            o.get('customer') or '',
+            o.get('customer_group') or '',
+            float(o.get('revenue') or 0),
+            float(o.get('cost') or 0),
+            float(o.get('profit') or 0),
+            o.get('status_display') or '',
         ]
         for col, val in enumerate(vals, 1):
-            cell = ws3.cell(row=od_row, column=col, value=val)
+            cell = ws5.cell(row=od_row, column=col, value=val)
             cell.border = thin
             if col in (6, 7, 8):
                 cell.number_format = money_fmt
@@ -1177,14 +1533,14 @@ def export_sales_excel(request):
             if col == 8 and is_loss:
                 cell.font = Font(bold=True, color='FF0000')
 
-        od_grand['revenue'] += o_revenue
-        od_grand['cost'] += o_cost
-        od_grand['profit'] += o_profit
+        od_grand['revenue'] += float(o.get('revenue') or 0)
+        od_grand['cost'] += float(o.get('cost') or 0)
+        od_grand['profit'] += float(o.get('profit') or 0)
         od_row += 1
 
     # Total row for sheet 3
     for col, val in enumerate(['', 'TỔNG', '', '', '', od_grand['revenue'], od_grand['cost'], od_grand['profit'], ''], 1):
-        cell = ws3.cell(row=od_row, column=col, value=val)
+        cell = ws5.cell(row=od_row, column=col, value=val)
         cell.font = Font(bold=True)
         cell.fill = total_fill
         cell.border = thin
@@ -1192,12 +1548,12 @@ def export_sales_excel(request):
             cell.number_format = money_fmt
 
     for i, w in enumerate([6, 12, 12, 25, 15, 18, 18, 18, 15], 1):
-        ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    filename = f'BC_Ban_hang_{from_date}_{to_date}.xlsx'
+    filename = f"BC_Ban_hang_{filters['from_date']}_{filters['to_date']}.xlsx"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response

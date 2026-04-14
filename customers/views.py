@@ -213,12 +213,20 @@ def api_customer_orders(request):
     if not cid:
         return JsonResponse({'status': 'error', 'message': 'Missing customer_id'})
     try:
+        limit = request.GET.get('limit')
+        try:
+            limit = int(limit) if limit else None
+        except (TypeError, ValueError):
+            limit = None
+
         from core.store_utils import get_managed_store_ids
         store_ids = get_managed_store_ids(request.user)
         customer = Customer.objects.filter(id=cid, store_id__in=store_ids).first()
         if not customer:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
-        orders = Order.objects.filter(customer=customer).select_related('warehouse').order_by('-order_date')
+        orders_qs = Order.objects.filter(customer=customer).select_related('warehouse').prefetch_related('items__product').order_by('-order_date', '-id')
+        total_orders_all = orders_qs.count()
+        orders = orders_qs[:limit] if limit and limit > 0 else orders_qs
         data = []
         total_amount = 0
         total_debt = 0
@@ -232,13 +240,14 @@ def api_customer_orders(request):
                 'unit_price': float(it.unit_price),
                 'discount_percent': float(it.discount_percent),
                 'total_price': float(it.total_price),
-            } for it in o.items.select_related('product').all()]
+            } for it in o.items.all()]
 
             data.append({
                 'id': o.id, 'code': o.code,
                 'order_date': o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
                 'order_date_raw': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
                 'warehouse': o.warehouse.name if o.warehouse else '',
+                'warehouse_id': o.warehouse_id,
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
                 'final_amount': float(o.final_amount),
@@ -262,6 +271,8 @@ def api_customer_orders(request):
             'customer': {'id': customer.id, 'code': customer.code, 'name': customer.name,
                          'phone': customer.phone or '', 'company': customer.company or ''},
             'orders': data,
+            'returned_count': len(data),
+            'total_orders_all': total_orders_all,
             'summary': {
                 'total_orders': len([d for d in data if d['status'] != 6]),
                 'total_cancelled': len([d for d in data if d['status'] == 6]),

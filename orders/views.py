@@ -3,12 +3,13 @@ import logging
 import re
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q
+from django.views.decorators.cache import never_cache
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn, OrderReturnItem,
     Packaging, OrderEditHistory,
@@ -27,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 GUEST_CUSTOMER_CODE_PREFIX = 'KHLE-'
 GUEST_CUSTOMER_NAME = 'Khách lẻ / khách vãng lai'
+
+
+def _to_decimal(value, default='0'):
+    try:
+        return Decimal(str(value if value not in (None, '') else default))
+    except Exception:
+        return Decimal(str(default))
+
+
+def _adjust_stock_quantity(stock, delta):
+    stock.quantity = _to_decimal(stock.quantity) + _to_decimal(delta)
+    stock.save(update_fields=['quantity'])
 
 
 def _get_sales_customers_queryset(request):
@@ -166,6 +179,80 @@ def _get_reserved_stock_maps(request, exclude_order_id=None):
         total_pending_by_product[product_id] = sum(warehouse_map.values())
 
     return reserved_by_product, total_reserved_by_product, pending_by_product, total_pending_by_product
+
+
+def _floor_stock_capacity(quantity, required_quantity):
+    quantity = Decimal(str(quantity or 0))
+    required_quantity = Decimal(str(required_quantity or 0))
+    if required_quantity <= 0:
+        return 0
+    return int((quantity / required_quantity).to_integral_value(rounding=ROUND_FLOOR))
+
+
+def _get_combo_stock_maps(product, reserved_by_product, pending_by_product):
+    """Calculate combo availability from component inventory per warehouse."""
+    component_items = [
+        item for item in product.combo_items.all()
+        if item.product and not item.product.is_service and Decimal(str(item.quantity or 0)) > 0
+    ]
+    if not component_items:
+        return {}, {}, {}, {}, 0.0, 0.0, 0.0, 0.0
+
+    warehouse_ids = set()
+    component_stock_maps = {}
+    for item in component_items:
+        stock_map = {}
+        for stock in item.product.stocks.all():
+            stock_map[int(stock.warehouse_id)] = float(stock.quantity)
+            warehouse_ids.add(int(stock.warehouse_id))
+        component_stock_maps[item.product_id] = stock_map
+        warehouse_ids.update(int(wid) for wid in reserved_by_product[item.product_id].keys())
+        warehouse_ids.update(int(wid) for wid in pending_by_product[item.product_id].keys())
+
+    stocks = {}
+    reserved_stocks = {}
+    pending_stocks = {}
+    sellable_stocks = {}
+
+    for warehouse_id in sorted(warehouse_ids):
+        actual_capacities = []
+        sellable_capacities = []
+        pending_capacities = []
+        for item in component_items:
+            required_qty = Decimal(str(item.quantity))
+            component_stocks = component_stock_maps.get(item.product_id, {})
+            actual_qty = component_stocks.get(warehouse_id, 0)
+            reserved_qty = reserved_by_product[item.product_id].get(warehouse_id, 0)
+            pending_qty = pending_by_product[item.product_id].get(warehouse_id, 0)
+
+            actual_capacities.append(_floor_stock_capacity(actual_qty, required_qty))
+            sellable_capacities.append(_floor_stock_capacity(actual_qty - reserved_qty, required_qty))
+            pending_capacities.append(_floor_stock_capacity(pending_qty, required_qty))
+
+        actual_combo_qty = min(actual_capacities) if actual_capacities else 0
+        sellable_combo_qty = min(sellable_capacities) if sellable_capacities else 0
+        pending_combo_qty = min(pending_capacities) if pending_capacities else 0
+        reserved_combo_qty = max(actual_combo_qty - sellable_combo_qty, 0)
+
+        stocks[str(warehouse_id)] = float(actual_combo_qty)
+        reserved_stocks[str(warehouse_id)] = float(reserved_combo_qty)
+        pending_stocks[str(warehouse_id)] = float(pending_combo_qty)
+        sellable_stocks[str(warehouse_id)] = float(sellable_combo_qty)
+
+    total_stock = sum(stocks.values())
+    total_reserved_stock = sum(reserved_stocks.values())
+    total_pending_stock = sum(pending_stocks.values())
+    total_sellable_stock = sum(sellable_stocks.values())
+    return (
+        stocks,
+        reserved_stocks,
+        pending_stocks,
+        sellable_stocks,
+        float(total_stock),
+        float(total_reserved_stock),
+        float(total_pending_stock),
+        float(total_sellable_stock),
+    )
 
 
 def _log_order_history(order, actor, action, summary='', status_before=None, status_after=None):
@@ -375,6 +462,7 @@ def quotation_tbl(request):
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
     customers = list(_get_sales_customers_queryset(request).values('id', 'code', 'name', 'phone'))
+    warehouses = list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name'))
     brand_users = AuthUser.objects.filter(
         is_active=True,
         profile__store_id__in=store_ids
@@ -390,6 +478,7 @@ def quotation_tbl(request):
         'customers': customers,
         'customer_groups': customer_groups,
         'system_users': system_users,
+        'warehouses': warehouses,
     }
     return render(request, "orders/quotation_list.html", context)
 
@@ -471,6 +560,21 @@ def api_get_products_for_select(request):
                     'stocks': ci_stocks,
                 })
 
+        total_reserved_stock = float(total_reserved_by_product[p.id])
+        total_pending_stock = float(total_pending_by_product[p.id])
+        total_sellable_stock = float(total_stock - total_reserved_by_product[p.id])
+        if p.is_combo:
+            (
+                stocks,
+                reserved_stocks,
+                pending_stocks,
+                sellable_stocks,
+                total_stock,
+                total_reserved_stock,
+                total_pending_stock,
+                total_sellable_stock,
+            ) = _get_combo_stock_maps(p, reserved_by_product, pending_by_product)
+
         data.append({
             'id': p.id,
             'code': p.code,
@@ -493,9 +597,9 @@ def api_get_products_for_select(request):
             'pending_stocks': pending_stocks,
             'sellable_stocks': sellable_stocks,
             'total_stock': float(total_stock),
-            'total_reserved_stock': float(total_reserved_by_product[p.id]),
-            'total_pending_stock': float(total_pending_by_product[p.id]),
-            'total_sellable_stock': float(total_stock - total_reserved_by_product[p.id]),
+            'total_reserved_stock': float(total_reserved_stock),
+            'total_pending_stock': float(total_pending_stock),
+            'total_sellable_stock': float(total_sellable_stock),
             'variants': variants,
         })
     return JsonResponse({'data': data})
@@ -739,6 +843,8 @@ def api_save_order(request):
                 if not o.store_id:
                     o.store = _get_default_store_for_request(request)
             requested_code = (data.get('code', '') or '').strip()
+            if not requested_code:
+                requested_code = _auto_next_order_code()
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
             dup = Order.all_objects.filter(code=requested_code)
             if oid:
@@ -821,7 +927,13 @@ def api_save_order(request):
             if total > 0 and Decimal(str(o.discount_amount or 0)) > 0:
                 order_discount_ratio = min(Decimal(str(o.discount_amount or 0)) / total, Decimal('1'))
 
-            o.save()
+            try:
+                o.save()
+            except IntegrityError:
+                if oid:
+                    raise
+                o.code = _auto_next_order_code()
+                o.save()
 
             # Xử lý thanh toán — hỗ trợ multi-payment lines
             payment_lines = data.get('payment_lines', [])
@@ -890,13 +1002,14 @@ def api_save_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=o.warehouse_id)
-                                stock.quantity += Decimal(str(old_item.quantity)) * Decimal(str(ci.quantity))
-                                stock.save()
+                                _adjust_stock_quantity(
+                                    stock,
+                                    _to_decimal(old_item.quantity) * _to_decimal(ci.quantity),
+                                )
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=old_item.product_id, warehouse_id=o.warehouse_id)
-                        stock.quantity += Decimal(str(old_item.quantity))
-                        stock.save()
+                        _adjust_stock_quantity(stock, _to_decimal(old_item.quantity))
 
             # Xóa items cũ và tạo mới
             o.items.all().delete()
@@ -952,13 +1065,11 @@ def api_save_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=o.warehouse_id)
-                                stock.quantity -= qty * Decimal(str(ci.quantity))
-                                stock.save()
+                                _adjust_stock_quantity(stock, -(qty * _to_decimal(ci.quantity)))
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=product.id, warehouse_id=o.warehouse_id)
-                        stock.quantity -= qty
-                        stock.save()
+                        _adjust_stock_quantity(stock, -qty)
             # Cập nhật trạng thái báo giá → "Đã tạo đơn hàng"
             if o.quotation_id:
                 Quotation.objects.filter(id=o.quotation_id).update(status=3)
@@ -1072,13 +1183,11 @@ def api_cancel_order(request):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=order.warehouse_id)
-                                stock.quantity += _Dec(str(item.quantity)) * _Dec(str(ci.quantity))
-                                stock.save()
+                                _adjust_stock_quantity(stock, _Dec(str(item.quantity)) * _Dec(str(ci.quantity)))
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
                             product_id=item.product_id, warehouse_id=order.warehouse_id)
-                        stock.quantity += _Dec(str(item.quantity))
-                        stock.save()
+                        _adjust_stock_quantity(stock, _Dec(str(item.quantity)))
 
             # Xử lý phiếu thu liên quan
             linked_receipts = Receipt.objects.filter(order=order)
@@ -1270,13 +1379,11 @@ def api_bulk_cancel_orders(request):
                                 if not ci.product.is_service:
                                     stock, _ = ProductStock.objects.get_or_create(
                                         product_id=ci.product_id, warehouse_id=order.warehouse_id)
-                                    stock.quantity += _Dec(str(item.quantity)) * _Dec(str(ci.quantity))
-                                    stock.save()
+                                    _adjust_stock_quantity(stock, _Dec(str(item.quantity)) * _Dec(str(ci.quantity)))
                         elif not product.is_service:
                             stock, _ = ProductStock.objects.get_or_create(
                                 product_id=item.product_id, warehouse_id=order.warehouse_id)
-                            stock.quantity += _Dec(str(item.quantity))
-                            stock.save()
+                            _adjust_stock_quantity(stock, _Dec(str(item.quantity)))
 
                 auto_receipts = Receipt.objects.filter(order=order, description__icontains='tự động')
                 for receipt in auto_receipts:
@@ -1381,13 +1488,15 @@ def api_bulk_collect_orders(request):
 
 @login_required(login_url="/login/")
 def api_get_quotations(request):
-    quotes = Quotation.objects.select_related('customer').all()
+    quotes = Quotation.objects.select_related('customer', 'customer__group').all()
     quotes = filter_by_store(quotes, request)
     data = [{
         'id': q.id, 'code': q.code,
         'customer': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
         'customer_id': q.customer_id,
         'customer_phone': q.customer.phone if q.customer and q.customer.phone else '',
+        'customer_group': q.customer.group.name if q.customer and q.customer.group else '',
+        'customer_group_id': q.customer.group_id if q.customer else None,
         'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
         'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
         'total_amount': float(q.total_amount),
@@ -1753,20 +1862,18 @@ def api_pos_checkout(request):
                         from products.models import ComboItem
                         combo_items = ComboItem.objects.filter(combo=product).select_related('product')
                         for ci in combo_items:
-                            qty_deduct = float(ci.quantity) * float(item_data.get('quantity', 1))
+                            qty_deduct = _to_decimal(ci.quantity) * _to_decimal(item_data.get('quantity', 1))
                             stock, _ = ProductStock.objects.get_or_create(
                                 product=ci.product, warehouse=warehouse,
                                 defaults={'quantity': 0}
                             )
-                            stock.quantity = float(stock.quantity) - qty_deduct
-                            stock.save()
+                            _adjust_stock_quantity(stock, -qty_deduct)
                     else:
                         stock, _ = ProductStock.objects.get_or_create(
                             product=product, warehouse=warehouse,
                             defaults={'quantity': 0}
                         )
-                        stock.quantity = float(stock.quantity) - float(item_data.get('quantity', 1))
-                        stock.save()
+                        _adjust_stock_quantity(stock, -_to_decimal(item_data.get('quantity', 1)))
 
             paid_amount = Decimal(str(data.get('paid_amount') or data.get('final_amount') or 0))
             if paid_amount > 0:

@@ -36,6 +36,7 @@
 
         // Render button + dropdown
         this._renderButton();
+        this.apply();
     }
 
     ColumnConfig.prototype._loadState = function(){

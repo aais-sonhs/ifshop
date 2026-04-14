@@ -62,8 +62,8 @@ function loadData(){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td>'+d.description+'</td><td>'+d.discount_percent+'%</td>'+
                 '<td>'+d.customer_count+'</td>'+
                 '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
-                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });$('#data_tbl tbody').html(h);
     });
 }

@@ -240,9 +240,9 @@ function renderBrands(){
         h += headerInfoHtml;
         h += '</div>';
         h += '<span class="badge badge-warning mr-2" style="font-size:12px;">'+filteredStores.length+' cửa hàng</span>';
-        h += '<button class="btn btn-xs btn-outline-primary mr-1" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')" title="Sửa TH"><i class="fas fa-edit"></i></button>';
-        h += '<button class="btn btn-xs btn-outline-danger mr-1" onclick="event.stopPropagation();deleteBrand('+b.id+')" title="Xóa TH"><i class="fas fa-trash"></i></button>';
-        h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')" title="Thêm CH"><i class="fas fa-plus"></i></button>';
+        h += '<div class="btn-action-group"><button class="btn btn-xs btn-outline-primary" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')">Sửa TH</button>';
+        h += '<button class="btn btn-xs btn-outline-danger" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa TH</button>';
+        h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')"><i class="fas fa-plus"></i> Thêm CH</button></div>';
         h += '</div>';
         h += '</div>';
 
@@ -265,9 +265,9 @@ function renderBrands(){
                 h += '<td>'+s.manager_name+'</td>';
                 h += '<td class="text-center"><small>'+timeStr+'</small></td>';
                 h += '<td class="text-center">'+statusBadge+'</td>';
-                h += '<td class="text-center">';
-                h += '<button class="btn btn-xs btn-info" onclick=\'editStore('+b.id+','+JSON.stringify(s).replace(/'/g,"\\\'")+')\' title="Sửa"><i class="fas fa-edit"></i></button> ';
-                h += '<button class="btn btn-xs btn-danger" onclick="deleteStore('+s.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+                h += '<td class="text-center"><div class="btn-action-group">';
+                h += '<button class="btn btn-xs btn-info" onclick=\'editStore('+b.id+','+JSON.stringify(s).replace(/'/g,"\\\'")+')\'>Sửa</button> ';
+                h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteStore('+s.id+')">Xóa</button></div>';
                 h += '</td></tr>';
             });
             h += '</tbody></table>';

@@ -171,9 +171,9 @@ function renderTable(){
         h += '<td class="text-center">'+statusBadge+'</td>';
         h += '<td class="text-center"><small>'+rg.created_at+'</small></td>';
         h += '<td class="text-center">';
-        h += '<button class="btn btn-xs btn-info mr-1" onclick="openMembers('+rg.id+')" title="Quản lý thành viên"><i class="fas fa-users"></i></button>';
-        h += '<button class="btn btn-xs btn-warning mr-1" onclick=\'editRole('+JSON.stringify(rg)+')\' title="Sửa"><i class="fas fa-edit"></i></button>';
-        h += '<button class="btn btn-xs btn-danger" onclick="deleteRole('+rg.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+        h += '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="openMembers('+rg.id+')">TV</button>';
+        h += '<button class="btn btn-xs btn-info" onclick=\'editRole('+JSON.stringify(rg)+')\'>Sửa</button>';
+        h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteRole('+rg.id+')">Xóa</button></div>';
         h += '</td>';
         h += '</tr>';
     });
@@ -236,7 +236,7 @@ function openMembers(roleId){
             h += '<td>'+u.full_name+'</td>';
             h += '<td>'+u.email+'</td>';
             h += '<td>'+(u.store_name||'')+'</td>';
-            h += '<td class="text-center"><button class="btn btn-xs btn-danger" onclick="removeMember('+roleId+','+u.id+')"><i class="fas fa-user-minus"></i> Xóa</button></td>';
+            h += '<td class="text-center"><button class="btn btn-xs btn-outline-danger" onclick="removeMember('+roleId+','+u.id+')">Xóa</button></td>';
             h += '</tr>';
         });
         $('#member_tbody').html(h);

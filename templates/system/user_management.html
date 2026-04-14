@@ -217,9 +217,9 @@ function renderTable(){
         h += '<td class="text-center">'+statusBadge+'</td>';
         h += '<td class="text-center">';
         if(!u.is_superuser){
-            h += '<button class="btn btn-xs btn-info mr-1" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'  title="Sửa"><i class="fas fa-edit"></i></button>';
-            h += '<button class="btn btn-xs btn-warning mr-1" onclick="resetPw('+u.id+',\''+u.username+'\')" title="Đổi MK"><i class="fas fa-key"></i></button>';
-            h += '<button class="btn btn-xs btn-danger" onclick="deleteUser('+u.id+')" title="Xóa"><i class="fas fa-trash"></i></button>';
+            h += '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'>Sửa</button>';
+            h += '<button class="btn btn-xs btn-warning" onclick="resetPw('+u.id+',\''+u.username+'\')">Mật khẩu</button>';
+            h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteUser('+u.id+')">Xóa</button></div>';
         } else {
             h += '<span class="text-muted"><small>Admin</small></span>';
         }

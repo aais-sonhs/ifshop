@@ -213,10 +213,10 @@ function loadData(){
                 '<td>'+d.paper_size_display+'</td>' +
                 '<td class="text-center">'+defaultBadge+'</td>' +
                 '<td class="text-center">'+statusBadge+'</td>' +
-                '<td class="text-center">' +
-                    '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> ' +
+                '<td class="text-center"><div class="btn-action-group">' +
+                    '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> ' +
                     '<button class="btn btn-xs btn-warning" onclick="testPrinter('+d.id+',\''+d.ip_address+'\','+d.port+')"><i class="fas fa-plug"></i></button> ' +
-                    '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>' +
                 '</td></tr>';
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Chưa có máy in nào. Bấm "Thêm máy in" để bắt đầu.</td></tr>');

@@ -251,7 +251,7 @@ function loadFinanceCats(){
         res.data.forEach(function(d){
             var typeLabel = d.type === 1 ? '<span class="badge badge-success">Thu</span>' : '<span class="badge badge-danger">Chi</span>';
             h += '<tr><td>'+d.name+'</td><td>'+typeLabel+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editFC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\','+d.type+',\''+( d.description||'').replace(/'/g,"\\'")+ '\')"><i class="fas fa-edit"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editFC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\','+d.type+',\''+( d.description||'').replace(/'/g,"\\'")+ '\')">Sửa</button></div></td></tr>';
         });
         $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
@@ -262,7 +262,7 @@ function loadCashbooks(){
         var h='';
         res.data.forEach(function(d){
             h += '<tr><td>'+d.name+'</td><td class="text-right">'+fmt(d.balance)+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editCB('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editCB('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#cashbook_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
@@ -273,7 +273,7 @@ function loadProductCats(){
         var h='';
         res.data.forEach(function(d){
             h += '<tr><td>'+d.name+'</td><td>'+( d.description||'')+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#product_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
@@ -284,7 +284,7 @@ function loadWarehouseCats(){
         var h='';
         res.data.forEach(function(d){
             h += '<tr><td>'+d.code+'</td><td>'+d.name+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editWH('+d.id+',\''+d.code.replace(/'/g,"\\'")+'\',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.address||'').replace(/'/g,"\\'")+'\')"><i class="fas fa-edit"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editWH('+d.id+',\''+d.code.replace(/'/g,"\\'")+'\',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.address||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#warehouse_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });

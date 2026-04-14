@@ -1,3 +1,4 @@
-from django.test import TestCase
+"""Bộ test cho app spa.
 
-# Create your tests here.
+Hiện chưa có test case riêng cho app này.
+"""

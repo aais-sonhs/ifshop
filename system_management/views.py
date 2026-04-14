@@ -5,9 +5,58 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.db import models as db_models
-from .models import UserProfile, RoleGroup, ModulePermission, ServicePrice, SystemLog, PrinterSetting, BusinessConfig, Brand, Store
+from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, BusinessConfig, Brand, Store
+from core.store_utils import can_manage_users, get_managed_store_ids
 
 logger = logging.getLogger(__name__)
+
+
+def _get_editable_user(request, user_id):
+    """Lấy user mà request.user được phép chỉnh sửa/xóa.
+
+    - Superadmin: truy cập được mọi user.
+    - Brand owner: chỉ truy cập user trong store mình quản lý hoặc user chưa gán store.
+    """
+    if not user_id:
+        return None
+    queryset = User.objects.all()
+    if request.user.is_superuser:
+        return queryset.filter(id=user_id).first()
+
+    managed_store_ids = get_managed_store_ids(request.user)
+    return queryset.filter(
+        db_models.Q(id=user_id),
+        db_models.Q(profile__store_id__in=managed_store_ids) |
+        db_models.Q(profile__store__isnull=True, is_superuser=False),
+    ).distinct().first()
+
+
+def _get_brand_queryset_for_user(request):
+    """Lấy danh sách brand mà user hiện tại được phép xem/chỉnh sửa."""
+    if request.user.is_superuser:
+        return Brand.objects.all()
+    return Brand.objects.filter(owner=request.user)
+
+
+def _get_brand_for_user(request, brand_id):
+    """Lấy brand trong đúng phạm vi user hiện tại được phép thao tác."""
+    if not brand_id:
+        return None
+    return _get_brand_queryset_for_user(request).filter(id=brand_id).first()
+
+
+def _get_store_queryset_for_user(request):
+    """Lấy danh sách store mà user hiện tại được phép quản trị."""
+    if request.user.is_superuser:
+        return Store.objects.all()
+    return Store.objects.filter(id__in=get_managed_store_ids(request.user))
+
+
+def _get_store_for_user(request, store_id):
+    """Lấy store trong đúng phạm vi user hiện tại được phép thao tác."""
+    if not store_id:
+        return None
+    return _get_store_queryset_for_user(request).filter(id=store_id).first()
 
 
 @login_required(login_url="/login/")
@@ -44,7 +93,6 @@ def service_price_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_role_groups(request):
-    from django.contrib.auth.models import Group
     role_groups = RoleGroup.objects.select_related('group').all()
     data = []
     for rg in role_groups:
@@ -312,8 +360,7 @@ def api_delete_service_price(request):
 
 @login_required(login_url="/login/")
 def api_get_users(request):
-    from core.store_utils import get_managed_store_ids, can_manage_users
-    from system_management.models import Brand
+    """Trả về danh sách user theo đúng phạm vi quản trị của tài khoản hiện tại."""
     users = User.objects.all().prefetch_related('groups')
 
     if request.user.is_superuser:
@@ -368,7 +415,6 @@ def api_get_users(request):
 @login_required(login_url="/login/")
 def api_save_user(request):
     """Tạo/sửa user — brand owner hoặc superadmin"""
-    from core.store_utils import can_manage_users, get_managed_store_ids
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
@@ -380,23 +426,17 @@ def api_save_user(request):
         username = data.get('username', '').strip()
         store_id = data.get('store_id')
 
-        # Validate store belongs to this brand owner
+        # Kiểm tra store gán cho user có thuộc phạm vi mà người thao tác được quản lý hay không.
         if store_id and not request.user.is_superuser:
             allowed_stores = get_managed_store_ids(request.user)
             if int(store_id) not in allowed_stores:
                 return JsonResponse({'status': 'error', 'message': 'Cửa hàng không thuộc thương hiệu của bạn'})
 
         if uid:
-            # Edit existing
-            user = User.objects.get(id=uid)
-            # Check permission: brand owner can only edit users in their stores
-            if not request.user.is_superuser:
-                allowed_stores = get_managed_store_ids(request.user)
-                try:
-                    if user.profile.store_id and user.profile.store_id not in allowed_stores:
-                        return JsonResponse({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa người dùng này'})
-                except Exception:
-                    pass
+            # Khi sửa user, luôn khóa phạm vi theo helper thay vì lấy thẳng theo id.
+            user = _get_editable_user(request, uid)
+            if not user:
+                return JsonResponse({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa người dùng này'})
             user.first_name = data.get('first_name', '')
             user.last_name = data.get('last_name', '')
             user.email = data.get('email', '')
@@ -447,26 +487,19 @@ def api_save_user(request):
 @login_required(login_url="/login/")
 def api_delete_user(request):
     """Xóa user — chỉ brand owner/superadmin"""
-    from core.store_utils import can_manage_users, get_managed_store_ids
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return JsonResponse({'status': 'error', 'message': 'Bạn không có quyền'})
     try:
         data = json.loads(request.body)
-        user = User.objects.get(id=data.get('id'))
+        user = _get_editable_user(request, data.get('id'))
+        if not user:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy người dùng'})
         if user.is_superuser:
             return JsonResponse({'status': 'error', 'message': 'Không thể xóa tài khoản Super Admin'})
         if user.id == request.user.id:
             return JsonResponse({'status': 'error', 'message': 'Không thể xóa chính mình'})
-        # Check permission
-        if not request.user.is_superuser:
-            allowed_stores = get_managed_store_ids(request.user)
-            try:
-                if user.profile.store_id and user.profile.store_id not in allowed_stores:
-                    return JsonResponse({'status': 'error', 'message': 'Bạn không có quyền xóa người dùng này'})
-            except Exception:
-                pass
         user.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa người dùng thành công'})
     except User.DoesNotExist:
@@ -478,7 +511,6 @@ def api_delete_user(request):
 @login_required(login_url="/login/")
 def api_get_stores_for_user(request):
     """Lấy danh sách stores mà user hiện tại được quản lý"""
-    from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
     stores = Store.objects.filter(id__in=store_ids).select_related('brand')
     data = [{
@@ -676,10 +708,8 @@ def brand_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_brands(request):
-    brands = Brand.objects.all().prefetch_related('stores', 'stores__staff_profiles__user')
-    # Brand owner chỉ thấy brand của mình
-    if not request.user.is_superuser:
-        brands = brands.filter(owner=request.user)
+    """Trả về danh sách brand/store mà user hiện tại được phép quản trị."""
+    brands = _get_brand_queryset_for_user(request).prefetch_related('stores', 'stores__staff_profiles__user')
     data = []
     for b in brands:
         stores = []
@@ -731,7 +761,12 @@ def api_save_brand(request):
     try:
         data = json.loads(request.body)
         bid = data.get('id')
-        b = Brand.objects.get(id=bid) if bid else Brand()
+        if bid:
+            b = _get_brand_for_user(request, bid)
+            if not b:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu'})
+        else:
+            b = Brand()
         b.name = data.get('name', '')
         b.business_type = data.get('business_type', 'retail')
         b.description = data.get('description', '')
@@ -740,7 +775,8 @@ def api_save_brand(request):
         b.website = data.get('website', '')
         b.address = data.get('address', '')
         b.tax_code = data.get('tax_code', '')
-        b.owner_id = data.get('owner_id') or None
+        # Brand owner chỉ được quản lý thương hiệu của chính mình; superadmin mới được gán owner tùy ý.
+        b.owner_id = (data.get('owner_id') or None) if request.user.is_superuser else request.user.id
         b.is_active = data.get('is_active', True)
         b.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thương hiệu thành công'})
@@ -754,7 +790,10 @@ def api_delete_brand(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Brand.objects.filter(id=data.get('id')).delete()
+        brand = _get_brand_for_user(request, data.get('id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu'})
+        brand.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thương hiệu thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -767,8 +806,20 @@ def api_save_store(request):
     try:
         data = json.loads(request.body)
         sid = data.get('id')
-        s = Store.objects.get(id=sid) if sid else Store()
-        s.brand_id = data.get('brand_id')
+        if sid:
+            s = _get_store_for_user(request, sid)
+            if not s:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy cửa hàng'})
+        else:
+            s = Store()
+
+        brand_id = data.get('brand_id')
+        brand = _get_brand_for_user(request, brand_id)
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Thương hiệu không thuộc phạm vi quản lý của bạn'})
+
+        # Luôn kiểm tra brand trước khi gán store để brand owner không sửa chéo brand.
+        s.brand = brand
         s.code = data.get('code', '')
         s.name = data.get('name', '')
         s.phone = data.get('phone', '')
@@ -792,7 +843,10 @@ def api_delete_store(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Store.objects.filter(id=data.get('id')).delete()
+        store = _get_store_for_user(request, data.get('id'))
+        if not store:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy cửa hàng'})
+        store.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa cửa hàng thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

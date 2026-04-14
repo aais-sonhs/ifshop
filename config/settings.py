@@ -28,7 +28,7 @@ DEBUG = False
 ALLOWED_HOSTS = ['*']
 CSRF_TRUSTED_ORIGINS = [
     'https://*.appliedaisystem.com',
-    'https://*.127.0.0.1', 
+    'https://*.127.0.0.1',
     'http://113.160.218.241:8020',
     'https://*.ipchello.com',
     'https://ifshop.ipchello.com'
@@ -150,8 +150,8 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format' : "%(asctime)s %(funcName)s Line %(lineno)d : %(levelname)s %(message)s",
-            'datefmt' : "%d/%m/%Y %H:%M:%S"
+            'format': "%(asctime)s %(funcName)s Line %(lineno)d : %(levelname)s %(message)s",
+            'datefmt': "%d/%m/%Y %H:%M:%S"
         },
         'simple': {
             'format': '%(levelname)s %(message)s'
@@ -179,7 +179,7 @@ LOGGING = {
             'interval': 1,
             'backupCount': 30,
             'formatter': 'verbose',
-            'encoding':'utf8',
+            'encoding': 'utf8',
             'delay': True,
         },
         'serverlog': {
@@ -190,48 +190,48 @@ LOGGING = {
             'interval': 1,
             'backupCount': 30,
             'formatter': 'verbose',
-            'encoding':'utf8',
+            'encoding': 'utf8',
             'delay': True,
             'filters': ['skip_image_404'],
         },
     },
-   'loggers': {
+    'loggers': {
         'django': {
             'handlers': ['serverlog'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'WARNING'),
             'propagate': False,
         },
         'products': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'customers': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'orders': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'finance': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'reports': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
         'system_management': {
-            'handlers': ['apilog','console'],
+            'handlers': ['apilog', 'console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
-    }, 
+    },
     'root': {
         'handlers': ['console'],
         'level': 'WARNING',

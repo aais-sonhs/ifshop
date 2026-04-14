@@ -1,3 +1,4 @@
-from django.db import models
+"""Model cho app authentication.
 
-# Create your models here.
+Hiện app này dùng model User mặc định của Django nên chưa khai báo model riêng.
+"""

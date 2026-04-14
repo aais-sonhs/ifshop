@@ -90,19 +90,19 @@ class Receipt(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu thu')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='receipts', verbose_name='Cửa hàng')
+                              related_name='receipts', verbose_name='Cửa hàng')
     category = models.ForeignKey(FinanceCategory, on_delete=models.SET_NULL, null=True,
-                                  related_name='receipts', verbose_name='Danh mục')
+                                 related_name='receipts', verbose_name='Danh mục')
     cash_book = models.ForeignKey(CashBook, on_delete=models.SET_NULL, null=True,
-                                   related_name='receipts', verbose_name='Quỹ')
+                                  related_name='receipts', verbose_name='Quỹ')
     payment_method_option = models.ForeignKey(
         PaymentMethodOption, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='receipts', verbose_name='Phương thức thanh toán'
     )
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='receipts', verbose_name='Khách hàng')
+                                 related_name='receipts', verbose_name='Khách hàng')
     order = models.ForeignKey('orders.Order', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='receipts', verbose_name='Đơn hàng')
+                              related_name='receipts', verbose_name='Đơn hàng')
     amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số tiền')
     description = models.TextField(blank=True, null=True, verbose_name='Diễn giải')
     receipt_date = models.DateField(verbose_name='Ngày thu')
@@ -131,9 +131,9 @@ class Receipt(SoftDeleteModel):
 class ReceiptItem(models.Model):
     """Chi tiết phiếu thu (sản phẩm bán hàng)"""
     receipt = models.ForeignKey(Receipt, on_delete=models.CASCADE, related_name='items',
-                                 verbose_name='Phiếu thu')
+                                verbose_name='Phiếu thu')
     product = models.ForeignKey('products.Product', on_delete=models.CASCADE,
-                                 related_name='receipt_sale_items', verbose_name='Sản phẩm')
+                                related_name='receipt_sale_items', verbose_name='Sản phẩm')
     quantity = models.IntegerField(default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
@@ -160,19 +160,19 @@ class Payment(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu chi')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='payments', verbose_name='Cửa hàng')
+                              related_name='payments', verbose_name='Cửa hàng')
     category = models.ForeignKey(FinanceCategory, on_delete=models.SET_NULL, null=True,
-                                  related_name='payments', verbose_name='Danh mục')
+                                 related_name='payments', verbose_name='Danh mục')
     cash_book = models.ForeignKey(CashBook, on_delete=models.SET_NULL, null=True,
-                                   related_name='payments', verbose_name='Quỹ')
+                                  related_name='payments', verbose_name='Quỹ')
     payment_method_option = models.ForeignKey(
         PaymentMethodOption, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='payments', verbose_name='Phương thức thanh toán'
     )
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='payments', verbose_name='Nhà cung cấp')
+                                 related_name='payments', verbose_name='Nhà cung cấp')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='payments', verbose_name='Khách hàng')
+                                 related_name='payments', verbose_name='Khách hàng')
     goods_receipt = models.ForeignKey('products.GoodsReceipt', on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name='payments', verbose_name='Phiếu nhập hàng')
     amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số tiền')

@@ -21,8 +21,8 @@ urlpatterns = [
     # PWA: serve sw.js and manifest.json from root for proper scope
     re_path(r'^sw\.js$', serve, {'path': 'sw.js', 'document_root': settings.STATIC_ROOT}),
     re_path(r'^manifest\.json$', serve, {'path': 'manifest.json', 'document_root': settings.STATIC_ROOT}),
-    re_path(r'^media/(?P<path>.*)$', serve,{'document_root': settings.MEDIA_ROOT}),
-    re_path(r'^static/(?P<path>.*)$', serve,{'document_root': settings.STATIC_ROOT}),
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+    re_path(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
     re_path(r'^admin/', admin.site.urls),
 ]
 
@@ -30,4 +30,3 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     urlpatterns += staticfiles_urlpatterns()
-

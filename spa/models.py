@@ -79,7 +79,7 @@ class Service(models.Model):
     code = models.CharField(max_length=20, unique=True, verbose_name='Mã DV')
     name = models.CharField(max_length=255, verbose_name='Tên dịch vụ')
     category = models.ForeignKey(ServiceCategory, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='services', verbose_name='Nhóm')
+                                 related_name='services', verbose_name='Nhóm')
     duration_minutes = models.IntegerField(default=60, verbose_name='Thời lượng (phút)')
     price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá dịch vụ')
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0,
@@ -109,15 +109,15 @@ class Booking(models.Model):
     ]
     code = models.CharField(max_length=20, unique=True, verbose_name='Mã lịch hẹn')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='bookings', verbose_name='Cửa hàng')
+                              related_name='bookings', verbose_name='Cửa hàng')
     customer = models.ForeignKey('customers.Customer', on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='bookings', verbose_name='Khách hàng')
+                                 related_name='bookings', verbose_name='Khách hàng')
     customer_name = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tên khách (vãng lai)')
     customer_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='SĐT khách')
     staff = models.ForeignKey(Staff, on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='bookings', verbose_name='KTV phụ trách')
+                              related_name='bookings', verbose_name='KTV phụ trách')
     room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True,
-                              related_name='bookings', verbose_name='Phòng')
+                             related_name='bookings', verbose_name='Phòng')
     booking_date = models.DateField(verbose_name='Ngày hẹn')
     start_time = models.TimeField(verbose_name='Giờ bắt đầu')
     end_time = models.TimeField(blank=True, null=True, verbose_name='Giờ kết thúc')
@@ -147,7 +147,7 @@ class BookingItem(models.Model):
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='items', verbose_name='Lịch hẹn')
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='booking_items', verbose_name='Dịch vụ')
     staff = models.ForeignKey(Staff, on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='booking_items', verbose_name='KTV thực hiện')
+                              related_name='booking_items', verbose_name='KTV thực hiện')
     quantity = models.IntegerField(default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')

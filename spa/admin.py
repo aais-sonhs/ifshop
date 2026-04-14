@@ -1,3 +1,4 @@
-from django.contrib import admin
+"""Cấu hình Django admin cho app spa.
 
-# Register your models here.
+Các model spa hiện chưa được đăng ký vào admin mặc định.
+"""

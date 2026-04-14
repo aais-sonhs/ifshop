@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction
 from django.db.models import Q
-from .models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment, PaymentMethodOption
+from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
     delete_receipt_with_effect,
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_default_store_for_request(request):
+    """Lấy store mặc định của user hiện tại để gán cho chứng từ không đi kèm đơn/phiếu nhập."""
     store = get_user_store(request)
     if store:
         return store
@@ -34,6 +35,11 @@ def _get_default_store_for_request(request):
 
 
 def _filter_receipts_for_user(queryset, request):
+    """Lọc phiếu thu trong phạm vi store mà user được phép xem.
+
+    Phiếu thu có thể mang `store_id` trực tiếp, hoặc đi theo `order.store_id`
+    với dữ liệu cũ chưa gán store đầy đủ.
+    """
     if request.user.is_superuser:
         return queryset.none()
     store_ids = get_managed_store_ids(request.user)
@@ -46,6 +52,11 @@ def _filter_receipts_for_user(queryset, request):
 
 
 def _filter_payments_for_user(queryset, request):
+    """Lọc phiếu chi trong phạm vi store mà user được phép xem.
+
+    Phiếu chi có thể mang `store_id` trực tiếp, hoặc suy ra qua
+    `goods_receipt.warehouse.store_id` với dữ liệu cũ.
+    """
     if request.user.is_superuser:
         return queryset.none()
     store_ids = get_managed_store_ids(request.user)
@@ -58,12 +69,14 @@ def _filter_payments_for_user(queryset, request):
 
 
 def _get_user_display_name(user):
+    """Ưu tiên họ tên đầy đủ; fallback về username nếu hồ sơ chưa đủ dữ liệu."""
     if not user:
         return ''
     return user.get_full_name() or user.username or ''
 
 
 def _parse_decimal_filter(value):
+    """Chuyển tham số filter số tiền về Decimal; dữ liệu lỗi thì bỏ qua filter."""
     if value in (None, ''):
         return None
     try:
@@ -73,6 +86,7 @@ def _parse_decimal_filter(value):
 
 
 def _apply_receipt_filters(queryset, request):
+    """Áp toàn bộ bộ lọc truy vấn cho danh sách phiếu thu."""
     search = (request.GET.get('search') or '').strip()
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
@@ -152,6 +166,7 @@ def _apply_receipt_filters(queryset, request):
 
 
 def _serialize_payment_methods():
+    """Chuẩn hóa danh sách phương thức thanh toán để render cho UI."""
     return [{
         'id': m.id,
         'code': m.code,
@@ -164,6 +179,105 @@ def _serialize_payment_methods():
         'sort_order': m.sort_order,
         'is_active': m.is_active,
     } for m in PaymentMethodOption.objects.select_related('default_cash_book').filter(is_active=True)]
+
+
+def _get_receipt_for_user(request, receipt_id, queryset=None):
+    """Lấy phiếu thu trong phạm vi user được phép truy cập."""
+    if not receipt_id:
+        return None
+    base_queryset = queryset if queryset is not None else Receipt.objects.all()
+    return _filter_receipts_for_user(base_queryset, request).filter(id=receipt_id).first()
+
+
+def _get_payment_for_user(request, payment_id, queryset=None):
+    """Lấy phiếu chi trong phạm vi user được phép truy cập."""
+    if not payment_id:
+        return None
+    base_queryset = queryset if queryset is not None else Payment.objects.all()
+    return _filter_payments_for_user(base_queryset, request).filter(id=payment_id).first()
+
+
+def _apply_payment_method_defaults(finance_document):
+    """Áp cấu hình mặc định từ phương thức thanh toán lên phiếu thu/phiếu chi.
+
+    Hàm này chỉ bổ sung dữ liệu còn thiếu, không ép ghi đè quỹ nếu user đã chọn sẵn.
+    """
+    if not finance_document.payment_method_option_id:
+        return None
+
+    method = PaymentMethodOption.objects.select_related('default_cash_book').filter(
+        id=finance_document.payment_method_option_id
+    ).first()
+    if not method:
+        return None
+
+    finance_document.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
+    if not finance_document.cash_book_id and method.default_cash_book_id:
+        finance_document.cash_book_id = method.default_cash_book_id
+    return method
+
+
+def _resolve_receipt_scope(request, receipt):
+    """Gắn store và customer cho phiếu thu dựa trên đơn hàng liên kết hoặc store mặc định."""
+    linked_order = None
+    if receipt.order_id:
+        linked_order = filter_by_store(Order.objects.filter(id=receipt.order_id), request).first()
+        if not linked_order:
+            raise ValueError('Không tìm thấy đơn hàng trong phạm vi cửa hàng')
+        receipt.store_id = linked_order.store_id
+        if not receipt.customer_id:
+            receipt.customer_id = linked_order.customer_id
+        return linked_order
+
+    if not receipt.store_id:
+        store = _get_default_store_for_request(request)
+        if store:
+            receipt.store = store
+    return linked_order
+
+
+def _resolve_payment_scope(request, payment):
+    """Gắn store cho phiếu chi dựa trên phiếu nhập liên kết hoặc store mặc định."""
+    linked_receipt = None
+    if payment.goods_receipt_id:
+        linked_receipt = filter_by_store(
+            GoodsReceipt.objects.select_related('warehouse__store'),
+            request,
+            field_name='warehouse__store',
+        ).filter(id=payment.goods_receipt_id).first()
+        if not linked_receipt:
+            raise ValueError('Không tìm thấy phiếu nhập trong phạm vi cửa hàng')
+        payment.store_id = linked_receipt.warehouse.store_id if linked_receipt.warehouse else None
+        return linked_receipt
+
+    if not payment.store_id:
+        store = _get_default_store_for_request(request)
+        if store:
+            payment.store = store
+    return linked_receipt
+
+
+def _adjust_cashbook_balance(cash_book_id, amount_delta, validate_non_negative=False):
+    """Điều chỉnh số dư quỹ trong transaction hiện tại.
+
+    - `amount_delta > 0`: cộng quỹ
+    - `amount_delta < 0`: trừ quỹ
+    - `validate_non_negative=True`: chặn quỹ âm trước khi lưu
+    """
+    if not cash_book_id:
+        return None
+
+    cash_book = CashBook.objects.select_for_update().get(id=cash_book_id)
+    new_balance = Decimal(str(cash_book.balance or 0)) + Decimal(str(amount_delta or 0))
+    if validate_non_negative and new_balance < 0:
+        required = abs(Decimal(str(amount_delta or 0)))
+        raise ValueError(
+            f'Số dư quỹ "{cash_book.name}" không đủ! '
+            f'Số dư hiện tại: {int(cash_book.balance):,}đ, cần chi: {int(required):,}đ'
+        )
+    cash_book.balance = new_balance
+    cash_book.save(update_fields=['balance'])
+    return cash_book
 
 
 @login_required(login_url="/login/")
@@ -252,6 +366,7 @@ def api_get_orders_for_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_receipts(request):
+    """Trả về danh sách phiếu thu sau khi áp quyền theo store và bộ lọc tìm kiếm."""
     receipts = Receipt.objects.select_related(
         'category', 'cash_book', 'customer', 'order', 'order__created_by', 'created_by', 'payment_method_option'
     ).all()
@@ -289,6 +404,7 @@ def api_get_receipts(request):
 
 @login_required(login_url="/login/")
 def api_receipt_summary(request):
+    """Tổng hợp nhanh phiếu thu hoàn thành theo quỹ và phương thức thanh toán."""
     receipts = Receipt.objects.select_related('cash_book').filter(status=1)
     receipts = _filter_receipts_for_user(receipts, request)
     receipts = _apply_receipt_filters(receipts, request)
@@ -335,12 +451,16 @@ def api_save_receipt(request):
         rid = data.get('id')
         old_effect = None
         if rid:
-            r = _filter_receipts_for_user(Receipt.objects.all(), request).get(id=rid)
+            # Khi sửa phiếu thu, luôn chụp hiệu ứng cũ để hoàn/tái áp sổ quỹ chính xác.
+            r = _get_receipt_for_user(request, rid)
+            if not r:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu thu'})
             old_effect = capture_receipt_effect(r)
         else:
             r = Receipt()
             r.created_by = request.user
 
+        # 1. Gán dữ liệu cơ bản từ payload.
         r.code = data.get('code', '')
         r.category_id = data.get('category_id') or None
         r.cash_book_id = data.get('cash_book_id') or None
@@ -354,29 +474,18 @@ def api_save_receipt(request):
         r.payment_method_option_id = data.get('payment_method_option_id') or None
         r.note = data.get('note', '')
 
-        linked_order = None
-        if r.order_id:
-            linked_order = filter_by_store(Order.objects.filter(id=r.order_id), request).first()
-            if not linked_order:
-                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng trong phạm vi cửa hàng'})
-            r.store_id = linked_order.store_id
-            if not r.customer_id:
-                r.customer_id = linked_order.customer_id
-        elif not r.store_id:
-            store = _get_default_store_for_request(request)
-            if store:
-                r.store = store
+        # 2. Đồng bộ store/customer theo đơn hàng, hoặc fallback về store mặc định của user.
+        _resolve_receipt_scope(request, r)
 
-        if r.payment_method_option_id:
-            method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=r.payment_method_option_id).first()
-            if method:
-                r.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
-                if not r.cash_book_id and method.default_cash_book_id:
-                    r.cash_book_id = method.default_cash_book_id
+        # 3. Đồng bộ loại thanh toán chuẩn và quỹ mặc định theo method option đã chọn.
+        _apply_payment_method_defaults(r)
 
+        # 4. Ghi phiếu và áp/hoàn tác hiệu ứng quỹ + công nợ đơn hàng trong cùng transaction.
         save_receipt_with_effect(r, old_effect=old_effect)
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -387,9 +496,10 @@ def api_delete_receipt(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        receipt = _filter_receipts_for_user(Receipt.objects.all(), request).filter(id=data.get('id')).first()
+        receipt = _get_receipt_for_user(request, data.get('id'))
         if not receipt:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu thu'})
+        # Xóa phiếu thu phải đi qua service để hoàn quỹ và đồng bộ trạng thái thanh toán của đơn.
         delete_receipt_with_effect(receipt)
 
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
@@ -401,6 +511,7 @@ def api_delete_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_payments(request):
+    """Trả về danh sách phiếu chi sau khi áp quyền theo store."""
     payments = Payment.objects.select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option').all()
     payments = _filter_payments_for_user(payments, request)
     data = [{
@@ -434,18 +545,25 @@ def api_save_payment(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
+            # 1. Nạp phiếu cũ nếu là cập nhật để biết cần hoàn lại bao nhiêu vào quỹ cũ.
             pid = data.get('id')
-            old_amount = 0
+            old_amount = Decimal('0')
             old_cash_book_id = None
             old_status = None
             if pid:
-                p = _filter_payments_for_user(Payment.objects.select_for_update(), request).get(id=pid)
-                old_amount = float(p.amount)
+                current_payment = _get_payment_for_user(request, pid)
+                if not current_payment:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
+                # Kiểm quyền bằng query có join trước, sau đó khóa lại chính bản ghi bằng query đơn giản.
+                p = Payment.objects.select_for_update().get(id=current_payment.id)
+                old_amount = Decimal(str(p.amount or 0))
                 old_cash_book_id = p.cash_book_id
                 old_status = p.status
             else:
                 p = Payment()
                 p.created_by = request.user
+
+            # 2. Gán dữ liệu cơ bản từ payload.
             p.code = data.get('code', '')
             p.category_id = data.get('category_id') or None
             p.cash_book_id = data.get('cash_book_id') or None
@@ -459,49 +577,31 @@ def api_save_payment(request):
             p.payment_method_option_id = data.get('payment_method_option_id') or None
             p.note = data.get('note', '')
 
-            if p.goods_receipt_id:
-                linked_receipt = filter_by_store(
-                    GoodsReceipt.objects.select_related('warehouse__store'),
-                    request,
-                    field_name='warehouse__store',
-                ).filter(id=p.goods_receipt_id).first()
-                if not linked_receipt:
-                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập trong phạm vi cửa hàng'})
-                p.store_id = linked_receipt.warehouse.store_id if linked_receipt.warehouse else None
-            elif not p.store_id:
-                store = _get_default_store_for_request(request)
-                if store:
-                    p.store = store
+            # 3. Đồng bộ store theo phiếu nhập liên kết hoặc store mặc định của user.
+            _resolve_payment_scope(request, p)
 
-            if p.payment_method_option_id:
-                method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=p.payment_method_option_id).first()
-                if method:
-                    p.payment_method = method.legacy_type if method.legacy_type in (1, 2) else 2
-                    if not p.cash_book_id and method.default_cash_book_id:
-                        p.cash_book_id = method.default_cash_book_id
+            # 4. Bổ sung cấu hình phương thức thanh toán nếu user chọn method option.
+            _apply_payment_method_defaults(p)
 
-            new_amount = float(p.amount)
+            new_amount = Decimal(str(p.amount or 0))
             new_status = int(p.status)
 
-            # Hoàn lại số dư quỹ cũ (nếu phiếu cũ đã hoàn thành)
+            # 5. Hoàn lại quỹ cũ trước khi áp trạng thái/quỹ mới.
             if pid and old_status == 1 and old_cash_book_id:
-                old_book = CashBook.objects.select_for_update().get(id=old_cash_book_id)
-                old_book.balance += Decimal(str(old_amount))
-                old_book.save(update_fields=['balance'])
+                _adjust_cashbook_balance(old_cash_book_id, old_amount)
 
-            # Kiểm tra và trừ số dư quỹ mới (nếu phiếu mới hoàn thành)
+            # 6. Nếu phiếu mới ở trạng thái hoàn thành thì kiểm tra đủ quỹ rồi mới trừ.
             if new_status == 1 and p.cash_book_id:
-                book = CashBook.objects.select_for_update().get(id=p.cash_book_id)
-                if float(book.balance) < new_amount:
-                    return JsonResponse({
-                        'status': 'error',
-                        'message': f'Số dư quỹ "{book.name}" không đủ! Số dư hiện tại: {int(book.balance):,}đ, cần chi: {int(new_amount):,}đ'
-                    })
-                book.balance -= Decimal(str(new_amount))
-                book.save(update_fields=['balance'])
+                _adjust_cashbook_balance(
+                    p.cash_book_id,
+                    -new_amount,
+                    validate_non_negative=True,
+                )
 
             p.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -513,17 +613,14 @@ def api_delete_payment(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
-            payment = _filter_payments_for_user(
-                Payment.objects.select_related('cash_book').select_for_update(),
-                request,
-            ).filter(id=data.get('id')).first()
-            if not payment:
+            current_payment = _get_payment_for_user(request, data.get('id'))
+            if not current_payment:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
+            payment = Payment.objects.select_for_update().get(id=current_payment.id)
 
+            # Nếu phiếu chi đã hoàn thành thì xóa phải hoàn lại tiền vào đúng quỹ trước.
             if payment.status == 1 and payment.cash_book_id:
-                book = CashBook.objects.select_for_update().get(id=payment.cash_book_id)
-                book.balance += Decimal(str(payment.amount or 0))
-                book.save(update_fields=['balance'])
+                _adjust_cashbook_balance(payment.cash_book_id, Decimal(str(payment.amount or 0)))
 
             payment.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})

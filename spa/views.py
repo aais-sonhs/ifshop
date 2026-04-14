@@ -1,7 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta
-from decimal import Decimal
+from datetime import datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -379,7 +378,7 @@ def api_generate_booking_code(request):
     if last:
         try:
             num = int(last.code.split('-')[-1]) + 1
-        except:
+        except (IndexError, TypeError, ValueError):
             num = 1
     else:
         num = 1

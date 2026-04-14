@@ -33,7 +33,7 @@ class ProductCategory(SoftDeleteModel):
     name = models.CharField(max_length=255, verbose_name='Tên danh mục')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
-                                related_name='children', verbose_name='Danh mục cha')
+                               related_name='children', verbose_name='Danh mục cha')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -50,12 +50,12 @@ class ProductCategory(SoftDeleteModel):
 class Warehouse(SoftDeleteModel):
     """Danh mục kho"""
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='warehouses', verbose_name='Cửa hàng')
+                              related_name='warehouses', verbose_name='Cửa hàng')
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã kho')
     name = models.CharField(max_length=255, verbose_name='Tên kho')
     address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ')
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='managed_warehouses', verbose_name='Quản lý kho')
+                                related_name='managed_warehouses', verbose_name='Quản lý kho')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -71,6 +71,13 @@ class Warehouse(SoftDeleteModel):
 
 class ProductLocation(models.Model):
     """Vị trí sản phẩm trong kho"""
+    # Khớp với migration 0014 hiện có để không phát sinh migration đổi kiểu id.
+    id = models.AutoField(
+        auto_created=True,
+        primary_key=True,
+        serialize=False,
+        verbose_name='ID',
+    )
     name = models.CharField(max_length=100, unique=True, verbose_name='Tên vị trí')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -88,12 +95,12 @@ class ProductLocation(models.Model):
 class Product(SoftDeleteModel):
     """Sản phẩm"""
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='products', verbose_name='Cửa hàng')
+                              related_name='products', verbose_name='Cửa hàng')
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã sản phẩm')
     barcode = models.CharField(max_length=100, blank=True, null=True, verbose_name='Barcode')
     name = models.CharField(max_length=255, verbose_name='Tên sản phẩm')
     category = models.ForeignKey(ProductCategory, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='products', verbose_name='Danh mục')
+                                 related_name='products', verbose_name='Danh mục')
     unit = models.CharField(max_length=50, default='Cái', verbose_name='Đơn vị tính')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name='Hình ảnh')
@@ -113,13 +120,13 @@ class Product(SoftDeleteModel):
     sapo_id = models.CharField(max_length=100, blank=True, null=True, verbose_name='Mã SAPO')
 
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='products', verbose_name='Nhà cung cấp')
+                                 related_name='products', verbose_name='Nhà cung cấp')
     is_weight_based = models.BooleanField(default=False, verbose_name='Bán theo khối lượng')
     is_service = models.BooleanField(default=False, verbose_name='Sản phẩm dịch vụ')
     is_combo = models.BooleanField(default=False, verbose_name='Sản phẩm combo')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     location = models.ForeignKey(ProductLocation, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='products', verbose_name='Vị trí sản phẩm')
+                                 related_name='products', verbose_name='Vị trí sản phẩm')
     specification = models.CharField(max_length=255, blank=True, null=True, verbose_name='Quy cách sản phẩm')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -159,13 +166,12 @@ class ProductVariant(models.Model):
         return f"{self.product.code} - {self.size_name}"
 
 
-
 class ComboItem(models.Model):
     """Thành phần của combo: liên kết combo → sản phẩm thành phần"""
     combo = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='combo_items',
-                               verbose_name='Combo')
+                              verbose_name='Combo')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='in_combos',
-                                 verbose_name='Sản phẩm thành phần')
+                                verbose_name='Sản phẩm thành phần')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
 
     class Meta:
@@ -206,9 +212,9 @@ class PurchaseOrder(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã đơn đặt hàng')
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, related_name='purchase_orders',
-                                  verbose_name='Nhà cung cấp')
+                                 verbose_name='Nhà cung cấp')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='purchase_orders',
-                                   verbose_name='Kho nhập')
+                                  verbose_name='Kho nhập')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Tổng tiền')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
@@ -231,11 +237,11 @@ class PurchaseOrder(SoftDeleteModel):
 class PurchaseOrderItem(models.Model):
     """Chi tiết đơn đặt hàng nhập"""
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items',
-                                        verbose_name='Đơn đặt hàng')
+                                       verbose_name='Đơn đặt hàng')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='purchase_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='purchase_items', verbose_name='Biến thể')
+                                related_name='purchase_items', verbose_name='Biến thể')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Số lượng đặt')
     received_quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Số lượng nhận')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
@@ -259,11 +265,11 @@ class GoodsReceipt(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu nhập')
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.SET_NULL, null=True, blank=True,
-                                        related_name='goods_receipts', verbose_name='Đơn đặt hàng')
+                                       related_name='goods_receipts', verbose_name='Đơn đặt hàng')
     supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, related_name='goods_receipts',
-                                  verbose_name='Nhà cung cấp')
+                                 verbose_name='Nhà cung cấp')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='goods_receipts',
-                                   verbose_name='Kho nhập')
+                                  verbose_name='Kho nhập')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Tổng tiền')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
@@ -285,11 +291,11 @@ class GoodsReceipt(SoftDeleteModel):
 class GoodsReceiptItem(models.Model):
     """Chi tiết phiếu nhập kho"""
     goods_receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name='items',
-                                       verbose_name='Phiếu nhập')
+                                      verbose_name='Phiếu nhập')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='receipt_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='receipt_items', verbose_name='Biến thể')
+                                related_name='receipt_items', verbose_name='Biến thể')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Số lượng nhập')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
@@ -309,7 +315,7 @@ class StockCheck(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu kiểm')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='stock_checks',
-                                   verbose_name='Kho')
+                                  verbose_name='Kho')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     check_date = models.DateField(verbose_name='Ngày kiểm')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
@@ -327,11 +333,11 @@ class StockCheck(SoftDeleteModel):
 class StockCheckItem(models.Model):
     """Chi tiết phiếu kiểm kê"""
     stock_check = models.ForeignKey(StockCheck, on_delete=models.CASCADE, related_name='items',
-                                      verbose_name='Phiếu kiểm')
+                                    verbose_name='Phiếu kiểm')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='check_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='check_items', verbose_name='Biến thể')
+                                related_name='check_items', verbose_name='Biến thể')
     system_quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Tồn hệ thống')
     actual_quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Tồn thực tế')
     difference = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Chênh lệch')
@@ -353,9 +359,9 @@ class StockTransfer(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu chuyển')
     from_warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True,
-                                        related_name='transfers_out', verbose_name='Kho xuất')
+                                       related_name='transfers_out', verbose_name='Kho xuất')
     to_warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True,
-                                      related_name='transfers_in', verbose_name='Kho nhập')
+                                     related_name='transfers_in', verbose_name='Kho nhập')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     transfer_date = models.DateField(verbose_name='Ngày chuyển')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
@@ -373,11 +379,11 @@ class StockTransfer(SoftDeleteModel):
 class StockTransferItem(models.Model):
     """Chi tiết phiếu chuyển kho"""
     transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name='items',
-                                  verbose_name='Phiếu chuyển')
+                                 verbose_name='Phiếu chuyển')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='transfer_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='transfer_items', verbose_name='Biến thể')
+                                related_name='transfer_items', verbose_name='Biến thể')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Số lượng')
 
     class Meta:
@@ -389,7 +395,7 @@ class StockTransferItem(models.Model):
 class CostAdjustment(models.Model):
     """Điều chỉnh giá vốn"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='cost_adjustments',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     old_cost = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn cũ')
     new_cost = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn mới')
     reason = models.TextField(blank=True, null=True, verbose_name='Lý do')

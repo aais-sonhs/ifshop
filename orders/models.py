@@ -16,9 +16,9 @@ class Quotation(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã báo giá')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='quotations', verbose_name='Cửa hàng')
+                              related_name='quotations', verbose_name='Cửa hàng')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='quotations',
-                                  verbose_name='Khách hàng')
+                                 verbose_name='Khách hàng')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
@@ -46,11 +46,11 @@ class Quotation(SoftDeleteModel):
 class QuotationItem(models.Model):
     """Chi tiết báo giá"""
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='items',
-                                    verbose_name='Báo giá')
+                                  verbose_name='Báo giá')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='quotation_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='quotation_items', verbose_name='Biến thể')
+                                related_name='quotation_items', verbose_name='Biến thể')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
@@ -81,16 +81,16 @@ class Order(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã đơn hàng')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='orders', verbose_name='Cửa hàng')
+                              related_name='orders', verbose_name='Cửa hàng')
     quotation = models.ForeignKey(Quotation, on_delete=models.SET_NULL, null=True, blank=True,
-                                    related_name='orders', verbose_name='Báo giá')
+                                  related_name='orders', verbose_name='Báo giá')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='orders',
-                                  verbose_name='Khách hàng')
+                                 verbose_name='Khách hàng')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='orders',
-                                   verbose_name='Kho xuất')
+                                  verbose_name='Kho xuất')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     payment_status = models.IntegerField(choices=PAYMENT_STATUS_CHOICES, default=0,
-                                          verbose_name='Trạng thái thanh toán')
+                                         verbose_name='Trạng thái thanh toán')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền hàng')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
     shipping_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Phí vận chuyển')
@@ -116,7 +116,7 @@ class Order(SoftDeleteModel):
     salesperson = models.CharField(max_length=100, blank=True, null=True, verbose_name='Nhân viên bán hàng')
     server_staff = models.CharField(max_length=500, blank=True, null=True, verbose_name='Nhân viên phục vụ')
     approver = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='orders_approved', verbose_name='Người duyệt')
+                                 related_name='orders_approved', verbose_name='Người duyệt')
     APPROVAL_STATUS_CHOICES = [
         (0, 'Không cần duyệt'),
         (1, 'Chờ duyệt'),
@@ -141,9 +141,9 @@ class OrderItem(models.Model):
     """Chi tiết đơn hàng"""
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items', verbose_name='Đơn hàng')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='order_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='order_items', verbose_name='Biến thể')
+                                related_name='order_items', verbose_name='Biến thể')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')
@@ -196,11 +196,11 @@ class OrderReturn(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu trả')
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, related_name='returns',
-                               verbose_name='Đơn hàng gốc')
+                              verbose_name='Đơn hàng gốc')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='returns',
-                                  verbose_name='Khách hàng')
+                                 verbose_name='Khách hàng')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='returns',
-                                   verbose_name='Kho nhận')
+                                  verbose_name='Kho nhận')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_refund = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng hoàn trả')
     reason = models.TextField(blank=True, null=True, verbose_name='Lý do trả hàng')
@@ -223,9 +223,9 @@ class OrderReturn(SoftDeleteModel):
 class OrderReturnItem(models.Model):
     """Chi tiết phiếu trả hàng"""
     order_return = models.ForeignKey(OrderReturn, on_delete=models.CASCADE, related_name='items',
-                                      verbose_name='Phiếu trả')
+                                     verbose_name='Phiếu trả')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='return_items',
-                                 verbose_name='Sản phẩm')
+                                verbose_name='Sản phẩm')
     quantity = models.IntegerField(default=0, verbose_name='Số lượng trả')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
@@ -247,10 +247,10 @@ class Packaging(SoftDeleteModel):
     ]
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã đóng gói')
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='packagings',
-                               verbose_name='Đơn hàng')
+                              verbose_name='Đơn hàng')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     packed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
-                                   related_name='packagings', verbose_name='Người đóng gói')
+                                  related_name='packagings', verbose_name='Người đóng gói')
     weight = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Trọng lượng (kg)')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     packed_at = models.DateTimeField(blank=True, null=True, verbose_name='Thời gian đóng gói')

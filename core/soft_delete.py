@@ -4,6 +4,7 @@ from django.utils import timezone
 
 class SoftDeleteQuerySet(models.QuerySet):
     """QuerySet chỉ trả về bản ghi chưa xóa"""
+
     def delete(self):
         """Soft delete tất cả bản ghi trong queryset"""
         return self.update(is_deleted=True, deleted_at=timezone.now())
@@ -23,12 +24,14 @@ class SoftDeleteQuerySet(models.QuerySet):
 
 class SoftDeleteManager(models.Manager):
     """Manager mặc định chỉ trả về bản ghi chưa xóa"""
+
     def get_queryset(self):
         return SoftDeleteQuerySet(self.model, using=self._db).filter(is_deleted=False)
 
 
 class AllObjectsManager(models.Manager):
     """Manager trả về TẤT CẢ bản ghi (kể cả đã xóa)"""
+
     def get_queryset(self):
         return SoftDeleteQuerySet(self.model, using=self._db)
 

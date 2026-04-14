@@ -1,3 +1,4 @@
-from django.contrib import admin
+"""Cấu hình Django admin cho app authentication.
 
-# Register your models here.
+App này hiện chỉ xử lý form/view đăng nhập nên chưa có model riêng cần đăng ký.
+"""

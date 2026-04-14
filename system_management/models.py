@@ -6,7 +6,7 @@ class UserProfile(models.Model):
     """Hồ sơ người dùng mở rộng"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     store = models.ForeignKey('Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='staff_profiles', verbose_name='Cửa hàng')
+                              related_name='staff_profiles', verbose_name='Cửa hàng')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Số điện thoại')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name='Ảnh đại diện')
     address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ')
@@ -29,7 +29,7 @@ class RoleGroup(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name='Tên nhóm vai trò')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name='role_group',
-                                  verbose_name='Django Group')
+                                 verbose_name='Django Group')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -62,7 +62,7 @@ class ModulePermission(models.Model):
         ('approve', 'Duyệt'),
     ]
     role_group = models.ForeignKey(RoleGroup, on_delete=models.CASCADE, related_name='permissions',
-                                    verbose_name='Nhóm vai trò')
+                                   verbose_name='Nhóm vai trò')
     module = models.CharField(max_length=50, choices=MODULE_CHOICES, verbose_name='Module')
     action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name='Hành động')
     is_allowed = models.BooleanField(default=False, verbose_name='Cho phép')
@@ -80,10 +80,10 @@ class ModulePermission(models.Model):
 class DataPermission(models.Model):
     """Phân quyền dữ liệu"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='data_permissions',
-                              verbose_name='Người dùng')
+                             verbose_name='Người dùng')
     module = models.CharField(max_length=50, verbose_name='Module')
     data_scope = models.CharField(max_length=50, verbose_name='Phạm vi dữ liệu',
-                                   help_text='all, own, warehouse, etc.')
+                                  help_text='all, own, warehouse, etc.')
     warehouse_ids = models.TextField(blank=True, null=True, verbose_name='Danh sách ID kho (phân cách bởi dấu phẩy)')
 
     class Meta:
@@ -127,7 +127,7 @@ class SystemLog(models.Model):
         ('import', 'Nhập dữ liệu'),
     ]
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='system_logs',
-                              verbose_name='Người dùng')
+                             verbose_name='Người dùng')
     action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name='Hành động')
     module = models.CharField(max_length=50, verbose_name='Module')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
@@ -163,11 +163,11 @@ class PrinterSetting(models.Model):
     ]
     name = models.CharField(max_length=255, verbose_name='Tên máy in')
     printer_type = models.CharField(max_length=20, choices=PRINTER_TYPE_CHOICES, default='lan',
-                                     verbose_name='Loại kết nối')
+                                    verbose_name='Loại kết nối')
     ip_address = models.GenericIPAddressField(blank=True, null=True, verbose_name='Địa chỉ IP')
     port = models.IntegerField(default=9100, verbose_name='Cổng (Port)')
     paper_size = models.CharField(max_length=20, choices=PAPER_SIZE_CHOICES, default='A4',
-                                   verbose_name='Khổ giấy')
+                                  verbose_name='Khổ giấy')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     is_default = models.BooleanField(default=False, verbose_name='Máy in mặc định')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
@@ -195,9 +195,9 @@ class BusinessConfig(models.Model):
         ('custom', 'Tùy chỉnh'),
     ]
     brand = models.OneToOneField('Brand', on_delete=models.CASCADE, null=True, blank=True,
-                                  related_name='business_config', verbose_name='Thương hiệu')
+                                 related_name='business_config', verbose_name='Thương hiệu')
     business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, default='custom',
-                                      verbose_name='Mô hình kinh doanh')
+                                     verbose_name='Mô hình kinh doanh')
     business_name = models.CharField(max_length=255, default='Doanh nghiệp', verbose_name='Tên doanh nghiệp')
     # Module toggles
     mod_orders = models.BooleanField(default=True, verbose_name='Đơn hàng')
@@ -258,7 +258,7 @@ class Brand(models.Model):
     )
     name = models.CharField(max_length=255, unique=True, verbose_name='Tên thương hiệu')
     business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, default='retail',
-                                      verbose_name='Mô hình kinh doanh')
+                                     verbose_name='Mô hình kinh doanh')
     logo = models.ImageField(upload_to='brands/', blank=True, null=True, verbose_name='Logo')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Hotline')
@@ -267,7 +267,7 @@ class Brand(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ trụ sở')
     tax_code = models.CharField(max_length=20, blank=True, null=True, verbose_name='Mã số thuế')
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='owned_brands', verbose_name='Chủ sở hữu')
+                              related_name='owned_brands', verbose_name='Chủ sở hữu')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -293,7 +293,7 @@ class Store(models.Model):
     city = models.CharField(max_length=100, blank=True, null=True, verbose_name='Tỉnh/Thành')
     district = models.CharField(max_length=100, blank=True, null=True, verbose_name='Quận/Huyện')
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
-                                 related_name='managed_stores', verbose_name='Quản lý')
+                                related_name='managed_stores', verbose_name='Quản lý')
     open_time = models.TimeField(blank=True, null=True, verbose_name='Giờ mở cửa')
     close_time = models.TimeField(blank=True, null=True, verbose_name='Giờ đóng cửa')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')

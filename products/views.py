@@ -4,7 +4,6 @@ from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
 from django.utils import timezone
 from .models import (
@@ -76,8 +75,153 @@ def _to_decimal(value, default='0'):
 
 
 def _adjust_stock_quantity(stock, delta):
+    """Cộng/trừ tồn kho bằng Decimal để tránh lệch số sau nhiều lần cập nhật."""
     stock.quantity = _to_decimal(stock.quantity) + _to_decimal(delta)
     stock.save(update_fields=['quantity'])
+
+
+def _get_goods_receipt_for_user(request, receipt_id, queryset=None):
+    """Lấy phiếu nhập trong phạm vi store mà user được phép thao tác."""
+    if not receipt_id:
+        return None
+    base_queryset = queryset if queryset is not None else GoodsReceipt.objects.all()
+    return filter_by_store(base_queryset, request, field_name='warehouse__store').filter(id=receipt_id).first()
+
+
+def _get_stock_transfer_for_user(request, transfer_id, queryset=None):
+    """Lấy phiếu chuyển kho trong phạm vi store mà user được phép thao tác."""
+    if not transfer_id:
+        return None
+    base_queryset = queryset if queryset is not None else StockTransfer.objects.all()
+    return filter_by_store(base_queryset, request, field_name='from_warehouse__store').filter(id=transfer_id).first()
+
+
+def _normalize_goods_receipt_items(items_data):
+    """Chuẩn hóa danh sách item phiếu nhập về Decimal để tái sử dụng an toàn."""
+    normalized_items = []
+    total_amount = Decimal('0')
+
+    for item in items_data:
+        quantity = _to_decimal(item.get('quantity', 0))
+        unit_price = _to_decimal(item.get('unit_price', 0))
+        line_total = quantity * unit_price
+        normalized_items.append({
+            'product_id': item.get('product_id'),
+            'variant_id': item.get('variant_id') or None,
+            'quantity': quantity,
+            'unit_price': unit_price,
+            'total_price': line_total,
+        })
+        total_amount += line_total
+
+    return normalized_items, total_amount
+
+
+def _apply_goods_receipt_stock_adjustment(receipt, warehouse_id, multiplier):
+    """Áp biến động tồn kho cho phiếu nhập theo chiều cộng hoặc hoàn tác.
+
+    - `multiplier = 1`: cộng tồn theo item phiếu nhập
+    - `multiplier = -1`: hoàn tác phần tồn đã cộng trước đó
+    """
+    if not warehouse_id:
+        return
+
+    for item in receipt.items.all():
+        stock, _ = ProductStock.objects.get_or_create(
+            product_id=item.product_id,
+            warehouse_id=warehouse_id,
+        )
+        _adjust_stock_quantity(stock, _to_decimal(item.quantity) * _to_decimal(multiplier))
+
+
+def _sync_product_cost_after_goods_receipt(product_id, received_quantity, received_price):
+    """Cập nhật giá vốn tham chiếu và giá nhập mới nhất sau khi nhập hàng hoàn thành."""
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return
+
+    total_old_stock = Decimal(str(sum(
+        float(stock.quantity) for stock in ProductStock.objects.filter(product_id=product_id)
+    ))) - received_quantity
+    if total_old_stock < 0:
+        total_old_stock = Decimal('0')
+
+    total_new_stock = total_old_stock + received_quantity
+    if total_new_stock > 0:
+        old_cost = product.cost_price or Decimal('0')
+        weighted_avg = (
+            (total_old_stock * old_cost) + (received_quantity * received_price)
+        ) / total_new_stock
+        product.cost_price = round(weighted_avg)
+
+    product.import_price = received_price
+    product.save(update_fields=['cost_price', 'import_price'])
+
+
+def _recreate_goods_receipt_items(receipt, normalized_items):
+    """Xóa item cũ và tạo lại item mới cho phiếu nhập."""
+    receipt.items.all().delete()
+    for item in normalized_items:
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product_id=item['product_id'],
+            variant_id=item['variant_id'],
+            quantity=item['quantity'],
+            unit_price=item['unit_price'],
+            total_price=item['total_price'],
+        )
+
+
+def _normalize_stock_transfer_items(items_data):
+    """Chuẩn hóa danh sách item phiếu chuyển kho về Decimal để tái sử dụng an toàn."""
+    normalized_items = []
+    for item in items_data:
+        normalized_items.append({
+            'product_id': item.get('product_id'),
+            'variant_id': item.get('variant_id') or None,
+            'quantity': _to_decimal(item.get('quantity', 0)),
+        })
+    return normalized_items
+
+
+def _apply_stock_transfer_adjustment(transfer, from_warehouse_id, to_warehouse_id, reverse=False):
+    """Áp hoặc hoàn tác tồn kho cho phiếu chuyển kho.
+
+    - `reverse=False`: trừ kho xuất, cộng kho nhập
+    - `reverse=True`: hoàn tác phiếu đã hoàn thành trước đó
+    """
+    if not from_warehouse_id or not to_warehouse_id:
+        return
+
+    from_multiplier = Decimal('1') if reverse else Decimal('-1')
+    to_multiplier = Decimal('-1') if reverse else Decimal('1')
+
+    for item in transfer.items.all():
+        quantity = _to_decimal(item.quantity)
+        from_stock, _ = ProductStock.objects.get_or_create(
+            product_id=item.product_id,
+            warehouse_id=from_warehouse_id,
+        )
+        _adjust_stock_quantity(from_stock, quantity * from_multiplier)
+
+        to_stock, _ = ProductStock.objects.get_or_create(
+            product_id=item.product_id,
+            warehouse_id=to_warehouse_id,
+        )
+        _adjust_stock_quantity(to_stock, quantity * to_multiplier)
+
+
+def _recreate_stock_transfer_items(transfer, normalized_items):
+    """Xóa item cũ và tạo lại item mới cho phiếu chuyển kho."""
+    transfer.items.all().delete()
+    for item in normalized_items:
+        StockTransferItem.objects.create(
+            transfer=transfer,
+            product_id=item['product_id'],
+            variant_id=item['variant_id'],
+            quantity=item['quantity'],
+        )
 
 
 def _combo_signature(combo_product):
@@ -556,8 +700,8 @@ def api_delete_product(request):
             return JsonResponse({
                 'status': 'error',
                 'message': f'🔒 Không thể xóa "{product.name}" vì đã có {order_count} '
-                           f'đơn hàng sử dụng sản phẩm này. '
-                           f'Bạn có thể ẩn sản phẩm bằng cách bỏ tích "Đang hoạt động".'
+                f'đơn hàng sử dụng sản phẩm này. '
+                f'Bạn có thể ẩn sản phẩm bằng cách bỏ tích "Đang hoạt động".'
             })
 
         product.delete()
@@ -701,6 +845,7 @@ def api_save_category(request):
 
 @login_required(login_url="/login/")
 def api_get_goods_receipts(request):
+    """Trả về danh sách phiếu nhập trong phạm vi store mà user được phép xem."""
     receipts = GoodsReceipt.objects.select_related('supplier', 'warehouse', 'purchase_order').prefetch_related('items__product').all()
     receipts = filter_by_store(receipts, request, field_name='warehouse__store')
     data = []
@@ -739,15 +884,18 @@ def api_save_goods_receipt(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
+            # 1. Nạp phiếu cũ nếu là cập nhật để biết cần hoàn tồn ở kho nào.
             gr_id = data.get('id')
             old_status = None
             old_warehouse_id = None
             if gr_id:
-                gr = filter_by_store(
-                    GoodsReceipt.objects.select_for_update().prefetch_related('items'),
+                gr = _get_goods_receipt_for_user(
                     request,
-                    field_name='warehouse__store',
-                ).get(id=gr_id)
+                    gr_id,
+                    queryset=GoodsReceipt.objects.select_for_update().prefetch_related('items'),
+                )
+                if not gr:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập'})
                 old_status = gr.status
                 old_warehouse_id = gr.warehouse_id
             else:
@@ -776,76 +924,27 @@ def api_save_goods_receipt(request):
             gr.status = new_status
             gr.note = data.get('note', '')
 
-            items_data = data.get('items', [])
-            total = 0
-            for item in items_data:
-                tp = float(item.get('quantity', 0)) * float(item.get('unit_price', 0))
-                total += tp
-            gr.total_amount = total
+            # 2. Chuẩn hóa item để toàn bộ các bước sau dùng cùng một kiểu dữ liệu.
+            normalized_items, total_amount = _normalize_goods_receipt_items(data.get('items', []))
+            gr.total_amount = total_amount
             gr.save()
 
-            # Hoàn tác tồn kho nếu trước đó đã hoàn thành
+            # 3. Nếu phiếu cũ đã hoàn thành thì hoàn tác tồn theo kho cũ trước khi ghi item mới.
             if old_status == 1 and old_warehouse_id:
-                for old_item in gr.items.all():
-                    stock, _ = ProductStock.objects.get_or_create(
-                        product_id=old_item.product_id,
-                        warehouse_id=old_warehouse_id,
-                    )
-                    _adjust_stock_quantity(stock, -old_item.quantity)
+                _apply_goods_receipt_stock_adjustment(gr, old_warehouse_id, multiplier=-1)
 
-            # Delete old items and create new ones
-            gr.items.all().delete()
-            for item in items_data:
-                qty = float(item.get('quantity', 0))
-                price = float(item.get('unit_price', 0))
-                GoodsReceiptItem.objects.create(
-                    goods_receipt=gr,
-                    product_id=item.get('product_id'),
-                    variant_id=item.get('variant_id') or None,
-                    quantity=qty,
-                    unit_price=price,
-                    total_price=qty * price,
-                )
+            # 4. Ghi lại toàn bộ item mới sau khi đã hoàn tác item cũ.
+            _recreate_goods_receipt_items(gr, normalized_items)
 
-            # Cộng tồn kho nếu status mới = Hoàn thành (1)
-            # + Cập nhật giá vốn tham chiếu/fallback trong DB
-            # + Cập nhật giá nhập (import_price) = giá mới nhất
+            # 5. Với phiếu hoàn thành, cộng tồn và đồng bộ giá vốn tham chiếu của sản phẩm.
             if new_status == 1 and gr.warehouse_id:
-                for item in items_data:
-                    product_id = item.get('product_id')
-                    new_qty = Decimal(str(item.get('quantity', 0)))
-                    new_price = Decimal(str(item.get('unit_price', 0)))
-
-                    stock, _ = ProductStock.objects.get_or_create(
-                        product_id=product_id,
-                        warehouse_id=gr.warehouse_id,
+                _apply_goods_receipt_stock_adjustment(gr, gr.warehouse_id, multiplier=1)
+                for item in normalized_items:
+                    _sync_product_cost_after_goods_receipt(
+                        item['product_id'],
+                        item['quantity'],
+                        item['unit_price'],
                     )
-                    old_stock_qty = stock.quantity  # Tồn trước khi nhập
-
-                    # Cộng tồn
-                    _adjust_stock_quantity(stock, new_qty)
-
-                    # Lưu giá vốn tham chiếu/fallback trong DB và cập nhật giá nhập mới nhất.
-                    # Màn hình danh sách sản phẩm/export sẽ ưu tiên tính giá vốn của tồn hiện tại
-                    # từ lịch sử các phiếu nhập còn lại.
-                    try:
-                        product = Product.objects.get(id=product_id)
-                        total_old_stock = Decimal(str(sum(
-                            float(s.quantity) for s in ProductStock.objects.filter(product_id=product_id)
-                        ))) - new_qty  # Trừ lại vì đã cộng ở trên
-                        if total_old_stock < 0:
-                            total_old_stock = Decimal('0')
-                        total_new_stock = total_old_stock + new_qty
-                        if total_new_stock > 0:
-                            old_cost = product.cost_price or Decimal('0')
-                            weighted_avg = (total_old_stock * old_cost + new_qty * new_price) / total_new_stock
-                            product.cost_price = round(weighted_avg)
-
-                        # Cập nhật giá nhập = giá từ phiếu nhập mới nhất
-                        product.import_price = new_price
-                        product.save(update_fields=['cost_price', 'import_price'])
-                    except Product.DoesNotExist:
-                        pass
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
     except Exception as e:
@@ -859,21 +958,17 @@ def api_delete_goods_receipt(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
-            receipt = filter_by_store(
-                GoodsReceipt.objects.select_for_update().prefetch_related('items'),
+            receipt = _get_goods_receipt_for_user(
                 request,
-                field_name='warehouse__store',
-            ).filter(id=data.get('id')).first()
+                data.get('id'),
+                queryset=GoodsReceipt.objects.select_for_update().prefetch_related('items'),
+            )
             if not receipt:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập'})
 
+            # Phiếu nhập đã hoàn thành thì xóa phải hoàn tác phần tồn đã cộng trước đó.
             if receipt.status == 1 and receipt.warehouse_id:
-                for item in receipt.items.all():
-                    stock, _ = ProductStock.objects.get_or_create(
-                        product_id=item.product_id,
-                        warehouse_id=receipt.warehouse_id,
-                    )
-                    _adjust_stock_quantity(stock, -item.quantity)
+                _apply_goods_receipt_stock_adjustment(receipt, receipt.warehouse_id, multiplier=-1)
 
             receipt.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
@@ -885,6 +980,7 @@ def api_delete_goods_receipt(request):
 
 @login_required(login_url="/login/")
 def api_get_stock_transfers(request):
+    """Trả về danh sách phiếu chuyển kho trong phạm vi store mà user được phép xem."""
     transfers = StockTransfer.objects.select_related('from_warehouse', 'to_warehouse').prefetch_related('items__product').all()
     transfers = filter_by_store(transfers, request, field_name='from_warehouse__store')
     data = []
@@ -918,22 +1014,27 @@ def api_save_stock_transfer(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
+            # 1. Nạp phiếu cũ nếu là cập nhật để biết cần hoàn tác tồn theo cặp kho cũ.
             st_id = data.get('id')
             old_status = None
             old_from_warehouse_id = None
             old_to_warehouse_id = None
             if st_id:
-                st = filter_by_store(
-                    StockTransfer.objects.select_for_update().prefetch_related('items'),
+                st = _get_stock_transfer_for_user(
                     request,
-                    field_name='from_warehouse__store',
-                ).get(id=st_id)
+                    st_id,
+                    queryset=StockTransfer.objects.select_for_update().prefetch_related('items'),
+                )
+                if not st:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chuyển'})
                 old_status = st.status
                 old_from_warehouse_id = st.from_warehouse_id
                 old_to_warehouse_id = st.to_warehouse_id
             else:
                 st = StockTransfer()
                 st.created_by = request.user
+
+            # 2. Gán dữ liệu cơ bản từ payload.
             st.code = data.get('code', '')
             st.from_warehouse_id = data.get('from_warehouse_id') or None
             st.to_warehouse_id = data.get('to_warehouse_id') or None
@@ -943,48 +1044,27 @@ def api_save_stock_transfer(request):
             st.note = data.get('note', '')
             st.save()
 
-            # Hoàn tác tồn kho theo kho cũ nếu trước đó đã hoàn thành.
+            # 3. Nếu phiếu cũ đã hoàn thành thì hoàn tác tồn theo cặp kho cũ trước khi ghi item mới.
             if old_status == 2 and old_from_warehouse_id and old_to_warehouse_id:
-                for old_item in st.items.all():
-                    qty = _to_decimal(old_item.quantity)
-                    pid = old_item.product_id
-                    from_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=pid,
-                        warehouse_id=old_from_warehouse_id,
-                    )
-                    _adjust_stock_quantity(from_stock, qty)
-                    to_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=pid,
-                        warehouse_id=old_to_warehouse_id,
-                    )
-                    _adjust_stock_quantity(to_stock, -qty)
-
-            # Save items
-            items_data = data.get('items', [])
-            st.items.all().delete()
-            for item in items_data:
-                StockTransferItem.objects.create(
-                    transfer=st,
-                    product_id=item.get('product_id'),
-                    variant_id=item.get('variant_id') or None,
-                    quantity=float(item.get('quantity', 0)),
+                _apply_stock_transfer_adjustment(
+                    st,
+                    old_from_warehouse_id,
+                    old_to_warehouse_id,
+                    reverse=True,
                 )
 
-            # Cập nhật tồn kho nếu status mới = Hoàn thành (2)
+            # 4. Ghi lại item mới theo payload hiện tại.
+            normalized_items = _normalize_stock_transfer_items(data.get('items', []))
+            _recreate_stock_transfer_items(st, normalized_items)
+
+            # 5. Chỉ khi phiếu ở trạng thái hoàn thành mới áp biến động kho thực tế.
             if new_status == 2 and st.from_warehouse_id and st.to_warehouse_id:
-                for item in items_data:
-                    qty = _to_decimal(item.get('quantity', 0))
-                    pid = item.get('product_id')
-                    from_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=pid,
-                        warehouse_id=st.from_warehouse_id,
-                    )
-                    _adjust_stock_quantity(from_stock, -qty)
-                    to_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=pid,
-                        warehouse_id=st.to_warehouse_id,
-                    )
-                    _adjust_stock_quantity(to_stock, qty)
+                _apply_stock_transfer_adjustment(
+                    st,
+                    st.from_warehouse_id,
+                    st.to_warehouse_id,
+                    reverse=False,
+                )
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except Exception as e:
@@ -998,27 +1078,22 @@ def api_delete_stock_transfer(request):
     try:
         data = json.loads(request.body)
         with transaction.atomic():
-            transfer = filter_by_store(
-                StockTransfer.objects.select_for_update().prefetch_related('items'),
+            transfer = _get_stock_transfer_for_user(
                 request,
-                field_name='from_warehouse__store',
-            ).filter(id=data.get('id')).first()
+                data.get('id'),
+                queryset=StockTransfer.objects.select_for_update().prefetch_related('items'),
+            )
             if not transfer:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chuyển'})
 
+            # Phiếu chuyển hoàn thành thì xóa phải hoàn tác tồn ở cả kho xuất và kho nhập.
             if transfer.status == 2 and transfer.from_warehouse_id and transfer.to_warehouse_id:
-                for item in transfer.items.all():
-                    qty = _to_decimal(item.quantity)
-                    from_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=item.product_id,
-                        warehouse_id=transfer.from_warehouse_id,
-                    )
-                    _adjust_stock_quantity(from_stock, qty)
-                    to_stock, _ = ProductStock.objects.get_or_create(
-                        product_id=item.product_id,
-                        warehouse_id=transfer.to_warehouse_id,
-                    )
-                    _adjust_stock_quantity(to_stock, -qty)
+                _apply_stock_transfer_adjustment(
+                    transfer,
+                    transfer.from_warehouse_id,
+                    transfer.to_warehouse_id,
+                    reverse=True,
+                )
 
             transfer.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
@@ -1117,6 +1192,7 @@ def api_delete_stock_check(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 # ============ API: PURCHASE ORDER ============
+
 
 @login_required(login_url="/login/")
 def api_get_purchase_orders(request):
@@ -1359,10 +1435,14 @@ def api_product_sales_history(request):
 
 # ============ API: PRODUCT LOCATION ============
 
+
 @login_required(login_url="/login/")
 def api_get_locations(request):
     locs = ProductLocation.objects.all()
-    data = [{'id': l.id, 'name': l.name, 'is_active': l.is_active} for l in locs]
+    data = [
+        {'id': location.id, 'name': location.name, 'is_active': location.is_active}
+        for location in locs
+    ]
     return JsonResponse({'data': data})
 
 

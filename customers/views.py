@@ -1,13 +1,58 @@
 import json
 import logging
+from django.db import transaction
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from .models import Customer, CustomerGroup
+from .models import Customer, CustomerGroup, PointTransaction, CafeTable
 from orders.models import Order
-from core.store_utils import filter_by_store, get_user_store, brand_owner_required
+from core.store_utils import (
+    filter_by_store,
+    get_managed_store_ids,
+    get_user_store,
+    brand_owner_required,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _get_default_store_for_request(request):
+    """Lấy store mặc định để gán cho bản ghi mới khi user không phải nhân viên một store cố định."""
+    store = get_user_store(request)
+    if store:
+        return store
+
+    from system_management.models import Store
+
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return None
+    return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _get_customer_for_user(request, customer_id, queryset=None):
+    """Lấy khách hàng trong phạm vi store mà user đang được phép thao tác."""
+    if not customer_id:
+        return None
+    base_queryset = queryset if queryset is not None else Customer.objects.all()
+    return filter_by_store(base_queryset, request).filter(id=customer_id).first()
+
+
+def _get_cafe_table_for_user(request, table_id, queryset=None):
+    """Lấy bàn cafe trong phạm vi store mà user đang được phép thao tác."""
+    if not table_id:
+        return None
+    base_queryset = queryset if queryset is not None else CafeTable.objects.all()
+    return filter_by_store(base_queryset, request).filter(id=table_id).first()
+
+
+def _get_point_history_queryset(request, customer_id):
+    """Lấy lịch sử điểm của đúng khách hàng trong phạm vi user được phép xem."""
+    customer = _get_customer_for_user(request, customer_id)
+    if not customer:
+        return None, PointTransaction.objects.none()
+    transactions = PointTransaction.objects.filter(customer=customer).select_related('order').order_by('-created_at')
+    return customer, transactions
 
 
 @login_required(login_url="/login/")
@@ -28,6 +73,7 @@ def customer_group_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_customers(request):
+    """Trả về danh sách khách hàng trong phạm vi store mà user được phép xem."""
     customers = Customer.objects.select_related('group').all()
     customers = filter_by_store(customers, request)
     data = [{
@@ -62,20 +108,14 @@ def api_save_customer(request):
         data = json.loads(request.body)
         cid = data.get('id')
         if cid:
-            c = Customer.objects.get(id=cid)
+            c = _get_customer_for_user(request, cid)
+            if not c:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
         else:
             c = Customer()
             c.created_by = request.user
-            # Auto-assign store (with brand owner fallback)
-            store = get_user_store(request)
-            if store:
-                c.store = store
-            else:
-                from core.store_utils import get_managed_store_ids
-                from system_management.models import Store
-                sids = get_managed_store_ids(request.user)
-                if sids:
-                    c.store = Store.objects.filter(id__in=sids).first()
+            # Khách hàng mới luôn được gán về store mặc định user đang quản lý.
+            c.store = _get_default_store_for_request(request)
         c.code = data.get('code', '')
         c.name = data.get('name', '')
         c.customer_type = data.get('customer_type', 1)
@@ -102,10 +142,7 @@ def api_delete_customer(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        cid = data.get('id')
-        from core.store_utils import get_managed_store_ids
-        store_ids = get_managed_store_ids(request.user)
-        c = Customer.objects.filter(id=cid, store_id__in=store_ids).first()
+        c = _get_customer_for_user(request, data.get('id'))
         if not c:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy hoặc không có quyền xóa khách hàng này'})
         c.delete()
@@ -123,7 +160,9 @@ def api_upload_customer_avatar(request):
         cid = request.POST.get('id')
         if not cid:
             return JsonResponse({'status': 'error', 'message': 'Missing customer id'})
-        c = Customer.objects.get(id=cid)
+        c = _get_customer_for_user(request, cid)
+        if not c:
+            raise Customer.DoesNotExist
         if 'avatar' in request.FILES:
             import os
             from PIL import Image
@@ -219,9 +258,7 @@ def api_customer_orders(request):
         except (TypeError, ValueError):
             limit = None
 
-        from core.store_utils import get_managed_store_ids
-        store_ids = get_managed_store_ids(request.user)
-        customer = Customer.objects.filter(id=cid, store_id__in=store_ids).first()
+        customer = _get_customer_for_user(request, cid)
         if not customer:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
         orders_qs = Order.objects.filter(customer=customer).select_related('warehouse').prefetch_related('items__product').order_by('-order_date', '-id')
@@ -294,8 +331,7 @@ def cafe_table_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_cafe_tables(request):
-    from .models import CafeTable
-    from core.store_utils import filter_by_store
+    """Trả về bản đồ bàn trong phạm vi store mà user được phép xem."""
     tables = CafeTable.objects.select_related('current_order').filter(is_active=True)
     tables = filter_by_store(tables, request)
     data = [{
@@ -315,16 +351,15 @@ def api_save_cafe_table(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
-        from .models import CafeTable
         data = json.loads(request.body)
         tid = data.get('id')
         if tid:
-            t = CafeTable.objects.get(id=tid)
+            t = _get_cafe_table_for_user(request, tid)
+            if not t:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy bàn'})
         else:
             t = CafeTable()
-            store = get_user_store(request)
-            if store:
-                t.store = store
+            t.store = _get_default_store_for_request(request)
         t.number = data.get('number', '')
         t.name = data.get('name', '')
         t.area = data.get('area', 'indoor')
@@ -343,9 +378,11 @@ def api_delete_cafe_table(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
-        from .models import CafeTable
         data = json.loads(request.body)
-        CafeTable.objects.filter(id=data.get('id')).delete()
+        table = _get_cafe_table_for_user(request, data.get('id'))
+        if not table:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy bàn'})
+        table.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -357,10 +394,11 @@ def api_update_table_status(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
-        from .models import CafeTable
         data = json.loads(request.body)
         tid = data.get('id')
-        t = CafeTable.objects.get(id=tid)
+        t = _get_cafe_table_for_user(request, tid)
+        if not t:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy bàn'})
         new_status = int(data.get('status', 0))
         t.status = new_status
         if new_status == 0:  # Trống
@@ -378,11 +416,13 @@ def api_update_table_status(request):
 @login_required(login_url="/login/")
 def api_get_point_history(request):
     """Lịch sử tích/đổi điểm của KH"""
-    from .models import PointTransaction
     cid = request.GET.get('customer_id')
     if not cid:
         return JsonResponse({'status': 'error', 'message': 'Missing customer_id'})
-    txns = PointTransaction.objects.filter(customer_id=cid).select_related('order').order_by('-created_at')[:100]
+    customer, txns = _get_point_history_queryset(request, cid)
+    if not customer:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
+    txns = txns[:100]
     data = [{
         'id': t.id,
         'type': t.transaction_type,
@@ -393,7 +433,6 @@ def api_get_point_history(request):
         'order_code': t.order.code if t.order else '',
         'created_at': t.created_at.strftime('%d/%m/%Y %H:%M'),
     } for t in txns]
-    customer = Customer.objects.get(id=cid)
     return JsonResponse({
         'status': 'ok', 'data': data,
         'customer_points': customer.points,
@@ -408,32 +447,34 @@ def api_adjust_points(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
-        from .models import PointTransaction
         data = json.loads(request.body)
         cid = data.get('customer_id')
         points = int(data.get('points', 0))
         txn_type = int(data.get('type', 3))  # 3 = điều chỉnh
         desc = data.get('description', 'Điều chỉnh thủ công')
-        customer = Customer.objects.get(id=cid)
-        if txn_type == 2 and points > customer.points:
-            return JsonResponse({'status': 'error', 'message': f'Khách chỉ có {customer.points} điểm'})
-        if txn_type == 1 or txn_type == 3:
-            customer.points += points
-        else:
-            customer.points -= points
-        customer.save(update_fields=['points'])
+        with transaction.atomic():
+            customer = _get_customer_for_user(request, cid, queryset=Customer.objects.select_for_update())
+            if not customer:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
+            if txn_type == 2 and points > customer.points:
+                return JsonResponse({'status': 'error', 'message': f'Khách chỉ có {customer.points} điểm'})
 
-        # Auto upgrade membership
-        _auto_upgrade_membership(customer)
+            # Cộng/trừ điểm rồi đồng bộ lại hạng thành viên theo tổng mua hàng hiện có.
+            if txn_type in (1, 3):
+                customer.points += points
+            else:
+                customer.points -= points
+            customer.save(update_fields=['points'])
+            _auto_upgrade_membership(customer)
 
-        PointTransaction.objects.create(
-            customer=customer,
-            transaction_type=txn_type,
-            points=points,
-            balance_after=customer.points,
-            description=desc,
-            created_by=request.user,
-        )
+            PointTransaction.objects.create(
+                customer=customer,
+                transaction_type=txn_type,
+                points=points,
+                balance_after=customer.points,
+                description=desc,
+                created_by=request.user,
+            )
         return JsonResponse({'status': 'ok', 'message': f'Cập nhật điểm thành công. Hiện có {customer.points} điểm'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -506,7 +547,7 @@ def dashboard_page(request):
 def api_dashboard_data(request):
     """API lấy dữ liệu dashboard"""
     from datetime import datetime, timedelta
-    from django.db.models import Sum, Count, Q
+    from django.db.models import Sum, Count
     from core.store_utils import get_managed_store_ids
     from products.models import ProductStock
 

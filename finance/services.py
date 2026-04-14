@@ -6,6 +6,7 @@ from .models import CashBook, Receipt
 
 
 def capture_receipt_effect(receipt):
+    """Chụp lại trạng thái đã áp hiệu ứng của phiếu thu để hoàn/tái áp an toàn khi sửa."""
     if not receipt:
         return None
     return {
@@ -18,6 +19,11 @@ def capture_receipt_effect(receipt):
 
 
 def _apply_receipt_cashbook_delta(effect, multiplier, require_applied=True):
+    """Áp delta vào quỹ theo ảnh chụp hiệu ứng của phiếu thu.
+
+    `multiplier = 1` dùng để cộng lại hiệu ứng.
+    `multiplier = -1` dùng để hoàn tác hiệu ứng cũ.
+    """
     if not effect or effect['status'] != 1 or not effect['cash_book_id']:
         return False
     if require_applied and not effect.get('cashbook_applied'):
@@ -32,6 +38,7 @@ def _apply_receipt_cashbook_delta(effect, multiplier, require_applied=True):
 
 
 def update_order_payment_status(order):
+    """Tổng hợp lại số tiền đã thu thực tế và trạng thái thanh toán của đơn."""
     if not order:
         return
     total_paid = sum(
@@ -49,6 +56,14 @@ def update_order_payment_status(order):
 
 
 def save_receipt_with_effect(receipt, old_effect=None):
+    """Lưu phiếu thu và đồng bộ toàn bộ hiệu ứng phụ trong cùng một transaction.
+
+    Thứ tự xử lý:
+    1. Hoàn tác hiệu ứng cũ nếu đang sửa phiếu.
+    2. Lưu chứng từ mới.
+    3. Áp hiệu ứng mới vào quỹ nếu phiếu ở trạng thái hoàn thành.
+    4. Cập nhật lại trạng thái thanh toán của các đơn bị ảnh hưởng.
+    """
     from orders.models import Order
 
     with transaction.atomic():
@@ -72,6 +87,7 @@ def save_receipt_with_effect(receipt, old_effect=None):
 
 
 def cancel_receipt_with_effect(receipt, note_prefix=''):
+    """Hủy phiếu thu bằng cách chuyển trạng thái và đi lại luồng save tiêu chuẩn."""
     if not receipt:
         return
     old_effect = capture_receipt_effect(receipt)
@@ -82,6 +98,7 @@ def cancel_receipt_with_effect(receipt, note_prefix=''):
 
 
 def delete_receipt_with_effect(receipt):
+    """Xóa phiếu thu và hoàn toàn bộ hiệu ứng đã áp lên quỹ/đơn hàng."""
     if not receipt:
         return
     old_effect = capture_receipt_effect(receipt)

@@ -21,6 +21,7 @@ class IsAuthenticated(permissions.BasePermission):
     """
     Allows access only to authenticated users.
     """
+
     def has_permission(self, request, view):
         message = 'You must be authenticated'
         is_it = bool(request.user and request.user.is_authenticated)

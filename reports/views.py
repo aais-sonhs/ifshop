@@ -1,6 +1,5 @@
 import logging
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 from django.shortcuts import render
 from django.contrib import messages
@@ -8,7 +7,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db.models import Sum, Count, Q, F
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
-from products.models import PurchaseOrder
 from core.store_utils import (
     filter_by_store,
     brand_owner_required,
@@ -21,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_sales_report_number(value):
+    """Chuyển tham số số từ query string sang float; trả None nếu rỗng hoặc sai định dạng."""
     if value in (None, ''):
         return None
     try:
@@ -73,6 +72,7 @@ def _get_sales_report_filters(request):
 
 
 def _get_sales_report_time_group_meta(time_group):
+    """Trả metadata gom nhóm thời gian cho báo cáo bán hàng."""
     if time_group == 'month':
         return {'label': 'Tháng', 'key_format': '%Y-%m', 'display_format': '%m/%Y'}
     if time_group == 'year':
@@ -219,7 +219,6 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     total_orders = len(order_rows)
     total_revenue = sum(row['revenue'] for row in order_rows)
-    total_paid = sum(row['paid'] for row in order_rows)
     total_debt = sum(row['debt'] for row in order_rows)
     total_cost = sum(row['cost'] for row in order_rows)
     total_profit = sum(row['profit'] for row in order_rows)
@@ -697,7 +696,7 @@ def report_inventory(request):
 @login_required(login_url="/login/")
 def api_report_inventory(request):
     """API báo cáo tồn kho"""
-    from products.models import Product, ProductStock, Warehouse
+    from products.models import ProductStock, Warehouse
     from core.store_utils import filter_by_store
     warehouse_id = request.GET.get('warehouse_id')
 
@@ -1175,7 +1174,6 @@ def export_staff_sales_excel(request):
     sub_header_font = Font(bold=True, size=10, color='FFFFFF')
     sub_header_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
     money_format = '#,##0'
-    percent_format = '0.0"%"'
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -1185,7 +1183,7 @@ def export_staff_sales_excel(request):
 
     # Title
     ws.merge_cells('A1:L1')
-    ws['A1'] = f'BÁO CÁO DOANH THU NHÂN VIÊN BÁN HÀNG'
+    ws['A1'] = 'BÁO CÁO DOANH THU NHÂN VIÊN BÁN HÀNG'
     ws['A1'].font = header_font
     ws['A1'].fill = header_fill
     ws['A1'].alignment = Alignment(horizontal='center')
@@ -1416,21 +1414,21 @@ def export_sales_excel(request):
         cst = float(p.get('cost') or 0)
         profit = float(p.get('profit') or 0)
         margin = round((profit / amt) * 100, 1) if amt > 0 else 0
-        ws2.cell(row=idx+1, column=1, value=idx).border = thin
-        ws2.cell(row=idx+1, column=2, value=p.get('name') or '').border = thin
-        ws2.cell(row=idx+1, column=3, value=p.get('category') or '').border = thin
-        ws2.cell(row=idx+1, column=4, value=float(p.get('qty') or 0)).border = thin
-        c = ws2.cell(row=idx+1, column=5, value=amt)
+        ws2.cell(row=idx + 1, column=1, value=idx).border = thin
+        ws2.cell(row=idx + 1, column=2, value=p.get('name') or '').border = thin
+        ws2.cell(row=idx + 1, column=3, value=p.get('category') or '').border = thin
+        ws2.cell(row=idx + 1, column=4, value=float(p.get('qty') or 0)).border = thin
+        c = ws2.cell(row=idx + 1, column=5, value=amt)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx+1, column=6, value=cst)
+        c = ws2.cell(row=idx + 1, column=6, value=cst)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx+1, column=7, value=profit)
+        c = ws2.cell(row=idx + 1, column=7, value=profit)
         c.number_format = money_fmt
         c.border = thin
-        ws2.cell(row=idx+1, column=8, value=margin / 100).number_format = '0.0%'
-        ws2.cell(row=idx+1, column=8).border = thin
+        ws2.cell(row=idx + 1, column=8, value=margin / 100).number_format = '0.0%'
+        ws2.cell(row=idx + 1, column=8).border = thin
         if profit < 0:
             c.font = Font(bold=True, color='FF0000')
 
@@ -1565,7 +1563,7 @@ def export_inventory_excel(request):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
-    from products.models import ProductStock, Warehouse
+    from products.models import ProductStock
 
     warehouse_id = request.GET.get('warehouse_id')
 
@@ -1910,15 +1908,21 @@ def export_purchases_excel(request):
 
     ws.merge_cells('A1:G1')
     ws['A1'] = 'BÁO CÁO NHẬP HÀNG'
-    ws['A1'].font = hf; ws['A1'].fill = hfill; ws['A1'].alignment = Alignment(horizontal='center')
+    ws['A1'].font = hf
+    ws['A1'].fill = hfill
+    ws['A1'].alignment = Alignment(horizontal='center')
     ws.merge_cells('A2:G2')
     ws['A2'] = f'Từ {from_date} đến {to_date}'
-    ws['A2'].font = Font(italic=True, size=10); ws['A2'].alignment = Alignment(horizontal='center')
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
 
     headers = ['STT', 'Mã phiếu', 'Ngày', 'Nhà cung cấp', 'Kho', 'Tổng tiền', 'Trạng thái']
     for col, h in enumerate(headers, 1):
         c = ws.cell(row=4, column=col, value=h)
-        c.font = sf; c.fill = sfill; c.alignment = Alignment(horizontal='center'); c.border = thin
+        c.font = sf
+        c.fill = sfill
+        c.alignment = Alignment(horizontal='center')
+        c.border = thin
 
     row = 5
     total = 0
@@ -1935,15 +1939,20 @@ def export_purchases_excel(request):
         for col, val in enumerate(vals, 1):
             c = ws.cell(row=row, column=col, value=val)
             c.border = thin
-            if col == 6: c.number_format = mfmt
-            if is_cancel: c.fill = cancel_fill
+            if col == 6:
+                c.number_format = mfmt
+            if is_cancel:
+                c.fill = cancel_fill
         row += 1
 
     totals = ['', 'TỔNG', '', '', '', total, '']
     for col, val in enumerate(totals, 1):
         c = ws.cell(row=row, column=col, value=val)
-        c.font = Font(bold=True); c.fill = tfill; c.border = thin
-        if col == 6: c.number_format = mfmt
+        c.font = Font(bold=True)
+        c.fill = tfill
+        c.border = thin
+        if col == 6:
+            c.number_format = mfmt
 
     for i, w in enumerate([6, 15, 12, 25, 15, 18, 12], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
@@ -1975,12 +1984,14 @@ def export_finance_excel(request):
     receipts = Receipt.objects.filter(
         receipt_date__gte=from_date, receipt_date__lte=to_date, status=1)
     receipts = filter_by_store(receipts, request)
-    if store_id: receipts = receipts.filter(store_id=store_id)
+    if store_id:
+        receipts = receipts.filter(store_id=store_id)
 
     payments = Payment.objects.filter(
         payment_date__gte=from_date, payment_date__lte=to_date, status=1)
     payments = filter_by_store(payments, request)
-    if store_id: payments = payments.filter(store_id=store_id)
+    if store_id:
+        payments = payments.filter(store_id=store_id)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1998,10 +2009,13 @@ def export_finance_excel(request):
 
     ws.merge_cells('A1:G1')
     ws['A1'] = 'BÁO CÁO THU CHI'
-    ws['A1'].font = hf; ws['A1'].fill = hfill; ws['A1'].alignment = Alignment(horizontal='center')
+    ws['A1'].font = hf
+    ws['A1'].fill = hfill
+    ws['A1'].alignment = Alignment(horizontal='center')
     ws.merge_cells('A2:G2')
     ws['A2'] = f'Từ {from_date} đến {to_date}'
-    ws['A2'].font = Font(italic=True, size=10); ws['A2'].alignment = Alignment(horizontal='center')
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
 
     # Summary row
     total_income = float(receipts.aggregate(s=Sum('amount'))['s'] or 0)
@@ -2013,7 +2027,10 @@ def export_finance_excel(request):
     headers = ['STT', 'Loại', 'Mã phiếu', 'Ngày', 'Danh mục', 'Diễn giải', 'Số tiền']
     for col, h in enumerate(headers, 1):
         c = ws.cell(row=5, column=col, value=h)
-        c.font = sf; c.fill = sfill; c.alignment = Alignment(horizontal='center'); c.border = thin
+        c.font = sf
+        c.fill = sfill
+        c.alignment = Alignment(horizontal='center')
+        c.border = thin
 
     row = 6
     idx = 1
@@ -2025,9 +2042,12 @@ def export_finance_excel(request):
                 r.description or '', float(r.amount)]
         for col, val in enumerate(vals, 1):
             c = ws.cell(row=row, column=col, value=val)
-            c.border = thin; c.fill = green_fill
-            if col == 7: c.number_format = mfmt
-        idx += 1; row += 1
+            c.border = thin
+            c.fill = green_fill
+            if col == 7:
+                c.number_format = mfmt
+        idx += 1
+        row += 1
 
     # Ghi phiếu chi
     for p in payments.select_related('category').order_by('-payment_date'):
@@ -2037,24 +2057,32 @@ def export_finance_excel(request):
                 p.description or '', float(p.amount)]
         for col, val in enumerate(vals, 1):
             c = ws.cell(row=row, column=col, value=val)
-            c.border = thin; c.fill = red_fill
-            if col == 7: c.number_format = mfmt
-        idx += 1; row += 1
+            c.border = thin
+            c.fill = red_fill
+            if col == 7:
+                c.number_format = mfmt
+        idx += 1
+        row += 1
 
     # Total rows
     for label, amt, fill in [('TỔNG THU', total_income, green_fill),
-                               ('TỔNG CHI', total_expense, red_fill)]:
+                             ('TỔNG CHI', total_expense, red_fill)]:
         for col, val in enumerate(['', label, '', '', '', '', amt], 1):
             c = ws.cell(row=row, column=col, value=val)
-            c.font = Font(bold=True); c.fill = fill; c.border = thin
-            if col == 7: c.number_format = mfmt
+            c.font = Font(bold=True)
+            c.fill = fill
+            c.border = thin
+            if col == 7:
+                c.number_format = mfmt
         row += 1
     net = total_income - total_expense
     for col, val in enumerate(['', 'LÃI/LỖ', '', '', '', '', net], 1):
         c = ws.cell(row=row, column=col, value=val)
         c.font = Font(bold=True, color='006600' if net >= 0 else 'CC0000')
-        c.fill = tfill; c.border = thin
-        if col == 7: c.number_format = mfmt
+        c.fill = tfill
+        c.border = thin
+        if col == 7:
+            c.number_format = mfmt
 
     for i, w in enumerate([6, 8, 15, 12, 20, 30, 18], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w

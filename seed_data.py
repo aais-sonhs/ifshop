@@ -2,26 +2,26 @@
 Script tạo dữ liệu mẫu cho toàn bộ hệ thống
 Chạy: python manage.py shell < seed_data.py
 """
-import os, sys, django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-django.setup()
-
-from django.contrib.auth.models import User
-from decimal import Decimal
-from datetime import date, timedelta, datetime
-from django.utils import timezone
-import random
-
-from customers.models import Customer, CustomerGroup
+from finance.models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment
+from orders.models import (
+    Quotation, QuotationItem, Order, OrderItem, OrderReturn, OrderReturnItem, Packaging
+)
 from products.models import (
     Supplier, ProductCategory, Warehouse, Product, ProductStock,
     PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptItem,
     StockCheck, StockCheckItem, StockTransfer, StockTransferItem, CostAdjustment
 )
-from orders.models import (
-    Quotation, QuotationItem, Order, OrderItem, OrderReturn, OrderReturnItem, Packaging
-)
-from finance.models import FinanceCategory, CashBook, Receipt, ReceiptItem, Payment
+from customers.models import Customer, CustomerGroup
+import random
+from django.utils import timezone
+from datetime import date, timedelta
+from django.contrib.auth.models import User
+import os
+import django
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+
 
 print("=" * 60)
 print("🚀 Bắt đầu tạo dữ liệu mẫu...")
@@ -201,11 +201,11 @@ for i in range(5):
     sup = suppliers[i % len(suppliers)]
     wh = warehouses[i % len(warehouses)]
     po, created = PurchaseOrder.objects.get_or_create(
-        code=f'PO{(i+1):04d}',
+        code=f'PO{(i + 1):04d}',
         defaults={
             'supplier': sup, 'warehouse': wh, 'status': random.choice([0, 1, 2, 3]),
             'order_date': po_date, 'expected_date': po_date + timedelta(days=7),
-            'note': f'Đơn đặt hàng nhập #{i+1}', 'created_by': admin_user, 'total_amount': 0,
+            'note': f'Đơn đặt hàng nhập #{i + 1}', 'created_by': admin_user, 'total_amount': 0,
         }
     )
     if created:
@@ -231,10 +231,10 @@ for i in range(4):
     sup = suppliers[i % len(suppliers)]
     wh = warehouses[i % len(warehouses)]
     gr, created = GoodsReceipt.objects.get_or_create(
-        code=f'NK{(i+1):04d}',
+        code=f'NK{(i + 1):04d}',
         defaults={
             'supplier': sup, 'warehouse': wh, 'status': random.choice([0, 1]),
-            'receipt_date': gr_date, 'note': f'Phiếu nhập kho #{i+1}',
+            'receipt_date': gr_date, 'note': f'Phiếu nhập kho #{i + 1}',
             'created_by': admin_user, 'total_amount': 0,
         }
     )
@@ -259,7 +259,7 @@ for i in range(3):
     sc_date = today - timedelta(days=random.randint(1, 30))
     wh = warehouses[i % len(warehouses)]
     sc, created = StockCheck.objects.get_or_create(
-        code=f'KK{(i+1):04d}',
+        code=f'KK{(i + 1):04d}',
         defaults={
             'warehouse': wh, 'status': random.choice([0, 1]),
             'check_date': sc_date, 'note': f'Kiểm kê tháng {sc_date.month}',
@@ -284,11 +284,11 @@ for i in range(3):
     from_wh = warehouses[i % len(warehouses)]
     to_wh = warehouses[(i + 1) % len(warehouses)]
     st, created = StockTransfer.objects.get_or_create(
-        code=f'CK{(i+1):04d}',
+        code=f'CK{(i + 1):04d}',
         defaults={
             'from_warehouse': from_wh, 'to_warehouse': to_wh,
             'status': random.choice([0, 1, 2]),
-            'transfer_date': st_date, 'note': f'Chuyển kho #{i+1}',
+            'transfer_date': st_date, 'note': f'Chuyển kho #{i + 1}',
             'created_by': admin_user,
         }
     )
@@ -347,7 +347,7 @@ for i in range(5):
     q_date = today - timedelta(days=random.randint(5, 45))
     cust = customers[i % len(customers)]
     q, created = Quotation.objects.get_or_create(
-        code=f'BG{(i+1):04d}',
+        code=f'BG{(i + 1):04d}',
         defaults={
             'customer': cust, 'status': random.choice([0, 1, 2]),
             'quotation_date': q_date, 'valid_until': q_date + timedelta(days=30),
@@ -382,14 +382,14 @@ for i in range(8):
     wh = warehouses[i % len(warehouses)]
     status = random.choice([0, 1, 2, 3, 5])
     o, created = Order.objects.get_or_create(
-        code=f'DH{(i+1):04d}',
+        code=f'DH{(i + 1):04d}',
         defaults={
             'customer': cust, 'warehouse': wh,
             'status': status,
             'payment_status': random.choice([0, 1, 2]),
             'order_date': o_date,
             'discount_amount': random.choice([0, 200000, 500000]),
-            'note': f'Đơn hàng #{i+1} - {cust.name}',
+            'note': f'Đơn hàng #{i + 1} - {cust.name}',
             'created_by': admin_user,
             'total_amount': 0, 'final_amount': 0, 'paid_amount': 0,
         }
@@ -420,7 +420,7 @@ for i in range(3):
     r_date = today - timedelta(days=random.randint(1, 20))
     cust = customers[i]
     ret, created = OrderReturn.objects.get_or_create(
-        code=f'TH{(i+1):04d}',
+        code=f'TH{(i + 1):04d}',
         defaults={
             'order': order_list[i] if i < len(order_list) else None,
             'customer': cust, 'warehouse': warehouses[0],
@@ -444,7 +444,7 @@ print("✅ Tạo 3 phiếu trả hàng")
 for i in range(4):
     if i < len(order_list):
         Packaging.objects.get_or_create(
-            code=f'DG{(i+1):04d}',
+            code=f'DG{(i + 1):04d}',
             defaults={
                 'order': order_list[i],
                 'status': random.choice([0, 1, 2]),
@@ -464,7 +464,7 @@ for i in range(4):
     cust = customers[i % len(customers)]
     cb = cashbooks[i % len(cashbooks)]
     receipt, created = Receipt.objects.get_or_create(
-        code=f'PT{(i+1):04d}',
+        code=f'PT{(i + 1):04d}',
         defaults={
             'category': sale_cat, 'cash_book': cb, 'customer': cust,
             'receipt_date': r_date, 'status': 1,
@@ -494,7 +494,7 @@ for i in range(3):
     cust = customers[(i + 4) % len(customers)]
     cb = cashbooks[i % len(cashbooks)]
     Receipt.objects.get_or_create(
-        code=f'PT{(i+5):04d}',
+        code=f'PT{(i + 5):04d}',
         defaults={
             'category': debt_cat, 'cash_book': cb, 'customer': cust,
             'receipt_date': r_date, 'status': 1,
@@ -520,7 +520,7 @@ for i, pd in enumerate(pay_data):
     p_date = today - timedelta(days=random.randint(1, 45))
     cb = cashbooks[i % len(cashbooks)]
     Payment.objects.get_or_create(
-        code=f'PC{(i+1):04d}',
+        code=f'PC{(i + 1):04d}',
         defaults={
             'category': fin_cats[pd['cat_idx']],
             'cash_book': cb, 'payment_date': p_date, 'status': 1,

@@ -4,6 +4,7 @@ import sys
 
 # from helpers import check_have_usb_dongle
 
+
 def main():
     # if check_have_usb_dongle():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")

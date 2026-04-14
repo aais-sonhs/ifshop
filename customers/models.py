@@ -8,7 +8,7 @@ class CustomerGroup(SoftDeleteModel):
     name = models.CharField(max_length=255, verbose_name='Tên nhóm')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0,
-                                            verbose_name='Chiết khấu (%)')
+                                           verbose_name='Chiết khấu (%)')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -30,7 +30,7 @@ class Customer(SoftDeleteModel):
         (3, 'Hộ kinh doanh'),
     )
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='customers', verbose_name='Cửa hàng')
+                              related_name='customers', verbose_name='Cửa hàng')
     customer_type = models.IntegerField(choices=CUSTOMER_TYPE_CHOICES, default=1, verbose_name='Loại khách hàng')
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã khách hàng')
     name = models.CharField(max_length=255, verbose_name='Tên khách hàng')
@@ -47,11 +47,11 @@ class Customer(SoftDeleteModel):
     # Hộ kinh doanh
     owner_tax_code = models.CharField(max_length=20, blank=True, null=True, verbose_name='MST cá nhân chủ hộ')
     group = models.ForeignKey(CustomerGroup, on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='customers', verbose_name='Nhóm khách hàng')
+                              related_name='customers', verbose_name='Nhóm khách hàng')
     total_purchased = models.DecimalField(max_digits=18, decimal_places=0, default=0,
-                                           verbose_name='Tổng mua hàng')
+                                          verbose_name='Tổng mua hàng')
     total_debt = models.DecimalField(max_digits=18, decimal_places=0, default=0,
-                                      verbose_name='Công nợ')
+                                     verbose_name='Công nợ')
     # Tích điểm & thành viên
     MEMBERSHIP_CHOICES = (
         (0, 'Thường'),
@@ -91,9 +91,9 @@ class PointTransaction(models.Model):
         (3, 'Điều chỉnh'),
     )
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='point_transactions',
-                                  verbose_name='Khách hàng')
+                                 verbose_name='Khách hàng')
     order = models.ForeignKey('orders.Order', on_delete=models.SET_NULL, null=True, blank=True,
-                               related_name='point_transactions', verbose_name='Đơn hàng')
+                              related_name='point_transactions', verbose_name='Đơn hàng')
     transaction_type = models.IntegerField(choices=TYPE_CHOICES, default=1, verbose_name='Loại')
     points = models.IntegerField(default=0, verbose_name='Số điểm')
     balance_after = models.IntegerField(default=0, verbose_name='Điểm sau GD')
@@ -126,14 +126,14 @@ class CafeTable(models.Model):
         ('bar', 'Quầy bar'),
     )
     store = models.ForeignKey('system_management.Store', on_delete=models.CASCADE,
-                               related_name='cafe_tables', verbose_name='Cửa hàng')
+                              related_name='cafe_tables', verbose_name='Cửa hàng')
     number = models.CharField(max_length=20, verbose_name='Số bàn')
     name = models.CharField(max_length=100, blank=True, null=True, verbose_name='Tên bàn')
     area = models.CharField(max_length=20, choices=AREA_CHOICES, default='indoor', verbose_name='Khu vực')
     capacity = models.IntegerField(default=4, verbose_name='Số ghế')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     current_order = models.ForeignKey('orders.Order', on_delete=models.SET_NULL, null=True, blank=True,
-                                       related_name='tables', verbose_name='Đơn hiện tại')
+                                      related_name='tables', verbose_name='Đơn hiện tại')
     note = models.CharField(max_length=255, blank=True, null=True, verbose_name='Ghi chú')
     is_active = models.BooleanField(default=True, verbose_name='Hoạt động')
     sort_order = models.IntegerField(default=0, verbose_name='Thứ tự')

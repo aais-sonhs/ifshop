@@ -30,9 +30,12 @@
         this.buttonContainer = opts.buttonContainer || '#col_config_container';
         this.columns = opts.columns || [];
         this.onApply = opts.onApply || null;
+        this.instanceId = 'cc_' + Math.random().toString(36).slice(2, 10);
 
         // Load saved state
         this.state = this._loadState();
+
+        this._ensureStyles();
 
         // Render button + dropdown
         this._renderButton();
@@ -63,6 +66,31 @@
         return !!this.state[key];
     };
 
+    ColumnConfig.prototype._ensureStyles = function(){
+        if(ColumnConfig._stylesInjected) return;
+        ColumnConfig._stylesInjected = true;
+
+        var css = '' +
+            '.cc-dropdown{position:relative;display:inline-flex;}' +
+            '.cc-trigger.btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;border-color:#cbd5e1;background:#fff;color:#334155;font-weight:600;box-shadow:0 1px 2px rgba(15,23,42,0.04);}' +
+            '.cc-trigger.btn:hover,.cc-trigger.btn:focus{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;box-shadow:0 0 0 0.2rem rgba(59,130,246,0.12);}' +
+            '.cc-menu.dropdown-menu{min-width:260px;max-width:320px;max-height:420px;overflow-y:auto;padding:0;border:1px solid #dbe3eb;border-radius:14px;background:#fff;box-shadow:0 18px 36px rgba(15,23,42,0.16);}' +
+            '.cc-header{padding:12px 14px;border-bottom:1px solid #e2e8f0;background:linear-gradient(180deg,#f8fbff 0%,#eef6ff 100%);}' +
+            '.cc-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#1e3a8a;}' +
+            '.cc-subtitle{margin-top:4px;font-size:12px;color:#64748b;line-height:1.45;}' +
+            '.cc-body{padding:8px 0;background:#fff;}' +
+            '.cc-toggle-item{display:flex;align-items:flex-start;gap:10px;padding:8px 14px;margin:0;color:#1f2937 !important;font-size:13px;line-height:1.4;white-space:normal;word-break:break-word;background:#fff;border:0;cursor:pointer;}' +
+            '.cc-toggle-item:hover{background:#f8fafc;}' +
+            '.cc-toggle-item input{width:16px;height:16px;margin-top:2px;flex:0 0 auto;accent-color:#1565c0;}' +
+            '.cc-toggle-item span{flex:1 1 auto;min-width:0;}' +
+            '.cc-footer{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc;position:sticky;bottom:0;}' +
+            '.cc-footer .btn{flex:1 1 0;border-radius:10px;font-size:12px;font-weight:600;padding:6px 10px;white-space:nowrap;}' +
+            '.cc-empty{padding:12px 14px;font-size:13px;color:#64748b;}' +
+            '@media (max-width: 576px){.cc-menu.dropdown-menu{min-width:240px;max-width:min(92vw,320px);}}';
+
+        $('<style id="column-config-styles"></style>').text(css).appendTo('head');
+    };
+
     ColumnConfig.prototype._renderButton = function(){
         var self = this;
         var $container = $(this.buttonContainer);
@@ -73,28 +101,33 @@
         this.columns.forEach(function(col){
             if(col.alwaysOn) return; // Don't show toggle for always-on cols
             var checked = self.isVisible(col.key) ? 'checked' : '';
-            itemsHtml += '<label class="dropdown-item cc-toggle-item" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 16px;margin:0;font-size:13px;">' +
-                '<input type="checkbox" class="cc-col-toggle" data-col="'+col.key+'" '+checked+' style="accent-color:#1565c0;width:16px;height:16px;"> ' +
+            itemsHtml += '<label class="dropdown-item cc-toggle-item">' +
+                '<input type="checkbox" class="cc-col-toggle" data-col="'+col.key+'" '+checked+'> ' +
                 '<span>'+col.label+'</span></label>';
         });
 
-        var html = '<div class="dropdown d-inline-block">' +
-            '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-toggle="dropdown" title="Tùy chỉnh cột hiển thị" id="btn_col_config">' +
+        if(!itemsHtml){
+            itemsHtml = '<div class="cc-empty">Tất cả cột trên bảng này đang luôn hiển thị.</div>';
+        }
+
+        var html = '<div class="dropdown d-inline-block cc-dropdown">' +
+            '<button class="btn btn-sm btn-outline-secondary dropdown-toggle cc-trigger" data-toggle="dropdown" title="Tùy chỉnh cột hiển thị">' +
             '<i class="fas fa-columns mr-1"></i>Cột</button>' +
-            '<div class="dropdown-menu dropdown-menu-right shadow" style="min-width:220px;max-height:400px;overflow-y:auto;padding:8px 0;" id="cc_dropdown">' +
-            '<div style="padding:6px 16px;border-bottom:1px solid #eee;margin-bottom:4px;">' +
-            '<strong style="font-size:12px;color:#666;text-transform:uppercase;"><i class="fas fa-eye mr-1"></i>Hiển thị cột</strong></div>' +
-            itemsHtml +
-            '<div class="dropdown-divider"></div>' +
-            '<div style="padding:4px 16px;display:flex;gap:8px;">' +
-            '<button class="btn btn-xs btn-outline-primary cc-select-all" style="flex:1;">Chọn tất cả</button>' +
-            '<button class="btn btn-xs btn-outline-secondary cc-reset" style="flex:1;">Mặc định</button></div>' +
+            '<div class="dropdown-menu dropdown-menu-right cc-menu">' +
+            '<div class="cc-header">' +
+            '<div class="cc-title"><i class="fas fa-eye"></i><span>Hien thi cot</span></div>' +
+            '<div class="cc-subtitle">Chon cac cot can hien trong bang ban hang.</div>' +
+            '</div>' +
+            '<div class="cc-body">' + itemsHtml + '</div>' +
+            '<div class="cc-footer">' +
+            '<button class="btn btn-sm btn-outline-primary cc-select-all">Chon tat ca</button>' +
+            '<button class="btn btn-sm btn-outline-secondary cc-reset">Mac dinh</button></div>' +
             '</div></div>';
 
         $container.prepend(html);
 
         // Prevent dropdown close on click inside
-        $(document).on('click', '#cc_dropdown', function(e){
+        $(document).on('click', '.cc-menu', function(e){
             e.stopPropagation();
         });
 

@@ -55,7 +55,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th style="width:36px;" class="text-center"><input type="checkbox" id="check_all_orders"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:140px;">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -696,6 +696,27 @@
 
 {% block extra_js %}
 <style>
+/* ===== ORDER LIST: CHECKBOX & ACTION BUTTONS ===== */
+#data_tbl .order-row-check {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #4a90d9;
+}
+#data_tbl .btn-action-group {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+#data_tbl .btn-action-group .btn {
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    line-height: 1.6;
+}
 #items_tbl .select2-container--bootstrap4 .select2-selection--single {
     min-height: 31px;
     height: auto;
@@ -1034,6 +1055,7 @@ var ORDER_WAREHOUSES = [
 ];
 var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
+var _suppressOrderWarehousePreferencePersist = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
 
@@ -1084,6 +1106,22 @@ function persistOrderWarehouseId(warehouseId){
             localStorage.removeItem(ORDER_WAREHOUSE_STORAGE_KEY);
         }
     } catch(e){}
+}
+
+function runWithoutPersistingOrderWarehousePreference(callback){
+    var previous = _suppressOrderWarehousePreferencePersist;
+    _suppressOrderWarehousePreferencePersist = true;
+    try {
+        callback();
+    } finally {
+        _suppressOrderWarehousePreferencePersist = previous;
+    }
+}
+
+function setOrderWarehouseValue(warehouseId){
+    runWithoutPersistingOrderWarehousePreference(function(){
+        $('#inp_warehouse_id').val(warehouseId || '').trigger('change');
+    });
 }
 
 function getWarehouseNameById(warehouseId){
@@ -1469,6 +1507,26 @@ function syncDocumentTypeUI(){
         $('input[name="pay_mode"]:checked').trigger('change');
         if(!isExisting) $('#modal_title').text('Tạo đơn hàng');
     }
+}
+
+function fetchProductsForOrderForm(orderId, callback){
+    var url = '/api/products_select/';
+    if(orderId){
+        url += '?exclude_order_id=' + encodeURIComponent(orderId);
+    }
+    $.get(url, function(prodRes){
+        allProducts = (prodRes && prodRes.data) || [];
+        updateQuickSearchFilterLabels();
+        if(typeof callback === 'function'){
+            callback();
+        }
+    }).fail(function(){
+        allProducts = allProducts || [];
+        updateQuickSearchFilterLabels();
+        if(typeof callback === 'function'){
+            callback();
+        }
+    });
 }
 
 // Column Config
@@ -2147,7 +2205,9 @@ $(document).ready(function(){
 
     // Khi thay đổi kho → cập nhật tồn kho hiển thị
     $('#inp_warehouse_id').change(function(){
-        persistOrderWarehouseId($(this).val());
+        if(!_suppressOrderWarehousePreferencePersist){
+            persistOrderWarehouseId($(this).val());
+        }
         updateQuickSearchFilterLabels();
         updateAllStockDisplay();
         if($('#quick_search_product').val().trim() || $('#quick_search_results').is(':visible')){
@@ -2156,8 +2216,8 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
-        $.get('/api/products_select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
-        $('#edit_id').val('');$('#inp_note').val('');clearCustomer();$('#inp_warehouse_id').val(getStoredOrderWarehouseId()).trigger('change');
+        fetchProductsForOrderForm(null);
+        $('#edit_id').val('');$('#inp_note').val('');clearCustomer();setOrderWarehouseValue(getStoredOrderWarehouseId());
         $('#inp_status').val('0');setMoneyValue('#inp_discount_amount',0);
         $('#inp_quotation_status').val('0');$('#inp_valid_until').val('');
         setMoneyValue('#inp_shipping_fee',0);$('#inp_tags').val('');
@@ -2718,18 +2778,32 @@ function addItemFromProduct(product){
 
 function addItemRow(item){
     var opts='<option value="">-- Chọn SP --</option>';
+    var hasItemOption = false;
     allProducts.forEach(function(p){
         if(p.variants && p.variants.length > 0){
             p.variants.forEach(function(v){
                 var sel=(item&&item.product_id==p.id&&item.variant_id==v.id)?'selected':'';
                 if(!sel) sel=(item&&item.product_id==p.id&&!item.variant_id&&p.variants.length==1)?'selected':'';
+                if(sel){
+                    hasItemOption = true;
+                }
                 opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+v.selling_price+'" data-cost="'+v.cost_price+'" data-variant-id="'+v.id+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
             });
         } else {
             var sel=(item&&item.product_id==p.id)?'selected':'';
+            if(sel){
+                hasItemOption = true;
+            }
             opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+p.selling_price+'" data-cost="'+p.cost_price+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
         }
     });
+    if(item && item.product_id && !hasItemOption){
+        var fallbackLabel = (item.product_code || ('SP #' + item.product_id)) + ' - ' + (item.product_name || 'Sản phẩm không còn hoạt động');
+        if(item.variant_name){
+            fallbackLabel += ' [' + item.variant_name + ']';
+        }
+        opts += '<option value="' + item.product_id + '" data-unit="' + escapeHtml(item.unit || '') + '" data-price="' + (item.unit_price || 0) + '" data-cost="0" data-variant-id="' + (item.variant_id || '') + '" data-weight="0" data-img="' + escapeHtml(item.image_url || '') + '" selected>' + escapeHtml(fallbackLabel) + '</option>';
+    }
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
     var unit=item?item.unit:'',lineTotal=qty*price*(1-disc/100);
 
@@ -2909,27 +2983,28 @@ function loadData(){
             if(d.tags){
                 customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
             }
-            var actions = '';
+            var actions = '<div class="btn-action-group">';
             if(d.status === 6){
                 // Đơn đã Hủy — chỉ Xem + Sao chép
-                actions = '<a href="#" class="text-secondary mr-2" onclick="viewItem('+d.id+');return false;">Xem</a>' +
-                    '<a href="#" class="text-primary" onclick="copyOrder('+d.id+');return false;">Sao chép</a>';
+                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')" title="Xem"><i class="fas fa-eye"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')" title="Sao chép"><i class="fas fa-copy"></i></button>';
             } else if(d.status === 5){
                 // Đơn Hoàn thành — Xem, In, Sao chép (không cho Sửa/Hủy)
-                actions = '<a href="#" class="text-secondary mr-2" onclick="viewItem('+d.id+');return false;">Xem</a>' +
-                    '<a href="#" class="text-success mr-2" onclick="printOrder('+d.id+');return false;">In</a>' +
-                    '<a href="#" class="text-primary" onclick="copyOrder('+d.id+');return false;">Sao chép</a>';
+                actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')" title="Xem"><i class="fas fa-eye"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')" title="In"><i class="fas fa-print"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')" title="Sao chép"><i class="fas fa-copy"></i></button>';
             } else {
                 // Đơn chưa hoàn thành — Sửa, In, Hủy
-                actions = '<a href="#" class="text-info mr-2 font-weight-bold" onclick="editItem('+d.id+');return false;">Sửa</a>' +
-                    '<a href="#" class="text-success mr-2" onclick="printOrder('+d.id+');return false;">In</a>' +
-                    '<a href="#" class="text-danger" onclick="cancelOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\');return false;">Hủy</a>';
+                actions += '<button class="btn btn-xs btn-info" onclick="editItem('+d.id+')" title="Sửa"><i class="fas fa-edit"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')" title="In"><i class="fas fa-print"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-danger" onclick="cancelOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Hủy"><i class="fas fa-ban"></i></button>';
             }
             // Nút duyệt / từ chối (nếu đơn đang Chờ duyệt)
             if(d.approval_status === 1){
-                actions += ' <a href="#" class="text-success ml-2 font-weight-bold" onclick="approveOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\');return false;">Duyệt</a>';
-                actions += ' <a href="#" class="text-danger ml-1" onclick="rejectOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\');return false;">Từ chối</a>';
+                actions += '<button class="btn btn-xs btn-success" onclick="approveOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Duyệt"><i class="fas fa-check"></i></button>';
+                actions += '<button class="btn btn-xs btn-outline-danger" onclick="rejectOrder('+d.id+',\''+d.code.replace(/'/g,"")+'\')" title="Từ chối"><i class="fas fa-times"></i></button>';
             }
+            actions += '</div>';
             var rowStyle = d.status === 6 ? ' style="background:#fce4ec;"' : (d.status === 5 ? ' style="background:#f1f8e9;"' : '');
             // Highlight cho đơn chờ duyệt
             if(d.approval_status === 1) rowStyle = ' style="background:#fff8e1;"';
@@ -2958,7 +3033,7 @@ function loadData(){
             } else if(d.approval_status === 3){
                 statusHtml += ' <span class="badge badge-danger" title="Từ chối duyệt"><i class="fas fa-times-circle"></i> Từ chối</span>';
             }
-            h+='<tr' + rowStyle + '><td class="text-center"><input type="checkbox" class="order-row-check" value="'+d.id+'"></td>'+
+            h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'"></td>'+
                 orderColConfig.td('stt', (i+1))+
                 orderColConfig.td('code', d.code)+
                 orderColConfig.td('customer', customerHtml)+
@@ -3117,7 +3192,7 @@ function editItem(id){
             if(cust) selectCustomer(cust.id, cust.name, cust.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
-        $('#inp_warehouse_id').val(o.warehouse_id);$('#inp_order_date').val(o.order_date);
+        setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
         syncStatusOptions(o.status);
         // Populate staff fields if they exist
@@ -3148,9 +3223,7 @@ function editItem(id){
         $('#quotation_section').hide();
         _timelineReadonly = false;
         loadOrderHistory(o.id);
-        $.get('/api/products_select/?exclude_order_id=' + o.id, function(prodRes){
-            allProducts = prodRes.data;
-            updateQuickSearchFilterLabels();
+        fetchProductsForOrderForm(o.id, function(){
             $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
 
             // Load items AFTER modal is fully shown so Select2 renders correctly
@@ -3173,11 +3246,14 @@ function viewItem(id){
             if(cust2) selectCustomer(cust2.id, cust2.name, cust2.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
-        $('#inp_warehouse_id').val(o.warehouse_id);$('#inp_order_date').val(o.order_date);
+        setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
         $('#items_tbl tbody').html('');
-        $('#payment_lines_container').toggle(o.payment_status === 2);
-        $('#payment_summary_panel').toggle(o.payment_status === 2);
+        clearPaymentLines();
+        _existingPaidAmount = parseFloat(o.paid_amount) || 0;
+        syncPaymentSummary();
+        $('#payment_lines_container').hide();
+        $('#payment_summary_panel').show();
         // KHÓA: Disable tất cả
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
         $('#btn_save').hide();
@@ -3212,16 +3288,18 @@ function viewItem(id){
         loadOrderHistory(o.id);
         loadPaymentHistory(o.id, o.paid_amount, o.final_amount);
         $('#modal_title').html('<i class="fas fa-lock mr-1"></i> Xem đơn hàng (Chỉ đọc)');
-        $('#modal_form').modal('show');
+        fetchProductsForOrderForm(o.id, function(){
+            $('#modal_form').modal('show');
 
-        // Load items AFTER modal is fully shown so Select2 renders correctly
-        $('#modal_form').one('shown.bs.modal', function(){
-            res.items.forEach(function(it){addItemRow(it);});
-            calcTotal();
-            // Re-disable after items loaded (except note)
-            $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
-            $('#inp_note').prop('disabled', false);
-            $('.btn_remove_item').hide();
+            // Load items AFTER modal is fully shown so Select2 renders correctly
+            $('#modal_form').one('shown.bs.modal', function(){
+                res.items.forEach(function(it){addItemRow(it);});
+                calcTotal();
+                // Re-disable after items loaded (except note)
+                $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
+                $('#inp_note').prop('disabled', false);
+                $('.btn_remove_item').hide();
+            });
         });
     });
 }
@@ -3346,7 +3424,7 @@ function copyOrder(id){
             var cust3 = allCustomers.find(function(c){ return c.id == o.customer_id; });
             if(cust3) selectCustomer(cust3.id, cust3.name, cust3.phone);
         } else { clearCustomer(); }
-        $('#inp_warehouse_id').val(o.warehouse_id).trigger('change');
+        setOrderWarehouseValue(o.warehouse_id);
         setMoneyValue('#inp_discount_amount', o.discount_amount);
         setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);
         $('#inp_status').val('0'); // Nháp

@@ -1,44 +1,119 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-    <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-hand-holding-usd mr-2"></i>Phiếu thu</h3>
-        <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-info mr-1" id="btn_manage_payment_methods"><i class="fas fa-list"></i> Phương thức nhận tiền</button>
+    <div class="card-header d-flex align-items-center flex-wrap" style="gap:8px;">
+        <h3 class="card-title mb-0"><i class="fas fa-hand-holding-usd mr-2"></i>Phiếu thu</h3>
+        <div class="ml-auto d-flex" style="gap:6px;">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_col_toggle" title="Tùy chỉnh cột hiển thị"><i class="fas fa-columns"></i></button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_excel" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-info" id="btn_manage_payment_methods"><i class="fas fa-list"></i> Phương thức</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu thu</button>
         </div>
     </div>
     <div class="card-body">
-        <div class="row mb-3">
+        <!-- ===== FILTERS (Sapo-style) ===== -->
+        <div class="card mb-3" style="border-color:#e2e8f0;background:#fafbfc;">
+            <div class="card-body p-2">
+                <div class="row align-items-end" style="row-gap:6px;">
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Tìm kiếm</label>
+                        <input type="text" class="form-control form-control-sm" id="f_search" placeholder="Mã phiếu, khách hàng, đơn hàng...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Từ ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="f_date_from">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Đến ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="f_date_to">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Tài khoản</label>
+                        <select class="form-control form-control-sm" id="f_cashbook">
+                            <option value="">Tất cả</option>
+                            {% for c in cashbooks %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            <option value="0">Chưa gán</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1 text-right">
+                        <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filters" title="Xóa bộ lọc"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center mt-2 flex-wrap" style="gap:6px;">
+                    <div class="btn-group btn-group-sm" id="f_status_tabs">
+                        <button class="btn btn-outline-primary active" data-status="">Tất cả</button>
+                        <button class="btn btn-outline-primary" data-status="1">Hoàn thành</button>
+                        <button class="btn btn-outline-primary" data-status="0">Nháp</button>
+                        <button class="btn btn-outline-primary" data-status="2">Đã hủy</button>
+                    </div>
+                    <select class="form-control form-control-sm" id="f_method" style="width:auto;min-width:130px;">
+                        <option value="">Mọi hình thức</option>
+                        {% for m in payment_methods %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+                    </select>
+                    <span class="ml-auto text-muted small" id="f_result_count"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== SUMMARY DASHBOARD ===== -->
+        <div class="row mb-3" id="summary_section">
             <div class="col-md-4">
-                <div class="small-box bg-light">
+                <div class="small-box bg-gradient-success mb-0">
                     <div class="inner">
                         <h4 id="receipt_summary_total">0</h4>
-                        <p>Tổng tiền đã thu</p>
+                        <p>Tổng tiền đã thu <small id="lbl_summary_period" class="text-white-50"></small></p>
                     </div>
                     <div class="icon"><i class="fas fa-wallet"></i></div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="card card-outline card-info h-100 mb-0">
-                    <div class="card-header py-2"><strong>Theo tài khoản</strong></div>
-                    <div class="card-body py-2" id="receipt_summary_cashbooks">
+                    <div class="card-header py-1"><strong><i class="fas fa-university mr-1"></i>Theo tài khoản</strong></div>
+                    <div class="card-body py-1 px-2" id="receipt_summary_cashbooks" style="max-height:120px;overflow-y:auto;">
                         <span class="text-muted small">Đang tải...</span>
                     </div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="card card-outline card-success h-100 mb-0">
-                    <div class="card-header py-2"><strong>Theo hình thức</strong></div>
-                    <div class="card-body py-2" id="receipt_summary_methods">
+                    <div class="card-header py-1"><strong><i class="fas fa-credit-card mr-1"></i>Theo hình thức</strong></div>
+                    <div class="card-body py-1 px-2" id="receipt_summary_methods" style="max-height:120px;overflow-y:auto;">
                         <span class="text-muted small">Đang tải...</span>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- ===== COLUMN TOGGLE DROPDOWN ===== -->
+        <div id="col_toggle_dropdown" style="display:none;position:absolute;z-index:999;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:12px;min-width:220px;">
+            <div class="font-weight-bold mb-2"><i class="fas fa-columns mr-1"></i> Hiển thị cột</div>
+            <div id="col_toggle_list"></div>
+            <div class="border-top pt-2 mt-2 text-right">
+                <button class="btn btn-xs btn-outline-primary" id="btn_col_all">Chọn tất cả</button>
+                <button class="btn btn-xs btn-outline-secondary" id="btn_col_close">Đóng</button>
+            </div>
+        </div>
+
+        <!-- ===== TABLE ===== -->
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>Khách hàng</th><th>Đơn hàng</th><th>Số tiền</th><th>HTTT</th><th>Ngày thu</th><th>Quỹ</th><th>Người tạo</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th data-col="stt">STT</th>
+                        <th data-col="code">Mã phiếu</th>
+                        <th data-col="category">Danh mục</th>
+                        <th data-col="customer">Khách hàng</th>
+                        <th data-col="order">Đơn hàng</th>
+                        <th data-col="amount">Số tiền</th>
+                        <th data-col="method">HTTT</th>
+                        <th data-col="date">Ngày thu</th>
+                        <th data-col="cashbook">Quỹ/TK</th>
+                        <th data-col="creator">Người tạo</th>
+                        <th data-col="description">Diễn giải</th>
+                        <th data-col="status">Trạng thái</th>
+                        <th data-col="actions">Thao tác</th>
+                    </tr>
+                </thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -147,12 +222,105 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 var allOrders = [];
+var allReceipts = [];  // cached for client-side filtering
+
+// ===== COLUMN VISIBILITY =====
+var allColumns = [
+    {key:'stt',       label:'STT',         default:true},
+    {key:'code',      label:'Mã phiếu',    default:true},
+    {key:'category',  label:'Danh mục',    default:true},
+    {key:'customer',  label:'Khách hàng',  default:true},
+    {key:'order',     label:'Đơn hàng',    default:true},
+    {key:'amount',    label:'Số tiền',     default:true},
+    {key:'method',    label:'HTTT',        default:true},
+    {key:'date',      label:'Ngày thu',    default:true},
+    {key:'cashbook',  label:'Quỹ/TK',     default:true},
+    {key:'creator',   label:'Người tạo',   default:true},
+    {key:'description',label:'Diễn giải',  default:false},
+    {key:'status',    label:'Trạng thái',  default:true},
+    {key:'actions',   label:'Thao tác',    default:true}
+];
+function getVisibleCols(){
+    var saved = localStorage.getItem('receipt_cols');
+    if(saved){ try{ return JSON.parse(saved); }catch(e){} }
+    return allColumns.filter(function(c){return c.default;}).map(function(c){return c.key;});
+}
+function saveVisibleCols(cols){ localStorage.setItem('receipt_cols', JSON.stringify(cols)); }
+
+function applyColumnVisibility(){
+    var visible = getVisibleCols();
+    allColumns.forEach(function(col){
+        var show = visible.indexOf(col.key) >= 0;
+        $('[data-col="'+col.key+'"]').toggle(show);
+    });
+}
+
+function renderColToggle(){
+    var visible = getVisibleCols();
+    var h = '';
+    allColumns.forEach(function(col){
+        var checked = visible.indexOf(col.key)>=0 ? 'checked' : '';
+        h += '<div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input col-chk" id="chk_col_'+col.key+'" value="'+col.key+'" '+checked+'>' +
+            '<label class="custom-control-label" for="chk_col_'+col.key+'">'+col.label+'</label></div>';
+    });
+    $('#col_toggle_list').html(h);
+}
 
 $(document).ready(function(){
     loadData();
     loadSummary();
+    applyColumnVisibility();
 
-    // Khi chọn danh mục → hiện/ẩn phần đơn hàng
+    // Column toggle
+    $('#btn_col_toggle').click(function(e){
+        e.stopPropagation();
+        renderColToggle();
+        var $dd = $('#col_toggle_dropdown');
+        if($dd.is(':visible')){ $dd.hide(); return; }
+        var pos = $(this).offset();
+        $dd.css({top: pos.top + $(this).outerHeight() + 4, left: pos.left - 180}).show();
+    });
+    $(document).on('change', '.col-chk', function(){
+        var cols = [];
+        $('.col-chk:checked').each(function(){ cols.push($(this).val()); });
+        saveVisibleCols(cols);
+        applyColumnVisibility();
+        renderTable();
+    });
+    $('#btn_col_all').click(function(){
+        $('.col-chk').prop('checked', true).trigger('change');
+    });
+    $('#btn_col_close').click(function(){ $('#col_toggle_dropdown').hide(); });
+    $(document).click(function(e){
+        if(!$(e.target).closest('#col_toggle_dropdown, #btn_col_toggle').length) $('#col_toggle_dropdown').hide();
+    });
+
+    // Filter events
+    $('#f_search, #f_cashbook, #f_method').on('input change', function(){ renderTable(); });
+    $('#f_date_from, #f_date_to').on('change', function(){ renderTable(); loadSummary(); });
+    $('#f_status_tabs').on('click', 'button', function(){
+        $('#f_status_tabs button').removeClass('active');
+        $(this).addClass('active');
+        renderTable();
+    });
+    // Export Excel
+    $('#btn_export_excel').click(function(){
+        var url = '/api/receipts/export_excel/?';
+        var df = $('#f_date_from').val(), dt = $('#f_date_to').val();
+        if(df) url += 'date_from='+df+'&';
+        if(dt) url += 'date_to='+dt+'&';
+        window.location.href = url;
+    });
+
+    $('#btn_clear_filters').click(function(){
+        $('#f_search, #f_date_from, #f_date_to').val('');
+        $('#f_cashbook, #f_method').val('');
+        $('#f_status_tabs button').removeClass('active').first().addClass('active');
+        renderTable();
+        loadSummary();
+    });
+
+    // Category change → show/hide order section
     $('#inp_category_id').change(function(){
         var catName = $(this).find('option:selected').text().toLowerCase().trim();
         if(catName.indexOf('bán hàng') >= 0 || catName.indexOf('thu công nợ') >= 0){
@@ -165,60 +333,51 @@ $(document).ready(function(){
         }
     });
 
-    // Khi chọn khách hàng → reload DS đơn hàng theo KH
+    // Customer change → reload orders
     $('#inp_customer_id').change(function(){
-        if($('#order_section').is(':visible')){
-            loadOrders();
-        }
+        if($('#order_section').is(':visible')){ loadOrders(); }
     });
 
-    // Khi chọn đơn hàng → hiện thông tin
+    // Order change → show info
     $('#inp_order_id').change(function(){
         var oid = $(this).val();
-        if(!oid){
-            $('#order_info').hide(); return;
-        }
+        if(!oid){ $('#order_info').hide(); return; }
         var order = allOrders.find(function(o){ return o.id == oid; });
         if(order){
             $('#lbl_order_total').text(fmt(order.final_amount));
             $('#lbl_order_paid').text(fmt(order.paid_amount));
             $('#lbl_order_remaining').text(fmt(order.remaining));
             $('#order_info').show();
-            // Tự fill khách hàng nếu chưa chọn
             if(!$('#inp_customer_id').val() && order.customer_id){
                 $('#inp_customer_id').val(order.customer_id);
             }
         }
     });
 
-    // Nút điền số tiền còn nợ
+    // Fill remaining
     $('#btn_fill_remaining').click(function(){
         var oid = $('#inp_order_id').val();
         var order = allOrders.find(function(o){ return o.id == oid; });
-        if(order){
-            $('#inp_amount').val(order.remaining);
-        }
+        if(order){ $('#inp_amount').val(order.remaining); }
     });
 
-    // Nút thêm mới
+    // Add new
     $('#btn_add').click(function(){
         $('#edit_id').val('');
         $('#inp_description,#inp_note').val('');
         $('#inp_amount').val(0);
         $('#inp_category_id,#inp_customer_id,#inp_cash_book_id').val('');
         $('#inp_order_id').val('');
-        // Tự động điền ngày hôm nay
         var today = new Date().toISOString().split('T')[0];
         $('#inp_receipt_date').val(today);
         $('#inp_status').val('0'); $('#inp_payment_method').val('2');
         $('#order_section').hide(); $('#order_info').hide();
-        // Auto generate mã phiếu thu: PT-001...
+        // Auto generate mã phiếu thu
         var prefix = 'PT-';
         var maxNum = 0;
-        $('#data_tbl tbody tr').each(function(){
-            var code = $(this).find('td:eq(1)').text();
-            if(code.indexOf(prefix) === 0){
-                var num = parseInt(code.replace(prefix, ''));
+        allReceipts.forEach(function(d){
+            if(d.code.indexOf(prefix) === 0){
+                var num = parseInt(d.code.replace(prefix, ''));
                 if(num > maxNum) maxNum = num;
             }
         });
@@ -227,7 +386,7 @@ $(document).ready(function(){
         $('#modal_form').modal('show');
     });
 
-    // Lưu
+    // Save
     $('#btn_save').click(function(){
         var code = $('#inp_code').val();
         var date = $('#inp_receipt_date').val();
@@ -284,42 +443,111 @@ function loadOrders(){
 
 function loadData(){
     $.get('/api/receipts/', function(res){
-        var h = '';
-        res.data.forEach(function(d, i){
-            var statusClass = {'0':'secondary','1':'success','2':'danger'}[d.status] || 'secondary';
-            var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
-            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.customer+'</td>'+
-                '<td>'+(d.order ? '<span class="badge badge-info">'+d.order+'</span>' : '')+'</td>'+
-                '<td class="text-right font-weight-bold">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+d.receipt_date+'</td><td>'+d.cash_book+'</td>'+
-                '<td>'+(d.created_by || '')+'</td>'+
-                '<td><span class="badge badge-'+statusClass+'">'+d.status_display+'</span></td>'+
-                '<td><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
-                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
-        });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="12" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        allReceipts = res.data;
+        renderTable();
     });
 }
 
+function renderTable(){
+    var keyword = ($('#f_search').val()||'').toLowerCase().trim();
+    var dateFrom = $('#f_date_from').val() || '';
+    var dateTo = $('#f_date_to').val() || '';
+    var statusTab = $('#f_status_tabs button.active').data('status');
+    var selectedCashbook = $('#f_cashbook').val();
+    var selectedMethod = $('#f_method').val();
+    var visible = getVisibleCols();
+
+    var filtered = allReceipts.filter(function(d){
+        // Status
+        if(statusTab !== '' && statusTab !== undefined && d.status !== parseInt(statusTab)) return false;
+        // Date
+        if(dateFrom && d.receipt_date < dateFrom) return false;
+        if(dateTo && d.receipt_date > dateTo) return false;
+        // Cashbook
+        if(selectedCashbook === '0' && d.cash_book_id) return false;
+        if(selectedCashbook && selectedCashbook !== '0' && d.cash_book_id != selectedCashbook) return false;
+        // Method
+        if(selectedMethod && d.payment_method_option_id != selectedMethod) return false;
+        // Search
+        if(keyword){
+            var searchable = (d.code+' '+d.customer+' '+d.order+' '+d.category+' '+d.cash_book+' '+d.description+' '+(d.created_by||'')).toLowerCase();
+            if(searchable.indexOf(keyword) < 0) return false;
+        }
+        return true;
+    });
+
+    $('#f_result_count').text(filtered.length + ' phiếu' + (filtered.length !== allReceipts.length ? ' (đã lọc từ '+allReceipts.length+')' : ''));
+
+    var h = '';
+    filtered.forEach(function(d, i){
+        var statusClass = {'0':'secondary','1':'success','2':'danger'}[d.status] || 'secondary';
+        var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
+        var cashbookBadge = d.cash_book ? '<span class="badge badge-outline-info" style="border:1px solid #17a2b8;color:#17a2b8;">'+d.cash_book+'</span>' : '<span class="text-muted small">—</span>';
+        h += '<tr>';
+        if(visible.indexOf('stt')>=0) h += '<td data-col="stt">'+(i+1)+'</td>';
+        if(visible.indexOf('code')>=0) h += '<td data-col="code"><strong>'+d.code+'</strong></td>';
+        if(visible.indexOf('category')>=0) h += '<td data-col="category">'+d.category+'</td>';
+        if(visible.indexOf('customer')>=0) h += '<td data-col="customer">'+d.customer+'</td>';
+        if(visible.indexOf('order')>=0) h += '<td data-col="order">'+(d.order ? '<span class="badge badge-info">'+d.order+'</span>' : '')+'</td>';
+        if(visible.indexOf('amount')>=0) h += '<td data-col="amount" class="text-right font-weight-bold" style="color:#28a745;">'+fmt(d.amount)+'</td>';
+        if(visible.indexOf('method')>=0) h += '<td data-col="method" class="text-center">'+pmLabel+'</td>';
+        if(visible.indexOf('date')>=0) h += '<td data-col="date">'+d.receipt_date+'</td>';
+        if(visible.indexOf('cashbook')>=0) h += '<td data-col="cashbook">'+cashbookBadge+'</td>';
+        if(visible.indexOf('creator')>=0) h += '<td data-col="creator"><small>'+(d.created_by || '')+'</small></td>';
+        if(visible.indexOf('description')>=0) h += '<td data-col="description"><small class="text-muted">'+(d.description||'')+'</small></td>';
+        if(visible.indexOf('status')>=0) h += '<td data-col="status"><span class="badge badge-'+statusClass+'">'+d.status_display+'</span></td>';
+        if(visible.indexOf('actions')>=0) h += '<td data-col="actions" class="text-nowrap">' +
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\'><i class="fas fa-edit"></i></button> ' +
+            '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash-alt"></i></button></td>';
+        h += '</tr>';
+    });
+    if(!h) h = '<tr><td colspan="'+visible.length+'" class="text-center text-muted py-3"><i class="fas fa-inbox mr-2"></i>Không có phiếu thu phù hợp</td></tr>';
+    $('#data_tbl tbody').html(h);
+}
+
 function loadSummary(){
-    $.get('/api/receipts/summary/', function(res){
-        if(res.status !== 'ok'){ return; }
+    var url = '/api/receipts/summary/';
+    var params = [];
+    var df = $('#f_date_from').val(), dt = $('#f_date_to').val();
+    if(df) params.push('date_from='+df);
+    if(dt) params.push('date_to='+dt);
+    if(params.length) url += '?' + params.join('&');
+
+    // Update period label
+    if(df || dt){
+        var label = '';
+        if(df && dt) label = '(' + df + ' → ' + dt + ')';
+        else if(df) label = '(từ ' + df + ')';
+        else label = '(đến ' + dt + ')';
+        $('#lbl_summary_period').text(label);
+    } else {
+        $('#lbl_summary_period').text('(tất cả)');
+    }
+
+    $.get(url, function(res){
+        if(res.status !== 'ok') return;
         $('#receipt_summary_total').text(fmt(res.summary.total_amount));
+
         var cashbookHtml = '';
         res.summary.by_cashbook.forEach(function(row){
-            cashbookHtml += '<div class="d-flex justify-content-between small border-bottom py-1"><span>' + row.name + '</span><strong>' + fmt(row.amount) + '</strong></div>';
+            var pct = res.summary.total_amount ? Math.round(row.amount / res.summary.total_amount * 100) : 0;
+            cashbookHtml += '<div class="d-flex justify-content-between align-items-center small py-1 border-bottom">' +
+                '<span>' + row.name + '</span>' +
+                '<div class="text-right"><strong>' + fmt(row.amount) + '</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
+                '</div>';
         });
-        if(!cashbookHtml){
-            cashbookHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
-        }
+        if(!cashbookHtml) cashbookHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
         $('#receipt_summary_cashbooks').html(cashbookHtml);
 
         var methodHtml = '';
         res.summary.by_method.forEach(function(row){
-            methodHtml += '<div class="d-flex justify-content-between small border-bottom py-1"><span>' + row.name + '</span><strong>' + fmt(row.amount) + '</strong></div>';
+            var pct = res.summary.total_amount ? Math.round(row.amount / res.summary.total_amount * 100) : 0;
+            methodHtml += '<div class="d-flex justify-content-between align-items-center small py-1 border-bottom">' +
+                '<span>' + row.name + '</span>' +
+                '<div class="text-right"><strong>' + fmt(row.amount) + '</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
+                '</div>';
         });
-        if(!methodHtml){
-            methodHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
-        }
+        if(!methodHtml) methodHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
         $('#receipt_summary_methods').html(methodHtml);
     });
 }
@@ -342,11 +570,8 @@ function editItem(d){
     if(catName.indexOf('bán hàng') >= 0 || catName.indexOf('thu công nợ') >= 0){
         $('#order_section').show();
         loadOrders();
-        // Delay set value vì loadOrders là async
         setTimeout(function(){
-            if(d.order_id){
-                $('#inp_order_id').val(d.order_id).trigger('change');
-            }
+            if(d.order_id){ $('#inp_order_id').val(d.order_id).trigger('change'); }
         }, 500);
     } else {
         $('#order_section').hide();
@@ -366,6 +591,7 @@ function deleteItem(id){
         success: function(r){ loadData(); loadSummary(); alert(r.message); }
     });
 }
+
 // ============ QUẢN LÝ PHƯƠNG THỨC NHẬN TIỀN ============
 $('#btn_manage_payment_methods').click(function(){
     loadPaymentMethods();
@@ -381,7 +607,7 @@ function loadPaymentMethods(){
                 '<td>'+m.legacy_type_display+'</td>' +
                 '<td>'+(m.default_cash_book||'—')+'</td>' +
                 '<td class="text-center">'+(m.is_active ? '<span class="badge badge-success">Đang dùng</span>' : '<span class="badge badge-secondary">Tắt</span>')+'</td>' +
-                '<td><button class="btn btn-xs btn-info" onclick=\'editPaymentMethod('+JSON.stringify(m).replace(/\'/g,"&#39;")+ ')\'>Sửa</button></td>' +
+                '<td><button class="btn btn-xs btn-info" onclick=\'editPaymentMethod('+JSON.stringify(m).replace(/\'/g,"&#39;")+')\'><i class="fas fa-edit"></i></button></td>' +
                 '</tr>';
         });
         if(!h) h='<tr><td colspan="6" class="text-center text-muted">Chưa có phương thức nào. Nhấn "Thêm" để tạo mới.</td></tr>';

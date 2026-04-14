@@ -30,4 +30,5 @@ urlpatterns = [
     # Dashboard
     path('dashboard/', views.dashboard_page, name='dashboard_page'),
     path('api/dashboard/', views.api_dashboard_data, name='api_dashboard_data'),
+    path('api/customers/export_excel/', views.export_customers_excel, name='export_customers_excel'),
 ]

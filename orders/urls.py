@@ -33,4 +33,6 @@ urlpatterns = [
     path('api/packagings/save/', views.api_save_packaging, name='api_save_packaging'),
     path('api/packagings/delete/', views.api_delete_packaging, name='api_delete_packaging'),
     path('api/orders/pos_checkout/', views.api_pos_checkout, name='api_pos_checkout'),
+    path('api/orders/export_excel/', views.export_orders_excel, name='export_orders_excel'),
+    path('api/orders/print/', views.api_print_order, name='api_print_order'),
 ]

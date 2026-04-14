@@ -20,4 +20,8 @@ urlpatterns = [
     path('api/cashbooks/save/', views.api_save_cashbook, name='api_save_cashbook'),
     path('api/payment_methods/', views.api_get_payment_methods, name='api_get_payment_methods'),
     path('api/payment_methods/save/', views.api_save_payment_method, name='api_save_payment_method'),
+    path('api/payment_methods/delete/', views.api_delete_payment_method, name='api_delete_payment_method'),
+    path('setting_payment_methods/', views.setting_payment_methods, name='setting_payment_methods'),
+    path('api/receipts/export_excel/', views.export_receipts_excel, name='export_receipts_excel'),
+    path('api/payments/export_excel/', views.export_payments_excel, name='export_payments_excel'),
 ]

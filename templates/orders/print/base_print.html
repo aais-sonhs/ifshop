@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}In phiếu{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; }
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+            @page { margin: {% block page_margin %}10mm{% endblock %}; }
+        }
+        .no-print {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+            background: linear-gradient(135deg, #1976d2, #1565c0);
+            color: #fff; padding: 10px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .no-print button {
+            padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px;
+            cursor: pointer; font-weight: 600; transition: all 0.2s;
+        }
+        .no-print .btn-print {
+            background: #fff; color: #1976d2;
+        }
+        .no-print .btn-print:hover { background: #e3f2fd; }
+        .no-print .btn-close-print {
+            background: rgba(255,255,255,0.2); color: #fff; margin-left: 8px;
+        }
+        .no-print .btn-close-print:hover { background: rgba(255,255,255,0.3); }
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <div>
+            <strong>{% block toolbar_title %}Xem trước phiếu in{% endblock %}</strong>
+        </div>
+        <div>
+            <button class="btn-print" onclick="window.print()">🖨️ In ngay</button>
+            <button class="btn-close-print" onclick="window.close()">✕ Đóng</button>
+        </div>
+    </div>
+    <div style="{% block body_padding %}padding-top: 56px;{% endblock %}">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{% extends "orders/print/base_print.html" %}
+{% block title %}Hóa đơn K80 — {{ order.code }}{% endblock %}
+{% block toolbar_title %}🧾 Hóa đơn K80 — {{ order.code }}{% endblock %}
+{% block page_margin %}2mm{% endblock %}
+{% block extra_style %}
+.receipt {
+    width: 72mm; margin: 0 auto; padding: 4mm 2mm; font-size: 12px; line-height: 1.4;
+}
+.receipt .header { text-align: center; margin-bottom: 6px; }
+.receipt .header .brand-name { font-size: 14px; font-weight: 700; text-transform: uppercase; }
+.receipt .header .brand-info { font-size: 10px; color: #666; }
+.receipt .divider { border-top: 1px dashed #999; margin: 6px 0; }
+.receipt .title { text-align: center; font-size: 14px; font-weight: 700; margin: 4px 0; }
+.receipt .info-row { display: flex; justify-content: space-between; font-size: 11px; }
+.receipt .info-row .label { color: #666; }
+.receipt table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 11px; }
+.receipt table th { text-align: left; border-bottom: 1px solid #333; padding: 2px 0; font-size: 10px; }
+.receipt table td { padding: 2px 0; vertical-align: top; }
+.receipt table td.text-right { text-align: right; }
+.receipt .total-section { margin-top: 4px; }
+.receipt .total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 1px 0; }
+.receipt .grand-total { font-size: 16px; font-weight: 700; border-top: 1px solid #333; padding-top: 4px; margin-top: 4px; }
+.receipt .footer { text-align: center; font-size: 10px; color: #888; margin-top: 8px; }
+@media print {
+    body { width: 80mm; }
+    .receipt { width: 100%; }
+}
+{% endblock %}
+{% block body_padding %}padding-top: 56px;{% endblock %}
+{% block content %}
+<div class="receipt">
+    <div class="header">
+        <div class="brand-name">{{ brand.name|default:"CỬA HÀNG" }}</div>
+        {% if brand.address %}<div class="brand-info">{{ brand.address }}</div>{% endif %}
+        {% if brand.phone %}<div class="brand-info">ĐT: {{ brand.phone }}</div>{% endif %}
+    </div>
+    <div class="divider"></div>
+    <div class="title">HÓA ĐƠN BÁN HÀNG</div>
+    <div class="info-row"><span class="label">Số:</span><span>{{ order.code }}</span></div>
+    <div class="info-row"><span class="label">Ngày:</span><span>{{ order.order_date|date:"d/m/Y" }}</span></div>
+    <div class="info-row"><span class="label">KH:</span><span>{{ order.customer.name|default:"Khách lẻ" }}</span></div>
+    {% if order.customer.phone %}<div class="info-row"><span class="label">SĐT:</span><span>{{ order.customer.phone }}</span></div>{% endif %}
+    {% if order.salesperson %}<div class="info-row"><span class="label">NV:</span><span>{{ order.salesperson }}</span></div>{% endif %}
+    <div class="divider"></div>
+    <table>
+        <thead><tr><th>Sản phẩm</th><th style="text-align:right;width:20%">SL</th><th style="text-align:right;width:30%">T.Tiền</th></tr></thead>
+        <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.product.name }}<br><small style="color:#888">{{ item.unit_price|floatformat:0 }}đ{% if item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}</small></td>
+            <td class="text-right">{{ item.quantity|floatformat:0 }}</td>
+            <td class="text-right">{{ item.total_price|floatformat:0 }}đ</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="divider"></div>
+    <div class="total-section">
+        <div class="total-row"><span>Tổng cộng ({{ items|length }} SP):</span><span>{{ order.total_amount|floatformat:0 }}đ</span></div>
+        {% if order.discount_amount %}<div class="total-row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|floatformat:0 }}đ</span></div>{% endif %}
+        {% if order.shipping_fee %}<div class="total-row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|floatformat:0 }}đ</span></div>{% endif %}
+        <div class="total-row grand-total"><span>THANH TOÁN:</span><span>{{ order.final_amount|floatformat:0 }}đ</span></div>
+        {% if order.paid_amount %}<div class="total-row"><span>Đã thanh toán:</span><span>{{ order.paid_amount|floatformat:0 }}đ</span></div>{% endif %}
+        {% if remaining > 0 %}<div class="total-row" style="color:#d32f2f;font-weight:600;"><span>Còn nợ:</span><span>{{ remaining|floatformat:0 }}đ</span></div>{% endif %}
+    </div>
+    <div class="divider"></div>
+    <div class="footer">
+        Cảm ơn quý khách!<br>
+        Hẹn gặp lại!<br>
+        <small>Ngày in: {% now "d/m/Y H:i" %}</small>
+    </div>
+</div>
+{% endblock %}

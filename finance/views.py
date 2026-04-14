@@ -145,6 +145,13 @@ def api_get_receipts(request):
 def api_receipt_summary(request):
     receipts = Receipt.objects.select_related('cash_book').filter(status=1)
     receipts = filter_by_store(receipts, request)
+    # Date filter
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    if date_from:
+        receipts = receipts.filter(receipt_date__gte=date_from)
+    if date_to:
+        receipts = receipts.filter(receipt_date__lte=date_to)
 
     by_cashbook = {}
     by_method = {}
@@ -513,3 +520,175 @@ def api_save_payment_method(request):
         return JsonResponse({'status': 'ok', 'message': 'Lưu phương thức thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_delete_payment_method(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        method = PaymentMethodOption.objects.get(id=data.get('id'))
+        # Check if any receipts/payments reference this method
+        receipt_count = Receipt.objects.filter(payment_method_option=method).count()
+        payment_count = Payment.objects.filter(payment_method_option=method).count()
+        if receipt_count + payment_count > 0:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Không thể xóa "{method.name}". Đang có {receipt_count} phiếu thu và {payment_count} phiếu chi sử dụng.'
+            })
+        method.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
+    except PaymentMethodOption.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phương thức'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def setting_payment_methods(request):
+    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    context = {
+        'active_tab': 'setting_payment_methods',
+        'cashbooks': cashbooks,
+    }
+    return render(request, "finance/setting_payment_methods.html", context)
+
+
+# ============ EXCEL EXPORT ============
+
+@login_required(login_url="/login/")
+def export_receipts_excel(request):
+    """Xuất danh sách phiếu thu ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    receipts = Receipt.objects.select_related(
+        'category', 'cash_book', 'customer', 'order', 'created_by', 'payment_method_option'
+    ).filter(status=1)
+    receipts = filter_by_store(receipts, request)
+
+    # Date filter
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    if date_from:
+        receipts = receipts.filter(receipt_date__gte=date_from)
+    if date_to:
+        receipts = receipts.filter(receipt_date__lte=date_to)
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
+        {'key': 'category', 'label': 'Danh mục', 'width': 16},
+        {'key': 'customer', 'label': 'Khách hàng', 'width': 22},
+        {'key': 'order', 'label': 'Đơn hàng', 'width': 14},
+        {'key': 'amount', 'label': 'Số tiền', 'width': 16},
+        {'key': 'method', 'label': 'Hình thức TT', 'width': 16},
+        {'key': 'date', 'label': 'Ngày thu', 'width': 13},
+        {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
+        {'key': 'creator', 'label': 'Người tạo', 'width': 16},
+        {'key': 'description', 'label': 'Diễn giải', 'width': 30},
+    ]
+
+    rows = []
+    total = 0
+    for i, r in enumerate(receipts, 1):
+        total += float(r.amount or 0)
+        rows.append({
+            'stt': i,
+            'code': r.code,
+            'category': r.category.name if r.category else '',
+            'customer': r.customer.name if r.customer else '',
+            'order': r.order.code if r.order else '',
+            'amount': float(r.amount or 0),
+            'method': r.get_payment_method_label(),
+            'date': r.receipt_date,
+            'cashbook': r.cash_book.name if r.cash_book else '',
+            'creator': (r.created_by.get_full_name() or r.created_by.username) if r.created_by else '',
+            'description': r.description or '',
+        })
+
+    period = ''
+    if date_from and date_to:
+        period = f' ({date_from} → {date_to})'
+    elif date_from:
+        period = f' (từ {date_from})'
+    elif date_to:
+        period = f' (đến {date_to})'
+
+    return excel_response(
+        title='DANH SÁCH PHIẾU THU',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}',
+        columns=columns,
+        rows=rows,
+        filename=f'Phieu_thu_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['amount'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'amount': total},
+    )
+
+
+@login_required(login_url="/login/")
+def export_payments_excel(request):
+    """Xuất danh sách phiếu chi ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    payments = Payment.objects.select_related(
+        'category', 'cash_book', 'supplier', 'customer', 'payment_method_option'
+    ).filter(status=1)
+    payments = filter_by_store(payments, request)
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    if date_from:
+        payments = payments.filter(payment_date__gte=date_from)
+    if date_to:
+        payments = payments.filter(payment_date__lte=date_to)
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
+        {'key': 'category', 'label': 'Danh mục', 'width': 16},
+        {'key': 'target', 'label': 'Người nhận', 'width': 22},
+        {'key': 'amount', 'label': 'Số tiền', 'width': 16},
+        {'key': 'method', 'label': 'Hình thức TT', 'width': 16},
+        {'key': 'date', 'label': 'Ngày chi', 'width': 13},
+        {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
+        {'key': 'description', 'label': 'Diễn giải', 'width': 30},
+    ]
+
+    rows = []
+    total = 0
+    for i, p in enumerate(payments, 1):
+        total += float(p.amount or 0)
+        target = p.supplier.name if p.supplier else (p.customer.name if p.customer else '')
+        rows.append({
+            'stt': i,
+            'code': p.code,
+            'category': p.category.name if p.category else '',
+            'target': target,
+            'amount': float(p.amount or 0),
+            'method': p.get_payment_method_label(),
+            'date': p.payment_date,
+            'cashbook': p.cash_book.name if p.cash_book else '',
+            'description': p.description or '',
+        })
+
+    period = ''
+    if date_from and date_to:
+        period = f' ({date_from} → {date_to})'
+    elif date_from:
+        period = f' (từ {date_from})'
+    elif date_to:
+        period = f' (đến {date_to})'
+
+    return excel_response(
+        title='DANH SÁCH PHIẾU CHI',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}',
+        columns=columns,
+        rows=rows,
+        filename=f'Phieu_chi_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['amount'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'amount': total},
+    )

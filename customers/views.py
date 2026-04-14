@@ -226,6 +226,8 @@ def api_customer_orders(request):
             debt = float(o.final_amount) - float(o.paid_amount)
             items = [{
                 'product_name': it.product.name,
+                'product_code': it.product.code,
+                'product_image': it.product.image.url if it.product.image else '',
                 'quantity': float(it.quantity),
                 'unit_price': float(it.unit_price),
                 'discount_percent': float(it.discount_percent),
@@ -235,6 +237,7 @@ def api_customer_orders(request):
             data.append({
                 'id': o.id, 'code': o.code,
                 'order_date': o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
+                'order_date_raw': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
                 'warehouse': o.warehouse.name if o.warehouse else '',
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
@@ -246,6 +249,7 @@ def api_customer_orders(request):
                 'payment_status': o.payment_status,
                 'payment_status_display': o.get_payment_status_display(),
                 'note': o.note or '',
+                'tags': o.tags or '',
                 'items': items,
             })
             if o.status != 6:  # Không tính đơn hủy
@@ -583,3 +587,64 @@ def api_dashboard_data(request):
         'low_stock': [{'product': s['product__name'], 'code': s['product__code'], 'warehouse': s['warehouse__name'], 'qty': float(s['quantity'])} for s in low_stock],
     })
 
+
+# ============ EXCEL EXPORT ============
+
+@login_required(login_url="/login/")
+def export_customers_excel(request):
+    """Xuất danh sách khách hàng ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    customers = Customer.objects.select_related('group').all()
+    customers = filter_by_store(customers, request)
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã KH', 'width': 12},
+        {'key': 'name', 'label': 'Tên khách hàng', 'width': 26},
+        {'key': 'type', 'label': 'Loại', 'width': 10},
+        {'key': 'phone', 'label': 'SĐT', 'width': 14},
+        {'key': 'email', 'label': 'Email', 'width': 22},
+        {'key': 'company', 'label': 'Công ty', 'width': 24},
+        {'key': 'tax_code', 'label': 'MST', 'width': 14},
+        {'key': 'address', 'label': 'Địa chỉ', 'width': 30},
+        {'key': 'group', 'label': 'Nhóm KH', 'width': 14},
+        {'key': 'purchased', 'label': 'Tổng mua', 'width': 16},
+        {'key': 'debt', 'label': 'Công nợ', 'width': 16},
+        {'key': 'points', 'label': 'Điểm', 'width': 10},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    total_purchased = 0
+    total_debt = 0
+    for i, c in enumerate(customers, 1):
+        total_purchased += float(c.total_purchased)
+        total_debt += float(c.total_debt)
+        rows.append({
+            'stt': i,
+            'code': c.code,
+            'name': c.name,
+            'type': c.get_customer_type_display(),
+            'phone': c.phone or '',
+            'email': c.email or '',
+            'company': c.company or '',
+            'tax_code': c.tax_code or '',
+            'address': c.address or '',
+            'group': c.group.name if c.group else '',
+            'purchased': float(c.total_purchased),
+            'debt': float(c.total_debt),
+            'points': c.points,
+            'note': c.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH KHÁCH HÀNG',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} khách hàng',
+        columns=columns,
+        rows=rows,
+        filename=f'Khach_hang_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['purchased', 'debt'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'purchased': total_purchased, 'debt': total_debt},
+    )

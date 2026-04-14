@@ -1,0 +1,115 @@
+{% extends "orders/print/base_print.html" %}
+{% block title %}Hóa đơn A4 — {{ order.code }}{% endblock %}
+{% block toolbar_title %}📄 Hóa đơn A4 — {{ order.code }}{% endblock %}
+{% block page_margin %}15mm{% endblock %}
+{% block extra_style %}
+.invoice { max-width: 210mm; margin: 0 auto; padding: 20px; font-size: 13px; }
+.inv-header { display: flex; align-items: flex-start; margin-bottom: 16px; gap: 20px; }
+.inv-header .logo { width: 80px; height: 80px; object-fit: contain; }
+.inv-header .company { flex:1; }
+.inv-header .company h2 { font-size: 18px; color: #1565c0; margin-bottom: 4px; text-transform: uppercase; }
+.inv-header .company p { font-size: 12px; color: #666; margin: 1px 0; }
+.inv-title { text-align: center; margin: 16px 0; }
+.inv-title h1 { font-size: 22px; color: #1565c0; letter-spacing: 2px; }
+.inv-title .code { font-size: 14px; color: #555; margin-top: 2px; }
+.inv-meta { display: flex; gap: 40px; margin-bottom: 16px; }
+.inv-meta .col { flex:1; }
+.inv-meta .label { font-weight: 600; color: #555; font-size: 11px; text-transform: uppercase; margin-bottom: 2px; }
+.inv-meta .value { font-size: 13px; }
+.inv-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.inv-table th { background: #1565c0; color: #fff; padding: 8px 10px; font-size: 12px; text-align: left; }
+.inv-table td { border-bottom: 1px solid #eee; padding: 8px 10px; font-size: 12px; }
+.inv-table tr:nth-child(even) td { background: #f8f9fa; }
+.inv-table .text-right { text-align: right; }
+.inv-table .text-center { text-align: center; }
+.inv-totals { margin-left: auto; width: 300px; margin-top: 12px; }
+.inv-totals .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.inv-totals .grand { font-size: 16px; font-weight: 700; color: #1565c0; border-top: 2px solid #1565c0; padding-top: 8px; margin-top: 4px; }
+.inv-footer { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
+.inv-footer .sig-block { width: 200px; }
+.inv-footer .sig-label { font-weight: 600; font-size: 12px; margin-bottom: 60px; }
+.inv-footer .sig-name { font-size: 12px; border-top: 1px dotted #999; padding-top: 4px; }
+.inv-note { background: #f5f5f5; border-radius: 6px; padding: 10px 14px; margin-top: 12px; font-size: 12px; }
+{% endblock %}
+{% block content %}
+<div class="invoice">
+    <div class="inv-header">
+        {% if brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        <div class="company">
+            <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
+            {% if brand.address %}<p>📍 {{ brand.address }}</p>{% endif %}
+            {% if brand.phone %}<p>📞 {{ brand.phone }}</p>{% endif %}
+            {% if brand.email %}<p>✉️ {{ brand.email }}</p>{% endif %}
+            {% if brand.tax_code %}<p>MST: {{ brand.tax_code }}</p>{% endif %}
+        </div>
+    </div>
+
+    <div class="inv-title">
+        <h1>HÓA ĐƠN BÁN HÀNG</h1>
+        <div class="code">Số: {{ order.code }} — Ngày: {{ order.order_date|date:"d/m/Y" }}</div>
+    </div>
+
+    <div class="inv-meta">
+        <div class="col">
+            <div class="label">Khách hàng</div>
+            <div class="value"><strong>{{ order.customer.name|default:"Khách lẻ" }}</strong></div>
+            {% if order.customer.phone %}<div class="value">SĐT: {{ order.customer.phone }}</div>{% endif %}
+            {% if order.customer.address %}<div class="value">ĐC: {{ order.customer.address }}</div>{% endif %}
+        </div>
+        <div class="col">
+            {% if order.warehouse %}<div><span class="label">Kho xuất:</span> <span class="value">{{ order.warehouse.name }}</span></div>{% endif %}
+            {% if order.salesperson %}<div><span class="label">NV bán hàng:</span> <span class="value">{{ order.salesperson }}</span></div>{% endif %}
+            <div><span class="label">Trạng thái:</span> <span class="value">{{ order.get_status_display }}</span></div>
+        </div>
+    </div>
+
+    <table class="inv-table">
+        <thead>
+            <tr>
+                <th style="width:5%">STT</th>
+                <th style="width:40%">Sản phẩm</th>
+                <th style="width:10%" class="text-center">ĐVT</th>
+                <th style="width:10%" class="text-right">SL</th>
+                <th style="width:15%" class="text-right">Đơn giá</th>
+                <th style="width:5%" class="text-center">CK%</th>
+                <th style="width:15%" class="text-right">Thành tiền</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in items %}
+            <tr>
+                <td class="text-center">{{ forloop.counter }}</td>
+                <td><strong>{{ item.product.code }}</strong> — {{ item.product.name }}</td>
+                <td class="text-center">{{ item.product.unit }}</td>
+                <td class="text-right">{{ item.quantity|floatformat:0 }}</td>
+                <td class="text-right">{{ item.unit_price|floatformat:0 }}</td>
+                <td class="text-center">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}{% endif %}</td>
+                <td class="text-right"><strong>{{ item.total_price|floatformat:0 }}</strong></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="inv-totals">
+        <div class="row"><span>Tổng cộng ({{ items|length }} SP):</span><span>{{ order.total_amount|floatformat:0 }}đ</span></div>
+        {% if order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|floatformat:0 }}đ</span></div>{% endif %}
+        {% if order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|floatformat:0 }}đ</span></div>{% endif %}
+        <div class="row grand"><span>TỔNG THANH TOÁN:</span><span>{{ order.final_amount|floatformat:0 }}đ</span></div>
+        {% if order.paid_amount %}<div class="row"><span>Đã thanh toán:</span><span>{{ order.paid_amount|floatformat:0 }}đ</span></div>{% endif %}
+        {% if remaining > 0 %}<div class="row" style="color:#d32f2f;"><span>Còn nợ:</span><span>{{ remaining|floatformat:0 }}đ</span></div>{% endif %}
+    </div>
+
+    {% if order.note %}<div class="inv-note"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
+
+    <div class="inv-footer">
+        <div class="sig-block">
+            <div class="sig-label">Người mua hàng</div>
+            <div class="sig-name">(Ký, ghi rõ họ tên)</div>
+        </div>
+        <div class="sig-block">
+            <div class="sig-label">Người bán hàng</div>
+            <div class="sig-name">{{ order.salesperson|default:order.created_by.get_full_name }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

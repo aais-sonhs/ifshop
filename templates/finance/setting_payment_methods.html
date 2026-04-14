@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-credit-card mr-2"></i>Quản lý phương thức thanh toán</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm phương thức</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info py-2">
+            <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>.</small>
+        </div>
+        <div class="table-responsive">
+            <table id="data_tbl" class="table table-bordered table-striped table-sm">
+                <thead><tr>
+                    <th>STT</th><th>Mã</th><th>Tên phương thức</th><th>Loại chuẩn</th>
+                    <th>Tài khoản mặc định</th><th>Thứ tự</th><th>Trạng thái</th><th>Thao tác</th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Thêm phương thức</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Mã <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="inp_code" placeholder="VD: TM, CK, MOMO">
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Tên phương thức <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="inp_name" placeholder="VD: Tiền mặt, Chuyển khoản VCB, Ví MoMo...">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Loại chuẩn</label>
+                            <select class="form-control form-control-sm" id="inp_legacy_type">
+                                <option value="1">Tiền mặt</option>
+                                <option value="2">Chuyển khoản</option>
+                                <option value="3">Khác</option>
+                            </select>
+                            <small class="form-text text-muted">Dùng để phân loại khi report tổng hợp</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Tài khoản mặc định</label>
+                            <select class="form-control form-control-sm select2" id="inp_default_cash_book_id" style="width:100%">
+                                <option value="">-- Không chọn --</option>
+                                {% for c in cashbooks %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Tự động chọn tài khoản nhận tiền khi dùng phương thức này</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Thứ tự hiển thị</label>
+                            <input type="number" class="form-control form-control-sm" id="inp_sort_order" value="0" min="0">
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Mô tả</label>
+                            <input type="text" class="form-control form-control-sm" id="inp_description" placeholder="VD: TK VCB 0123456789">
+                        </div>
+                    </div>
+                </div>
+                <div class="custom-control custom-checkbox mt-1">
+                    <input type="checkbox" class="custom-control-input" id="inp_is_active" checked>
+                    <label class="custom-control-label" for="inp_is_active">Đang hoạt động</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+$(document).ready(function(){
+    loadData();
+    $('#inp_default_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_form')});
+});
+
+function loadData(){
+    $.get('/api/payment_methods/', function(res){
+        var h='';
+        res.data.forEach(function(d, i){
+            var statusBadge = d.is_active
+                ? '<span class="badge badge-success">Hoạt động</span>'
+                : '<span class="badge badge-secondary">Tắt</span>';
+            h += '<tr><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.name+'</td>' +
+                '<td>'+d.legacy_type_display+'</td>' +
+                '<td>'+(d.default_cash_book || '<span class="text-muted">—</span>')+'</td>' +
+                '<td>'+d.sort_order+'</td>' +
+                '<td>'+statusBadge+'</td>' +
+                '<td class="text-center">' +
+                '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d)+')\'>Sửa</button> ' +
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button>' +
+                '</td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có phương thức thanh toán nào. Nhấn "Thêm phương thức" để bắt đầu.</td></tr>');
+    });
+}
+
+$('#btn_add').click(function(){
+    $('#edit_id').val('');
+    $('#inp_code').val('').prop('disabled', false);
+    $('#inp_name,#inp_description').val('');
+    $('#inp_legacy_type').val('3');
+    $('#inp_default_cash_book_id').val('').trigger('change');
+    $('#inp_sort_order').val(0);
+    $('#inp_is_active').prop('checked', true);
+    $('#modal_title').text('Thêm phương thức thanh toán');
+    $('#modal_form').modal('show');
+});
+
+function editItem(d){
+    $('#edit_id').val(d.id);
+    $('#inp_code').val(d.code).prop('disabled', true);
+    $('#inp_name').val(d.name);
+    $('#inp_description').val(d.description);
+    $('#inp_legacy_type').val(d.legacy_type);
+    $('#inp_default_cash_book_id').val(d.default_cash_book_id || '').trigger('change');
+    $('#inp_sort_order').val(d.sort_order);
+    $('#inp_is_active').prop('checked', d.is_active);
+    $('#modal_title').text('Sửa: ' + d.name);
+    $('#modal_form').modal('show');
+}
+
+$('#btn_save').click(function(){
+    var code = $('#inp_code').val().trim();
+    var name = $('#inp_name').val().trim();
+    if(!code || !name){ alert('Vui lòng nhập mã và tên phương thức'); return; }
+    $.ajax({
+        url: '/api/payment_methods/save/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        data: JSON.stringify({
+            id: $('#edit_id').val() || null,
+            code: code,
+            name: name,
+            description: $('#inp_description').val(),
+            legacy_type: $('#inp_legacy_type').val(),
+            default_cash_book_id: $('#inp_default_cash_book_id').val() || null,
+            sort_order: parseInt($('#inp_sort_order').val()) || 0,
+            is_active: $('#inp_is_active').is(':checked')
+        }),
+        success: function(r){
+            if(r.status === 'ok'){
+                $('#modal_form').modal('hide');
+                loadData();
+                if(typeof toastr !== 'undefined') toastr.success(r.message);
+            } else {
+                alert(r.message);
+            }
+        }
+    });
+});
+
+function deleteItem(id){
+    if(!confirm('Bạn chắc chắn muốn xóa phương thức này?')) return;
+    $.ajax({
+        url: '/api/payment_methods/delete/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){
+            if(r.status === 'ok'){
+                loadData();
+                if(typeof toastr !== 'undefined') toastr.success(r.message);
+            } else {
+                alert(r.message);
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

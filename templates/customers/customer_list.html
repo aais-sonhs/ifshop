@@ -5,6 +5,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-users mr-2"></i>Danh sách khách hàng</h3>
         <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/customers/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm khách hàng</button>
         </div>
     </div>
@@ -13,10 +14,13 @@
             <div class="col-md-4">
                 <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm theo tên, SĐT, mã KH...">
             </div>
+            <div class="col-md-4 d-flex align-items-center" style="gap:6px;">
+                <span id="col_config_container"></span>
+            </div>
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Ảnh</th><th></th>Mã KH</th><th>Tên khách hàng</th><th>SĐT</th><th>Email</th><th>Nhóm</th><th>Tổng mua</th><th>Công nợ</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="code">Mã KH</th><th data-col="name">Tên khách hàng</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -96,25 +100,67 @@
     </div>
 </div>
 
-<!-- MODAL LỊCH SỬ MUA HÀNG -->
+<!-- MODAL LỊCH SỬ MUA HÀNG (Sapo-style) -->
 <div class="modal fade" id="modal_history" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header bg-info text-white py-2">
+            <div class="modal-header py-2" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;">
                 <h5 class="modal-title"><i class="fas fa-history mr-2"></i>Lịch sử mua hàng — <span id="hist_customer_name"></span></h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-3">
                 <!-- Summary cards -->
                 <div class="row mb-3" id="hist_summary"></div>
+                <!-- Filters (Sapo-style) -->
+                <div class="card mb-2" style="border-color:#e2e8f0;">
+                    <div class="card-body p-2">
+                        <div class="row align-items-end" style="row-gap:6px;">
+                            <div class="col-md-3">
+                                <label class="small mb-0 text-muted">Sản phẩm</label>
+                                <input type="text" class="form-control form-control-sm" id="hist_filter_product" placeholder="Tên hoặc mã SP...">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small mb-0 text-muted">Giá từ</label>
+                                <input type="number" class="form-control form-control-sm" id="hist_filter_price_from" placeholder="0" min="0">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small mb-0 text-muted">Giá đến</label>
+                                <input type="number" class="form-control form-control-sm" id="hist_filter_price_to" placeholder="∞" min="0">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small mb-0 text-muted">Từ ngày</label>
+                                <input type="date" class="form-control form-control-sm" id="hist_filter_date_from">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="small mb-0 text-muted">Đến ngày</label>
+                                <input type="date" class="form-control form-control-sm" id="hist_filter_date_to">
+                            </div>
+                            <div class="col-md-1 text-right">
+                                <button class="btn btn-sm btn-outline-secondary" id="hist_clear_filters" title="Xóa bộ lọc"><i class="fas fa-times"></i></button>
+                            </div>
+                        </div>
+                        <div class="row mt-1" style="row-gap:6px;">
+                            <div class="col-md-12">
+                                <div class="btn-group btn-group-sm" id="hist_status_tabs">
+                                    <button class="btn btn-outline-primary active" data-status="">Tất cả</button>
+                                    <button class="btn btn-outline-primary" data-status="active">Đang xử lý</button>
+                                    <button class="btn btn-outline-primary" data-status="5">Hoàn thành</button>
+                                    <button class="btn btn-outline-primary" data-status="6">Đã hủy</button>
+                                    <button class="btn btn-outline-primary" data-status="debt">Còn nợ</button>
+                                </div>
+                                <span class="ml-3 text-muted small" id="hist_result_count"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <!-- Orders table -->
-                <div class="table-responsive" style="max-height:55vh;overflow-y:auto;">
-                    <table class="table table-bordered table-sm" id="hist_tbl">
-                        <thead class="bg-light" style="position:sticky;top:0;">
+                <div class="table-responsive" style="max-height:50vh;overflow-y:auto;">
+                    <table class="table table-bordered table-sm mb-0" id="hist_tbl">
+                        <thead class="bg-light" style="position:sticky;top:0;z-index:1;">
                             <tr>
-                                <th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Kho</th>
-                                <th>Tổng tiền</th><th>Đã trả</th><th>Còn nợ</th>
-                                <th>Thanh toán</th><th>Trạng thái</th><th></th>
+                                <th style="width:28px;"></th><th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Kho</th>
+                                <th class="text-right">Tổng tiền</th><th class="text-right">Đã trả</th><th class="text-right">Còn nợ</th>
+                                <th>Thanh toán</th><th>Trạng thái</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -127,13 +173,49 @@
         </div>
     </div>
 </div>
+
+<style>
+.hist-row{cursor:pointer;transition:background .15s;}
+.hist-row:hover{background:#f0f7ff !important;}
+.hist-row.expanded{background:#e8f0fe !important;border-left:3px solid #1a73e8;}
+.hist-row .expand-icon{transition:transform .2s;}
+.hist-row.expanded .expand-icon{transform:rotate(90deg);}
+.hist-items-row td{padding:0 !important;}
+.hist-items-inner{background:linear-gradient(to right,#f8f9fa,#fff);padding:8px 12px;border-left:3px solid #1a73e8;}
+.hist-item-card{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f0f0f0;}
+.hist-item-card:last-child{border:none;}
+.hist-item-img{width:36px;height:36px;border-radius:4px;object-fit:cover;border:1px solid #e0e0e0;}
+.hist-item-placeholder{width:36px;height:36px;border-radius:4px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:14px;}
+</style>
 {% endblock %}
 
 {% block extra_js %}
+<script src="/static/js/column_config.js"></script>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 var defaultAvatar = "{% static 'img/default_avatar.svg' %}";
 var allCustomers = [];
+var _histOrders = [];
+
+// Column Config
+var customerColConfig = new ColumnConfig({
+    storageKey: 'ifshop_customer_columns',
+    tableSelector: '#data_tbl',
+    buttonContainer: '#col_config_container',
+    columns: [
+        {key: 'stt',              label: 'STT',             default: true,  alwaysOn: true},
+        {key: 'avatar',           label: 'Ảnh',             default: true},
+        {key: 'code',             label: 'Mã KH',           default: true,  alwaysOn: true},
+        {key: 'name',             label: 'Tên khách hàng',  default: true,  alwaysOn: true},
+        {key: 'phone',            label: 'SĐT',             default: true},
+        {key: 'email',            label: 'Email',           default: true},
+        {key: 'group',            label: 'Nhóm',            default: true},
+        {key: 'total_purchased',  label: 'Tổng mua',        default: true},
+        {key: 'debt',             label: 'Công nợ',         default: true},
+        {key: 'actions',          label: 'Thao tác',        default: true},
+    ]
+});
+
 $(document).ready(function(){
     loadData();
     $('#filter_search').on('input', function(){ renderTable(); });
@@ -185,6 +267,36 @@ $(document).ready(function(){
             }
         });
     });
+
+    // History filter events
+    $('#hist_filter_product, #hist_filter_price_from, #hist_filter_price_to, #hist_filter_date_from, #hist_filter_date_to').on('input change', function(){
+        renderHistoryTable();
+    });
+    $('#hist_status_tabs').on('click', 'button', function(){
+        $('#hist_status_tabs button').removeClass('active');
+        $(this).addClass('active');
+        renderHistoryTable();
+    });
+    $('#hist_clear_filters').click(function(){
+        $('#hist_filter_product, #hist_filter_price_from, #hist_filter_price_to, #hist_filter_date_from, #hist_filter_date_to').val('');
+        $('#hist_status_tabs button').removeClass('active').first().addClass('active');
+        renderHistoryTable();
+    });
+    // Click order row to expand/collapse
+    $(document).on('click', '.hist-row', function(){
+        var $row = $(this);
+        var id = $row.data('order-id');
+        var $detail = $('#hist_items_'+id);
+        var wasExpanded = $row.hasClass('expanded');
+        // Collapse all
+        $('.hist-row').removeClass('expanded');
+        $('.hist-items-row').hide();
+        // Toggle clicked
+        if(!wasExpanded){
+            $row.addClass('expanded');
+            $detail.show();
+        }
+    });
 });
 
 function loadData(){
@@ -211,13 +323,21 @@ function renderTable(){
         var typeBadge = d.customer_type === 2 ? '<span class="badge badge-primary">CTY</span>' : (d.customer_type === 3 ? '<span class="badge badge-warning">HKD</span>' : '<span class="badge badge-light">CN</span>');
         var avatarSrc = d.avatar_url || defaultAvatar;
         var avatarImg = '<img src="'+avatarSrc+'" style="width:112px;height:112px;border-radius:8px;object-fit:cover;border:1px solid #ddd;">';
-        h+='<tr style="vertical-align:middle;"><td>'+(i+1)+'</td><td class="text-center" style="padding:4px;">'+avatarImg+'</td><td>'+d.code+'</td><td>'+typeBadge+' '+d.name+'</td><td>'+d.phone+'</td><td>'+d.email+'</td>'+
-            '<td>'+d.group+'</td><td class="text-right">'+fmt(d.total_purchased)+'</td>'+
-            '<td class="text-right" style="'+debtStyle+'">'+fmt(d.total_debt)+'</td>'+
-            '<td class="text-center">'+
-            '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng"><i class="fas fa-history"></i></button> '+
-            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
-            '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+        var actionsHtml = '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng"><i class="fas fa-history"></i></button> '+
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\' ><i class="fas fa-edit"></i></button> '+
+            '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button>';
+        h+='<tr style="vertical-align:middle;">'+
+            customerColConfig.td('stt', (i+1))+
+            customerColConfig.td('avatar', avatarImg, 'class="text-center" style="padding:4px;"')+
+            customerColConfig.td('code', d.code)+
+            customerColConfig.td('name', typeBadge+' '+d.name)+
+            customerColConfig.td('phone', d.phone)+
+            customerColConfig.td('email', d.email)+
+            customerColConfig.td('group', d.group)+
+            customerColConfig.td('total_purchased', fmt(d.total_purchased), 'class="text-right"')+
+            customerColConfig.td('debt', fmt(d.total_debt), 'class="text-right" style="'+debtStyle+'"')+
+            customerColConfig.td('actions', actionsHtml, 'class="text-center"')+
+            '</tr>';
     });
     if(!h) h = '<tr><td colspan="10" class="text-center text-muted py-3">Không tìm thấy khách hàng</td></tr>';
     $('#data_tbl tbody').html(h);
@@ -250,6 +370,7 @@ function viewHistory(customerId){
 
         var c = res.customer;
         var s = res.summary;
+        _histOrders = res.orders;
         $('#hist_customer_name').text(c.code + ' - ' + c.name + (c.company ? ' ('+c.company+')' : ''));
 
         // Summary cards
@@ -259,42 +380,94 @@ function viewHistory(customerId){
             '<div class="col-md-3"><div class="small-box bg-warning"><div class="inner"><h4>'+s.total_cancelled+'</h4><p>Đơn đã hủy</p></div><div class="icon"><i class="fas fa-ban"></i></div></div></div>';
         $('#hist_summary').html(summary);
 
-        // Orders table
-        var h = '';
-        res.orders.forEach(function(o, i){
-            var statusBadge = '';
-            if(o.status === 5) statusBadge = '<span class="badge badge-success">'+o.status_display+'</span>';
-            else if(o.status === 6) statusBadge = '<span class="badge badge-dark">'+o.status_display+'</span>';
-            else statusBadge = '<span class="badge badge-info">'+o.status_display+'</span>';
+        // Clear filters
+        $('#hist_filter_product, #hist_filter_price_from, #hist_filter_price_to, #hist_filter_date_from, #hist_filter_date_to').val('');
+        $('#hist_status_tabs button').removeClass('active').first().addClass('active');
 
-            var payBadge = '';
-            if(o.payment_status === 2) payBadge = '<span class="badge badge-success">'+o.payment_status_display+'</span>';
-            else if(o.payment_status === 1) payBadge = '<span class="badge badge-warning">'+o.payment_status_display+'</span>';
-            else payBadge = '<span class="badge badge-danger">'+o.payment_status_display+'</span>';
-
-            var debtStr = o.debt > 0 ? '<span class="text-danger font-weight-bold">'+fmt(o.debt)+'đ</span>' : '<span class="text-muted">0</span>';
-            var rowClass = o.status === 6 ? 'style="background:#fce4ec;opacity:0.7;"' : (o.debt > 0 ? 'style="background:#fff3e0;"' : '');
-
-            // Items detail (expandable)
-            var itemsHtml = '<tr class="hist-items-row" id="items_'+o.id+'" style="display:none;"><td colspan="10" class="p-0"><table class="table table-sm mb-0" style="background:#f8f9fa;"><thead><tr><th class="pl-4">Sản phẩm</th><th>Số lượng</th><th>Đơn giá</th><th>CK%</th><th>Thành tiền</th></tr></thead><tbody>';
-            o.items.forEach(function(it){
-                itemsHtml += '<tr><td class="pl-4">'+it.product_name+'</td><td class="text-center">'+it.quantity+'</td><td class="text-right">'+fmt(it.unit_price)+'đ</td><td class="text-center">'+it.discount_percent+'%</td><td class="text-right">'+fmt(it.total_price)+'đ</td></tr>';
-            });
-            itemsHtml += '</tbody></table></td></tr>';
-
-            h += '<tr '+rowClass+'><td>'+(i+1)+'</td><td><strong>'+o.code+'</strong></td><td>'+o.order_date+'</td><td>'+o.warehouse+'</td>' +
-                '<td class="text-right"><strong>'+fmt(o.final_amount)+'đ</strong></td>' +
-                '<td class="text-right">'+fmt(o.paid_amount)+'đ</td>' +
-                '<td class="text-right">'+debtStr+'</td>' +
-                '<td class="text-center">'+payBadge+'</td><td class="text-center">'+statusBadge+'</td>' +
-                '<td class="text-center"><button class="btn btn-xs btn-outline-info" onclick="$(\'#items_'+o.id+'\').toggle()" title="Xem chi tiết SP"><i class="fas fa-list"></i></button></td></tr>' +
-                itemsHtml;
-        });
-
-        if(!h) h = '<tr><td colspan="10" class="text-center text-muted py-3"><i class="fas fa-inbox mr-2"></i>Chưa có đơn hàng nào</td></tr>';
-        $('#hist_tbl tbody').html(h);
+        renderHistoryTable();
         $('#modal_history').modal('show');
     });
+}
+
+function renderHistoryTable(){
+    var product = ($('#hist_filter_product').val()||'').toLowerCase().trim();
+    var priceFrom = parseFloat($('#hist_filter_price_from').val()) || 0;
+    var priceTo = parseFloat($('#hist_filter_price_to').val()) || Infinity;
+    var dateFrom = $('#hist_filter_date_from').val() || '';
+    var dateTo = $('#hist_filter_date_to').val() || '';
+    var statusTab = $('#hist_status_tabs button.active').data('status');
+
+    var filtered = _histOrders.filter(function(o){
+        // Status filter
+        if(statusTab === 'active' && (o.status === 5 || o.status === 6)) return false;
+        if(statusTab === '5' && o.status !== 5) return false;
+        if(statusTab === '6' && o.status !== 6) return false;
+        if(statusTab === 'debt' && o.debt <= 0) return false;
+
+        // Date filter
+        if(dateFrom && o.order_date_raw < dateFrom) return false;
+        if(dateTo && o.order_date_raw > dateTo) return false;
+
+        // Price filter (on items unit_price)
+        if(product || priceFrom > 0 || priceTo < Infinity){
+            var hasMatch = o.items.some(function(it){
+                var nameMatch = !product || it.product_name.toLowerCase().indexOf(product) >= 0 || it.product_code.toLowerCase().indexOf(product) >= 0;
+                var priceMatch = it.unit_price >= priceFrom && it.unit_price <= priceTo;
+                return nameMatch && priceMatch;
+            });
+            if(!hasMatch) return false;
+        }
+        return true;
+    });
+
+    $('#hist_result_count').text(filtered.length + ' đơn hàng' + (filtered.length !== _histOrders.length ? ' (đã lọc)' : ''));
+
+    var h = '';
+    filtered.forEach(function(o, i){
+        var statusBadge = '';
+        if(o.status === 5) statusBadge = '<span class="badge badge-success">'+o.status_display+'</span>';
+        else if(o.status === 6) statusBadge = '<span class="badge badge-dark">'+o.status_display+'</span>';
+        else statusBadge = '<span class="badge badge-info">'+o.status_display+'</span>';
+
+        var payBadge = '';
+        if(o.payment_status === 2) payBadge = '<span class="badge badge-success">'+o.payment_status_display+'</span>';
+        else if(o.payment_status === 1) payBadge = '<span class="badge badge-warning text-dark">'+o.payment_status_display+'</span>';
+        else payBadge = '<span class="badge badge-danger">'+o.payment_status_display+'</span>';
+
+        var debtStr = o.debt > 0 ? '<span class="text-danger font-weight-bold">'+fmt(o.debt)+'đ</span>' : '<span class="text-muted">0</span>';
+        var rowClass = o.status === 6 ? 'background:#fce4ec;opacity:0.7;' : (o.debt > 0 ? 'background:#fff8e1;' : '');
+
+        // Main order row
+        h += '<tr class="hist-row" data-order-id="'+o.id+'" style="'+rowClass+'">' +
+            '<td class="text-center"><i class="fas fa-chevron-right expand-icon text-muted small"></i></td>' +
+            '<td>'+(i+1)+'</td><td><strong>'+o.code+'</strong></td><td>'+o.order_date+'</td><td>'+o.warehouse+'</td>' +
+            '<td class="text-right"><strong>'+fmt(o.final_amount)+'đ</strong></td>' +
+            '<td class="text-right">'+fmt(o.paid_amount)+'đ</td>' +
+            '<td class="text-right">'+debtStr+'</td>' +
+            '<td class="text-center">'+payBadge+'</td><td class="text-center">'+statusBadge+'</td></tr>';
+
+        // Expandable items row
+        var itemsHtml = '<div class="hist-items-inner">';
+        if(o.note) itemsHtml += '<div class="mb-1"><small class="text-muted"><i class="fas fa-sticky-note mr-1"></i>'+o.note+'</small></div>';
+        o.items.forEach(function(it){
+            var img = it.product_image
+                ? '<img src="'+it.product_image+'" class="hist-item-img">'
+                : '<div class="hist-item-placeholder"><i class="fas fa-box"></i></div>';
+            var priceHighlight = (product && (it.product_name.toLowerCase().indexOf(product)>=0 || it.product_code.toLowerCase().indexOf(product)>=0))
+                ? 'style="background:#fff3cd;border-radius:3px;padding:0 4px;"' : '';
+            itemsHtml += '<div class="hist-item-card" '+priceHighlight+'>' +
+                img +
+                '<div class="flex-grow-1"><strong>'+it.product_code+'</strong> — '+it.product_name+'</div>' +
+                '<div class="text-right text-nowrap" style="min-width:80px;">'+fmt(it.quantity)+' x '+fmt(it.unit_price)+'đ</div>' +
+                '<div class="text-right font-weight-bold text-nowrap" style="min-width:100px;">= '+fmt(it.total_price)+'đ</div>' +
+                '</div>';
+        });
+        itemsHtml += '</div>';
+        h += '<tr class="hist-items-row" id="hist_items_'+o.id+'" style="display:none;"><td colspan="10">'+itemsHtml+'</td></tr>';
+    });
+
+    if(!h) h = '<tr><td colspan="10" class="text-center text-muted py-3"><i class="fas fa-inbox mr-2"></i>Không có đơn hàng phù hợp</td></tr>';
+    $('#hist_tbl tbody').html(h);
 }
 
 function toggleCustomerType(){

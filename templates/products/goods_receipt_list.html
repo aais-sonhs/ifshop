@@ -4,6 +4,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-truck-loading mr-2"></i>Nhập hàng</h3>
         <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/goods_receipts/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu nhập</button>
         </div>
     </div>
@@ -26,15 +27,11 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
+                <input type="hidden" id="inp_code">
                 <div class="row">
-                    <div class="col-md-3"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>Kho nhập</label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
-                    <div class="col-md-3"><div class="form-group"><label>Ngày nhập <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_receipt_date"></div></div>
-                </div>
-                <div class="row">
-                    <div class="col-md-3"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
-                    <div class="col-md-9"><div class="form-group"><label>Ghi chú</label><input type="text" class="form-control form-control-sm" id="inp_note"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label><i class="fas fa-truck text-primary mr-1"></i>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label><i class="fas fa-warehouse text-success mr-1"></i>Kho nhập</label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Ghi chú</label><input type="text" class="form-control form-control-sm" id="inp_note" placeholder="Ghi chú phiếu nhập..."></div></div>
                 </div>
 
                 <!-- Chi tiết sản phẩm nhập -->
@@ -92,27 +89,12 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');
+        $('#inp_code').val('');
         $('#inp_note').val('');
         $('#inp_supplier_id,#inp_warehouse_id').val('');
-        // Tự động điền ngày hôm nay
-        var today = new Date().toISOString().split('T')[0];
-        $('#inp_receipt_date').val(today);
-        $('#inp_status').val('0');
         $('#items_body').html('');
         itemRowIndex = 0;
         updateTotal();
-        // Tự động sinh mã phiếu nhập: PN-001, PN-002...
-        var prefix = 'PN-';
-        var maxNum = 0;
-        // Tìm mã lớn nhất từ dữ liệu hiện có
-        $('#data_tbl tbody tr').each(function(){
-            var code = $(this).find('td:eq(1)').text();
-            if(code.indexOf(prefix) === 0){
-                var num = parseInt(code.replace(prefix, ''));
-                if(num > maxNum) maxNum = num;
-            }
-        });
-        $('#inp_code').val(prefix + String(maxNum + 1).padStart(3, '0'));
         $('#modal_title').text('Tạo phiếu nhập');
         $('#modal_form').modal('show');
         setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
@@ -124,20 +106,17 @@ $(document).ready(function(){
 
     $('#btn_save').click(function(){
         var items = getItemsData();
-        if(!$('#inp_code').val() || !$('#inp_receipt_date').val()){
-            alert('Vui lòng nhập mã phiếu và ngày nhập'); return;
-        }
         if(items.length === 0){
             alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;
         }
 
         var data = {
             id: $('#edit_id').val() || null,
-            code: $('#inp_code').val(),
+            code: $('#inp_code').val() || '',
             supplier_id: $('#inp_supplier_id').val(),
             warehouse_id: $('#inp_warehouse_id').val(),
-            receipt_date: $('#inp_receipt_date').val(),
-            status: parseInt($('#inp_status').val()),
+            receipt_date: '',
+            status: 1,
             note: $('#inp_note').val(),
             items: items
         };
@@ -316,15 +295,13 @@ function editItem(d){
     $('#inp_code').val(d.code);
     $('#inp_supplier_id').val(d.supplier_id);
     $('#inp_warehouse_id').val(d.warehouse_id);
-    $('#inp_receipt_date').val(d.receipt_date);
-    $('#inp_status').val(d.status);
     $('#inp_note').val(d.note);
 
     // Clear items first
     $('#items_body').html('');
     itemRowIndex = 0;
 
-    $('#modal_title').text('Sửa phiếu nhập');
+    $('#modal_title').text('Sửa phiếu nhập: ' + d.code);
     $('#modal_form').modal('show');
 
     // Load items AFTER modal is fully shown so Select2 renders correctly

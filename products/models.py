@@ -69,6 +69,22 @@ class Warehouse(SoftDeleteModel):
         return f"{self.code} - {self.name}"
 
 
+class ProductLocation(models.Model):
+    """Vị trí sản phẩm trong kho"""
+    name = models.CharField(max_length=100, unique=True, verbose_name='Tên vị trí')
+    is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'product_locations'
+        verbose_name = 'Vị trí sản phẩm'
+        verbose_name_plural = 'Vị trí sản phẩm'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Product(SoftDeleteModel):
     """Sản phẩm"""
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
@@ -83,9 +99,11 @@ class Product(SoftDeleteModel):
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name='Hình ảnh')
 
     # Giá
-    cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')
-    listed_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá niêm yết')
-    selling_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá bán')
+    import_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá nhập')
+    cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn (TB gia quyền)')
+    selling_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá bán lẻ')
+    wholesale_price_no_warranty = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá sỉ KBH')
+    wholesale_price_warranty = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá sỉ BH')
 
     # Tồn kho
     min_stock = models.IntegerField(default=0, verbose_name='Tồn kho tối thiểu')
@@ -100,7 +118,9 @@ class Product(SoftDeleteModel):
     is_service = models.BooleanField(default=False, verbose_name='Sản phẩm dịch vụ')
     is_combo = models.BooleanField(default=False, verbose_name='Sản phẩm combo')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
-    location = models.CharField(max_length=100, blank=True, null=True, verbose_name='Vị trí sản phẩm')
+    location = models.ForeignKey(ProductLocation, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='products', verbose_name='Vị trí sản phẩm')
+    specification = models.CharField(max_length=255, blank=True, null=True, verbose_name='Quy cách sản phẩm')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='products_created')
@@ -121,9 +141,11 @@ class ProductVariant(models.Model):
     size_name = models.CharField(max_length=50, verbose_name='Quy cách')
     sku = models.CharField(max_length=100, unique=True, verbose_name='Mã SKU')
     barcode = models.CharField(max_length=100, blank=True, null=True, verbose_name='Barcode')
+    import_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá nhập')
     cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')
-    listed_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá niêm yết')
-    selling_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá bán')
+    selling_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá bán lẻ')
+    wholesale_price_no_warranty = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá sỉ KBH')
+    wholesale_price_warranty = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá sỉ BH')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 

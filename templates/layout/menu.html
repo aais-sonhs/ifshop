@@ -454,8 +454,8 @@ $('#btn_save_avatar').click(function(){
                         <p>Mô hình kinh doanh</p>
                     </a>
                 </li>
-                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' %}menu-open{% endif %}">
-                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' %}active{% endif %}">
+                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}menu-open{% endif %}">
+                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -470,6 +470,12 @@ $('#btn_save_avatar').click(function(){
                             <a href="{% url 'setting_order' %}" class="nav-link {% if active_tab == 'setting_order' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Cài đặt đơn hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Phương thức TT</p>
                             </a>
                         </li>
                     </ul>

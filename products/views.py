@@ -9,7 +9,7 @@ from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
     GoodsReceipt, GoodsReceiptItem, PurchaseOrder, PurchaseOrderItem,
     StockCheck, StockCheckItem, StockTransfer, StockTransferItem, CostAdjustment,
-    ComboItem
+    ComboItem, ProductLocation
 )
 
 from core.store_utils import filter_by_store, get_user_store, brand_owner_required
@@ -26,6 +26,7 @@ def product_tbl(request):
         'active_tab': 'product_tbl',
         'categories': list(ProductCategory.objects.filter(is_active=True).values('id', 'name')),
         'suppliers': list(Supplier.objects.filter(is_active=True).values('id', 'name')),
+        'locations': list(ProductLocation.objects.filter(is_active=True).values('id', 'name')),
     }
     return render(request, "products/product_list.html", context)
 
@@ -100,8 +101,53 @@ def cost_adjustment_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_products(request):
-    products = Product.objects.select_related('category', 'supplier').prefetch_related('variants', 'stocks', 'combo_items__product').all()
+    products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related(
+        'variants', 'stocks', 'combo_items__product',
+        'receipt_items__goods_receipt',  # For FIFO cost calculation
+    ).all()
     products = filter_by_store(products, request)
+
+    # ===== FIFO weighted average cost calculation =====
+    # Precompute per product: get all completed goods receipt items ordered newest→oldest
+    from products.models import GoodsReceiptItem
+    all_receipt_items = (
+        GoodsReceiptItem.objects
+        .filter(
+            product_id__in=[p.id for p in products],
+            goods_receipt__status=1,
+        )
+        .select_related('goods_receipt')
+        .order_by('-goods_receipt__receipt_date', '-goods_receipt__id')
+    )
+    # Group by product_id
+    receipt_map = {}
+    for ri in all_receipt_items:
+        receipt_map.setdefault(ri.product_id, []).append(ri)
+
+    def calc_fifo_cost(product_id, total_stock):
+        """
+        Giá vốn FIFO = trung bình gia quyền theo tồn kho hiện tại.
+        Lấy từ phiếu nhập mới nhất → cũ nhất, phân bổ số tồn vào từng lô.
+        """
+        if total_stock <= 0:
+            return 0
+        items = receipt_map.get(product_id, [])
+        if not items:
+            return 0
+        remaining = total_stock
+        weighted_sum = 0.0
+        for ri in items:
+            qty = float(ri.quantity)
+            price = float(ri.unit_price)
+            if qty <= 0:
+                continue
+            allocated = min(remaining, qty)
+            weighted_sum += allocated * price
+            remaining -= allocated
+            if remaining <= 0:
+                break
+        return round(weighted_sum / total_stock) if total_stock > 0 else 0
+
     data = []
     for p in products:
         total_stock = float(sum(s.quantity for s in p.stocks.all()))
@@ -110,9 +156,11 @@ def api_get_products(request):
             'size_name': v.size_name,
             'sku': v.sku,
             'barcode': v.barcode or '',
+            'import_price': float(v.import_price),
             'cost_price': float(v.cost_price),
-            'listed_price': float(v.listed_price),
             'selling_price': float(v.selling_price),
+            'wholesale_price_no_warranty': float(v.wholesale_price_no_warranty),
+            'wholesale_price_warranty': float(v.wholesale_price_warranty),
             'is_active': v.is_active,
         } for v in p.variants.all()]
 
@@ -134,13 +182,22 @@ def api_get_products(request):
             'quantity': float(s.quantity),
         } for s in p.stocks.select_related('warehouse').all() if float(s.quantity) != 0]
 
+        # Giá vốn FIFO
+        fifo_cost = calc_fifo_cost(p.id, total_stock)
+        # Fallback to stored cost_price if no receipt data
+        effective_cost = fifo_cost if fifo_cost > 0 else float(p.cost_price)
+
         data.append({
             'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
             'category': p.category.name if p.category else '',
             'category_id': p.category_id,
             'unit': p.unit,
-            'cost_price': float(p.cost_price), 'listed_price': float(p.listed_price),
+            'import_price': float(p.import_price),
+            'cost_price': effective_cost,
+            'cost_price_stored': float(p.cost_price),
             'selling_price': float(p.selling_price),
+            'wholesale_price_no_warranty': float(p.wholesale_price_no_warranty),
+            'wholesale_price_warranty': float(p.wholesale_price_warranty),
             'min_stock': p.min_stock, 'max_stock': p.max_stock,
             'supplier': p.supplier.name if p.supplier else '',
             'supplier_id': p.supplier_id,
@@ -154,7 +211,9 @@ def api_get_products(request):
             'is_combo': p.is_combo,
             'combo_items': combo_items,
             'variants': variants,
-            'location': p.location or '',
+            'location_id': p.location_id,
+            'location': p.location.name if p.location else '',
+            'specification': p.specification or '',
         })
     return JsonResponse({'data': data})
 
@@ -179,20 +238,24 @@ def api_save_product(request):
         product.barcode = request.POST.get('barcode', '')
         product.unit = request.POST.get('unit', 'Cái')
         product.cost_price = request.POST.get('cost_price', 0) or 0
-        product.listed_price = request.POST.get('listed_price', 0) or 0
+        product.import_price = request.POST.get('import_price', 0) or 0
         product.selling_price = request.POST.get('selling_price', 0) or 0
+        product.wholesale_price_no_warranty = request.POST.get('wholesale_price_no_warranty', 0) or 0
+        product.wholesale_price_warranty = request.POST.get('wholesale_price_warranty', 0) or 0
         product.min_stock = request.POST.get('min_stock', 0) or 0
         product.max_stock = request.POST.get('max_stock', 0) or 0
         product.description = request.POST.get('description', '')
         product.is_weight_based = request.POST.get('is_weight_based', '0') == '1'
         product.is_service = request.POST.get('is_service', '0') == '1'
         product.is_combo = request.POST.get('is_combo', '0') == '1'
-        product.location = request.POST.get('location', '') or None
+        product.specification = request.POST.get('specification', '') or None
 
         cat_id = request.POST.get('category_id')
         product.category_id = cat_id if cat_id else None
         sup_id = request.POST.get('supplier_id')
         product.supplier_id = sup_id if sup_id else None
+        loc_id = request.POST.get('location_id')
+        product.location_id = loc_id if loc_id else None
 
         if 'image' in request.FILES:
             product.image = request.FILES['image']
@@ -210,9 +273,11 @@ def api_save_product(request):
                 size_name=v.get('size_name', ''),
                 sku=v.get('sku', ''),
                 barcode=v.get('barcode', ''),
+                import_price=v.get('import_price', 0) or 0,
                 cost_price=v.get('cost_price', 0) or 0,
-                listed_price=v.get('listed_price', 0) or 0,
                 selling_price=v.get('selling_price', 0) or 0,
+                wholesale_price_no_warranty=v.get('wholesale_price_no_warranty', 0) or 0,
+                wholesale_price_warranty=v.get('wholesale_price_warranty', 0) or 0,
             )
 
         # Save combo items
@@ -449,11 +514,33 @@ def api_save_goods_receipt(request):
         else:
             gr = GoodsReceipt()
             gr.created_by = request.user
-        gr.code = data.get('code', '')
+
+        # Auto-generate code if empty (P00001, P00002, ...)
+        code = (data.get('code', '') or '').strip()
+        if not code:
+            from django.db.models import Max
+            last = GoodsReceipt.objects.filter(code__startswith='P').order_by('-id').first()
+            if last and last.code.startswith('P'):
+                try:
+                    num = int(last.code[1:]) + 1
+                except ValueError:
+                    num = GoodsReceipt.objects.count() + 1
+            else:
+                num = 1
+            code = f'P{num:05d}'
+        gr.code = code
+
         gr.supplier_id = data.get('supplier_id') or None
         gr.warehouse_id = data.get('warehouse_id') or None
-        gr.receipt_date = data.get('receipt_date')
-        new_status = int(data.get('status', 0))
+
+        # Auto-set date to today if empty
+        receipt_date = data.get('receipt_date', '') or ''
+        if not receipt_date:
+            from datetime import date as _date
+            receipt_date = _date.today().strftime('%Y-%m-%d')
+        gr.receipt_date = receipt_date
+
+        new_status = int(data.get('status', 1))
         gr.status = new_status
         gr.note = data.get('note', '')
 
@@ -490,6 +577,7 @@ def api_save_goods_receipt(request):
 
         # Cộng tồn kho nếu status mới = Hoàn thành (1)
         # + Tính giá vốn trung bình gia quyền
+        # + Cập nhật giá nhập (import_price) = giá mới nhất
         if new_status == 1 and gr.warehouse_id:
             for item in items_data:
                 product_id = item.get('product_id')
@@ -506,8 +594,7 @@ def api_save_goods_receipt(request):
                 stock.quantity += new_qty
                 stock.save()
 
-                # Tính giá vốn TB gia quyền
-                # Formula: (old_total_stock * old_cost + new_qty * new_price) / total_new_stock
+                # Tính giá vốn TB gia quyền + Cập nhật giá nhập
                 try:
                     product = Product.objects.get(id=product_id)
                     total_old_stock = Decimal(str(sum(
@@ -520,11 +607,14 @@ def api_save_goods_receipt(request):
                         old_cost = product.cost_price or Decimal('0')
                         weighted_avg = (total_old_stock * old_cost + new_qty * new_price) / total_new_stock
                         product.cost_price = round(weighted_avg)
-                        product.save(update_fields=['cost_price'])
+
+                    # Cập nhật giá nhập = giá từ phiếu nhập mới nhất
+                    product.import_price = new_price
+                    product.save(update_fields=['cost_price', 'import_price'])
                 except Product.DoesNotExist:
                     pass
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -894,3 +984,415 @@ def api_product_purchase_history(request):
             'avg_unit_price': round(avg_price),
         }
     })
+
+
+@login_required(login_url="/login/")
+def api_product_sales_history(request):
+    """API: Lịch sử bán hàng (đơn hàng) của 1 sản phẩm"""
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        return JsonResponse({'status': 'error', 'message': 'Missing product_id'})
+
+    from orders.models import OrderItem
+    items = OrderItem.objects.filter(
+        product_id=product_id,
+        order__status__in=[3, 4, 5],  # Đã duyệt / Đã giao / Hoàn thành
+    ).select_related('order', 'order__customer', 'variant'
+    ).order_by('-order__order_date', '-order__id')
+
+    data = [{
+        'order_code': it.order.code,
+        'order_date': it.order.order_date.strftime('%d/%m/%Y') if it.order.order_date else '',
+        'order_date_raw': it.order.order_date.strftime('%Y-%m-%d') if it.order.order_date else '',
+        'customer': it.order.customer.name if it.order.customer else '',
+        'variant': it.variant.size_name if it.variant else '',
+        'quantity': float(it.quantity),
+        'unit_price': float(it.unit_price),
+        'discount_percent': float(it.discount_percent),
+        'total_price': float(it.total_price),
+    } for it in items]
+
+    # Tổng
+    total_qty = sum(d['quantity'] for d in data)
+    total_amount = sum(d['total_price'] for d in data)
+    avg_price = total_amount / total_qty if total_qty > 0 else 0
+
+    # Price timeline (giá nhập theo thời gian từ GoodsReceiptItem)
+    from products.models import GoodsReceiptItem
+    price_entries = GoodsReceiptItem.objects.filter(
+        product_id=product_id,
+        goods_receipt__status=1,
+    ).select_related('goods_receipt'
+    ).order_by('goods_receipt__receipt_date').values_list(
+        'goods_receipt__receipt_date', 'unit_price', 'quantity'
+    )
+    price_timeline = []
+    for dt, price, qty in price_entries:
+        date_str = dt.strftime('%d/%m/%Y') if dt else ''
+        price_timeline.append({
+            'date': date_str,
+            'price': float(price),
+            'quantity': float(qty),
+        })
+
+    return JsonResponse({
+        'status': 'ok',
+        'data': data,
+        'summary': {
+            'total_orders': len(set(d['order_code'] for d in data)),
+            'total_entries': len(data),
+            'total_quantity': total_qty,
+            'total_amount': total_amount,
+            'avg_unit_price': round(avg_price),
+        },
+        'price_timeline': price_timeline,
+    })
+
+# ============ API: PRODUCT LOCATION ============
+
+@login_required(login_url="/login/")
+def api_get_locations(request):
+    locs = ProductLocation.objects.all()
+    data = [{'id': l.id, 'name': l.name, 'is_active': l.is_active} for l in locs]
+    return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_save_location(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        loc_id = data.get('id')
+        name = (data.get('name', '') or '').strip()
+        if not name:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên vị trí'})
+        if loc_id:
+            loc = ProductLocation.objects.get(id=loc_id)
+        else:
+            loc = ProductLocation()
+        # Check duplicate name
+        dup = ProductLocation.objects.filter(name=name)
+        if loc_id:
+            dup = dup.exclude(id=loc_id)
+        if dup.exists():
+            return JsonResponse({'status': 'error', 'message': f'Vị trí "{name}" đã tồn tại'})
+        loc.name = name
+        loc.is_active = data.get('is_active', True)
+        loc.save()
+        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'id': loc.id, 'name': loc.name})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_delete_location(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        loc = ProductLocation.objects.get(id=data.get('id'))
+        # Check if any product is using this location
+        product_count = Product.objects.filter(location=loc).count()
+        if product_count > 0:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Không thể xóa vị trí "{loc.name}" vì đang được {product_count} sản phẩm sử dụng.'
+            })
+        loc.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
+    except ProductLocation.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy vị trí'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+# ============ EXCEL EXPORT ============
+
+@login_required(login_url="/login/")
+def export_products_excel(request):
+    """Xuất danh sách sản phẩm ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related('stocks').all()
+    products = filter_by_store(products, request)
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã SP', 'width': 14},
+        {'key': 'name', 'label': 'Tên sản phẩm', 'width': 30},
+        {'key': 'barcode', 'label': 'Barcode', 'width': 16},
+        {'key': 'category', 'label': 'Danh mục', 'width': 16},
+        {'key': 'unit', 'label': 'ĐVT', 'width': 8},
+        {'key': 'spec', 'label': 'Quy cách', 'width': 14},
+        {'key': 'import_price', 'label': 'Giá nhập', 'width': 14},
+        {'key': 'cost_price', 'label': 'Giá vốn', 'width': 14},
+        {'key': 'wholesale_no_w', 'label': 'Giá sỉ KBH', 'width': 14},
+        {'key': 'wholesale_w', 'label': 'Giá sỉ BH', 'width': 14},
+        {'key': 'stock', 'label': 'Tồn kho', 'width': 10},
+        {'key': 'supplier', 'label': 'NCC', 'width': 18},
+        {'key': 'location', 'label': 'Vị trí', 'width': 14},
+    ]
+
+    rows = []
+    for i, p in enumerate(products, 1):
+        total_stock = float(sum(s.quantity for s in p.stocks.all()))
+        rows.append({
+            'stt': i,
+            'code': p.code,
+            'name': p.name,
+            'barcode': p.barcode or '',
+            'category': p.category.name if p.category else '',
+            'unit': p.unit or '',
+            'spec': p.specification or '',
+            'import_price': float(p.import_price),
+            'cost_price': float(p.cost_price),
+            'wholesale_no_w': float(p.wholesale_price_no_warranty),
+            'wholesale_w': float(p.wholesale_price_warranty),
+            'stock': total_stock,
+            'supplier': p.supplier.name if p.supplier else '',
+            'location': p.location.name if p.location else '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH SẢN PHẨM',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} sản phẩm',
+        columns=columns,
+        rows=rows,
+        filename=f'San_pham_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['import_price', 'cost_price', 'wholesale_no_w', 'wholesale_w'],
+    )
+
+
+@login_required(login_url="/login/")
+def export_goods_receipts_excel(request):
+    """Xuất danh sách phiếu nhập kho ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    receipts = GoodsReceipt.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
+    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
+        {'key': 'receipt_date', 'label': 'Ngày nhập', 'width': 12},
+        {'key': 'supplier', 'label': 'Nhà cung cấp', 'width': 22},
+        {'key': 'warehouse', 'label': 'Kho nhập', 'width': 16},
+        {'key': 'items_count', 'label': 'Số SP', 'width': 8},
+        {'key': 'total_amount', 'label': 'Tổng tiền', 'width': 16},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 12},
+        {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    total = 0
+    for i, r in enumerate(receipts, 1):
+        total += float(r.total_amount)
+        rows.append({
+            'stt': i,
+            'code': r.code,
+            'receipt_date': r.receipt_date,
+            'supplier': r.supplier.name if r.supplier else '',
+            'warehouse': r.warehouse.name if r.warehouse else '',
+            'items_count': r.items.count(),
+            'total_amount': float(r.total_amount),
+            'status': r.get_status_display(),
+            'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
+            'note': r.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH PHIẾU NHẬP KHO',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} phiếu',
+        columns=columns, rows=rows,
+        filename=f'Nhap_kho_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['total_amount'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'total_amount': total},
+    )
+
+
+@login_required(login_url="/login/")
+def export_stock_transfers_excel(request):
+    """Xuất danh sách chuyển kho ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    transfers = StockTransfer.objects.select_related('from_warehouse', 'to_warehouse', 'created_by').prefetch_related('items__product').all()
+    transfers = filter_by_store(transfers, request, field_name='from_warehouse__store')
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
+        {'key': 'transfer_date', 'label': 'Ngày chuyển', 'width': 12},
+        {'key': 'from_warehouse', 'label': 'Kho xuất', 'width': 18},
+        {'key': 'to_warehouse', 'label': 'Kho nhập', 'width': 18},
+        {'key': 'items_count', 'label': 'Số SP', 'width': 8},
+        {'key': 'total_qty', 'label': 'Tổng SL', 'width': 10},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 12},
+        {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    for i, t in enumerate(transfers, 1):
+        total_qty = sum(float(item.quantity) for item in t.items.all())
+        rows.append({
+            'stt': i,
+            'code': t.code,
+            'transfer_date': t.transfer_date,
+            'from_warehouse': t.from_warehouse.name if t.from_warehouse else '',
+            'to_warehouse': t.to_warehouse.name if t.to_warehouse else '',
+            'items_count': t.items.count(),
+            'total_qty': total_qty,
+            'status': t.get_status_display(),
+            'created_by': t.created_by.get_full_name() or t.created_by.username if t.created_by else '',
+            'note': t.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH PHIẾU CHUYỂN KHO',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} phiếu',
+        columns=columns, rows=rows,
+        filename=f'Chuyen_kho_{datetime.now().strftime("%Y%m%d")}',
+    )
+
+
+@login_required(login_url="/login/")
+def export_stock_checks_excel(request):
+    """Xuất danh sách kiểm kho ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    checks = StockCheck.objects.select_related('warehouse', 'created_by').prefetch_related('items__product').all()
+    checks = filter_by_store(checks, request, field_name='warehouse__store')
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
+        {'key': 'check_date', 'label': 'Ngày kiểm', 'width': 12},
+        {'key': 'warehouse', 'label': 'Kho', 'width': 18},
+        {'key': 'items_count', 'label': 'Số SP', 'width': 8},
+        {'key': 'total_diff', 'label': 'Chênh lệch SL', 'width': 14},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 12},
+        {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    for i, c in enumerate(checks, 1):
+        total_diff = sum(float(item.difference) for item in c.items.all())
+        rows.append({
+            'stt': i,
+            'code': c.code,
+            'check_date': c.check_date,
+            'warehouse': c.warehouse.name if c.warehouse else '',
+            'items_count': c.items.count(),
+            'total_diff': total_diff,
+            'status': c.get_status_display(),
+            'created_by': c.created_by.get_full_name() or c.created_by.username if c.created_by else '',
+            'note': c.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH PHIẾU KIỂM KHO',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} phiếu',
+        columns=columns, rows=rows,
+        filename=f'Kiem_kho_{datetime.now().strftime("%Y%m%d")}',
+    )
+
+
+@login_required(login_url="/login/")
+def export_purchase_orders_excel(request):
+    """Xuất danh sách đơn đặt hàng nhập ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    orders = PurchaseOrder.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
+    orders = filter_by_store(orders, request, field_name='warehouse__store')
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã đơn', 'width': 14},
+        {'key': 'order_date', 'label': 'Ngày đặt', 'width': 12},
+        {'key': 'expected_date', 'label': 'Ngày dự kiến', 'width': 12},
+        {'key': 'supplier', 'label': 'Nhà cung cấp', 'width': 22},
+        {'key': 'warehouse', 'label': 'Kho nhập', 'width': 16},
+        {'key': 'items_count', 'label': 'Số SP', 'width': 8},
+        {'key': 'total_amount', 'label': 'Tổng tiền', 'width': 16},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 12},
+        {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    total = 0
+    for i, o in enumerate(orders, 1):
+        total += float(o.total_amount)
+        rows.append({
+            'stt': i,
+            'code': o.code,
+            'order_date': o.order_date,
+            'expected_date': o.expected_date,
+            'supplier': o.supplier.name if o.supplier else '',
+            'warehouse': o.warehouse.name if o.warehouse else '',
+            'items_count': o.items.count(),
+            'total_amount': float(o.total_amount),
+            'status': o.get_status_display(),
+            'created_by': o.created_by.get_full_name() or o.created_by.username if o.created_by else '',
+            'note': o.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH ĐƠN ĐẶT HÀNG NHẬP',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} đơn',
+        columns=columns, rows=rows,
+        filename=f'Dat_hang_nhap_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['total_amount'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'total_amount': total},
+    )
+
+
+@login_required(login_url="/login/")
+def export_suppliers_excel(request):
+    """Xuất danh sách nhà cung cấp ra Excel"""
+    from core.excel_export import excel_response
+    from datetime import datetime
+
+    suppliers = Supplier.objects.all()
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã NCC', 'width': 12},
+        {'key': 'name', 'label': 'Tên nhà cung cấp', 'width': 28},
+        {'key': 'phone', 'label': 'SĐT', 'width': 14},
+        {'key': 'email', 'label': 'Email', 'width': 22},
+        {'key': 'tax_code', 'label': 'MST', 'width': 14},
+        {'key': 'contact_person', 'label': 'Người liên hệ', 'width': 18},
+        {'key': 'address', 'label': 'Địa chỉ', 'width': 30},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    rows = []
+    for i, s in enumerate(suppliers, 1):
+        rows.append({
+            'stt': i,
+            'code': s.code,
+            'name': s.name,
+            'phone': s.phone or '',
+            'email': s.email or '',
+            'tax_code': s.tax_code or '',
+            'contact_person': s.contact_person or '',
+            'address': s.address or '',
+            'note': s.note or '',
+        })
+
+    return excel_response(
+        title='DANH SÁCH NHÀ CUNG CẤP',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} NCC',
+        columns=columns, rows=rows,
+        filename=f'NCC_{datetime.now().strftime("%Y%m%d")}',
+    )
+

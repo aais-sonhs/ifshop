@@ -12,10 +12,13 @@
             <div class="col-md-4">
                 <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã BG, tên KH, SĐT, tag...">
             </div>
+            <div class="col-md-4 d-flex align-items-center" style="gap:6px;">
+                <span id="col_config_container"></span>
+            </div>
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã BG</th><th>Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th>Người BG</th>{% endif %}<th>Ngày BG</th><th>Số SP</th><th>Tổng tiền</th><th>Hiệu lực</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã BG</th><th data-col="customer">Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th data-col="salesperson">Người BG</th>{% endif %}<th data-col="date">Ngày BG</th><th data-col="items">Số SP</th><th data-col="total">Tổng tiền</th><th data-col="valid">Hiệu lực</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -41,21 +44,20 @@
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <div class="form-group">
-                            <label>Khách hàng
-                                <button type="button" class="btn btn-xs btn-outline-success ml-2" id="btn_quick_customer" title="Tạo khách hàng mới">
-                                    <i class="fas fa-user-plus"></i> Tạo KH mới
-                                </button>
-                            </label>
-                            <select class="form-control form-control-sm select2" id="inp_customer_id">
-                                <option value="">Khách lẻ / khách vãng lai</option>
-                                {% for c in customers %}
-                                <option value="{{ c.id }}" data-name="{{ c.name }}" data-phone="{{ c.phone|default:'' }}" data-code="{{ c.code }}">
-                                    {{ c.name }}{% if c.phone %} - {{ c.phone }}{% endif %} — {{ c.code }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <small class="form-text text-muted">Có thể tìm theo tên hoặc số điện thoại. Để trống sẽ lưu vào khách lẻ / khách vãng lai.</small>
+                        <div class="form-group" style="position:relative;">
+                            <label>Khách hàng</label>
+                            <input type="hidden" id="inp_customer_id" value="">
+                            <div class="input-group input-group-sm" id="customer_picker_group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-white"><i class="fas fa-user text-primary"></i></span>
+                                </div>
+                                <input type="text" class="form-control" id="inp_customer_search" placeholder="Gõ tên hoặc SĐT khách hàng..." autocomplete="off">
+                                <div class="input-group-append" id="btn_clear_customer" style="display:none;">
+                                    <button class="btn btn-outline-secondary" type="button" title="Xóa khách hàng"><i class="fas fa-times"></i></button>
+                                </div>
+                            </div>
+                            <div id="customer_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; max-height:260px; overflow-y:auto; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>
+                            <small class="form-text text-muted">Nhập tên/SĐT để tìm. Để trống = khách lẻ / vãng lai. <kbd>F4</kbd></small>
                         </div>
                     </div>
                     <div class="col-md-2">
@@ -101,22 +103,36 @@
 
                 <!-- Chọn sản phẩm -->
                 <div class="card card-outline card-info mt-2">
-                    <div class="card-header py-1">
+                    <div class="card-header py-1 d-flex align-items-center justify-content-between">
                         <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
-                        <div class="card-tools">
-                            <small class="text-muted mr-2"><kbd>F3</kbd> Tạo SP mới</small>
+                        <div class="card-tools d-flex align-items-center" style="gap:8px;">
+                            <small class="text-muted"><kbd>F2</kbd> Tìm SP</small>
+                            <small class="text-muted"><kbd>F3</kbd> Tạo SP mới</small>
+                            <small class="text-muted"><kbd>F4</kbd> Tìm KH</small>
                         </div>
                     </div>
                     <div class="card-body p-0">
-                        <!-- THANH TÌM KIẾM SẢN PHẨM NHANH -->
-                        <div class="p-2 bg-light border-bottom">
-                            <div class="input-group input-group-sm">
+                        <!-- THANH TÌM KIẾM SẢN PHẨM — LUÔN HIỂN THỊ, LUÔN SẴN SÀNG -->
+                        <div class="px-2 pt-2 pb-1" style="background:linear-gradient(135deg, #e3f2fd 0%, #f5f5f5 100%); border-bottom:2px solid #42a5f5; position:relative;">
+                            <div class="input-group">
                                 <div class="input-group-prepend">
-                                    <span class="input-group-text bg-white"><i class="fas fa-search text-primary"></i></span>
+                                    <span class="input-group-text" style="background:#1976d2; border-color:#1976d2;"><i class="fas fa-search text-white"></i></span>
                                 </div>
-                                <input type="text" class="form-control" id="quick_search_product" placeholder="Gõ tên hoặc mã SP để thêm nhanh... (Enter để thêm)" autocomplete="off">
+                                <input type="text" class="form-control" id="quick_search_product"
+                                    placeholder="🔍 Tìm & thêm sản phẩm — gõ tên, mã SP hoặc quét barcode... (↑↓ chọn, Enter thêm)"
+                                    autocomplete="off"
+                                    style="font-size:14px; border:2px solid #42a5f5; border-left:none; background:#fff;">
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
+                                        <i class="fas fa-plus-circle"></i> <span class="d-none d-md-inline">Tạo SP</span>
+                                    </button>
+                                </div>
                             </div>
-                            <div id="quick_search_results" style="display:none; position:absolute; z-index:9999; width:calc(100% - 1rem); max-height:250px; overflow-y:auto; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 4px 4px; box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-muted" id="search_status_hint"><i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay</small>
+                                <small class="text-muted" id="search_count_hint"></small>
+                            </div>
+                            <div id="quick_search_results" style="display:none; position:absolute; left:0; right:0; z-index:9999; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #42a5f5; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 6px 20px rgba(0,0,0,0.18);"></div>
                         </div>
                         <table class="table table-sm table-bordered mb-0" id="items_tbl">
                             <thead class="bg-light">
@@ -214,12 +230,31 @@
                         </div>
                     </div>
                 </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Nhóm khách hàng</label>
+                            <select class="form-control form-control-sm" id="qc_group_id">
+                                <option value="">-- Chọn nhóm --</option>
+                                {% for g in customer_groups %}
+                                <option value="{{ g.id }}">{{ g.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Ghi chú</label>
+                            <input type="text" class="form-control form-control-sm" id="qc_note" placeholder="VD: Khách buôn, khách mới...">
+                        </div>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label>Địa chỉ</label>
                     <input type="text" class="form-control form-control-sm" id="qc_address" placeholder="VD: 123 Nguyễn Huệ, Q.1, TP.HCM">
                 </div>
                 <div class="alert alert-info py-2 mb-0">
-                    <small><i class="fas fa-info-circle mr-1"></i> Mã khách hàng sẽ được tự động sinh. Bạn có thể bổ sung thêm thông tin sau.</small>
+                    <small><i class="fas fa-info-circle mr-1"></i> Mã KH tự động sinh. Để trống KH = khách lẻ / vãng lai.</small>
                 </div>
             </div>
             <div class="modal-footer py-2">
@@ -288,6 +323,91 @@
         </div>
     </div>
 </div>
+
+<!-- MODAL CHỌN IN PHIẾU -->
+<div class="modal fade" id="modal_print_config" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden;">
+            <div class="modal-header py-3" style="background:linear-gradient(135deg,#1565c0,#0d47a1);border:none;">
+                <h5 class="modal-title text-white"><i class="fas fa-print mr-2"></i>Lưu thành công — Chọn phiếu in</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="text-center mb-3">
+                    <div class="d-inline-flex align-items-center px-3 py-2" style="background:#e8f5e9;border-radius:8px;">
+                        <i class="fas fa-check-circle text-success mr-2" style="font-size:20px;"></i>
+                        <span style="font-size:14px;">Đơn <strong id="print_order_code"></strong> đã lưu. Chọn loại phiếu để in:</span>
+                    </div>
+                </div>
+                <div class="row" id="print_options_grid">
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="k80">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#ff6f00,#e65100);"><i class="fas fa-receipt"></i></div>
+                            <div class="print-label">Hóa đơn K80</div>
+                            <div class="print-desc">Giấy nhiệt 80mm</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="a4">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#1565c0,#0d47a1);"><i class="fas fa-file-invoice"></i></div>
+                            <div class="print-label">Hóa đơn A4</div>
+                            <div class="print-desc">Đơn hàng chính thức</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="quotation">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#e65100,#bf360c);"><i class="fas fa-file-alt"></i></div>
+                            <div class="print-label">Báo giá</div>
+                            <div class="print-desc">Phiếu báo giá A4</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="warranty">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#2e7d32,#1b5e20);"><i class="fas fa-shield-alt"></i></div>
+                            <div class="print-label">Phiếu bảo hành</div>
+                            <div class="print-desc">Kèm sản phẩm bán</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="export">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#5d4037,#3e2723);"><i class="fas fa-dolly"></i></div>
+                            <div class="print-label">Phiếu xuất kho</div>
+                            <div class="print-desc">Cho kho / giao hàng</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card print-option-skip" data-dismiss="modal">
+                            <div class="print-icon" style="background:#bdbdbd;"><i class="fas fa-arrow-left"></i></div>
+                            <div class="print-label">Bỏ qua</div>
+                            <div class="print-desc">Quay lại danh sách</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.print-option-card {
+    border: 2px solid #e0e0e0; border-radius: 12px; padding: 16px 12px;
+    text-align: center; cursor: pointer; transition: all 0.2s ease;
+    background: #fff; height: 100%;
+}
+.print-option-card:hover {
+    border-color: #1565c0; transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(21,101,192,0.15);
+}
+.print-option-card .print-icon {
+    width: 52px; height: 52px; border-radius: 12px; margin: 0 auto 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #fff;
+}
+.print-option-card .print-label { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 2px; }
+.print-option-card .print-desc { font-size: 11px; color: #999; }
+.print-option-card.print-option-skip { border-style: dashed; }
+.print-option-card.print-option-skip:hover { border-color: #999; }
+</style>
 {% endblock %}
 
 {% block extra_js %}
@@ -305,11 +425,53 @@
 #items_tbl tbody tr.row-duplicate {
     background: #fff8e1;
 }
+#quick_search_results .quick-search-item.qs-active,
+#quick_search_results .quick-search-item:hover {
+    background: #e3f2fd !important;
+}
+#quick_search_results .quick-search-item {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.12s ease;
+}
+#quick_search_results .quick-search-item:last-child {
+    border-bottom: none;
+}
+#quick_search_product:focus {
+    border-color: #1976d2 !important;
+    box-shadow: 0 0 0 3px rgba(25,118,210,0.2), 0 2px 8px rgba(25,118,210,0.1);
+}
+@keyframes searchPulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(25,118,210,0.1); }
+    50% { box-shadow: 0 0 0 6px rgba(25,118,210,0.2); }
+}
+#quick_search_product:focus:placeholder-shown {
+    animation: searchPulse 2s infinite;
+}
 </style>
+<script src="/static/js/column_config.js"></script>
 <script>
 var allProducts = [];
 var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+// Column Config
+var quotationColConfig = new ColumnConfig({
+    storageKey: 'ifshop_quotation_columns',
+    tableSelector: '#data_tbl',
+    buttonContainer: '#col_config_container',
+    columns: [
+        {key: 'stt',         label: 'STT',           default: true,  alwaysOn: true},
+        {key: 'code',        label: 'Mã BG',          default: true,  alwaysOn: true},
+        {key: 'customer',    label: 'Khách hàng',     default: true},
+        {key: 'salesperson', label: 'Người BG',       default: true},
+        {key: 'date',        label: 'Ngày BG',         default: true},
+        {key: 'items',       label: 'Số SP',          default: true},
+        {key: 'total',       label: 'Tổng tiền',      default: true},
+        {key: 'valid',       label: 'Hiệu lực',       default: true},
+        {key: 'status',      label: 'Trạng thái',     default: true},
+        {key: 'actions',     label: 'Thao tác',       default: true},
+    ]
+});
 
 function getSelectedProductKey($row){
     var $selected = $row.find('.sel_product option:selected');
@@ -413,99 +575,101 @@ function openQuickCustomerModalWithTerm(term){
     }, 200);
 }
 
-function customerMatcher(params, data){
-    var term = normalizeCustomerSearch(params.term);
-    if(!term){ return data; }
-    if(!data.id){ return data; }
+function customerMatcher(params, data){ return data; }
 
-    var $option = $(data.element);
-    var optionText = normalizeCustomerSearch(data.text);
-    var optionName = normalizeCustomerSearch($option.data('name'));
-    var optionCode = normalizeCustomerSearch($option.data('code'));
-    var optionPhone = (($option.data('phone') || '').toString()).replace(/\D/g, '');
-    var termDigits = ((params.term || '').toString()).replace(/\D/g, '');
+// ============ CUSTOMER AUTOCOMPLETE (Sapo-style) ============
+var allCustomers = [
+    {% for c in customers %}
+    {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}"},
+    {% endfor %}
+];
 
-    if(optionText.indexOf(term) >= 0 || optionName.indexOf(term) >= 0 || optionCode.indexOf(term) >= 0){
-        return data;
+function searchCustomers(term){
+    if(!term) return allCustomers.slice(0, 15);
+    var t = normalizeCustomerSearch(term);
+    var digits = term.replace(/\D/g, '');
+    return allCustomers.filter(function(c){
+        var nameNorm = normalizeCustomerSearch(c.name);
+        var phoneNorm = (c.phone || '').replace(/\D/g, '');
+        var codeNorm = normalizeCustomerSearch(c.code);
+        if(nameNorm.indexOf(t) >= 0) return true;
+        if(codeNorm.indexOf(t) >= 0) return true;
+        if(digits && phoneNorm.indexOf(digits) >= 0) return true;
+        return false;
+    }).slice(0, 20);
+}
+
+function renderCustomerDropdown(results, term){
+    var $dd = $('#customer_dropdown');
+    var html = '';
+    if(results.length){
+        results.forEach(function(c){
+            var phonePart = c.phone ? ' <small class="text-muted">— ' + $('<span>').text(c.phone).html() + '</small>' : '';
+            html += '<div class="px-3 py-2 border-bottom customer-dd-item" style="cursor:pointer;" data-id="'+c.id+'" data-name="'+$('<span>').text(c.name).html()+'" data-phone="'+$('<span>').text(c.phone||'').html()+'">' +
+                '<div><strong>' + $('<span>').text(c.name).html() + '</strong>' + phonePart + '</div>' +
+                '<small class="text-muted">' + $('<span>').text(c.code).html() + '</small></div>';
+        });
     }
-    if(termDigits && optionPhone.indexOf(termDigits) >= 0){
-        return data;
+    if(!results.length && term){
+        html += '<div class="px-3 py-2 text-muted text-center"><i class="fas fa-search mr-1"></i> Không tìm thấy</div>';
     }
-    return null;
+    if(term){
+        html += '<div class="px-3 py-2 border-top bg-light customer-dd-create" style="cursor:pointer;">' +
+            '<i class="fas fa-user-plus text-success mr-1"></i> <strong class="text-success">Tạo khách hàng mới</strong>' +
+            ' <small class="text-muted">"' + $('<span>').text(term).html() + '"</small></div>';
+    }
+    $dd.html(html).show();
+}
+
+function selectCustomer(id, name, phone){
+    $('#inp_customer_id').val(id);
+    var label = name + (phone ? ' - ' + phone : '');
+    $('#inp_customer_search').val(label).addClass('border-success font-weight-bold');
+    $('#btn_clear_customer').show();
+    $('#customer_dropdown').hide();
+}
+function clearCustomer(){
+    $('#inp_customer_id').val('');
+    $('#inp_customer_search').val('').removeClass('border-success font-weight-bold');
+    $('#btn_clear_customer').hide();
+    $('#customer_dropdown').hide();
 }
 
 function initCustomerPicker(){
-    var $customer = $('#inp_customer_id');
-    if(!$customer.length){ return; }
-    if($customer.hasClass('select2-hidden-accessible')){
-        $customer.select2('destroy');
-    }
-
-    $customer.select2({
-        width: '100%',
-        theme: 'bootstrap4',
-        allowClear: true,
-        placeholder: 'Khách lẻ / khách vãng lai',
-        dropdownParent: $('#modal_form'),
-        matcher: customerMatcher,
-        escapeMarkup: function(markup){ return markup; },
-        language: {
-            noResults: function(){
-                if(currentCustomerSearchTerm){
-                    return '<button type="button" class="btn btn-link p-0 select2-create-customer">+ Tạo khách hàng mới: "' +
-                        $('<div>').text(currentCustomerSearchTerm).html() + '"</button>';
-                }
-                return '<span class="text-muted">Nhập tên hoặc số điện thoại để tìm khách hàng</span>';
-            }
-        },
-        templateResult: function(data){
-            if(!data.id){
-                return '<span class="text-muted">Khách lẻ / khách vãng lai</span>';
-            }
-            var $option = $(data.element);
-            var name = $option.data('name') || data.text;
-            var phone = $option.data('phone');
-            var code = $option.data('code');
-            var meta = [];
-            if(phone){ meta.push(phone); }
-            if(code){ meta.push(code); }
-            return '<div><strong>' + $('<div>').text(name).html() + '</strong>' +
-                (meta.length ? '<br><small class="text-muted">' + $('<div>').text(meta.join(' • ')).html() + '</small>' : '') +
-                '</div>';
-        },
-        templateSelection: function(data){
-            if(!data.id){
-                return 'Khách lẻ / khách vãng lai';
-            }
-            var $option = $(data.element);
-            var name = $option.data('name') || data.text;
-            var phone = $option.data('phone');
-            return phone ? (name + ' - ' + phone) : name;
-        }
+    var debounceTimer;
+    $('#inp_customer_search').off('input.cust').on('input.cust', function(){
+        var term = $(this).val().trim();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function(){
+            $('#inp_customer_id').val('');
+            $('#inp_customer_search').removeClass('border-success font-weight-bold');
+            $('#btn_clear_customer').hide();
+            renderCustomerDropdown(searchCustomers(term), term);
+        }, 150);
     });
-
-    $customer.off('select2:open.customerSearch').on('select2:open.customerSearch', function(){
-        setTimeout(function(){
-            var $search = $('.select2-container--open .select2-search__field');
-            $search.attr('placeholder', 'Tìm theo tên hoặc số điện thoại');
-            currentCustomerSearchTerm = ($search.val() || '').trim();
-            $search.off('input.customerSearch').on('input.customerSearch', function(){
-                currentCustomerSearchTerm = ($(this).val() || '').trim();
-            });
-        }, 0);
+    $('#inp_customer_search').off('focus.cust').on('focus.cust', function(){
+        if($('#inp_customer_id').val()) return;
+        renderCustomerDropdown(searchCustomers($(this).val().trim()), $(this).val().trim());
     });
-
-    $customer.off('select2:close.customerSearch').on('select2:close.customerSearch', function(){
-        currentCustomerSearchTerm = '';
+    $(document).off('click.custDD', '.customer-dd-item').on('click.custDD', '.customer-dd-item', function(){
+        selectCustomer($(this).data('id'), $(this).data('name'), $(this).data('phone') || '');
+    });
+    $(document).off('click.custCreate', '.customer-dd-create').on('click.custCreate', '.customer-dd-create', function(){
+        $('#customer_dropdown').hide();
+        openQuickCustomerModalWithTerm($('#inp_customer_search').val().trim());
+    });
+    $('#btn_clear_customer').off('click.custClear').on('click.custClear', function(){
+        clearCustomer(); $('#inp_customer_search').focus();
+    });
+    $(document).off('mousedown.custDDHide').on('mousedown.custDDHide', function(e){
+        if(!$(e.target).closest('#customer_picker_group, #customer_dropdown').length) $('#customer_dropdown').hide();
+    });
+    $(document).off('keydown.custF4').on('keydown.custF4', function(e){
+        if(e.key === 'F4' && $('#modal_form').hasClass('show')){ e.preventDefault(); $('#inp_customer_search').focus().select(); }
     });
 }
 
-$(document).on('mousedown', '.select2-create-customer', function(e){
-    e.preventDefault();
-    e.stopPropagation();
-    $('#inp_customer_id').select2('close');
-    openQuickCustomerModalWithTerm(currentCustomerSearchTerm);
-});
+// Customer create handler moved to initCustomerPicker()
 
 $(document).ready(function(){
     $.get('/api/products_select/', function(res){ allProducts = res.data; });
@@ -514,7 +678,7 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');
-        $('#inp_customer_id').val('').trigger('change');
+        clearCustomer();
         $('#inp_valid_until').val('');
         $('#inp_status').val('0'); $('#inp_note').val('');
         setMoneyValue('#inp_discount_amount', 0);
@@ -532,50 +696,152 @@ $(document).ready(function(){
         $('#inp_quotation_date').val(today);
         $('#modal_title').text('Tạo báo giá');
         $('#modal_form').modal('show');
+        // Auto-focus vào ô tìm SP khi modal mở xong
+        $('#modal_form').one('shown.bs.modal', function(){
+            $('#quick_search_product').focus();
+        });
     });
 
     $('#btn_add_item').click(function(){ addItemRow(null); });
     $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
     $('#filter_text').on('input', function(){ loadData(); });
 
-    // Quick search product
+    // Quick search product - POS-style
     var searchTimeout = null;
+
+    // Show popular items when search focused & empty
+    $('#quick_search_product').on('focus', function(){
+        var term = $(this).val().trim();
+        if(!term && allProducts.length > 0){
+            var popular = allProducts.slice(0, 8);
+            renderProductSearchResults(popular, '', true);
+        }
+    });
+
     $('#quick_search_product').on('input', function(){
         var term = $(this).val().trim().toLowerCase();
         clearTimeout(searchTimeout);
-        if(term.length < 1){ $('#quick_search_results').hide(); return; }
+        if(term.length < 1){
+            $('#quick_search_results').hide();
+            $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
+            $('#search_count_hint').text('');
+            return;
+        }
         searchTimeout = setTimeout(function(){
             var results = allProducts.filter(function(p){
                 return p.name.toLowerCase().indexOf(term)>=0 || p.code.toLowerCase().indexOf(term)>=0;
-            }).slice(0, 10);
-            if(results.length === 0){
-                $('#quick_search_results').html('<div class="p-2 text-muted text-center"><i class="fas fa-search mr-1"></i>Không tìm thấy. Nhấn <kbd>F3</kbd> để tạo SP mới</div>').show();
+            });
+
+            // Exact code match → auto-add (barcode scanner)
+            if(results.length === 1 && results[0].code.toLowerCase() === term){
+                addItemFromProduct(results[0]);
+                $('#quick_search_product').val('');
+                $('#quick_search_results').hide();
+                $('#search_status_hint').html('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + results[0].name + '</b>');
+                setTimeout(function(){ $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
                 return;
             }
-            var html = '';
-            results.forEach(function(p){
-                var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:32px;height:32px;object-fit:cover;border-radius:4px;margin-right:8px;">' : '<span style="display:inline-block;width:32px;height:32px;background:#eee;border-radius:4px;margin-right:8px;text-align:center;line-height:32px;"><i class="fas fa-box text-muted"></i></span>';
-                var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
-                var stockHtml = '<span class="' + (p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger') + '">Thực: ' + fmt(p.total_stock) + ' · Bán: ' + fmt(p.total_sellable_stock) + '</span>';
-                html += '<div class="quick-search-item d-flex align-items-center p-2 border-bottom" data-product-id="'+p.id+'" style="cursor:pointer;">' +
-                    imgHtml + '<div class="flex-grow-1"><strong>'+p.code+'</strong> - '+p.name+'<br><small>'+priceHtml+' · '+stockHtml+' · '+p.unit+'</small></div>' +
-                    '<button class="btn btn-xs btn-outline-primary ml-2"><i class="fas fa-plus"></i></button></div>';
-            });
-            $('#quick_search_results').html(html).show();
-        }, 200);
+
+            $('#search_count_hint').text(results.length + ' SP');
+            renderProductSearchResults(results.slice(0, 12), term, false);
+        }, 150);
     });
+
+    function renderProductSearchResults(results, term, isPopular){
+        if(results.length === 0){
+            var noResultHtml = '<div class="p-3 text-center">' +
+                '<i class="fas fa-search text-muted" style="font-size:24px;"></i>' +
+                '<div class="mt-1 text-muted">Không tìm thấy sản phẩm</div>' +
+                '<button class="btn btn-sm btn-outline-info mt-2" onclick="$(document).trigger(jQuery.Event(\'keydown\',{key:\'F3\'}))"><i class="fas fa-plus-circle mr-1"></i>Tạo sản phẩm mới</button>' +
+                '</div>';
+            $('#quick_search_results').html(noResultHtml).show();
+            $('#search_status_hint').html('<i class="fas fa-times-circle text-danger mr-1"></i>Không tìm thấy — nhấn <kbd>F3</kbd> để tạo mới');
+            return;
+        }
+        var html = '';
+        if(isPopular){
+            html += '<div class="px-3 py-1 bg-light border-bottom"><small class="text-muted font-weight-bold"><i class="fas fa-star text-warning mr-1"></i>Sản phẩm gần đây</small></div>';
+        }
+        results.forEach(function(p, idx){
+            var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
+            var priceHtml = '<span class="text-success font-weight-bold">' + fmt(p.selling_price) + 'đ</span>';
+            var stockColor = p.total_sellable_stock > 0 ? 'text-primary' : 'text-danger';
+            var stockHtml = '<span class="' + stockColor + '">Tồn: ' + fmt(p.total_stock) + ' · Bán được: ' + fmt(p.total_sellable_stock) + '</span>';
+            html += '<div class="quick-search-item d-flex align-items-center px-3 py-2' + (idx === 0 && !isPopular ? ' qs-active' : '') + '" data-product-id="'+p.id+'" style="cursor:pointer; transition:background 0.15s;">' +
+                imgHtml +
+                '<div class="flex-grow-1">' +
+                '<div><strong>' + p.code + '</strong> — ' + p.name + '</div>' +
+                '<small>' + priceHtml + ' · ' + stockHtml + ' · <span class="text-muted">' + p.unit + '</span></small>' +
+                '</div>' +
+                '<span class="btn btn-sm btn-primary ml-2" style="min-width:32px;"><i class="fas fa-plus"></i></span>' +
+                '</div>';
+        });
+        $('#quick_search_results').html(html).show();
+        if(!isPopular){
+            $('#search_status_hint').html('<i class="fas fa-check text-success mr-1"></i>' + results.length + ' kết quả — <b>↑↓</b> chọn, <b>Enter</b> thêm');
+        }
+    }
+
     $(document).on('click', '.quick-search-item', function(){
         var pid = $(this).data('product-id');
         var product = allProducts.find(function(p){ return p.id == pid; });
         if(product) addItemFromProduct(product);
         $('#quick_search_product').val('').focus();
         $('#quick_search_results').hide();
+        $('#search_status_hint').html('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + (product ? product.name : '') + '</b>');
+        setTimeout(function(){ $('#search_status_hint').html('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
     });
     $('#quick_search_product').on('keydown', function(e){
-        if(e.key === 'Enter'){ e.preventDefault(); var $first = $('#quick_search_results .quick-search-item:first'); if($first.length) $first.click(); }
+        var $items = $('#quick_search_results .quick-search-item');
+        var $active = $items.filter('.qs-active');
+        if(e.key === 'ArrowDown'){
+            e.preventDefault();
+            if(!$items.length) return;
+            if($active.length){
+                var $next = $active.removeClass('qs-active').next('.quick-search-item');
+                if($next.length){ $next.addClass('qs-active'); } else { $items.first().addClass('qs-active'); }
+            } else { $items.first().addClass('qs-active'); }
+            var $cur = $items.filter('.qs-active');
+            if($cur.length) $cur[0].scrollIntoView({block:'nearest'});
+            return;
+        }
+        if(e.key === 'ArrowUp'){
+            e.preventDefault();
+            if(!$items.length) return;
+            if($active.length){
+                var $prev = $active.removeClass('qs-active').prev('.quick-search-item');
+                if($prev.length){ $prev.addClass('qs-active'); } else { $items.last().addClass('qs-active'); }
+            } else { $items.last().addClass('qs-active'); }
+            var $cur2 = $items.filter('.qs-active');
+            if($cur2.length) $cur2[0].scrollIntoView({block:'nearest'});
+            return;
+        }
+        if(e.key === 'Enter'){
+            e.preventDefault();
+            var $sel = $active.length ? $active : $items.first();
+            if($sel.length) $sel.click();
+        }
+        if(e.key === 'Escape'){
+            $('#quick_search_results').hide();
+            $(this).val('');
+        }
     });
     $(document).on('click', function(e){
         if(!$(e.target).closest('#quick_search_product, #quick_search_results').length) $('#quick_search_results').hide();
+    });
+
+    // "Tạo SP" button in search bar → triggers F3 shortcut
+    $('#btn_quick_create_product_hint').click(function(){
+        $(document).trigger(jQuery.Event('keydown', {key: 'F3'}));
+    });
+
+    // F2 shortcut - focus vào ô tìm sản phẩm
+    $(document).on('keydown', function(e){
+        if(e.key === 'F2'){
+            e.preventDefault();
+            if(!$('#modal_form').hasClass('show')) return;
+            $('#quick_search_product').focus().select();
+        }
     });
 
     // F3 shortcut - tạo nhanh sản phẩm
@@ -607,7 +873,7 @@ $(document).ready(function(){
         formData.append('unit', $('#qp_unit').val().trim() || 'Cái');
         formData.append('cost_price', getMoneyValue('#qp_cost_price'));
         formData.append('selling_price', getMoneyValue('#qp_selling_price'));
-        formData.append('listed_price', getMoneyValue('#qp_selling_price'));
+        formData.append('import_price', getMoneyValue('#qp_cost_price'));
         formData.append('is_service', $('#qp_is_service').is(':checked') ? '1' : '0');
         formData.append('variants', '[]');
         $.ajax({
@@ -643,6 +909,8 @@ $(document).ready(function(){
             email: $('#qc_email').val().trim(),
             company: $('#qc_company').val().trim(),
             address: $('#qc_address').val().trim(),
+            group_id: $('#qc_group_id').val() || null,
+            note: $('#qc_note').val().trim(),
         };
         $.ajax({
             url: '/api/orders/quick_customer/', type: 'POST',
@@ -652,15 +920,8 @@ $(document).ready(function(){
             success: function(r){
                 if(r.status === 'ok'){
                     var c = r.customer;
-                    var $existingOpt = $('#inp_customer_id option[value="' + c.id + '"]');
-                    if(!$existingOpt.length){
-                        $existingOpt = $(new Option(c.name + (c.phone ? ' - ' + c.phone : '') + ' — ' + c.code, c.id, true, true));
-                        $existingOpt.attr('data-name', c.name);
-                        $existingOpt.attr('data-phone', c.phone || '');
-                        $existingOpt.attr('data-code', c.code);
-                        $('#inp_customer_id').append($existingOpt);
-                    }
-                    $('#inp_customer_id').val(c.id).trigger('change');
+                    allCustomers.push({id: c.id, name: c.name, phone: c.phone || '', code: c.code});
+                    selectCustomer(c.id, c.name, c.phone || '');
                     $('#modal_quick_customer').modal('hide');
                     toastr ? toastr.success(r.message) : alert(r.message);
                 } else {
@@ -717,8 +978,17 @@ $(document).ready(function(){
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
             success: function(r){
-                if(r.status === 'ok'){ $('#modal_form').modal('hide'); loadData(); }
-                alert(r.message);
+                if(r.status === 'ok'){
+                    $('#modal_form').modal('hide');
+                    loadData();
+                    // Show print modal
+                    window._lastSavedOrderId = r.order_id;
+                    window._lastSavedOrderSource = 'quotation';
+                    $('#print_order_code').text(r.order_code || code);
+                    $('#modal_print_config').modal('show');
+                } else {
+                    alert(r.message);
+                }
             }
         });
     });
@@ -832,12 +1102,23 @@ function addItemRow(item){
         if(pid){
             var $duplicate = findDuplicateRowForKey(productKey, $row);
             if($duplicate.length){
-                $(this).val('').trigger('change.select2');
-                $row.find('.lbl_unit').text('');
-                $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
-                flashExistingRow($duplicate);
+                // Offer to merge instead of just blocking
+                var existingQty = parseFloat($duplicate.find('.inp_qty').val()) || 0;
+                var newQty = parseFloat($row.find('.inp_qty').val()) || 1;
+                var productName = $opt.text();
+                if(confirm('⚠️ Sản phẩm "' + productName + '" đã có trong báo giá (SL: ' + existingQty + ').\n\nBạn muốn gộp thêm ' + newQty + ' vào dòng cũ?')){
+                    $duplicate.find('.inp_qty').val(existingQty + newQty);
+                    calcLine($duplicate);
+                    flashExistingRow($duplicate);
+                    $row.remove();
+                    calcTotal();
+                    toastr ? toastr.success('Đã gộp +'+ newQty +' vào dòng cũ (tổng: '+ (existingQty+newQty) +')') : null;
+                } else {
+                    $(this).val('').trigger('change.select2');
+                    $row.find('.lbl_unit').text('');
+                    $row.find('.lbl_stock').text('-').removeClass('text-success text-danger font-weight-bold text-muted');
+                }
                 syncDuplicateWarnings();
-                alert('Sản phẩm này đã có trong báo giá. Vui lòng chỉnh sửa dòng cũ thay vì thêm trùng.');
                 return;
             }
         }
@@ -927,15 +1208,22 @@ function loadData(){
             if(d.tags){
                 customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
             }
-            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+customerHtml+'</td>'+sp+
-                '<td>'+d.quotation_date+'</td>'+
-                '<td class="text-center">'+d.item_count+'</td>'+
-                '<td class="text-right">'+fmt(d.final_amount)+'</td><td>'+d.valid_until+'</td>'+
-                '<td>'+getQuotationStatusBadgeHtml(d.status, d.status_display)+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
+            var actionsHtml = '<button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')">Sao chép</button> '+
                 '<button class="btn btn-xs btn-outline-success" onclick="printQuotation('+d.id+')">In</button> '+
-                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></td></tr>';
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button>';
+            h += '<tr>'+
+                quotationColConfig.td('stt', (i+1))+
+                quotationColConfig.td('code', d.code)+
+                quotationColConfig.td('customer', customerHtml)+
+                sp+
+                quotationColConfig.td('date', d.quotation_date)+
+                quotationColConfig.td('items', d.item_count, 'class="text-center"')+
+                quotationColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
+                quotationColConfig.td('valid', d.valid_until)+
+                quotationColConfig.td('status', getQuotationStatusBadgeHtml(d.status, d.status_display))+
+                quotationColConfig.td('actions', actionsHtml)+
+                '</tr>';
         });
         var cols = {% if biz.opt_quotation_salesperson %}10{% else %}9{% endif %};
         $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
@@ -948,7 +1236,10 @@ function editItem(id){
         var q = res.quotation;
         $('#edit_id').val(q.id);
         $('#inp_code').val(q.code);
-        $('#inp_customer_id').val(q.customer_id || '').trigger('change');
+        if(q.customer_id){
+            var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
+            if(cust) selectCustomer(cust.id, cust.name, cust.phone);
+        } else { clearCustomer(); }
         $('#inp_quotation_date').val(q.quotation_date);
         $('#inp_valid_until').val(q.valid_until);
         setMoneyValue('#inp_discount_amount', q.discount_amount);
@@ -968,6 +1259,7 @@ function editItem(id){
         $('#modal_form').one('shown.bs.modal', function(){
             res.items.forEach(function(it){ addItemRow(it); });
             calcTotal();
+            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
         });
     });
 }
@@ -1058,7 +1350,10 @@ function copyQuotation(id){
         var q = res.quotation;
         // Reset form cho tạo mới
         $('#edit_id').val('');
-        $('#inp_customer_id').val(q.customer_id || '').trigger('change');
+        if(q.customer_id){
+            var cust2 = allCustomers.find(function(c){ return c.id == q.customer_id; });
+            if(cust2) selectCustomer(cust2.id, cust2.name, cust2.phone);
+        } else { clearCustomer(); }
         setMoneyValue('#inp_discount_amount', q.discount_amount);
         setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
         $('#inp_status').val('0'); // Nháp
@@ -1079,8 +1374,19 @@ function copyQuotation(id){
         $('#modal_form').one('shown.bs.modal', function(){
             res.items.forEach(function(it){ addItemRow(it); });
             calcTotal();
+            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
         });
     });
 }
+
+// === PRINT CONFIG MODAL ===
+$(document).on('click', '.print-option-card[data-print-type]', function(){
+    var type = $(this).data('print-type');
+    var orderId = window._lastSavedOrderId;
+    var source = window._lastSavedOrderSource || 'quotation';
+    if(!orderId) return;
+    var url = '/api/orders/print/?id=' + orderId + '&type=' + type + '&source=' + source;
+    window.open(url, '_blank');
+});
 </script>
 {% endblock %}

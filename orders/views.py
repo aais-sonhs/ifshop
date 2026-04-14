@@ -1,7 +1,9 @@
 import json
 import logging
+import re
 from collections import defaultdict
 from datetime import date
+from decimal import Decimal
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -184,9 +186,12 @@ def order_tbl(request):
         {'id': u.id, 'full_name': u.get_full_name() or u.username}
         for u in brand_users
     ]
+    from customers.models import CustomerGroup
+    customer_groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
     context = {
         'active_tab': 'order_tbl',
         'customers': customers,
+        'customer_groups': customer_groups,
         'warehouses': warehouses,
         'cashbooks': cashbooks,
         'payment_methods': payment_methods,
@@ -287,9 +292,12 @@ def quotation_tbl(request):
         {'id': u.id, 'full_name': u.get_full_name() or u.username}
         for u in brand_users
     ]
+    from customers.models import CustomerGroup
+    customer_groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
     context = {
         'active_tab': 'quotation_tbl',
         'customers': customers,
+        'customer_groups': customer_groups,
         'system_users': system_users,
     }
     return render(request, "orders/quotation_list.html", context)
@@ -341,8 +349,8 @@ def api_get_products_for_select(request):
             'id': v.id,
             'size_name': v.size_name,
             'sku': v.sku,
+            'import_price': float(v.import_price),
             'cost_price': float(v.cost_price),
-            'listed_price': float(v.listed_price),
             'selling_price': float(v.selling_price),
         } for v in p.variants.filter(is_active=True)]
 
@@ -371,7 +379,7 @@ def api_get_products_for_select(request):
             'category_id': p.category_id,
             'category_name': p.category.name if p.category else '',
             'selling_price': float(p.selling_price),
-            'listed_price': float(p.listed_price),
+            'import_price': float(p.import_price),
             'cost_price': float(p.cost_price),
             'price': float(p.selling_price),
             'is_weight_based': p.is_weight_based,
@@ -391,44 +399,44 @@ def api_get_products_for_select(request):
 
 # ============ API: CODE GENERATION ============
 
+def _auto_next_order_code():
+    """Internal helper: sinh mã đơn hàng tiếp theo, tránh trùng cả soft-delete.
+    Luôn tăng tiến, không bao giờ tái sử dụng mã đã hủy/xóa (giống Sapo).
+    """
+    prefix = 'DH-'
+    # Tìm số lớn nhất hiện có trong TẤT CẢ orders (kể cả soft-delete)
+    max_num = 0
+    for code in Order.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.search(r'DH-(\d+)', code)
+        if match:
+            num = int(match.group(1))
+            if num > max_num:
+                max_num = num
+    next_num = max_num + 1
+    code = f'{prefix}{next_num:03d}'
+    return code
+
+
 @login_required(login_url="/login/")
 def api_next_order_code(request):
-    """Sinh mã đơn hàng tiếp theo: DH-001, DH-002, ..."""
-    import re
-    prefix = 'DH-'
-    # FIX: Dùng all_objects để tính cả record đã soft-delete, tránh trùng mã
-    last_order = Order.all_objects.filter(code__startswith=prefix).order_by('-id').first()
-    next_num = 1
-    if last_order:
-        match = re.search(r'DH-(\d+)', last_order.code)
-        if match:
-            next_num = int(match.group(1)) + 1
-    # Đảm bảo không trùng (kể cả đã xóa mềm)
-    while True:
-        code = f'{prefix}{next_num:03d}'
-        if not Order.all_objects.filter(code=code).exists():
-            break
-        next_num += 1
+    """Sinh mã đơn hàng tiếp theo: DH-001, DH-002, ... (luôn tăng tiến, không tái sử dụng)"""
+    code = _auto_next_order_code()
     return JsonResponse({'code': code})
 
 
 @login_required(login_url="/login/")
 def api_next_quotation_code(request):
-    """Sinh mã báo giá tiếp theo: BG-001, BG-002, ..."""
-    import re
+    """Sinh mã báo giá tiếp theo: BG-001, BG-002, ... (luôn tăng tiến)"""
     prefix = 'BG-'
-    # FIX: Dùng all_objects để tính cả record đã soft-delete, tránh trùng mã
-    last_q = Quotation.all_objects.filter(code__startswith=prefix).order_by('-id').first()
-    next_num = 1
-    if last_q:
-        match = re.search(r'BG-(\d+)', last_q.code)
+    max_num = 0
+    for code in Quotation.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.search(r'BG-(\d+)', code)
         if match:
-            next_num = int(match.group(1)) + 1
-    while True:
-        code = f'{prefix}{next_num:03d}'
-        if not Quotation.all_objects.filter(code=code).exists():
-            break
-        next_num += 1
+            num = int(match.group(1))
+            if num > max_num:
+                max_num = num
+    next_num = max_num + 1
+    code = f'{prefix}{next_num:03d}'
     return JsonResponse({'code': code})
 
 # ============ API: QUICK CREATE CUSTOMER ============
@@ -486,6 +494,12 @@ def api_quick_create_customer(request):
         c.company = data.get('company', '').strip()
         c.created_by = request.user
         c.store = _get_default_store_for_request(request)
+        group_id = data.get('group_id')
+        if group_id:
+            c.group_id = group_id
+        note = data.get('note', '').strip()
+        if note:
+            c.note = note
         c.save()
 
         return JsonResponse({
@@ -506,7 +520,7 @@ def api_quick_create_customer(request):
 
 @login_required(login_url="/login/")
 def api_get_orders(request):
-    orders = Order.objects.select_related('customer', 'warehouse').prefetch_related('receipts').all()
+    orders = Order.objects.select_related('customer', 'customer__group', 'warehouse').prefetch_related('receipts').all()
     orders = filter_by_store(orders, request)
     data = [{
         'id': o.id, 'code': o.code,
@@ -529,6 +543,8 @@ def api_get_orders(request):
         'receipt_count': o.receipts.filter(status=1).count(),
         'tags': o.tags or '',
         'note': o.note or '',
+        'customer_group': o.customer.group.name if o.customer and o.customer.group else '',
+        'customer_group_id': o.customer.group_id if o.customer else None,
         'creator_name': o.creator_name or '',
         'salesperson': o.salesperson or '',
         'server_staff': o.server_staff or '',
@@ -618,13 +634,15 @@ def api_save_order(request):
                 o.created_by = request.user
                 if not o.store_id:
                     o.store = _get_default_store_for_request(request)
-            o.code = data.get('code', '')
+            requested_code = (data.get('code', '') or '').strip()
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
-            dup = Order.all_objects.filter(code=o.code)
+            dup = Order.all_objects.filter(code=requested_code)
             if oid:
                 dup = dup.exclude(id=oid)
             if dup.exists():
-                return JsonResponse({'status': 'error', 'message': f'Mã đơn hàng "{o.code}" đã tồn tại. Vui lòng chọn mã khác.'})
+                # Auto-generate next available code instead of rejecting
+                requested_code = _auto_next_order_code()
+            o.code = requested_code
             o.customer = _resolve_sale_customer(request, data.get('customer_id'))
             o.warehouse_id = data.get('warehouse_id') or None
             o.quotation_id = data.get('quotation_id') or None
@@ -634,11 +652,24 @@ def api_save_order(request):
             o.tags = (data.get('tags', '') or '').strip() or None
             new_status = int(data.get('status', 0))
             new_approver_id_raw = data.get('approver_id') or None
-            if oid and old_status is not None and new_status not in (old_status, 6) and new_status < old_status:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'Không được chuyển lùi trạng thái đơn hàng. Chỉ được đi tiếp hoặc hủy đơn.'
-                })
+            # Status transition validation — one-way flow
+            STATUS_TRANSITIONS = {
+                0: {0, 1, 6},       # Nháp → Xác nhận hoặc Hủy
+                1: {1, 2, 6},       # Xác nhận → Đang xử lý hoặc Hủy
+                2: {2, 3, 6},       # Đang xử lý → Đóng gói hoặc Hủy
+                3: {3, 4, 6},       # Đóng gói → Đã giao hoặc Hủy
+                4: {4, 5, 6},       # Đã giao → Hoàn thành hoặc Hủy
+                5: {5},             # Hoàn thành → locked
+                6: {6},             # Hủy → locked
+            }
+            if oid and old_status is not None:
+                allowed = STATUS_TRANSITIONS.get(old_status, {old_status})
+                if new_status not in allowed:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Không được chuyển trạng thái từ "{Order.STATUS_CHOICES[old_status][1]}" sang "{Order.STATUS_CHOICES[new_status][1]}". '
+                                   f'Chỉ cho phép: {", ".join(Order.STATUS_CHOICES[s][1] for s in sorted(allowed) if s != old_status) or "Không chuyển được"}.'
+                    })
             # SAFEGUARD: Nếu có người duyệt và chưa duyệt → không cho tự chuyển Hoàn thành
             if new_status == 5 and new_approver_id_raw and o.approval_status != 2:
                 # Giữ status trước đó, không cho Hoàn thành khi chưa duyệt
@@ -672,111 +703,123 @@ def api_save_order(request):
             # Tính tổng từ items
             items_data = data.get('items', [])
             _validate_unique_line_items(items_data)
-            total = 0
+            total = Decimal('0')
             for it in items_data:
-                qty = float(it.get('quantity', 0))
-                price = float(it.get('unit_price', 0))
-                disc = float(it.get('discount_percent', 0))
+                qty = Decimal(str(it.get('quantity', 0)))
+                price = Decimal(str(it.get('unit_price', 0)))
+                disc = Decimal(str(it.get('discount_percent', 0)))
                 line_total = qty * price * (1 - disc / 100)
                 total += line_total
 
             o.total_amount = total
-            o.final_amount = total - float(o.discount_amount) + float(o.shipping_fee or 0)
+            o.final_amount = total - Decimal(str(o.discount_amount or 0)) + Decimal(str(o.shipping_fee or 0))
 
             o.save()
 
-            # Xử lý thanh toán — bắt buộc tạo phiếu thu nếu đã thanh toán
-            is_paid = data.get('is_paid', True)
-            selected_cash_book_id = data.get('cash_book_id') or None
-            payment_method_option_id = data.get('payment_method_option_id') or None
-            if is_paid:
-                # Tính tổng đã thu từ các phiếu thu Hoàn thành hiện có
-                existing_paid = sum(
-                    float(rec.amount)
-                    for rec in Receipt.objects.filter(order=o, status=1)
-                )
-                remaining = float(o.final_amount) - existing_paid
-                if remaining > 0:
-                    # Tạo phiếu thu tự động
-                    sale_cat = FinanceCategory.objects.filter(
-                        type=1, name__icontains='bán hàng', is_active=True
-                    ).first()
-                    receipt_code = f'PT-{o.code}'
-                    # Nếu đã có phiếu thu cùng code → thêm suffix
-                    suffix = 1
-                    base_code = receipt_code
-                    while Receipt.objects.filter(code=receipt_code).exists():
-                        suffix += 1
-                        receipt_code = f'{base_code}-{suffix}'
-                    selected_method = None
-                    pm = int(data.get('payment_method', 2))
-                    if payment_method_option_id:
-                        selected_method = PaymentMethodOption.objects.select_related('default_cash_book').filter(
-                            id=payment_method_option_id,
-                            is_active=True
-                        ).first()
-                        if selected_method:
-                            pm = selected_method.legacy_type if selected_method.legacy_type in (1, 2) else 2
-                    # Tự động gán quỹ theo hình thức thanh toán
-                    if pm == 2:
-                        auto_cashbook = CashBook.objects.filter(
-                            is_active=True, name__icontains='ngân hàng'
-                        ).first()
-                    else:
-                        auto_cashbook = CashBook.objects.filter(
-                            is_active=True, name__icontains='tiền mặt'
-                        ).first()
-                    if selected_cash_book_id:
-                        auto_cashbook = CashBook.objects.filter(
-                            id=selected_cash_book_id,
-                            is_active=True
-                        ).first() or auto_cashbook
-                    elif selected_method and selected_method.default_cash_book_id:
-                        auto_cashbook = selected_method.default_cash_book
-                    Receipt.objects.create(
-                        code=receipt_code,
-                        category=sale_cat,
-                        customer_id=o.customer_id,
-                        order=o,
-                        amount=remaining,
-                        description=f'Thu tiền đơn hàng {o.code} (tự động)',
-                        receipt_date=o.order_date or date.today(),
-                        status=1,  # Hoàn thành
-                        payment_method=pm,
-                        payment_method_option=selected_method,
-                        cash_book=auto_cashbook,
-                        created_by=request.user,
-                    )
-                # Cập nhật paid trên order
-                total_paid = sum(
-                    float(rec.amount)
-                    for rec in Receipt.objects.filter(order=o, status=1)
-                )
-                o.paid_amount = total_paid
-                if total_paid >= float(o.final_amount):
-                    o.payment_status = 2
-                elif total_paid > 0:
-                    o.payment_status = 1
-                else:
-                    o.payment_status = 0
+            # Xử lý thanh toán — hỗ trợ multi-payment lines
+            payment_lines = data.get('payment_lines', [])
+            pay_mode = data.get('pay_mode', '')
+            is_paid = data.get('is_paid', True) if not pay_mode else (pay_mode == 'full')
+            payment_amount = float(data.get('payment_amount', 0) or 0)
+
+            # Tính tổng đã thu từ các phiếu thu Hoàn thành hiện có
+            existing_paid = sum(
+                float(rec.amount)
+                for rec in Receipt.objects.filter(order=o, status=1)
+            )
+
+            # Build receipt items from payment_lines or legacy single-line
+            if payment_lines and isinstance(payment_lines, list):
+                receipt_items = []
+                for pl in payment_lines:
+                    amt = float(pl.get('amount', 0) or 0)
+                    if amt <= 0:
+                        continue
+                    receipt_items.append({
+                        'amount': amt,
+                        'payment_method_option_id': pl.get('payment_method_option_id'),
+                        'payment_method': int(pl.get('payment_method', 2) or 2),
+                        'cash_book_id': pl.get('cash_book_id'),
+                    })
             else:
-                # Chưa thanh toán — tính lại từ phiếu thu thực tế
-                total_paid = sum(
-                    float(rec.amount)
-                    for rec in Receipt.objects.filter(order=o, status=1)
-                )
-                o.paid_amount = total_paid
-                if total_paid >= float(o.final_amount):
-                    o.payment_status = 2
-                elif total_paid > 0:
-                    o.payment_status = 1
+                # Legacy single-line
+                if pay_mode == 'partial' and payment_amount > 0:
+                    amount_to_collect = payment_amount
+                elif is_paid:
+                    amount_to_collect = float(o.final_amount) - existing_paid
                 else:
-                    o.payment_status = 0
+                    amount_to_collect = 0
+                receipt_items = [{
+                    'amount': amount_to_collect,
+                    'payment_method_option_id': data.get('payment_method_option_id'),
+                    'payment_method': int(data.get('payment_method', 2) or 2),
+                    'cash_book_id': data.get('cash_book_id'),
+                }] if amount_to_collect > 0 else []
+
+            # Create receipts
+            sale_cat = FinanceCategory.objects.filter(
+                type=1, name__icontains='bán hàng', is_active=True
+            ).first()
+            for idx, ri in enumerate(receipt_items):
+                receipt_code = f'PT-{o.code}' if idx == 0 else f'PT-{o.code}-{idx+1}'
+                suffix = 1
+                base_code = receipt_code
+                while Receipt.objects.filter(code=receipt_code).exists():
+                    suffix += 1
+                    receipt_code = f'{base_code}-{suffix}'
+
+                selected_method = None
+                pm = ri['payment_method']
+                pmo_id = ri.get('payment_method_option_id')
+                if pmo_id:
+                    selected_method = PaymentMethodOption.objects.select_related('default_cash_book').filter(
+                        id=pmo_id, is_active=True
+                    ).first()
+                    if selected_method:
+                        pm = selected_method.legacy_type if selected_method.legacy_type in (1, 2) else 2
+
+                auto_cashbook = None
+                ri_cb_id = ri.get('cash_book_id')
+                if ri_cb_id:
+                    auto_cashbook = CashBook.objects.filter(id=ri_cb_id, is_active=True).first()
+                if not auto_cashbook and selected_method and selected_method.default_cash_book_id:
+                    auto_cashbook = selected_method.default_cash_book
+                if not auto_cashbook:
+                    if pm == 2:
+                        auto_cashbook = CashBook.objects.filter(is_active=True, name__icontains='ngân hàng').first()
+                    else:
+                        auto_cashbook = CashBook.objects.filter(is_active=True, name__icontains='tiền mặt').first()
+
+                Receipt.objects.create(
+                    code=receipt_code,
+                    category=sale_cat,
+                    customer_id=o.customer_id,
+                    order=o,
+                    amount=ri['amount'],
+                    description=f'Thu tiền đơn hàng {o.code} (tự động)',
+                    receipt_date=o.order_date or date.today(),
+                    status=1,
+                    payment_method=pm,
+                    payment_method_option=selected_method,
+                    cash_book=auto_cashbook,
+                    created_by=request.user,
+                )
+
+            # Cập nhật paid trên order (luôn tính từ phiếu thu thực tế)
+            total_paid = sum(
+                float(rec.amount)
+                for rec in Receipt.objects.filter(order=o, status=1)
+            )
+            o.paid_amount = total_paid
+            if total_paid >= float(o.final_amount):
+                o.payment_status = 2
+            elif total_paid > 0:
+                o.payment_status = 1
+            else:
+                o.payment_status = 0
             o.save(update_fields=['paid_amount', 'payment_status'])
 
             # Hoàn tác tồn kho nếu trước đó đã hoàn thành
-            # FIX: Dùng Decimal thay vì float để tránh lỗi 'unsupported operand type'
-            from decimal import Decimal
             if old_status == 5 and o.warehouse_id:
                 from products.models import ComboItem as _ComboItem
                 for old_item in o.items.all():
@@ -798,20 +841,20 @@ def api_save_order(request):
             # Xóa items cũ và tạo mới
             o.items.all().delete()
             for it in items_data:
-                qty = float(it.get('quantity', 0))
-                price = float(it.get('unit_price', 0))
-                disc = float(it.get('discount_percent', 0))
+                qty = Decimal(str(it.get('quantity', 0)))
+                price = Decimal(str(it.get('unit_price', 0)))
+                disc = Decimal(str(it.get('discount_percent', 0)))
                 line_total = qty * price * (1 - disc / 100)
                 product = Product.objects.get(id=it['product_id'])
                 variant_id = it.get('variant_id') or None
                 cost = float(product.cost_price)
-                listed = float(product.listed_price)
+                import_p = float(product.import_price)
                 if variant_id:
                     from products.models import ProductVariant
                     try:
                         variant = ProductVariant.objects.get(id=variant_id)
                         cost = float(variant.cost_price)
-                        listed = float(variant.listed_price)
+                        import_p = float(variant.import_price)
                     except ProductVariant.DoesNotExist:
                         variant_id = None
                 OrderItem.objects.create(
@@ -823,20 +866,18 @@ def api_save_order(request):
                     cost_price=cost,
                     discount_percent=disc,
                     total_price=line_total,
-                    is_below_listed=(price < listed),
+                    is_below_listed=(price < import_p),
                 )
 
             # Trừ tồn kho khi đơn hàng Hoàn thành (status=5)
-            # FIX: Dùng Decimal thay vì float
-            if new_status == 5 and o.warehouse_id:
+            if new_status == 5 and old_status != 5 and o.warehouse_id:
                 from products.models import ComboItem as _ComboItem2
-                for it in items_data:
-                    qty = Decimal(str(it.get('quantity', 0)))
-                    pid = it.get('product_id')
-                    product = Product.objects.get(id=pid)
+                for item in o.items.select_related('product').all():
+                    qty = Decimal(str(item.quantity))
+                    product = item.product
                     if product.is_combo:
                         # Combo: trừ kho từng SP thành phần (bỏ qua dịch vụ)
-                        for ci in _ComboItem2.objects.filter(combo_id=pid):
+                        for ci in _ComboItem2.objects.filter(combo_id=product.id):
                             if not ci.product.is_service:
                                 stock, _ = ProductStock.objects.get_or_create(
                                     product_id=ci.product_id, warehouse_id=o.warehouse_id)
@@ -844,7 +885,7 @@ def api_save_order(request):
                                 stock.save()
                     elif not product.is_service:
                         stock, _ = ProductStock.objects.get_or_create(
-                            product_id=pid, warehouse_id=o.warehouse_id)
+                            product_id=product.id, warehouse_id=o.warehouse_id)
                         stock.quantity -= qty
                         stock.save()
             # Cập nhật trạng thái báo giá → "Đã tạo đơn hàng"
@@ -876,7 +917,7 @@ def api_save_order(request):
         if o.approver_id and o.approval_status == 1:
             approver_name = o.approver.get_full_name() if o.approver else ''
             msg += f'. ⏳ Đơn hàng cần được {approver_name} duyệt trước khi hoàn thành.'
-        return JsonResponse({'status': 'ok', 'message': msg})
+        return JsonResponse({'status': 'ok', 'message': msg, 'order_id': o.id, 'order_code': o.code})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1402,13 +1443,26 @@ def api_save_quotation(request):
                 q = Quotation()
                 q.created_by = request.user
                 q.store = _get_default_store_for_request(request)
-            q.code = data.get('code', '')
+            requested_code = (data.get('code', '') or '').strip()
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
-            dup = Quotation.all_objects.filter(code=q.code)
+            dup = Quotation.all_objects.filter(code=requested_code)
             if qid:
                 dup = dup.exclude(id=qid)
             if dup.exists():
-                return JsonResponse({'status': 'error', 'message': f'Mã báo giá "{q.code}" đã tồn tại. Vui lòng chọn mã khác.'})
+                # Auto-generate next available code
+                prefix = 'BG-'
+                last_q = Quotation.all_objects.filter(code__startswith=prefix).order_by('-id').first()
+                next_num = 1
+                if last_q:
+                    m = re.search(r'BG-(\d+)', last_q.code)
+                    if m:
+                        next_num = int(m.group(1)) + 1
+                while True:
+                    requested_code = f'{prefix}{next_num:03d}'
+                    if not Quotation.all_objects.filter(code=requested_code).exists():
+                        break
+                    next_num += 1
+            q.code = requested_code
             q.customer = _resolve_sale_customer(request, data.get('customer_id'))
             q.quotation_date = data.get('quotation_date')
             q.valid_until = data.get('valid_until') or None
@@ -1451,7 +1505,7 @@ def api_save_quotation(request):
                     note=it.get('note', ''),
                 )
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'order_id': q.id, 'order_code': q.code})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1692,4 +1746,175 @@ def api_pos_checkout(request):
         logger.error(f'POS checkout error: {e}')
         return JsonResponse({'status': 'error', 'message': str(e)})
 
+
+# ============ EXCEL EXPORT ============
+
+@login_required(login_url="/login/")
+def export_orders_excel(request):
+    """Xuất danh sách đơn hàng ra Excel"""
+    from core.excel_export import excel_response
+    from core.store_utils import filter_by_store
+    from datetime import datetime
+
+    orders = Order.objects.select_related(
+        'customer', 'warehouse', 'created_by'
+    ).all().order_by('-order_date', '-id')
+    orders = filter_by_store(orders, request)
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    status = request.GET.get('status')
+    if date_from:
+        orders = orders.filter(order_date__gte=date_from)
+    if date_to:
+        orders = orders.filter(order_date__lte=date_to)
+    if status:
+        orders = orders.filter(status=int(status))
+
+    columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã ĐH', 'width': 14},
+        {'key': 'date', 'label': 'Ngày', 'width': 13},
+        {'key': 'customer', 'label': 'Khách hàng', 'width': 24},
+        {'key': 'warehouse', 'label': 'Kho', 'width': 16},
+        {'key': 'total', 'label': 'Tổng tiền hàng', 'width': 16},
+        {'key': 'discount', 'label': 'Chiết khấu', 'width': 14},
+        {'key': 'shipping', 'label': 'Phí VC', 'width': 12},
+        {'key': 'final', 'label': 'Tổng thanh toán', 'width': 18},
+        {'key': 'paid', 'label': 'Đã trả', 'width': 16},
+        {'key': 'debt', 'label': 'Còn nợ', 'width': 16},
+        {'key': 'payment', 'label': 'Thanh toán', 'width': 16},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 14},
+        {'key': 'creator', 'label': 'Người tạo', 'width': 16},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 28},
+    ]
+
+    rows = []
+    total_final = 0
+    total_paid = 0
+    total_debt = 0
+    for i, o in enumerate(orders, 1):
+        debt = max(float(o.final_amount) - float(o.paid_amount), 0)
+        total_final += float(o.final_amount)
+        total_paid += float(o.paid_amount)
+        total_debt += debt
+        rows.append({
+            'stt': i,
+            'code': o.code,
+            'date': o.order_date,
+            'customer': o.customer.name if o.customer else '',
+            'warehouse': o.warehouse.name if o.warehouse else '',
+            'total': float(o.total_amount),
+            'discount': float(o.discount_amount),
+            'shipping': float(o.shipping_fee) if hasattr(o, 'shipping_fee') else 0,
+            'final': float(o.final_amount),
+            'paid': float(o.paid_amount),
+            'debt': debt,
+            'payment': o.get_payment_status_display(),
+            'status': o.get_status_display(),
+            'creator': (o.created_by.get_full_name() or o.created_by.username) if o.created_by else '',
+            'note': o.note or '',
+        })
+
+    period = ''
+    if date_from and date_to:
+        period = f' ({date_from} → {date_to})'
+    elif date_from:
+        period = f' (từ {date_from})'
+    elif date_to:
+        period = f' (đến {date_to})'
+
+    return excel_response(
+        title='DANH SÁCH ĐƠN HÀNG',
+        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}',
+        columns=columns,
+        rows=rows,
+        filename=f'Don_hang_{datetime.now().strftime("%Y%m%d")}',
+        money_cols=['total', 'discount', 'shipping', 'final', 'paid', 'debt'],
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'final': total_final, 'paid': total_paid, 'debt': total_debt},
+    )
+
+
+@login_required(login_url="/login/")
+def api_print_order(request):
+    """
+    GET /api/orders/print/?id=<order_id>&type=k80|a4|quotation|warranty|export
+    Renders a print-ready HTML page for the given order.
+    Also supports source=quotation to print from Quotation model.
+    """
+    from system_management.models import Brand
+
+    order_id = request.GET.get('id')
+    print_type = request.GET.get('type', 'a4')
+    source = request.GET.get('source', 'order')  # 'order' or 'quotation'
+
+    TEMPLATES = {
+        'k80': 'orders/print/receipt_k80.html',
+        'a4': 'orders/print/invoice_a4.html',
+        'quotation': 'orders/print/quotation_a4.html',
+        'warranty': 'orders/print/warranty_a4.html',
+        'export': 'orders/print/export_a4.html',
+    }
+    template = TEMPLATES.get(print_type, TEMPLATES['a4'])
+
+    # Get brand info for header
+    brand = None
+    try:
+        from core.store_utils import get_owned_brands
+        brands = get_owned_brands(request.user)
+        brand = brands.first() if brands.exists() else None
+    except Exception:
+        pass
+
+    if source == 'quotation':
+        try:
+            quotation = Quotation.objects.select_related('customer').get(id=order_id)
+        except Quotation.DoesNotExist:
+            return render(request, template, {'error': 'Không tìm thấy báo giá'})
+        items = quotation.items.select_related('product').all()
+
+        # Wrap quotation as an order-like object for template compatibility
+        class QuotationWrapper:
+            def __init__(self, q):
+                self._q = q
+                self.code = q.code
+                self.customer = q.customer
+                self.order_date = q.quotation_date
+                self.total_amount = q.total_amount
+                self.discount_amount = q.discount_amount
+                self.shipping_fee = q.shipping_fee
+                self.final_amount = q.final_amount
+                self.paid_amount = Decimal('0')
+                self.note = q.note
+                self.salesperson = q.salesperson
+                self.status = q.status
+                self.warehouse = None
+                self.shipping_address = None
+                self.created_by = q.created_by
+                self.tags = q.tags
+
+            def get_status_display(self):
+                return self._q.get_status_display()
+
+        order = QuotationWrapper(quotation)
+        remaining = 0
+        valid_until = quotation.valid_until
+    else:
+        try:
+            order = Order.objects.select_related('customer', 'warehouse', 'created_by').get(id=order_id)
+        except Order.DoesNotExist:
+            return render(request, template, {'error': 'Không tìm thấy đơn hàng'})
+        items = order.items.select_related('product').all()
+        remaining = max(0, float(order.final_amount) - float(order.paid_amount))
+        valid_until = None
+
+    context = {
+        'order': order,
+        'items': items,
+        'brand': brand,
+        'remaining': remaining,
+        'valid_until': valid_until,
+        'print_type': print_type,
+    }
+    return render(request, template, context)
 

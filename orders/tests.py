@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from customers.models import Customer
 from finance.models import Receipt
-from orders.models import Order, OrderItem, Quotation
+from orders.models import Order, OrderItem, OrderReturn, Quotation
 from products.models import Product, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
@@ -259,3 +259,111 @@ class OrderRiskFlowTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy')
+
+    def test_save_order_return_requires_order_and_syncs_order_fields(self):
+        order = self._create_order(code='DH-RETURN-001', status=5)
+
+        missing_order_response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': 'TH-RETURN-001',
+                'return_date': date.today().isoformat(),
+                'total_refund': 50,
+                'status': 2,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(missing_order_response.status_code, 200)
+        missing_payload = missing_order_response.json()
+        self.assertEqual(missing_payload['status'], 'error')
+        self.assertIn('đơn hàng gốc', missing_payload['message'])
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': 'TH-RETURN-002',
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'total_refund': 50,
+                'status': 2,
+                'reason': 'Khách đổi ý',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order_return = OrderReturn.objects.get(code='TH-RETURN-002')
+        self.assertEqual(order_return.order_id, order.id)
+        self.assertEqual(order_return.customer_id, order.customer_id)
+        self.assertEqual(order_return.warehouse_id, order.warehouse_id)
+        self.assertEqual(order_return.status, 2)
+        self.assertEqual(payload['message'], 'Lưu thành công')
+
+    def test_order_return_list_keeps_legacy_orphan_in_scope(self):
+        orphan_return = OrderReturn.objects.create(
+            code='TH-LEGACY-001',
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=0,
+            total_refund=25,
+            return_date=date.today(),
+            created_by=self.user,
+        )
+        OrderReturn.objects.create(
+            code='TH-LEGACY-OTHER',
+            customer=self.other_customer,
+            warehouse=self.other_warehouse,
+            status=0,
+            total_refund=30,
+            return_date=date.today(),
+            created_by=self.other_user,
+        )
+
+        response = self.client.get(reverse('api_get_order_returns'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        rows = payload['data']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['id'], orphan_return.id)
+        self.assertEqual(rows[0]['order'], '(Thiếu đơn gốc)')
+
+    def test_save_order_return_allows_linking_legacy_orphan(self):
+        order = self._create_order(code='DH-RETURN-LEGACY', status=5)
+        orphan_return = OrderReturn.objects.create(
+            code='TH-LEGACY-EDIT',
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=0,
+            total_refund=40,
+            return_date=date.today(),
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'id': orphan_return.id,
+                'code': orphan_return.code,
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'total_refund': 40,
+                'status': 2,
+                'reason': 'Bổ sung đơn gốc',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        orphan_return.refresh_from_db()
+        self.assertEqual(orphan_return.order_id, order.id)
+        self.assertEqual(orphan_return.customer_id, order.customer_id)
+        self.assertEqual(orphan_return.warehouse_id, order.warehouse_id)
+        self.assertEqual(orphan_return.status, 2)

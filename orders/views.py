@@ -21,7 +21,12 @@ from finance.services import (
     save_receipt_with_effect,
     update_order_payment_status,
 )
-from core.store_utils import filter_by_store, get_user_store, brand_owner_required
+from core.store_utils import (
+    brand_owner_required,
+    filter_by_store,
+    get_managed_store_ids,
+    get_user_store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +127,24 @@ def _resolve_sale_customer(request, customer_id):
         if customer:
             return customer
     return _get_or_create_guest_customer(request)
+
+
+def _filter_order_returns_by_scope(queryset, request):
+    """Lọc phiếu trả theo store hợp lệ.
+
+    Ưu tiên order.store. Với dữ liệu dev/legacy thiếu order, fallback sang
+    warehouse.store rồi customer.store để vẫn nhìn thấy và chỉnh lại dữ liệu.
+    """
+    if request.user.is_superuser:
+        return queryset.none()
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(order__store_id__in=store_ids) |
+        Q(order__isnull=True, warehouse__store_id__in=store_ids) |
+        Q(order__isnull=True, warehouse__isnull=True, customer__store_id__in=store_ids)
+    ).distinct()
 
 
 def _get_order_for_user(request, order_id, queryset=None):
@@ -1967,12 +1990,15 @@ def api_delete_quotation(request):
 
 @login_required(login_url="/login/")
 def api_get_order_returns(request):
-    returns = OrderReturn.objects.select_related('order', 'customer').all()
-    returns = filter_by_store(returns, request, field_name='order__store')
+    returns = OrderReturn.objects.select_related('order', 'customer', 'warehouse').all()
+    returns = _filter_order_returns_by_scope(returns, request)
     data = [{
         'id': r.id, 'code': r.code,
-        'order': r.order.code if r.order else '',
+        'order': r.order.code if r.order else '(Thiếu đơn gốc)',
+        'order_id': r.order_id,
         'customer': r.customer.name if r.customer else '',
+        'customer_id': r.customer_id,
+        'warehouse_id': r.warehouse_id,
         'return_date': r.return_date.strftime('%Y-%m-%d') if r.return_date else '',
         'created_at': r.created_at.strftime('%d/%m/%Y %H:%M:%S') if r.created_at else '',
         'total_refund': float(r.total_refund),
@@ -1990,16 +2016,45 @@ def api_save_order_return(request):
         data = json.loads(request.body)
         rid = data.get('id')
         if rid:
-            r = OrderReturn.objects.get(id=rid)
+            r = _filter_order_returns_by_scope(
+                OrderReturn.objects.filter(id=rid),
+                request,
+            ).first()
+            if not r:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng'})
         else:
             r = OrderReturn()
             r.created_by = request.user
-        r.code = data.get('code', '')
-        r.customer_id = data.get('customer_id') or None
+
+        order_id = _normalize_optional_int(data.get('order_id'))
+        order = None
+        if order_id:
+            order = _get_order_for_user(request, order_id)
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Đơn gốc không tồn tại hoặc không thuộc cửa hàng của bạn.'})
+        elif not r.order_id:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn đơn hàng gốc cho phiếu trả.'})
+
+        status = _normalize_optional_int(data.get('status'))
+        valid_statuses = {choice[0] for choice in OrderReturn.STATUS_CHOICES}
+        if status is None:
+            status = 0
+        if status not in valid_statuses:
+            return JsonResponse({'status': 'error', 'message': 'Trạng thái phiếu trả không hợp lệ.'})
+
+        r.code = (data.get('code', '') or '').strip()
+        if not r.code:
+            return JsonResponse({'status': 'error', 'message': 'Mã phiếu không được để trống.'})
+        if order:
+            r.order = order
+            r.customer = order.customer
+            r.warehouse = order.warehouse
+        elif data.get('customer_id'):
+            r.customer_id = data.get('customer_id') or None
         r.return_date = data.get('return_date')
         r.total_refund = data.get('total_refund', 0) or 0
         r.reason = data.get('reason', '')
-        r.status = data.get('status', 0)
+        r.status = status
         r.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except Exception as e:

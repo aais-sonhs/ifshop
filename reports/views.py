@@ -80,6 +80,24 @@ def _get_sales_report_time_group_meta(time_group):
     return {'label': 'Ngày', 'key_format': '%Y-%m-%d', 'display_format': '%d/%m/%Y'}
 
 
+def _filter_sales_returns_by_scope(queryset, request):
+    """Lọc phiếu trả theo store hợp lệ.
+
+    Ưu tiên liên kết order -> store. Với dữ liệu dev/legacy thiếu order, fallback sang
+    warehouse.store rồi customer.store để không làm rơi dữ liệu vẫn còn suy luận được.
+    """
+    if request.user.is_superuser:
+        return queryset.none()
+    managed_ids = get_managed_store_ids(request.user)
+    if not managed_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(order__store_id__in=managed_ids) |
+        Q(order__isnull=True, warehouse__store_id__in=managed_ids) |
+        Q(order__isnull=True, warehouse__isnull=True, customer__store_id__in=managed_ids)
+    ).distinct()
+
+
 def _build_sales_report_payload(request, include_filter_options=True):
     from customers.models import CustomerGroup, Customer
     from products.models import ProductCategory, Product, GoodsReceipt
@@ -227,14 +245,38 @@ def _build_sales_report_payload(request, include_filter_options=True):
     returns_qs = OrderReturn.objects.filter(
         return_date__gte=filters['from_date'],
         return_date__lte=filters['to_date'],
-    ).exclude(status=3)
-    returns_qs = filter_by_store(returns_qs, request, field_name='order__store')
+    ).exclude(status=3).select_related(
+        'order', 'order__store', 'customer', 'customer__group', 'customer__store', 'warehouse', 'warehouse__store'
+    )
+    returns_qs = _filter_sales_returns_by_scope(returns_qs, request)
     if filters['store_id']:
-        returns_qs = returns_qs.filter(order__store_id=filters['store_id'])
+        returns_qs = returns_qs.filter(
+            Q(order__store_id=filters['store_id']) |
+            Q(order__isnull=True, warehouse__store_id=filters['store_id']) |
+            Q(order__isnull=True, warehouse__isnull=True, customer__store_id=filters['store_id'])
+        )
+    if filters['customer_group_id']:
+        returns_qs = returns_qs.filter(
+            Q(order__customer__group_id=filters['customer_group_id']) |
+            Q(order__isnull=True, customer__group_id=filters['customer_group_id'])
+        )
+    if filters['customer_id']:
+        returns_qs = returns_qs.filter(
+            Q(order__customer_id=filters['customer_id']) |
+            Q(order__isnull=True, customer_id=filters['customer_id'])
+        )
+    if filters['salesperson']:
+        returns_qs = returns_qs.filter(order__salesperson__iexact=filters['salesperson'])
+    if filters['search']:
+        search = filters['search']
+        returns_qs = returns_qs.filter(
+            Q(code__icontains=search) |
+            Q(order__code__icontains=search) |
+            Q(customer__name__icontains=search) |
+            Q(reason__icontains=search)
+        )
     if allowed_order_ids:
-        returns_qs = returns_qs.filter(order_id__in=allowed_order_ids)
-    else:
-        returns_qs = returns_qs.none()
+        returns_qs = returns_qs.filter(Q(order_id__in=allowed_order_ids) | Q(order__isnull=True))
 
     returns_total = 0
     returns_count = 0
@@ -435,18 +477,26 @@ def _build_sales_report_payload(request, include_filter_options=True):
     if returns_qs.exists():
         for ret in returns_qs.select_related('order'):
             staff_name = (ret.order.salesperson if ret.order else '') or '(Chưa gán NV)'
-            if staff_name in staff_map:
-                if item_scope:
-                    ret_amount = float(
-                        OrderReturnItem.objects.filter(order_return=ret).filter(
-                            **({'product__category_id': filters['category_id']} if filters['category_id'] else {})
-                        ).filter(
-                            **({'product_id': filters['product_id']} if filters['product_id'] else {})
-                        ).aggregate(s=Sum('total_price'))['s'] or 0
-                    )
-                else:
-                    ret_amount = float(ret.total_refund or 0)
-                staff_map[staff_name]['returns_amount'] += ret_amount
+            if staff_name not in staff_map:
+                staff_map[staff_name] = {
+                    'salesperson': staff_name,
+                    'order_count': 0,
+                    'revenue': 0,
+                    'cost': 0,
+                    'profit': 0,
+                    'returns_amount': 0,
+                }
+            if item_scope:
+                ret_amount = float(
+                    OrderReturnItem.objects.filter(order_return=ret).filter(
+                        **({'product__category_id': filters['category_id']} if filters['category_id'] else {})
+                    ).filter(
+                        **({'product_id': filters['product_id']} if filters['product_id'] else {})
+                    ).aggregate(s=Sum('total_price'))['s'] or 0
+                )
+            else:
+                ret_amount = float(ret.total_refund or 0)
+            staff_map[staff_name]['returns_amount'] += ret_amount
 
     customer_breakdown = sorted(customer_map.values(), key=lambda row: (-row['amount'], -row['orders'], row['name']))
     customer_breakdown = [row for row in customer_breakdown if _matches_metric_filters(row)][:50]
@@ -505,20 +555,30 @@ def _build_sales_report_payload(request, include_filter_options=True):
         return_product_map[product_key]['return_ids'].add(item.order_return_id)
 
     return_order_rows = []
-    for ret in returns_qs.select_related('order', 'customer', 'order__store').order_by('-return_date', '-id'):
+    for ret in returns_qs.select_related(
+        'order', 'customer', 'warehouse', 'order__store', 'warehouse__store', 'customer__store'
+    ).order_by('-return_date', '-id'):
         refund = return_amount_by_return_id.get(ret.id, float(ret.total_refund or 0))
         qty = return_qty_by_return_id.get(ret.id, 0)
         if item_scope and refund <= 0 and qty <= 0:
             continue
         order_row = order_row_map.get(ret.order_id, {})
+        if ret.order and ret.order.store:
+            store_name = ret.order.store.name
+        elif ret.warehouse and ret.warehouse.store:
+            store_name = ret.warehouse.store.name
+        elif ret.customer and ret.customer.store:
+            store_name = ret.customer.store.name
+        else:
+            store_name = 'Chưa gán cửa hàng'
         return_order_rows.append({
             'id': ret.id,
             'code': ret.code,
             'date': ret.return_date.strftime('%d/%m/%Y') if ret.return_date else '',
-            'order_code': ret.order.code if ret.order else '',
-            'customer': ret.customer.name if ret.customer else '',
-            'salesperson': (ret.order.salesperson if ret.order else '') or '',
-            'store_name': ret.order.store.name if ret.order and ret.order.store else '',
+            'order_code': ret.order.code if ret.order else '(Thiếu đơn gốc)',
+            'customer': ret.customer.name if ret.customer else 'Khách chưa gán',
+            'salesperson': (ret.order.salesperson if ret.order else '') or '(Chưa gán NV)',
+            'store_name': store_name,
             'qty': qty,
             'amount': refund,
             'order_revenue': float(order_row.get('revenue') or (ret.order.final_amount if ret.order else 0) or 0),

@@ -45,6 +45,18 @@ def _filter_receipts_for_user(queryset, request):
     )
 
 
+def _filter_payments_for_user(queryset, request):
+    if request.user.is_superuser:
+        return queryset.none()
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(store_id__in=store_ids) |
+        Q(store_id__isnull=True, goods_receipt__warehouse__store_id__in=store_ids)
+    )
+
+
 def _get_user_display_name(user):
     if not user:
         return ''
@@ -390,7 +402,7 @@ def api_delete_receipt(request):
 @login_required(login_url="/login/")
 def api_get_payments(request):
     payments = Payment.objects.select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option').all()
-    payments = filter_by_store(payments, request)
+    payments = _filter_payments_for_user(payments, request)
     data = [{
         'id': p.id, 'code': p.code,
         'category': p.category.name if p.category else '',
@@ -427,7 +439,7 @@ def api_save_payment(request):
             old_cash_book_id = None
             old_status = None
             if pid:
-                p = Payment.objects.get(id=pid)
+                p = _filter_payments_for_user(Payment.objects.select_for_update(), request).get(id=pid)
                 old_amount = float(p.amount)
                 old_cash_book_id = p.cash_book_id
                 old_status = p.status
@@ -446,6 +458,21 @@ def api_save_payment(request):
             p.payment_method = data.get('payment_method', 2)
             p.payment_method_option_id = data.get('payment_method_option_id') or None
             p.note = data.get('note', '')
+
+            if p.goods_receipt_id:
+                linked_receipt = filter_by_store(
+                    GoodsReceipt.objects.select_related('warehouse__store'),
+                    request,
+                    field_name='warehouse__store',
+                ).filter(id=p.goods_receipt_id).first()
+                if not linked_receipt:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập trong phạm vi cửa hàng'})
+                p.store_id = linked_receipt.warehouse.store_id if linked_receipt.warehouse else None
+            elif not p.store_id:
+                store = _get_default_store_for_request(request)
+                if store:
+                    p.store = store
+
             if p.payment_method_option_id:
                 method = PaymentMethodOption.objects.select_related('default_cash_book').filter(id=p.payment_method_option_id).first()
                 if method:
@@ -485,7 +512,20 @@ def api_delete_payment(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Payment.objects.filter(id=data.get('id')).delete()
+        with transaction.atomic():
+            payment = _filter_payments_for_user(
+                Payment.objects.select_related('cash_book').select_for_update(),
+                request,
+            ).filter(id=data.get('id')).first()
+            if not payment:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
+
+            if payment.status == 1 and payment.cash_book_id:
+                book = CashBook.objects.select_for_update().get(id=payment.cash_book_id)
+                book.balance += Decimal(str(payment.amount or 0))
+                book.save(update_fields=['balance'])
+
+            payment.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -710,7 +750,7 @@ def export_payments_excel(request):
     payments = Payment.objects.select_related(
         'category', 'cash_book', 'supplier', 'customer', 'payment_method_option'
     ).filter(status=1)
-    payments = filter_by_store(payments, request)
+    payments = _filter_payments_for_user(payments, request)
 
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')

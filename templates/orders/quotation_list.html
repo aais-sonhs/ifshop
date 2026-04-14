@@ -616,6 +616,16 @@ var QUOTATION_WAREHOUSES = [
 var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
 function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
 
 function normalizeQuickSearchStockFilter(filterKey){
@@ -1722,7 +1732,7 @@ function loadData(){
                 quotationColConfig.td('code', d.code)+
                 quotationColConfig.td('customer', customerHtml)+
                 sp+
-                quotationColConfig.td('date', d.quotation_date)+
+                quotationColConfig.td('date', fmtDt(d.quotation_date, d.created_at))+
                 quotationColConfig.td('items', d.item_count, 'class="text-center"')+
                 quotationColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
                 quotationColConfig.td('valid', d.valid_until)+

@@ -146,12 +146,16 @@ def _normalize_role_text(value):
 
 def can_view_sales_report(user):
     """
-    Báo cáo bán hàng chỉ cho tài khoản có vai trò/chức vụ:
+    Báo cáo bán hàng cho:
+    - Brand owner (chủ cửa hàng)
     - Giám đốc
     - Kế toán
     """
     if not user or not user.is_authenticated or user.is_superuser:
         return False
+
+    if is_brand_owner(user):
+        return True
 
     labels = list(user.groups.values_list('name', flat=True))
     try:

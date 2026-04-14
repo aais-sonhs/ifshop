@@ -7,8 +7,8 @@ from django.urls import reverse
 
 from customers.models import Customer
 from finance.models import Receipt
-from orders.models import Order, Quotation
-from products.models import Warehouse
+from orders.models import Order, OrderItem, Quotation
+from products.models import Product, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -42,6 +42,12 @@ class OrderRiskFlowTests(TestCase):
             store=cls.other_store,
             code='KHO-B',
             name='Kho B',
+        )
+        cls.product = Product.objects.create(
+            store=cls.store,
+            code='SP-ORDER-001',
+            name='Sản phẩm test đơn hàng',
+            created_by=cls.user,
         )
 
     def setUp(self):
@@ -83,8 +89,15 @@ class OrderRiskFlowTests(TestCase):
             created_by=created_by or self.user,
         )
 
-    def test_save_order_blocks_edit_when_receipt_exists(self):
-        order = self._create_order(code='DH-PAID-001')
+    def test_save_order_allows_status_change_when_draft_receipt_exists(self):
+        order = self._create_order(code='DH-PAID-001', status=0)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
         Receipt.objects.create(
             code='PT-PAID-001',
             store=self.store,
@@ -99,18 +112,71 @@ class OrderRiskFlowTests(TestCase):
 
         response = self.client.post(
             reverse('api_save_order'),
-            data=json.dumps({'id': order.id}),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 2,
+                    'unit_price': 50,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 1)
+        self.assertEqual(order.final_amount, 100)
+
+    def test_save_order_blocks_financial_edit_when_receipt_exists(self):
+        order = self._create_order(code='DH-PAID-EDIT-001', status=0)
+        Receipt.objects.create(
+            code='PT-PAID-EDIT-001',
+            store=self.store,
+            customer=self.customer,
+            order=order,
+            amount=100,
+            receipt_date=date.today(),
+            status=1,
+            description='Phiếu thu thủ công',
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'status': 1,
+                'discount_amount': 10,
+            }),
             content_type='application/json',
         )
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
-        self.assertIn('đã có phiếu thu', payload['message'])
+        self.assertIn('chiết khấu', payload['message'])
 
         order.refresh_from_db()
-        self.assertEqual(order.status, 1)
-        self.assertEqual(order.final_amount, 100)
+        self.assertEqual(order.status, 0)
+        self.assertEqual(order.discount_amount, 0)
 
     def test_cancel_order_reopens_linked_quotation(self):
         quotation = self._create_quotation(code='BG-CANCEL-001')

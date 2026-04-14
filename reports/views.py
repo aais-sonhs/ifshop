@@ -696,14 +696,25 @@ def report_inventory(request):
 @login_required(login_url="/login/")
 def api_report_inventory(request):
     """API báo cáo tồn kho"""
-    from products.models import ProductStock, Warehouse
+    from products.models import ProductStock, Warehouse, ProductCategory
     from core.store_utils import filter_by_store
     warehouse_id = request.GET.get('warehouse_id')
+    search = request.GET.get('search', '').strip()
+    category_id = request.GET.get('category_id')
+    stock_status = request.GET.get('stock_status', '')  # positive, zero, negative
 
-    stocks = ProductStock.objects.select_related('product', 'warehouse').all()
+    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').all()
     stocks = filter_by_store(stocks, request, field_name='warehouse__store')
     if warehouse_id:
         stocks = stocks.filter(warehouse_id=warehouse_id)
+    if search:
+        stocks = stocks.filter(
+            Q(product__name__icontains=search) |
+            Q(product__code__icontains=search) |
+            Q(product__barcode__icontains=search)
+        )
+    if category_id:
+        stocks = stocks.filter(product__category_id=category_id)
 
     data = []
     for s in stocks:
@@ -720,6 +731,7 @@ def api_report_inventory(request):
         data.append({
             'product_code': s.product.code,
             'product_name': s.product.name,
+            'category': s.product.category.name if s.product.category else '',
             'warehouse': s.warehouse.name,
             'warehouse_id': s.warehouse_id,
             'quantity': qty,
@@ -732,15 +744,27 @@ def api_report_inventory(request):
             'alert_type': alert_type,
         })
 
+    # Client-side stock status filter
+    if stock_status == 'positive':
+        data = [d for d in data if d['quantity'] > 0]
+    elif stock_status == 'zero':
+        data = [d for d in data if d['quantity'] == 0]
+    elif stock_status == 'negative':
+        data = [d for d in data if d['quantity'] < 0]
+
     warehouses_qs = Warehouse.objects.filter(is_active=True)
     warehouses_qs = filter_by_store(warehouses_qs, request)
     warehouses = [{'id': w.id, 'name': w.name} for w in warehouses_qs]
+
+    categories_qs = ProductCategory.objects.filter(is_active=True).order_by('name')
+    categories = [{'id': c.id, 'name': c.name} for c in categories_qs]
+
     total_value = sum(d['stock_value'] for d in data)
     total_items = sum(d['quantity'] for d in data)
     alert_count = len([d for d in data if d['alert']])
 
     return JsonResponse({
-        'status': 'ok', 'data': data, 'warehouses': warehouses,
+        'status': 'ok', 'data': data, 'warehouses': warehouses, 'categories': categories,
         'summary': {'total_value': total_value, 'total_items': total_items, 'alert_count': alert_count}
     })
 
@@ -1566,11 +1590,21 @@ def export_inventory_excel(request):
     from products.models import ProductStock
 
     warehouse_id = request.GET.get('warehouse_id')
+    search = request.GET.get('search', '').strip()
+    category_id = request.GET.get('category_id')
 
-    stocks = ProductStock.objects.select_related('product', 'warehouse').all()
+    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').all()
     stocks = filter_by_store(stocks, request, field_name='warehouse__store')
     if warehouse_id:
         stocks = stocks.filter(warehouse_id=warehouse_id)
+    if search:
+        stocks = stocks.filter(
+            Q(product__name__icontains=search) |
+            Q(product__code__icontains=search) |
+            Q(product__barcode__icontains=search)
+        )
+    if category_id:
+        stocks = stocks.filter(product__category_id=category_id)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1585,17 +1619,17 @@ def export_inventory_excel(request):
     warning_fill = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
     money_fmt = '#,##0'
 
-    ws.merge_cells('A1:K1')
+    ws.merge_cells('A1:L1')
     ws['A1'] = 'BÁO CÁO TỒN KHO'
     ws['A1'].font = header_font
     ws['A1'].fill = header_fill
     ws['A1'].alignment = Alignment(horizontal='center')
-    ws.merge_cells('A2:K2')
+    ws.merge_cells('A2:L2')
     ws['A2'] = f'Ngày xuất: {datetime.now().strftime("%d/%m/%Y %H:%M")}'
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'ĐVT', 'Kho', 'Tồn kho',
+    headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'Danh mục', 'ĐVT', 'Kho', 'Tồn kho',
                'Tối thiểu', 'Tối đa', 'Giá vốn', 'Giá trị tồn', 'Cảnh báo']
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=h)
@@ -1623,13 +1657,14 @@ def export_inventory_excel(request):
             alert = 'Trên tối đa'
             fill = warning_fill
 
-        vals = [idx, s.product.code, s.product.name, s.product.unit or '',
+        cat_name = s.product.category.name if s.product.category else ''
+        vals = [idx, s.product.code, s.product.name, cat_name, s.product.unit or '',
                 s.warehouse.name, qty, s.product.min_stock or 0,
                 s.product.max_stock or 0, cost, value, alert]
         for col, val in enumerate(vals, 1):
             cell = ws.cell(row=row, column=col, value=val)
             cell.border = thin
-            if col in (9, 10):
+            if col in (10, 11):
                 cell.number_format = money_fmt
             if fill:
                 cell.fill = fill
@@ -1640,20 +1675,20 @@ def export_inventory_excel(request):
     c = ws.cell(row=row, column=2, value='TỔNG CỘNG')
     c.font = Font(bold=True)
     c.border = thin
-    for col in range(3, 6):
+    for col in range(3, 7):
         ws.cell(row=row, column=col, value='').border = thin
-    c = ws.cell(row=row, column=6, value=total_qty)
+    c = ws.cell(row=row, column=7, value=total_qty)
     c.font = Font(bold=True)
     c.border = thin
-    for col in range(7, 10):
+    for col in range(8, 11):
         ws.cell(row=row, column=col, value='').border = thin
-    c = ws.cell(row=row, column=10, value=total_value)
+    c = ws.cell(row=row, column=11, value=total_value)
     c.font = Font(bold=True)
     c.number_format = money_fmt
     c.border = thin
-    ws.cell(row=row, column=11, value='').border = thin
+    ws.cell(row=row, column=12, value='').border = thin
 
-    col_widths = [6, 12, 30, 8, 15, 12, 12, 12, 15, 18, 15]
+    col_widths = [6, 12, 30, 18, 8, 15, 12, 12, 12, 15, 18, 15]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 

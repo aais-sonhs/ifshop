@@ -11,7 +11,7 @@
     <div class="card-body">
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Nhà cung cấp</th><th>Kho nhập</th><th>Ngày nhập</th><th>Số SP</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Nhà cung cấp</th><th>Kho nhập</th><th>Ngày nhập</th><th>Số lượng</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -319,6 +319,17 @@ function presetWarehouseForQuickEntry(){
     }
 }
 
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
+
 function loadData(){
     $.get('/api/goods_receipts/', function(res){
         var h = '';
@@ -329,7 +340,7 @@ function loadData(){
             else statusBadge = '<span class="badge badge-danger">Hủy</span>';
 
             h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
-                '<td>'+d.receipt_date+'</td><td class="text-center">'+d.items.length+'</td><td class="text-right">'+fmt(d.total_amount)+'</td>'+
+                '<td>'+fmtDt(d.receipt_date, d.created_at)+'</td><td class="text-center">'+fmt(d.total_quantity)+'</td><td class="text-right">'+fmt(d.total_amount)+'</td>'+
                 '<td class="text-center">'+statusBadge+'</td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-success" onclick=\'printGR('+JSON.stringify(d).replace(/\'/g,"&#39;")+')\'>In</button> '+

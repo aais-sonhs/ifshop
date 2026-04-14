@@ -431,6 +431,182 @@ def _build_receipt_items_from_payload(data, order, existing_paid):
     }]
 
 
+def _normalize_optional_int(value):
+    """Chuẩn hóa id từ payload HTML/JSON về int hoặc None để so sánh an toàn."""
+    if value in (None, '', 0, '0'):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _order_item_signature_from_queryset(items):
+    """Tạo chữ ký dữ liệu item hiện có để phát hiện thay đổi khi đơn đã có phiếu thu."""
+    return sorted([
+        (
+            item.product_id,
+            item.variant_id,
+            _to_decimal(item.quantity),
+            _to_decimal(item.unit_price),
+            _to_decimal(item.discount_percent),
+        )
+        for item in items
+    ])
+
+
+def _order_item_signature_from_payload(items_data):
+    """Tạo chữ ký item từ payload frontend theo cùng format với dữ liệu trong DB."""
+    signature = []
+    for item in items_data:
+        signature.append((
+            _normalize_optional_int(item.get('product_id')),
+            _normalize_optional_int(item.get('variant_id')),
+            _to_decimal(item.get('quantity', 0)),
+            _to_decimal(item.get('unit_price', 0)),
+            _to_decimal(item.get('discount_percent', 0)),
+        ))
+    return sorted(signature)
+
+
+def _payload_requests_new_receipt(data):
+    """Kiểm tra payload có đang yêu cầu tạo thêm phiếu thu hay không."""
+    payment_lines = data.get('payment_lines') or []
+    for line in payment_lines:
+        if _to_decimal(line.get('amount', 0)) > 0:
+            return True
+    return _to_decimal(data.get('payment_amount', 0)) > 0
+
+
+def _get_receipted_order_blocking_changes(order, data):
+    """Liệt kê các thay đổi không được phép khi đơn đã phát sinh phiếu thu."""
+    changes = []
+
+    if 'code' in data and (data.get('code') or '').strip() != order.code:
+        changes.append('mã đơn')
+
+    if 'customer_id' in data:
+        current_customer_id = None if _is_guest_customer(order.customer) else order.customer_id
+        if _normalize_optional_int(data.get('customer_id')) != current_customer_id:
+            changes.append('khách hàng')
+
+    if 'warehouse_id' in data and _normalize_optional_int(data.get('warehouse_id')) != order.warehouse_id:
+        changes.append('kho xuất')
+
+    if 'order_date' in data:
+        current_date = order.order_date.isoformat() if order.order_date else ''
+        if (data.get('order_date') or '') != current_date:
+            changes.append('ngày đặt')
+
+    for field_name, label in (
+        ('discount_amount', 'chiết khấu'),
+        ('shipping_fee', 'phí vận chuyển'),
+        ('bonus_amount', 'tiền bonus'),
+    ):
+        if field_name in data and _to_decimal(data.get(field_name, 0)) != _to_decimal(getattr(order, field_name, 0)):
+            changes.append(label)
+
+    if 'approver_id' in data and _normalize_optional_int(data.get('approver_id')) != order.approver_id:
+        changes.append('người duyệt')
+
+    if 'items' in data:
+        current_items = _order_item_signature_from_queryset(order.items.all())
+        incoming_items = _order_item_signature_from_payload(data.get('items') or [])
+        if incoming_items != current_items:
+            changes.append('sản phẩm/giá/số lượng')
+
+    if _payload_requests_new_receipt(data):
+        changes.append('thanh toán mới')
+
+    return changes
+
+
+def _save_receipted_order_safe_update(request, order, data, old_status):
+    """Cập nhật phần an toàn của đơn đã có phiếu thu mà không đụng tiền/hàng."""
+    if old_status in (5, 6):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Không thể sửa đơn hàng đã Hoàn thành/Hủy. Liên hệ quản lý nếu cần điều chỉnh.'
+        })
+
+    new_status = int(data.get('status', old_status))
+    allowed = ORDER_STATUS_TRANSITIONS.get(old_status, {old_status})
+    if new_status not in allowed:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Không được chuyển trạng thái từ "{Order.STATUS_CHOICES[old_status][1]}" sang "{Order.STATUS_CHOICES[new_status][1]}". '
+            f'Chỉ cho phép: {", ".join(Order.STATUS_CHOICES[s][1] for s in sorted(allowed) if s != old_status) or "Không chuyển được"}.'
+        })
+
+    if new_status == 6:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Đơn đã có phiếu thu. Vui lòng dùng chức năng Hủy đơn để hệ thống xử lý phiếu thu và tồn kho đúng quy trình.'
+        })
+
+    blocking_changes = _get_receipted_order_blocking_changes(order, data)
+    if blocking_changes:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Đơn hàng đã có phiếu thu, chỉ được đổi trạng thái/ghi chú. Không thể thay đổi: '
+            + ', '.join(blocking_changes) + '.'
+        })
+
+    status_after = new_status
+    if status_after == 5 and order.approver_id and order.approval_status != 2:
+        status_after = old_status
+
+    update_fields = []
+    if order.status != status_after:
+        order.status = status_after
+        update_fields.append('status')
+    if 'note' in data and order.note != data.get('note', ''):
+        order.note = data.get('note', '')
+        update_fields.append('note')
+    if 'tags' in data:
+        tags = (data.get('tags', '') or '').strip() or None
+        if order.tags != tags:
+            order.tags = tags
+            update_fields.append('tags')
+    if 'salesperson' in data:
+        salesperson = data.get('salesperson', '') or None
+        if order.salesperson != salesperson:
+            order.salesperson = salesperson
+            update_fields.append('salesperson')
+    if 'server_staff' in data:
+        server_staff = data.get('server_staff', '') or None
+        if order.server_staff != server_staff:
+            order.server_staff = server_staff
+            update_fields.append('server_staff')
+
+    if update_fields:
+        order.save(update_fields=update_fields)
+
+    if status_after == 5 and old_status != 5 and order.warehouse_id:
+        _apply_order_stock_adjustment(order, direction=-1)
+
+    _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
+    _refresh_order_payment(order)
+    _log_order_history(
+        order=order,
+        actor=request.user,
+        action='status',
+        summary='Cập nhật trạng thái đơn đã có phiếu thu; không thay đổi tiền hàng.',
+        status_before=old_status,
+        status_after=order.status,
+    )
+
+    message = 'Đã cập nhật trạng thái đơn hàng'
+    if new_status == 5 and status_after != 5:
+        message = 'Đơn hàng cần được duyệt trước khi chuyển Hoàn thành.'
+    return JsonResponse({
+        'status': 'ok',
+        'message': message,
+        'order_id': order.id,
+        'order_code': order.code,
+    })
+
+
 def _apply_order_stock_adjustment(order, direction):
     """Áp biến động tồn kho cho toàn bộ item của đơn.
 
@@ -899,6 +1075,7 @@ def api_get_orders(request):
         'warehouse': o.warehouse.name if o.warehouse else '',
         'warehouse_id': o.warehouse_id,
         'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
+        'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
         'total_amount': float(o.total_amount),
         'discount_amount': float(o.discount_amount),
         'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
@@ -1004,10 +1181,7 @@ def api_save_order(request):
                 old_status = o.status
                 old_quotation_id = o.quotation_id
                 if Receipt.objects.filter(order=o).exists():
-                    return JsonResponse({
-                        'status': 'error',
-                        'message': 'Không thể sửa đơn hàng đã có phiếu thu. Nếu cần bù trừ, vui lòng dùng chức năng Trả hàng hoặc xử lý phiếu thu trước.'
-                    })
+                    return _save_receipted_order_safe_update(request, o, data, old_status)
                 # KHÓA: Không cho sửa đơn hàng đã Hoàn thành hoặc Hủy
                 if old_status in (5, 6):
                     return JsonResponse({
@@ -1605,6 +1779,7 @@ def api_get_quotations(request):
         'customer_group_id': q.customer.group_id if q.customer else None,
         'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
         'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
+        'created_at': q.created_at.strftime('%d/%m/%Y %H:%M:%S') if q.created_at else '',
         'total_amount': float(q.total_amount),
         'discount_amount': float(q.discount_amount),
         'shipping_fee': float(getattr(q, 'shipping_fee', 0) or 0),
@@ -1799,6 +1974,7 @@ def api_get_order_returns(request):
         'order': r.order.code if r.order else '',
         'customer': r.customer.name if r.customer else '',
         'return_date': r.return_date.strftime('%Y-%m-%d') if r.return_date else '',
+        'created_at': r.created_at.strftime('%d/%m/%Y %H:%M:%S') if r.created_at else '',
         'total_refund': float(r.total_refund),
         'status': r.status, 'status_display': r.get_status_display(),
         'reason': r.reason or '',

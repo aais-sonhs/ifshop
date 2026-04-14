@@ -117,6 +117,16 @@ $(document).ready(function(){
         });
     });
 });
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
 function loadData(){
     $.get('/api/payments/',function(res){
         var h='';res.data.forEach(function(d,i){
@@ -124,7 +134,7 @@ function loadData(){
             var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
             h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
-                '<td class="text-right">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+d.payment_date+'</td><td>'+d.cash_book+'</td>'+
+                '<td class="text-right">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
                 '<td>'+d.status_display+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';

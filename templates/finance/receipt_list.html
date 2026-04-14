@@ -370,6 +370,16 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function escapeHtml(value){ return $('<div>').text(value || '').html(); }
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
 function normalizeText(value){ return (value || '').toString().toLowerCase().trim(); }
 function getSelectedText(selector){
     var $el = $(selector);
@@ -761,7 +771,7 @@ function renderTable(filtered){
         if(visible.indexOf('order_creator') >= 0) html += '<td data-col="order_creator">'+orderCreatorHtml+'</td>';
         if(visible.indexOf('amount') >= 0) html += '<td data-col="amount" class="text-right font-weight-bold" style="color:#28a745;">'+fmt(receipt.amount)+'đ</td>';
         if(visible.indexOf('method') >= 0) html += '<td data-col="method" class="text-center"><span class="badge badge-light border">'+escapeHtml(methodLabel)+'</span></td>';
-        if(visible.indexOf('date') >= 0) html += '<td data-col="date">'+escapeHtml(receipt.receipt_date)+'</td>';
+        if(visible.indexOf('date') >= 0) html += '<td data-col="date">'+fmtDt(receipt.receipt_date, receipt.created_at)+'</td>';
         if(visible.indexOf('cashbook') >= 0) html += '<td data-col="cashbook">'+cashbookBadge+'</td>';
         if(visible.indexOf('receipt_creator') >= 0) html += '<td data-col="receipt_creator"><small>'+(receipt.receipt_creator ? escapeHtml(receipt.receipt_creator) : '—')+'</small></td>';
         if(visible.indexOf('description') >= 0) html += '<td data-col="description">'+descHtml+'</td>';

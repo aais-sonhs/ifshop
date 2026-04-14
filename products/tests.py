@@ -118,6 +118,39 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock_a.quantity, Decimal('0'))
         self.assertEqual(stock_b.quantity, Decimal('5'))
 
+    def test_goods_receipt_list_uses_total_item_quantity(self):
+        receipt = GoodsReceipt.objects.create(
+            code='P00003',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=date.today(),
+            status=1,
+            total_amount=Decimal('75'),
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=Decimal('5'),
+            unit_price=Decimal('10'),
+            total_price=Decimal('50'),
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=Decimal('2.5'),
+            unit_price=Decimal('10'),
+            total_price=Decimal('25'),
+        )
+
+        response = self.client.get(reverse('api_get_goods_receipts'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == receipt.id)
+        self.assertEqual(row['items_count'], 2)
+        self.assertEqual(row['total_quantity'], 7.5)
+        self.assertEqual(sum(item['quantity'] for item in row['items']), 7.5)
+
     def test_delete_completed_stock_transfer_reverts_stock(self):
         transfer = StockTransfer.objects.create(
             code='CK-001',

@@ -245,6 +245,17 @@ function getItemsData(){
     return items;
 }
 
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
+
 function loadData(){
     $.get('/api/stock_checks/', function(res){
         var h = '';
@@ -255,7 +266,7 @@ function loadData(){
             else statusBadge = '<span class="badge badge-danger">Hủy</span>';
 
             h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.warehouse+'</td>'+
-                '<td>'+d.check_date+'</td><td class="text-center">'+d.items.length+'</td>'+
+                '<td>'+fmtDt(d.check_date, d.created_at)+'</td><td class="text-center">'+d.items.length+'</td>'+
                 '<td class="text-center">'+statusBadge+'</td><td>'+d.note+'</td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';

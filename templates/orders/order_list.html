@@ -1057,6 +1057,16 @@ var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
 var _suppressOrderWarehousePreferencePersist = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtDt(dateStr, createdAt){
+    if(!dateStr) return '';
+    var p = dateStr.split('-');
+    var d = p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : dateStr;
+    if(createdAt){
+        var t = createdAt.split(' ');
+        if(t.length===2) d += ' ' + t[1];
+    }
+    return d;
+}
 function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
 
 function normalizeQuickSearchStockFilter(filterKey){
@@ -3038,7 +3048,7 @@ function loadData(){
                 orderColConfig.td('code', d.code)+
                 orderColConfig.td('customer', customerHtml)+
                 orderColConfig.td('warehouse', d.warehouse)+
-                orderColConfig.td('date', d.order_date)+
+                orderColConfig.td('date', fmtDt(d.order_date, d.created_at))+
                 orderColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
                 orderColConfig.td('payment', paymentHtml)+
                 orderColConfig.td('status', statusHtml)+

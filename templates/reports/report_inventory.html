@@ -8,21 +8,38 @@
         </div>
     </div>
     <div class="card-body">
-        <div class="row mb-3">
+        <div class="row mb-3" style="gap:6px 0;">
             <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm theo tên SP, mã SP, barcode...">
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_category">
+                    <option value="">-- Danh mục SP --</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_warehouse">
                     <option value="">-- Tất cả kho --</option>
                 </select>
             </div>
             <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_stock_status">
+                    <option value="">-- Tồn kho --</option>
+                    <option value="positive">Còn hàng (> 0)</option>
+                    <option value="zero">Hết hàng (= 0)</option>
+                    <option value="negative">Âm kho (< 0)</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_alert">
-                    <option value="">-- Tất cả --</option>
+                    <option value="">-- Cảnh báo --</option>
                     <option value="low">⚠️ Dưới tối thiểu</option>
                     <option value="high">⚠️ Trên tối đa</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
+            <div class="col-md-1 d-flex align-items-center" style="gap:6px;">
+                <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i></button>
+                <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
         </div>
         <div class="row mb-3">
@@ -44,11 +61,17 @@
                     <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="small-box bg-warning">
+                    <div class="inner"><h4 id="product_count">0</h4><p>Số dòng SP</p></div>
+                    <div class="icon"><i class="fas fa-cube"></i></div>
+                </div>
+            </div>
         </div>
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
-                    <tr><th>STT</th><th>Mã SP</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
+                    <tr><th>STT</th><th>Mã SP</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -61,31 +84,66 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
+
+var _categoriesLoaded = false;
+var _warehousesLoaded = false;
+
 $(document).ready(function(){
     loadReport();
     $('#btn_search').click(function(){ loadReport(); });
+    $('#filter_search').on('keydown', function(e){ if(e.keyCode===13) loadReport(); });
+    $('#btn_clear_filter').click(function(){
+        $('#filter_search').val('');
+        $('#filter_category').val('');
+        $('#filter_warehouse').val('');
+        $('#filter_stock_status').val('');
+        $('#filter_alert').val('');
+        loadReport();
+    });
 });
+
 function loadReport(){
+    var params = [];
     var wh = $('#filter_warehouse').val();
+    var search = $('#filter_search').val().trim();
+    var category = $('#filter_category').val();
+    var stockStatus = $('#filter_stock_status').val();
     var alert_filter = $('#filter_alert').val();
-    var url = '/api/report_inventory/?' + (wh ? 'warehouse_id='+wh : '');
+
+    if(wh) params.push('warehouse_id='+wh);
+    if(search) params.push('search='+encodeURIComponent(search));
+    if(category) params.push('category_id='+category);
+    if(stockStatus) params.push('stock_status='+stockStatus);
+
+    var url = '/api/report_inventory/?' + params.join('&');
     $.get(url, function(res){
         if(res.status !== 'ok') return;
 
-        // Populate warehouse filter
-        if($('#filter_warehouse option').length <= 1){
+        // Populate warehouse filter (once)
+        if(!_warehousesLoaded && res.warehouses){
             res.warehouses.forEach(function(w){
                 $('#filter_warehouse').append('<option value="'+w.id+'">'+w.name+'</option>');
             });
+            _warehousesLoaded = true;
+        }
+
+        // Populate category filter (once)
+        if(!_categoriesLoaded && res.categories){
+            res.categories.forEach(function(c){
+                $('#filter_category').append('<option value="'+c.id+'">'+c.name+'</option>');
+            });
+            _categoriesLoaded = true;
         }
 
         var data = res.data;
+        // Client-side alert filter
         if(alert_filter === 'low') data = data.filter(function(d){ return d.alert_type === 'danger'; });
         else if(alert_filter === 'high') data = data.filter(function(d){ return d.alert_type === 'warning'; });
 
         $('#total_items').text(fmt(res.summary.total_items));
         $('#total_value').text(fmtD(res.summary.total_value));
         $('#alert_count').text(res.summary.alert_count);
+        $('#product_count').text(fmt(data.length));
 
         var h = '';
         data.forEach(function(d, i){
@@ -95,21 +153,28 @@ function loadReport(){
             else alertBadge = '<span class="badge badge-success">OK</span>';
 
             var rowStyle = d.alert_type === 'danger' ? ' style="background:#fce4ec;"' : (d.alert_type === 'warning' ? ' style="background:#fff3e0;"' : '');
-            h += '<tr'+rowStyle+'><td>'+(i+1)+'</td><td>'+d.product_code+'</td><td>'+d.product_name+'</td><td>'+d.unit+'</td>'+
-                '<td>'+d.warehouse+'</td><td class="text-center"><strong>'+fmt(d.quantity)+'</strong></td>'+
+            var qtyClass = d.quantity < 0 ? ' text-danger font-weight-bold' : '';
+            h += '<tr'+rowStyle+'><td>'+(i+1)+'</td><td>'+d.product_code+'</td><td>'+d.product_name+'</td><td>'+(d.category||'')+'</td><td>'+d.unit+'</td>'+
+                '<td>'+d.warehouse+'</td><td class="text-center'+qtyClass+'"><strong>'+fmt(d.quantity)+'</strong></td>'+
                 '<td class="text-center">'+d.min_stock+'</td><td class="text-center">'+d.max_stock+'</td>'+
                 '<td class="text-right">'+fmtD(d.cost_price)+'</td><td class="text-right"><strong>'+fmtD(d.stock_value)+'</strong></td>'+
                 '<td class="text-center">'+alertBadge+'</td></tr>';
         });
-        if(!h) h = '<tr><td colspan="11" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+        if(!h) h = '<tr><td colspan="12" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
         $('#report_tbl tbody').html(h);
     });
 }
 
 $('#btn_export').click(function(){
+    var params = [];
     var wh = $('#filter_warehouse').val();
+    var search = $('#filter_search').val().trim();
+    var category = $('#filter_category').val();
+    if(wh) params.push('warehouse_id='+wh);
+    if(search) params.push('search='+encodeURIComponent(search));
+    if(category) params.push('category_id='+category);
     var url = '/api/export_inventory_excel/';
-    if(wh) url += '?warehouse_id='+wh;
+    if(params.length) url += '?' + params.join('&');
     window.location.href = url;
 });
 </script>

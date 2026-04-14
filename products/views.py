@@ -117,6 +117,18 @@ def _normalize_goods_receipt_items(items_data):
     return normalized_items, total_amount
 
 
+def _calculate_goods_receipt_totals(items):
+    """Tính tổng số lượng và tổng tiền trực tiếp từ dòng chi tiết phiếu nhập."""
+    total_quantity = Decimal('0')
+    total_amount = Decimal('0')
+    for item in items:
+        quantity = _to_decimal(item.quantity)
+        unit_price = _to_decimal(item.unit_price)
+        total_quantity += quantity
+        total_amount += quantity * unit_price
+    return total_quantity, total_amount
+
+
 def _apply_goods_receipt_stock_adjustment(receipt, warehouse_id, multiplier):
     """Áp biến động tồn kho cho phiếu nhập theo chiều cộng hoặc hoàn tác.
 
@@ -850,16 +862,23 @@ def api_get_goods_receipts(request):
     receipts = filter_by_store(receipts, request, field_name='warehouse__store')
     data = []
     for r in receipts:
-        items = [{
-            'product_id': item.product_id,
-            'variant_id': item.variant_id,
-            'product_code': item.product.code if item.product else '',
-            'product_name': item.product.name if item.product else '',
-            'variant_name': item.variant.size_name if item.variant else '',
-            'quantity': float(item.quantity),
-            'unit_price': float(item.unit_price),
-            'total_price': float(item.total_price),
-        } for item in r.items.select_related('product', 'variant').all()]
+        receipt_items = list(r.items.select_related('product', 'variant').all())
+        total_quantity, total_amount = _calculate_goods_receipt_totals(receipt_items)
+        items = []
+        for item in receipt_items:
+            quantity = _to_decimal(item.quantity)
+            unit_price = _to_decimal(item.unit_price)
+            line_total = quantity * unit_price
+            items.append({
+                'product_id': item.product_id,
+                'variant_id': item.variant_id,
+                'product_code': item.product.code if item.product else '',
+                'product_name': item.product.name if item.product else '',
+                'variant_name': item.variant.size_name if item.variant else '',
+                'quantity': float(quantity),
+                'unit_price': float(unit_price),
+                'total_price': float(line_total),
+            })
         data.append({
             'id': r.id, 'code': r.code,
             'purchase_order': r.purchase_order.code if r.purchase_order else '',
@@ -868,7 +887,10 @@ def api_get_goods_receipts(request):
             'warehouse': r.warehouse.name if r.warehouse else '',
             'warehouse_id': r.warehouse_id,
             'receipt_date': r.receipt_date.strftime('%Y-%m-%d') if r.receipt_date else '',
-            'total_amount': float(r.total_amount),
+            'created_at': r.created_at.strftime('%d/%m/%Y %H:%M:%S') if r.created_at else '',
+            'items_count': len(items),
+            'total_quantity': float(total_quantity),
+            'total_amount': float(total_amount),
             'status': r.status,
             'status_display': r.get_status_display(),
             'note': r.note or '',
@@ -1000,6 +1022,7 @@ def api_get_stock_transfers(request):
             'to_warehouse': t.to_warehouse.name if t.to_warehouse else '',
             'to_warehouse_id': t.to_warehouse_id,
             'transfer_date': t.transfer_date.strftime('%Y-%m-%d') if t.transfer_date else '',
+            'created_at': t.created_at.strftime('%d/%m/%Y %H:%M:%S') if t.created_at else '',
             'status': t.status, 'status_display': t.get_status_display(),
             'note': t.note or '',
             'items': items,
@@ -1125,6 +1148,7 @@ def api_get_stock_checks(request):
             'warehouse': c.warehouse.name if c.warehouse else '',
             'warehouse_id': c.warehouse_id,
             'check_date': c.check_date.strftime('%Y-%m-%d') if c.check_date else '',
+            'created_at': c.created_at.strftime('%d/%m/%Y %H:%M:%S') if c.created_at else '',
             'status': c.status, 'status_display': c.get_status_display(),
             'note': c.note or '',
             'items': items,
@@ -1219,6 +1243,7 @@ def api_get_purchase_orders(request):
             'warehouse_id': o.warehouse_id,
             'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
             'expected_date': o.expected_date.strftime('%Y-%m-%d') if o.expected_date else '',
+            'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
             'total_amount': float(o.total_amount),
             'status': o.status, 'status_display': o.get_status_display(),
             'note': o.note or '',
@@ -1578,7 +1603,7 @@ def export_goods_receipts_excel(request):
         {'key': 'receipt_date', 'label': 'Ngày nhập', 'width': 12},
         {'key': 'supplier', 'label': 'Nhà cung cấp', 'width': 22},
         {'key': 'warehouse', 'label': 'Kho nhập', 'width': 16},
-        {'key': 'items_count', 'label': 'Số SP', 'width': 8},
+        {'key': 'total_quantity', 'label': 'Số lượng', 'width': 10},
         {'key': 'total_amount', 'label': 'Tổng tiền', 'width': 16},
         {'key': 'status', 'label': 'Trạng thái', 'width': 12},
         {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
@@ -1587,16 +1612,19 @@ def export_goods_receipts_excel(request):
 
     rows = []
     total = 0
+    total_quantity_all = 0
     for i, r in enumerate(receipts, 1):
-        total += float(r.total_amount)
+        total_quantity, receipt_total = _calculate_goods_receipt_totals(r.items.all())
+        total += float(receipt_total)
+        total_quantity_all += float(total_quantity)
         rows.append({
             'stt': i,
             'code': r.code,
             'receipt_date': r.receipt_date,
             'supplier': r.supplier.name if r.supplier else '',
             'warehouse': r.warehouse.name if r.warehouse else '',
-            'items_count': r.items.count(),
-            'total_amount': float(r.total_amount),
+            'total_quantity': float(total_quantity),
+            'total_amount': float(receipt_total),
             'status': r.get_status_display(),
             'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
             'note': r.note or '',
@@ -1608,7 +1636,7 @@ def export_goods_receipts_excel(request):
         columns=columns, rows=rows,
         filename=f'Nhap_kho_{datetime.now().strftime("%Y%m%d")}',
         money_cols=['total_amount'],
-        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'total_amount': total},
+        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'total_quantity': total_quantity_all, 'total_amount': total},
     )
 
 

@@ -772,10 +772,10 @@ function renderTable(){
             nameHtml += '<small class="text-muted">'+escapeHtml(d.company)+'</small>';
         }
         var groupHtml = d.group ? '<span class="badge badge-light border">'+escapeHtml(d.group)+'</span>' : '<span class="text-muted">--</span>';
-        var actionsHtml = '<button class="btn btn-xs btn-outline-primary btn-toggle-orders" onclick="toggleCustomerOrders('+d.id+', this)" title="Xem nhanh đơn gần đây"><i class="fas fa-list-ul"></i></button> '+
-            '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng"><i class="fas fa-history"></i></button> '+
-            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\' ><i class="fas fa-edit"></i></button> '+
-            '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button>';
+        var actionsHtml = '<div class="btn-action-group"><button class="btn btn-xs btn-outline-primary btn-toggle-orders" onclick="toggleCustomerOrders('+d.id+', this)" title="Xem nhanh đơn gần đây">Đơn gần đây</button> '+
+            '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng">Lịch sử</button> '+
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\' >Sửa</button> '+
+            '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
         h+='<tr id="customer_row_'+d.id+'" style="vertical-align:middle;">'+
             customerColConfig.td('stt', (i+1))+
             customerColConfig.td('avatar', avatarImg, 'class="text-center" style="padding:4px;"')+

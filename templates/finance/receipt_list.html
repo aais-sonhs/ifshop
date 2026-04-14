@@ -767,9 +767,10 @@ function renderTable(filtered){
         if(visible.indexOf('description') >= 0) html += '<td data-col="description">'+descHtml+'</td>';
         if(visible.indexOf('status') >= 0) html += '<td data-col="status"><span class="badge badge-'+statusClass+'">'+escapeHtml(receipt.status_display)+'</span></td>';
         if(visible.indexOf('actions') >= 0) html += '<td data-col="actions" class="text-nowrap">' +
-            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(receipt).replace(/\'/g, '&#39;')+')\'><i class="fas fa-edit"></i></button> ' +
-            '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+receipt.id+')"><i class="fas fa-trash-alt"></i></button>' +
-            '</td>';
+            '<div class="btn-action-group">' +
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(receipt).replace(/\'/g, '&#39;')+')\'>Sửa</button> ' +
+            '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+receipt.id+')">Xóa</button>' +
+            '</div></td>';
         html += '</tr>';
     });
 

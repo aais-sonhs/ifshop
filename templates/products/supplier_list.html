@@ -73,8 +73,8 @@ function loadData(){
         var h=''; res.data.forEach(function(d,i){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.name+'</td><td>'+d.phone+'</td><td>'+d.email+'</td><td>'+d.address+'</td><td>'+d.tax_code+'</td>'+
                 '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
-                '<td><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'><i class="fas fa-edit"></i></button> '+
-                '<button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         }); $('#data_tbl tbody').html(h);
     });
 }

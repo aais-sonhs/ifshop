@@ -124,8 +124,8 @@ function loadData() {
                 '<td>' + item.manager + '</td>' +
                 '<td>' + (item.is_active ? '<span class="badge badge-success">Hoạt động</span>' : '<span class="badge badge-secondary">Ngừng</span>') + '</td>' +
                 '<td>' +
-                    '<button class="btn btn-xs btn-info" onclick="editItem(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')"><i class="fas fa-edit"></i></button> ' +
-                    '<button class="btn btn-xs btn-danger" onclick="deleteItem(' + item.id + ')"><i class="fas fa-trash"></i></button>' +
+                    '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editItem(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')">Sửa</button> ' +
+                    '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem(' + item.id + ')">Xóa</button></div>' +
                 '</td></tr>';
         });
         $('#warehouse_tbl tbody').html(html);

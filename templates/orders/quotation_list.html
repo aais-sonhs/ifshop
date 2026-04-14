@@ -1713,10 +1713,10 @@ function loadData(){
             if(d.tags){
                 customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
             }
-            var actionsHtml = '<button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
+            var actionsHtml = '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editItem('+d.id+')">Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-primary" onclick="copyQuotation('+d.id+')">Sao chép</button> '+
                 '<button class="btn btn-xs btn-outline-success" onclick="printQuotation('+d.id+')">In</button> '+
-                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button>';
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
             h += '<tr>'+
                 quotationColConfig.td('stt', (i+1))+
                 quotationColConfig.td('code', d.code)+

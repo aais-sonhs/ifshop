@@ -78,9 +78,8 @@ function loadData(){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td><b>'+d.name+'</b></td><td>'+d.category+'</td>'+
                 '<td class="text-center">'+d.duration_minutes+' phút</td><td class="text-right">'+fmt(d.price)+'đ</td>'+
                 '<td class="text-center">'+(d.commission_rate>0?d.commission_rate+'%':'-')+'</td><td class="text-center">'+statusBadge+'</td>'+
-                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d)+')\'>'+
-                '<i class="fas fa-edit"></i></button> <button class="btn btn-xs btn-danger" onclick="deleteItem('+d.id+')">'+
-                '<i class="fas fa-trash"></i></button></td></tr>';
+                '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d)+')\'>Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });
         $('#data_tbl tbody').html(h||'<tr><td colspan="9" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });

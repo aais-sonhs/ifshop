@@ -250,8 +250,8 @@ function loadData(){
                 '<td>'+d.customer_name+'</td><td>'+d.staff_name+'</td><td>'+d.room_name+'</td>'+
                 '<td><small>'+svcNames+'</small></td><td class="text-right">'+fmt(d.final_amount)+'</td>'+
                 '<td class="text-center"><span class="badge badge-'+statusColors[d.status]+'">'+d.status_display+'</span></td>'+
-                '<td class="text-center"><button class="btn btn-xs btn-info" onclick=\'editBooking('+JSON.stringify(d).replace(/'/g,"\\'")+')\'><i class="fas fa-edit"></i></button>'+
-                ' <button class="btn btn-xs btn-danger" onclick="deleteBooking('+d.id+')"><i class="fas fa-trash"></i></button></td></tr>';
+                '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editBooking('+JSON.stringify(d).replace(/'/g,"\\'")+')\'>Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteBooking('+d.id+')">Xóa</button></div></td></tr>';
         });
         $('#data_tbl tbody').html(h||'<tr><td colspan="11" class="text-center text-muted p-4">Chưa có lịch hẹn</td></tr>');
     });

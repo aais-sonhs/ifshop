@@ -67,4 +67,67 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Twin Theme CSS -->
     <link rel="stylesheet" href="{% static 'dist/css/twin-theme.css' %}?{% now "U" %}" />
+    <style>
+        .content-wrapper,
+        .content-wrapper > .content,
+        .content {
+            min-width: 0;
+        }
+
+        @media (max-width: 767.98px) {
+            .content-wrapper > .content {
+                padding: 12px !important;
+            }
+
+            .card-header {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .card-header::after {
+                display: none;
+            }
+
+            .card-title {
+                float: none !important;
+                margin-bottom: 0;
+            }
+
+            .card-tools {
+                float: none !important;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-left: auto;
+                justify-content: flex-end;
+            }
+
+            .card-tools > * {
+                margin-left: 0 !important;
+            }
+
+            .content-header h1,
+            .card-title {
+                word-break: break-word;
+            }
+
+            .table-responsive {
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .content-wrapper > .content {
+                padding: 10px !important;
+            }
+
+            .card-tools {
+                width: 100%;
+                margin-left: 0;
+                justify-content: flex-start;
+            }
+        }
+    </style>
 </head>

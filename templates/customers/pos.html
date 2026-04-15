@@ -52,11 +52,10 @@
 /* Mobile (≤768px) */
 @media (max-width: 768px) {
     .pos-container { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 57px); }
-    .pos-menu { padding: 8px; padding-bottom: 80px; }
+    .pos-menu { padding: 8px; padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)); }
     .pos-cart { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1040; border-left: none; }
     .pos-cart.show { display: flex; }
-    .mobile-cart-toggle { display: flex; align-items: center; justify-content: center; }
-    .product-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+    .product-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; padding-right: 72px; padding-bottom: 8px; }
     .pos-product img { height: 75px; }
     .pos-product .pos-p-name { font-size: 11px; height: 28px; }
     .pos-product .pos-p-price { font-size: 12px; }
@@ -75,11 +74,18 @@
     .pos-product .pos-p-name { font-size: 10px; height: 26px; }
     .pos-product .pos-p-price { font-size: 11px; }
 }
+
+@media (max-width: 768px) {
+    .mobile-cart-toggle {
+        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+}
 </style>
 
 <div class="pos-container">
     <!-- Mobile: Floating Cart Button -->
-    <button class="mobile-cart-toggle" id="btn_mobile_cart" onclick="toggleMobileCart()">
+    <button class="mobile-cart-toggle" id="btn_mobile_cart" onclick="toggleMobileCart()" style="display:none;">
         <i class="fas fa-shopping-cart"></i>
         <span class="cart-count" id="mobile_cart_count" style="display:none;">0</span>
     </button>
@@ -316,7 +322,10 @@ function posCheckout(method){
     });
 }
 
-$(document).ready(function(){ loadPosData(); });
+$(document).ready(function(){
+    loadPosData();
+    renderCart();
+});
 
 function toggleMobileCart(){
     $('#pos_cart_panel').toggleClass('show');
@@ -325,8 +334,10 @@ function toggleMobileCart(){
 function updateMobileCartBadge(){
     var count = cart.reduce((s,i) => s + i.quantity, 0);
     if(count > 0){
+        $('#btn_mobile_cart').css('display', 'flex');
         $('#mobile_cart_count').text(count).show();
     } else {
+        $('#btn_mobile_cart').hide();
         $('#mobile_cart_count').hide();
     }
 }

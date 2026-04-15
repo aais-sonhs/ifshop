@@ -1,23 +1,125 @@
-<nav class="main-header navbar navbar-expand navbar-white navbar-light" style="display: grid; grid-template-columns: 10% 75% 15%;">
+<style>
+    .app-navbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 57px;
+        padding: 0 0.75rem;
+        position: relative;
+    }
+
+    .app-navbar-left,
+    .app-navbar-right {
+        display: flex;
+        align-items: center;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .app-navbar-left {
+        flex: 0 0 auto;
+    }
+
+    .app-navbar-right {
+        flex: 0 0 auto;
+        margin-left: auto;
+        justify-content: flex-end;
+    }
+
+    .app-navbar-left .nav-link,
+    .app-navbar-right .nav-link {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .app-navbar-brand {
+        left: 50%;
+        max-width: min(440px, calc(100% - 360px));
+        min-width: 0;
+        padding: 0 0.75rem;
+        position: absolute;
+        text-align: center;
+        transform: translateX(-50%);
+    }
+
+    .app-navbar-title {
+        display: inline-block;
+        max-width: 100%;
+        margin: 0;
+        color: #e94560;
+        font-size: clamp(1.15rem, 2vw, 1.625rem);
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+
+    .app-navbar-profile {
+        display: flex !important;
+        align-items: center;
+        gap: 8px;
+        max-width: 240px;
+    }
+
+    .app-navbar-profile span {
+        display: block;
+        max-width: 170px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 767.98px) {
+        .app-navbar {
+            gap: 8px;
+            padding: 0 0.5rem;
+        }
+
+        .app-navbar-brand {
+            flex: 1 1 auto;
+            left: auto;
+            max-width: none;
+            padding: 0 0.5rem;
+            position: static;
+            transform: none;
+        }
+
+        .app-navbar-title {
+            font-size: 1rem;
+        }
+
+        .app-navbar-profile span {
+            display: none;
+        }
+
+        .app-navbar .dropdown-menu {
+            max-width: calc(100vw - 24px);
+        }
+    }
+</style>
+
+<nav class="main-header navbar navbar-expand navbar-white navbar-light app-navbar">
     <!-- Left navbar links -->
-    <ul class="navbar-nav">
+    <ul class="navbar-nav app-navbar-left">
         <li class="nav-item">
             <a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a>
         </li>
     </ul>
 
-    <div class="logo-text" style="text-align: center;">
-        <B style="font-size: 26px;color: #e94560;" name="title" id="title">📦 {% if biz %}{{ biz.business_name }}{% else %}Quản lý Bán hàng{% endif %}</B>
+    <div class="logo-text app-navbar-brand">
+        <b class="app-navbar-title" name="title" id="title">📦 {% if biz %}{{ biz.business_name }}{% else %}Quản lý Bán hàng{% endif %}</b>
     </div>
     <!-- Right navbar links -->
-    <ul class="navbar-nav ml-auto">
+    <ul class="navbar-nav ml-auto app-navbar-right">
         <li class="nav-item dropdown">
-            <a class="nav-link nav-hover" data-toggle="dropdown" href="#" style="display:flex;align-items:center;gap:8px;">
+            <a class="nav-link nav-hover app-navbar-profile" data-toggle="dropdown" href="#">
                 <img id="nav_avatar" src="" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #ddd;display:none;">
                 <i class="far fa-user" id="nav_user_icon"></i>
                 <span>{{ request.user.get_full_name|default:request.user.username }}</span>
             </a>
-            <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right" style="width:320px;">
+            <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right" style="width:320px;max-width:calc(100vw - 24px);">
                 <!-- Profile header -->
                 <div class="text-center p-3" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;border-radius:12px 12px 0 0;">
                     <img id="dropdown_avatar" src="" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.5);display:none;">

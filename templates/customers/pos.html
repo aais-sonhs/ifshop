@@ -146,7 +146,7 @@ function fmt(n){ return new Intl.NumberFormat('vi-VN').format(Math.round(n)); }
 
 function loadPosData(){
     // Load products
-    $.get('/api/products_select/', function(res){
+    $.get('/api/products-select/', function(res){
         posProducts = (res.data || []).filter(p => p.is_active !== false);
         // Extract categories
         var cats = {};
@@ -168,7 +168,7 @@ function loadPosData(){
     });
     // Table info
     if(tableId){
-        $.get('/api/cafe_tables/', function(res){
+        $.get('/api/cafe-tables/', function(res){
             var t = (res.data||[]).find(x => x.id == tableId);
             if(t) $('#pos_table_info').html('🪑 '+t.name+' ('+t.area_display+')');
         });
@@ -301,7 +301,7 @@ function posCheckout(method){
     if(tableId) orderData.table_id = parseInt(tableId);
 
     $.ajax({
-        url: '/api/orders/pos_checkout/', type: 'POST',
+        url: '/api/orders/pos-checkout/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{ csrf_token }}'},
         data: JSON.stringify(orderData),
@@ -311,7 +311,7 @@ function posCheckout(method){
                 cart = []; renderCart(); $('#pos_discount').val(0);
                 if(tableId){
                     // Clear table
-                    $.ajax({url:'/api/cafe_tables/update_status/', type:'POST', contentType:'application/json',
+                    $.ajax({url:'/api/cafe-tables/update-status/', type:'POST', contentType:'application/json',
                         headers:{'X-CSRFToken':'{{ csrf_token }}'},
                         data: JSON.stringify({id: parseInt(tableId), status: 0}),
                     });

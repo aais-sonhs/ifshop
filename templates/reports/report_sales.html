@@ -369,7 +369,7 @@ $(document).ready(function(){
 function loadReport(){
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
     var timeGroup=$('#filter_time_group').val()||'day';
-    var url='/api/report_sales/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
+    var url='/api/report-sales/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
     if(storeId)url+='&store_id='+storeId;
     var groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),profitF=$('#filter_profit').val();
     var customerId=$('#filter_customer_id').val(),productId=$('#filter_product_id').val(),salesperson=$('#filter_salesperson').val(),search=$('#filter_search').val();
@@ -646,7 +646,7 @@ function viewStore(sid){$('#filter_store_id').val(sid);loadReport();}
 
 $('#btn_export').click(function(){
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val(),timeGroup=$('#filter_time_group').val()||'day';
-    var url='/api/export_sales_excel/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
+    var url='/api/export-sales-excel/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup);
     if(storeId)url+='&store_id='+storeId;
     var groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),profitF=$('#filter_profit').val();
     var customerId=$('#filter_customer_id').val(),productId=$('#filter_product_id').val(),salesperson=$('#filter_salesperson').val(),search=$('#filter_search').val();

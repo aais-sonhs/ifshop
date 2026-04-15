@@ -23,12 +23,12 @@ urlpatterns = [
     path('api/spa/services/', views.api_get_services, name='api_spa_services'),
     path('api/spa/services/save/', views.api_save_service, name='api_spa_services_save'),
     path('api/spa/services/delete/', views.api_delete_service, name='api_spa_services_delete'),
-    path('api/spa/service_categories/', views.api_get_service_categories, name='api_spa_service_categories'),
-    path('api/spa/service_categories/save/', views.api_save_service_category, name='api_spa_service_categories_save'),
+    path('api/spa/service-categories/', views.api_get_service_categories, name='api_spa_service_categories'),
+    path('api/spa/service-categories/save/', views.api_save_service_category, name='api_spa_service_categories_save'),
 
     # API: Booking
     path('api/spa/bookings/', views.api_get_bookings, name='api_spa_bookings'),
     path('api/spa/bookings/save/', views.api_save_booking, name='api_spa_bookings_save'),
     path('api/spa/bookings/delete/', views.api_delete_booking, name='api_spa_bookings_delete'),
-    path('api/spa/bookings/generate_code/', views.api_generate_booking_code, name='api_spa_bookings_generate_code'),
+    path('api/spa/bookings/generate-code/', views.api_generate_booking_code, name='api_spa_bookings_generate_code'),
 ]

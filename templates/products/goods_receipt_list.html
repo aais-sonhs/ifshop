@@ -4,7 +4,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-truck-loading mr-2"></i>Nhập hàng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/goods_receipts/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/goods-receipts/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu nhập</button>
         </div>
     </div>
@@ -153,7 +153,7 @@ $(document).ready(function(){
         };
 
         $.ajax({
-            url: '/api/goods_receipts/save/', type: 'POST',
+            url: '/api/goods-receipts/save/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
@@ -262,7 +262,7 @@ function ensureProductsLoaded(callback){
         if(typeof callback === 'function') callback();
         return;
     }
-    $.get('/api/products_select/', function(res){
+    $.get('/api/products-select/', function(res){
         PRODUCTS = res.data || [];
         if(typeof callback === 'function') callback();
     });
@@ -331,7 +331,7 @@ function fmtDt(dateStr, createdAt){
 }
 
 function loadData(){
-    $.get('/api/goods_receipts/', function(res){
+    $.get('/api/goods-receipts/', function(res){
         var h = '';
         res.data.forEach(function(d, i){
             var statusBadge = '';
@@ -384,7 +384,7 @@ function editItem(d){
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?')) return;
     $.ajax({
-        url: '/api/goods_receipts/delete/', type: 'POST',
+        url: '/api/goods-receipts/delete/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
         data: JSON.stringify({id: id}),

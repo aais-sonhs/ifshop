@@ -4,7 +4,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-tags mr-2"></i>Danh sách sản phẩm</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/products/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/products/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
         </div>
     </div>
@@ -679,7 +679,7 @@ $('#btn_clear_product_filters').click(function(){
     loadData();
 });
 $('#btn_export_products').click(function(){
-    window.location.href = '/api/export_inventory_excel/';
+    window.location.href = '/api/export-inventory-excel/';
 });
 
 function getProductStockRows(product){
@@ -822,7 +822,7 @@ function getProductHistoryParams(){
 function loadProductPurchaseHistory(){
     if(!_currentHistoryProductId) return;
     $('#ph_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
-    $.get('/api/products/purchase_history/?' + getProductHistoryParams(), function(res){
+    $.get('/api/products/purchase-history/?' + getProductHistoryParams(), function(res){
         if(res.status !== 'ok'){ $('#ph_tbody').html('<tr><td colspan="9" class="text-center text-danger">Lỗi</td></tr>'); return; }
         var s = res.summary;
         $('#ph_summary').html(
@@ -849,7 +849,7 @@ function loadProductSalesHistory(){
     if(!_currentHistoryProductId) return;
     $('#sh_tbody').html('<tr><td colspan="9" class="text-center"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
     var params = getProductHistoryParams();
-    $.get('/api/products/sales_history/?' + params, function(res){
+    $.get('/api/products/sales-history/?' + params, function(res){
         if(res.status !== 'ok'){ $('#sh_tbody').html('<tr><td colspan="9" class="text-center text-danger">Lỗi</td></tr>'); return; }
         var s = res.summary;
         $('#sh_summary').html(

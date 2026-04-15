@@ -303,7 +303,7 @@ $(document).ready(function(){
         var from = $('#filter_from_date').val();
         var to = $('#filter_to_date').val();
         var storeId = $('#filter_store_id').val();
-        var url = '/api/export_staff_sales_excel/?from_date='+from+'&to_date='+to;
+        var url = '/api/export-staff-sales-excel/?from_date='+from+'&to_date='+to;
         if(storeId) url += '&store_id='+storeId;
         window.location.href = url;
     });
@@ -314,7 +314,7 @@ function loadReport(){
     var to = $('#filter_to_date').val();
     var storeId = $('#filter_store_id').val();
     var sp = $('#filter_salesperson').val();
-    var url = '/api/report_staff_sales/?from_date='+from+'&to_date='+to;
+    var url = '/api/report-staff-sales/?from_date='+from+'&to_date='+to;
     if(storeId) url += '&store_id='+storeId;
     if(sp) url += '&salesperson='+encodeURIComponent(sp);
 

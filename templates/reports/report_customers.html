@@ -95,7 +95,7 @@ $(document).ready(function(){
 
 function loadReport(){
     var storeId = $('#filter_store_id').val();
-    var url = '/api/report_customers/';
+    var url = '/api/report-customers/';
     if(storeId) url += '?store_id='+storeId;
 
     $.get(url, function(res){
@@ -205,7 +205,7 @@ function viewStore(storeId){
 
 $('#btn_export').click(function(){
     var storeId = $('#filter_store_id').val();
-    var url = '/api/export_customers_excel/';
+    var url = '/api/export-customers-excel/';
     if(storeId) url += '?store_id='+storeId;
     window.location.href = url;
 });

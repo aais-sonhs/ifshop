@@ -207,7 +207,7 @@ $(document).ready(function(){
             // Không có máy in LAN → ẩn nút in LAN
             $('#btn_direct_print').hide();
             $sel.append('<option value="">Chưa cài đặt máy in LAN</option>');
-            $('#printer_status').html('<a href="/printer_setting_tbl/" class="text-primary"><i class="fas fa-cog"></i> Cài đặt</a>');
+            $('#printer_status').html('<a href="/printer-setting-tbl/" class="text-primary"><i class="fas fa-cog"></i> Cài đặt</a>');
             return;
         }
 
@@ -276,7 +276,7 @@ function doPrintDirect(){
     $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Đang gửi đến ' + printerName + '...');
 
     $.ajax({
-        url: '/api/printers/direct_print/', type: 'POST',
+        url: '/api/printers/direct-print/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': getCSRFToken()},
         data: JSON.stringify({printer_id: parseInt(printerId), html_content: htmlContent}),

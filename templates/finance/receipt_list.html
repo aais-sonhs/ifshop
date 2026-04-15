@@ -710,7 +710,7 @@ function updateReceiptView(){
 
 function loadOrders(){
     var customerId = $('#inp_customer_id').val();
-    var url = '/api/orders_for_receipt/';
+    var url = '/api/orders-for-receipt/';
     if(customerId) url += '?customer_id=' + customerId;
     $.get(url, function(res){
         allOrders = res.data;
@@ -905,7 +905,7 @@ function renderAnalysis(filteredRows){
 
 function buildExportUrl(){
     var params = $.param(buildCurrentFilterParams());
-    return '/api/receipts/export_excel/' + (params ? ('?' + params) : '');
+    return '/api/receipts/export-excel/' + (params ? ('?' + params) : '');
 }
 
 function editItem(receipt){
@@ -1173,7 +1173,7 @@ $('#btn_manage_payment_methods').click(function(){
     $('#modal_payment_methods').modal('show');
 });
 function loadPaymentMethods(){
-    $.get('/api/payment_methods/', function(res){
+    $.get('/api/payment-methods/', function(res){
         var h='';
         res.data.forEach(function(m){
             h += '<tr>' +
@@ -1216,7 +1216,7 @@ $('#btn_save_pm').click(function(){
         is_active: $('#pm_is_active').is(':checked')
     };
     $.ajax({
-        url:'/api/payment_methods/save/', type:'POST',
+        url:'/api/payment-methods/save/', type:'POST',
         contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
         data:JSON.stringify(data),

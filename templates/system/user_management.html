@@ -178,7 +178,7 @@ $(document).ready(function(){
 });
 
 function loadData(){
-    $.when($.get('/api/users/'), $.get('/api/stores_for_user/')).done(function(r1, r2){
+    $.when($.get('/api/users/'), $.get('/api/stores-for-user/')).done(function(r1, r2){
         allUsers = r1[0].data;
         allStores = r2[0].data;
 

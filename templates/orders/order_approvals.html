@@ -144,7 +144,7 @@ $(document).ready(function(){
 });
 
 function loadApprovals(){
-    $.get('/api/orders/pending_approvals/', function(res){
+    $.get('/api/orders/pending-approvals/', function(res){
         if(res.status !== 'ok') return;
 
         var count = res.pending_count;

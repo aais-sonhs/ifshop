@@ -218,7 +218,7 @@ $('#inp_profile_avatar').on('change', function(){
 });
 // Save password
 $('#btn_save_password').click(function(){
-    $.ajax({url:'/api/profile/change_password/',type:'POST',contentType:'application/json',
+    $.ajax({url:'/api/profile/change-password/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{ csrf_token }}'},
         data:JSON.stringify({
             old_password:$('#inp_old_pw').val(),
@@ -237,7 +237,7 @@ $('#btn_save_avatar').click(function(){
     if(!fileInput.files || !fileInput.files[0]){alert('Chọn ảnh trước');return;}
     var fd = new FormData();
     fd.append('avatar', fileInput.files[0]);
-    $.ajax({url:'/api/profile/upload_avatar/',type:'POST',data:fd,processData:false,contentType:false,
+    $.ajax({url:'/api/profile/upload-avatar/',type:'POST',data:fd,processData:false,contentType:false,
         headers:{'X-CSRFToken':'{{ csrf_token }}'},
         success:function(r){
             alert(r.message);

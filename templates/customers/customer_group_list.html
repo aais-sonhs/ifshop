@@ -50,14 +50,14 @@ $(document).ready(function(){
         var data={id:$('#edit_id').val()||null,name:$('#inp_name').val(),description:$('#inp_description').val(),
             discount_percent:$('#inp_discount_percent').val(),is_active:$('#inp_is_active').val()==='true'};
         if(!data.name){alert('Vui lòng nhập tên nhóm');return;}
-        $.ajax({url:'/api/customer_groups/save/',type:'POST',contentType:'application/json',
+        $.ajax({url:'/api/customer-groups/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
         });
     });
 });
 function loadData(){
-    $.get('/api/customer_groups/',function(res){
+    $.get('/api/customer-groups/',function(res){
         var h='';res.data.forEach(function(d,i){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td>'+d.description+'</td><td>'+d.discount_percent+'%</td>'+
                 '<td>'+d.customer_count+'</td>'+
@@ -74,7 +74,7 @@ function editItem(d){
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;
-    $.ajax({url:'/api/customer_groups/delete/',type:'POST',contentType:'application/json',
+    $.ajax({url:'/api/customer-groups/delete/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
         success:function(r){loadData();alert(r.message);}
     });

@@ -234,7 +234,7 @@ $(document).ready(function(){
         data.opt_loyalty_rate = parseInt($('#opt_loyalty_rate').val()) || 10000;
         data.opt_commission = $('#opt_commission').prop('checked');
         $.ajax({
-            url: '/api/business_config/save/', type: 'POST',
+            url: '/api/business-config/save/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
@@ -247,7 +247,7 @@ $(document).ready(function(){
 });
 
 function loadConfig(){
-    $.get('/api/business_config/', function(res){
+    $.get('/api/business-config/', function(res){
         var d = res.data;
         // Populate type select
         var opts = '';

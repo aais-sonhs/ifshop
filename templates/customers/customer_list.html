@@ -5,7 +5,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-users mr-2"></i>Danh sách khách hàng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/customers/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/customers/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm khách hàng</button>
         </div>
     </div>
@@ -954,7 +954,7 @@ function uploadAvatar(customerId, file){
     fd.append('id', customerId);
     fd.append('avatar', file);
     $.ajax({
-        url: '/api/customers/upload_avatar/',
+        url: '/api/customers/upload-avatar/',
         type: 'POST',
         data: fd,
         processData: false,

@@ -270,7 +270,7 @@ $(document).ready(function(){
     $('#fc_save').click(function(){
         var data = {id:$('#fc_id').val()||null, name:$('#fc_name').val(), type:parseInt($('#fc_type').val()), description:$('#fc_description').val()};
         if(!data.name){alert('Vui lòng nhập tên');return;}
-        $.ajax({url:'/api/finance_categories/save/', type:'POST', contentType:'application/json',
+        $.ajax({url:'/api/finance-categories/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_finance_cat').modal('hide'); loadFinanceCats();}alert(r.message);}
         });
@@ -350,7 +350,7 @@ $(document).ready(function(){
     $('#sc_save').click(function(){
         var data = {id:$('#sc_id').val()||null, name:$('#sc_name').val(), description:$('#sc_description').val()};
         if(!data.name){alert('Vui lòng nhập tên nhóm');return;}
-        $.ajax({url:'/api/spa/service_categories/save/', type:'POST', contentType:'application/json',
+        $.ajax({url:'/api/spa/service-categories/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_spa_cat').modal('hide'); loadSpaCats();}alert(r.message);}
         });
@@ -359,7 +359,7 @@ $(document).ready(function(){
 
 // ===== LOAD DATA =====
 function loadFinanceCats(){
-    $.get('/api/finance_categories/', function(res){
+    $.get('/api/finance-categories/', function(res){
         var h='';
         res.data.forEach(function(d){
             var typeLabel = d.type === 1 ? '<span class="badge badge-success">Thu</span>' : '<span class="badge badge-danger">Chi</span>';
@@ -456,7 +456,7 @@ function deleteLoc(id, name){
 }
 
 function loadSpaCats(){
-    $.get('/api/spa/service_categories/', function(res){
+    $.get('/api/spa/service-categories/', function(res){
         var h='';
         res.data.forEach(function(d){
             h += '<tr><td>'+d.name+'</td><td>'+(d.description||'')+'</td>'+

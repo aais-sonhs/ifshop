@@ -52,14 +52,14 @@ $(document).ready(function(){
         var data={id:$('#edit_id').val()||null,name:$('#inp_name').val(),price:$('#inp_price').val(),
             unit:$('#inp_unit').val(),description:$('#inp_description').val(),is_active:$('#inp_is_active').val()==='true'};
         if(!data.name){alert('Vui lòng nhập tên dịch vụ');return;}
-        $.ajax({url:'/api/service_prices/save/',type:'POST',contentType:'application/json',
+        $.ajax({url:'/api/service-prices/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
         });
     });
 });
 function loadData(){
-    $.get('/api/service_prices/',function(res){
+    $.get('/api/service-prices/',function(res){
         var h='';res.data.forEach(function(d,i){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td class="text-right">'+fmt(d.price)+'</td><td>'+d.unit+'</td>'+
                 '<td>'+d.description+'</td>'+
@@ -76,7 +76,7 @@ function editItem(d){
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;
-    $.ajax({url:'/api/service_prices/delete/',type:'POST',contentType:'application/json',
+    $.ajax({url:'/api/service-prices/delete/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
         success:function(r){loadData();alert(r.message);}
     });

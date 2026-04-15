@@ -4,7 +4,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-shopping-cart mr-2"></i>Danh sách đơn hàng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/orders/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/orders/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo bán hàng / báo giá</button>
         </div>
     </div>
@@ -1488,7 +1488,7 @@ function setDocumentType(type){
 
 function fetchNextDocumentCode(type){
     var docType = type === 'quotation' ? 'quotation' : 'order';
-    var url = docType === 'quotation' ? '/api/quotations/next_code/' : '/api/orders/next_code/';
+    var url = docType === 'quotation' ? '/api/quotations/next-code/' : '/api/orders/next-code/';
     $.get(url, function(res){
         if(!$('#edit_id').val() && getDocumentType() === docType){
             $('#inp_code').val(res.code || '');
@@ -1520,7 +1520,7 @@ function syncDocumentTypeUI(){
 }
 
 function fetchProductsForOrderForm(orderId, callback){
-    var url = '/api/products_select/';
+    var url = '/api/products-select/';
     if(orderId){
         url += '?exclude_order_id=' + encodeURIComponent(orderId);
     }
@@ -2205,7 +2205,7 @@ $(document).ready(function(){
     currentQuickSearchStockFilter = getStoredQuickSearchStockFilter();
     syncQuickSearchStockFilterUI();
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
-    $.get('/api/products_select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
+    $.get('/api/products-select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
     initCustomerPicker();
     $('#bulk_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_bulk_collect'), placeholder:'-- Chọn tài khoản --', allowClear:true});
     $('#bulk_payment_method').on('change', function(){ syncCashBookFromMethod('#bulk_payment_method', '#bulk_cash_book_id'); });
@@ -2337,7 +2337,7 @@ $(document).ready(function(){
             note: $('#qc_note').val().trim(),
         };
         $.ajax({
-            url: '/api/orders/quick_customer/', type: 'POST',
+            url: '/api/orders/quick-customer/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
@@ -2568,7 +2568,7 @@ $(document).ready(function(){
             success: function(r){
                 if(r.status === 'ok'){
                     // Reload products and add to cart
-                    $.get('/api/products_select/', function(res){
+                    $.get('/api/products-select/', function(res){
                         allProducts = res.data;
                         updateQuickSearchFilterLabels();
                         var newProduct = allProducts.find(function(p){ return p.code === code; });
@@ -3062,7 +3062,7 @@ function loadData(){
 
 // Export orders to Excel
 $('#btn_export_orders').click(function(){
-    var url = '/api/export_orders_excel/?';
+    var url = '/api/export-orders-excel/?';
     var params = [];
     var from = $('#filter_from_date').val();
     var to = $('#filter_to_date').val();
@@ -3118,7 +3118,7 @@ $('#btn_confirm_bulk_collect').click(function(){
         return;
     }
     $.ajax({
-        url:'/api/orders/bulk_collect/',
+        url:'/api/orders/bulk-collect/',
         type:'POST',
         contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
@@ -3147,7 +3147,7 @@ $('#btn_bulk_cancel').click(function(){
     var reason = prompt('Nhập lý do hủy nhiều đơn hàng:', 'Hủy nhanh theo tác vụ');
     if(reason === null){ return; }
     $.ajax({
-        url:'/api/orders/bulk_cancel/',
+        url:'/api/orders/bulk-cancel/',
         type:'POST',
         contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
@@ -3280,7 +3280,7 @@ function viewItem(id){
         $('#inp_note').prop('disabled', false);
         $('#btn_save_note').show().off('click').on('click', function(){
             var noteData = {id: o.id, note: $('#inp_note').val()};
-            $.ajax({url:'/api/orders/update_note/',type:'POST',contentType:'application/json',
+            $.ajax({url:'/api/orders/update-note/',type:'POST',contentType:'application/json',
                 headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(noteData),
                 success:function(r){
                     if(r.status==='ok'){ toastr ? toastr.success('Lưu ghi chú thành công') : alert('Lưu ghi chú thành công'); loadData(); loadOrderHistory(o.id); }
@@ -3425,7 +3425,7 @@ function downloadOrderPDF(id){
 function copyOrder(id){
     $.get('/api/orders/detail/?id='+id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
-        $.get('/api/products_select/', function(prodRes){ allProducts = prodRes.data; updateQuickSearchFilterLabels(); });
+        $.get('/api/products-select/', function(prodRes){ allProducts = prodRes.data; updateQuickSearchFilterLabels(); });
         var o = res.order;
         // Reset form cho tạo mới
         $('#edit_id').val('');
@@ -3453,7 +3453,7 @@ function copyOrder(id){
         $('#btn_load_quotation').hide();
         $('#quotation_section').show();
         // Auto-fill mã mới + ngày hôm nay
-        $.get('/api/orders/next_code/', function(cRes){
+        $.get('/api/orders/next-code/', function(cRes){
             $('#inp_code').val(cRes.code);
         });
         var today = new Date().toISOString().split('T')[0];

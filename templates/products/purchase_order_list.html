@@ -4,7 +4,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-clipboard-list mr-2"></i>Đặt hàng nhập</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/purchase_orders/export_excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/purchase-orders/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo đơn đặt hàng</button>
         </div>
     </div>
@@ -89,7 +89,7 @@ var itemRowIndex = 0;
 
 $(document).ready(function(){
     // Load products with variants
-    $.get('/api/products_select/', function(res){ PRODUCTS = res.data; });
+    $.get('/api/products-select/', function(res){ PRODUCTS = res.data; });
     loadData();
 
     $('#btn_add').click(function(){
@@ -132,7 +132,7 @@ $(document).ready(function(){
         };
 
         $.ajax({
-            url: '/api/purchase_orders/save/', type: 'POST',
+            url: '/api/purchase-orders/save/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
@@ -291,7 +291,7 @@ function fmtDt(dateStr, createdAt){
 }
 
 function loadData(){
-    $.get('/api/purchase_orders/', function(res){
+    $.get('/api/purchase-orders/', function(res){
         var h = '';
         res.data.forEach(function(d, i){
             var statusBadge = '';
@@ -344,7 +344,7 @@ function editItem(d){
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?')) return;
     $.ajax({
-        url: '/api/purchase_orders/delete/', type: 'POST',
+        url: '/api/purchase-orders/delete/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
         data: JSON.stringify({id: id}),

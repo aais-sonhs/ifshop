@@ -65,7 +65,7 @@
 <script>
 $(document).ready(function(){
     // Load
-    $.get('/api/business_config/', function(res){
+    $.get('/api/business-config/', function(res){
         var d = res.data;
         $('#opt_order_salesperson').prop('checked', d.opt_order_salesperson);
         $('#opt_order_server_staff').prop('checked', d.opt_order_server_staff);
@@ -75,14 +75,14 @@ $(document).ready(function(){
 
     // Save
     $('#btn_save').click(function(){
-        $.get('/api/business_config/', function(res){
+        $.get('/api/business-config/', function(res){
             var data = res.data;
             data.opt_order_salesperson = $('#opt_order_salesperson').prop('checked');
             data.opt_order_server_staff = $('#opt_order_server_staff').prop('checked');
             data.opt_order_approver = $('#opt_order_approver').prop('checked');
             data.opt_order_bonus = $('#opt_order_bonus').prop('checked');
             $.ajax({
-                url: '/api/business_config/save/', type: 'POST',
+                url: '/api/business-config/save/', type: 'POST',
                 contentType: 'application/json',
                 headers: {'X-CSRFToken': '{{csrf_token}}'},
                 data: JSON.stringify(data),

@@ -99,7 +99,7 @@ var allTables = [];
 var currentFilter = 'all';
 
 function loadTables(){
-    $.get('/api/cafe_tables/', function(res){
+    $.get('/api/cafe-tables/', function(res){
         allTables = res.data || [];
         renderTables();
     });
@@ -160,7 +160,7 @@ function onTableClick(id){
 }
 
 function updateTableStatus(id, status){
-    $.ajax({url:'/api/cafe_tables/update_status/', type:'POST', contentType:'application/json',
+    $.ajax({url:'/api/cafe-tables/update-status/', type:'POST', contentType:'application/json',
         headers:{'X-CSRFToken':'{{ csrf_token }}'},
         data: JSON.stringify({id: id, status: status}),
         success: function(r){ loadTables(); }
@@ -193,7 +193,7 @@ function saveTable(){
         capacity: parseInt($('#tbl_capacity').val()) || 4,
         note: $('#tbl_note').val(),
     };
-    $.ajax({url:'/api/cafe_tables/save/', type:'POST', contentType:'application/json',
+    $.ajax({url:'/api/cafe-tables/save/', type:'POST', contentType:'application/json',
         headers:{'X-CSRFToken':'{{ csrf_token }}'}, data: JSON.stringify(data),
         success: function(r){
             alert(r.message); if(r.status==='ok'){ $('#modal_table').modal('hide'); loadTables(); }
@@ -203,7 +203,7 @@ function saveTable(){
 
 function deleteTable(id){
     if(!confirm('Xóa bàn này?')) return;
-    $.ajax({url:'/api/cafe_tables/delete/', type:'POST', contentType:'application/json',
+    $.ajax({url:'/api/cafe-tables/delete/', type:'POST', contentType:'application/json',
         headers:{'X-CSRFToken':'{{ csrf_token }}'}, data: JSON.stringify({id:id}),
         success: function(r){ loadTables(); }
     });

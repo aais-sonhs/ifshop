@@ -72,7 +72,7 @@ $(document).ready(function(){
     });
 });
 function loadReport(){
-    var url = '/api/report_purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val()+'&_ts='+Date.now();
+    var url = '/api/report-purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val()+'&_ts='+Date.now();
     $.get(url, function(res){
         if(res.status !== 'ok') return;
         $('#total_count').text(res.summary.total_count);
@@ -97,7 +97,7 @@ function loadReport(){
 $('#btn_export').click(function(){
     var from = $('#filter_from_date').val();
     var to = $('#filter_to_date').val();
-    window.location.href = '/api/export_purchases_excel/?from_date='+from+'&to_date='+to;
+    window.location.href = '/api/export-purchases-excel/?from_date='+from+'&to_date='+to;
 });
 </script>
 {% endblock %}

@@ -115,7 +115,7 @@ function loadReport(){
     if(category) params.push('category_id='+category);
     if(stockStatus) params.push('stock_status='+stockStatus);
 
-    var url = '/api/report_inventory/?' + params.join('&');
+    var url = '/api/report-inventory/?' + params.join('&');
     $.get(url, function(res){
         if(res.status !== 'ok') return;
 
@@ -173,7 +173,7 @@ $('#btn_export').click(function(){
     if(wh) params.push('warehouse_id='+wh);
     if(search) params.push('search='+encodeURIComponent(search));
     if(category) params.push('category_id='+category);
-    var url = '/api/export_inventory_excel/';
+    var url = '/api/export-inventory-excel/';
     if(params.length) url += '?' + params.join('&');
     window.location.href = url;
 });

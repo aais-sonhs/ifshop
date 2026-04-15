@@ -1195,12 +1195,12 @@ $(document).ready(function(){
     currentQuickSearchStockFilter = getStoredQuickSearchStockFilter();
     syncQuickSearchStockFilterUI();
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
-    $.get('/api/products_select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
+    $.get('/api/products-select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
     initCustomerPicker();
     loadData();
 
     $('#btn_add').click(function(){
-        window.location.href = '/order_tbl/?create=quotation';
+        window.location.href = '/order-tbl/?create=quotation';
     });
 
     $('#btn_add_item').click(function(){ addItemRow(null); });
@@ -1406,7 +1406,7 @@ $(document).ready(function(){
             data: formData, processData: false, contentType: false,
             success: function(r){
                 if(r.status === 'ok'){
-                    $.get('/api/products_select/', function(res){
+                    $.get('/api/products-select/', function(res){
                         allProducts = res.data;
                         updateQuickSearchFilterLabels();
                         var newProduct = allProducts.find(function(p){ return p.code === code; });
@@ -1438,7 +1438,7 @@ $(document).ready(function(){
             note: $('#qc_note').val().trim(),
         };
         $.ajax({
-            url: '/api/orders/quick_customer/', type: 'POST',
+            url: '/api/orders/quick-customer/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify(data),
@@ -1951,7 +1951,7 @@ function copyQuotation(id){
         $('#inp_note').val('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : ''));
         if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
         // Auto-fill mã mới + ngày hôm nay
-        $.get('/api/quotations/next_code/', function(cRes){
+        $.get('/api/quotations/next-code/', function(cRes){
             $('#inp_code').val(cRes.code);
         });
         var today = new Date().toISOString().split('T')[0];

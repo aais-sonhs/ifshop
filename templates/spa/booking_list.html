@@ -127,7 +127,7 @@ $(document).ready(function(){
         var now=new Date();
         $('#inp_date').val(now.toISOString().slice(0,10));
         $('#inp_start_time').val(now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0'));
-        $.get('/api/spa/bookings/generate_code/',function(r){$('#inp_code').val(r.code);});
+        $.get('/api/spa/bookings/generate-code/',function(r){$('#inp_code').val(r.code);});
         updateTotals();
         $('#modal_title').text('Tạo lịch hẹn');$('#modal_form').modal('show');
     });

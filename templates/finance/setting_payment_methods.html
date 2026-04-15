@@ -107,7 +107,7 @@ $(document).ready(function(){
 });
 
 function loadData(){
-    $.get('/api/payment_methods/', function(res){
+    $.get('/api/payment-methods/', function(res){
         var h='';
         res.data.forEach(function(d, i){
             var statusBadge = d.is_active
@@ -157,7 +157,7 @@ $('#btn_save').click(function(){
     var name = $('#inp_name').val().trim();
     if(!code || !name){ alert('Vui lòng nhập mã và tên phương thức'); return; }
     $.ajax({
-        url: '/api/payment_methods/save/',
+        url: '/api/payment-methods/save/',
         type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{ csrf_token }}'},
@@ -186,7 +186,7 @@ $('#btn_save').click(function(){
 function deleteItem(id){
     if(!confirm('Bạn chắc chắn muốn xóa phương thức này?')) return;
     $.ajax({
-        url: '/api/payment_methods/delete/',
+        url: '/api/payment-methods/delete/',
         type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{ csrf_token }}'},

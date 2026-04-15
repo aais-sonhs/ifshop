@@ -113,7 +113,7 @@ $(document).ready(function(){
         var name = $('#inp_role_name').val().trim();
         if(!name){alert('Vui lòng nhập tên nhóm vai trò');return;}
         $.ajax({
-            url: '/api/role_groups/save/', type: 'POST',
+            url: '/api/role-groups/save/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify({
@@ -134,7 +134,7 @@ $(document).ready(function(){
         var roleId = $('#member_role_id').val();
         if(!userId){alert('Chọn người dùng');return;}
         $.ajax({
-            url: '/api/role_groups/assign/', type: 'POST',
+            url: '/api/role-groups/assign/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
             data: JSON.stringify({role_group_id: roleId, user_id: userId, action: 'add'}),
@@ -147,7 +147,7 @@ $(document).ready(function(){
 });
 
 function loadData(){
-    $.when($.get('/api/role_groups/'), $.get('/api/users/')).done(function(r1, r2){
+    $.when($.get('/api/role-groups/'), $.get('/api/users/')).done(function(r1, r2){
         allRoleGroups = r1[0].data;
         allUsers = r2[0].data;
         renderTable();
@@ -192,7 +192,7 @@ function editRole(rg){
 function deleteRole(id){
     if(!confirm('Xóa nhóm vai trò này? Tất cả người dùng sẽ bị bỏ khỏi nhóm.'))return;
     $.ajax({
-        url: '/api/role_groups/delete/', type: 'POST',
+        url: '/api/role-groups/delete/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
         data: JSON.stringify({id: id}),
@@ -248,7 +248,7 @@ function openMembers(roleId){
 function removeMember(roleId, userId){
     if(!confirm('Xóa người dùng khỏi nhóm?'))return;
     $.ajax({
-        url: '/api/role_groups/assign/', type: 'POST',
+        url: '/api/role-groups/assign/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
         data: JSON.stringify({role_group_id: roleId, user_id: userId, action: 'remove'}),

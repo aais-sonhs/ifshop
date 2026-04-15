@@ -95,6 +95,25 @@
                     </div>
                 </div>
             </div>
+            <!-- Nhóm dịch vụ Spa -->
+            {% if biz and biz.mod_spa %}
+            <div class="col-md-6">
+                <div class="card card-outline card-purple">
+                    <div class="card-header">
+                        <h5 class="card-title">Nhóm dịch vụ Spa</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-purple" style="background:#6f42c1;color:#fff;border:none;" id="btn_add_spa_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="spa_cat_tbl">
+                            <thead><tr><th>Tên nhóm DV</th><th>Mô tả</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -206,6 +225,27 @@
         </div>
     </div>
 </div>
+
+<!-- Modal: Nhóm dịch vụ Spa -->
+<div class="modal fade" id="modal_spa_cat" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#6f42c1;color:#fff;">
+                <h5 class="modal-title" id="sc_modal_title">Thêm nhóm dịch vụ</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sc_id">
+                <div class="form-group"><label>Tên nhóm DV <span class="text-danger">*</span></label><input type="text" class="form-control" id="sc_name"></div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="sc_description" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn" style="background:#6f42c1;color:#fff;" id="sc_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -218,6 +258,7 @@ $(document).ready(function(){
     loadProductCats();
     loadWarehouseCats();
     loadLocationCats();
+    loadSpaCats();
 
     // ===== DANH MỤC THU CHI =====
     $('#btn_add_finance_cat').click(function(){
@@ -296,6 +337,22 @@ $(document).ready(function(){
         $.ajax({url:'/api/locations/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_location_cat').modal('hide'); loadLocationCats();}alert(r.message);}
+        });
+    });
+
+    // ===== NHÓM DỊCH VỤ SPA =====
+    $('#btn_add_spa_cat').click(function(){
+        $('#sc_id').val(''); $('#sc_name').val(''); $('#sc_description').val('');
+        $('#sc_modal_title').text('Thêm nhóm dịch vụ');
+        $('#modal_spa_cat').modal('show');
+    });
+
+    $('#sc_save').click(function(){
+        var data = {id:$('#sc_id').val()||null, name:$('#sc_name').val(), description:$('#sc_description').val()};
+        if(!data.name){alert('Vui lòng nhập tên nhóm');return;}
+        $.ajax({url:'/api/spa/service_categories/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_spa_cat').modal('hide'); loadSpaCats();}alert(r.message);}
         });
     });
 });
@@ -396,6 +453,23 @@ function deleteLoc(id, name){
         headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify({id:id}),
         success:function(r){alert(r.message); if(r.status==='ok') loadLocationCats();}
     });
+}
+
+function loadSpaCats(){
+    $.get('/api/spa/service_categories/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            h += '<tr><td>'+d.name+'</td><td>'+(d.description||'')+'</td>'+
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editSC('+d.id+',\''+d.name.replace(/'/g,"\\\'")+'\',' + '\''+(d.description||'').replace(/'/g,"\\\'")+'\')">Sửa</button></div></td></tr>';
+        });
+        $('#spa_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function editSC(id, name, desc){
+    $('#sc_id').val(id); $('#sc_name').val(name); $('#sc_description').val(desc);
+    $('#sc_modal_title').text('Sửa nhóm dịch vụ');
+    $('#modal_spa_cat').modal('show');
 }
 </script>
 {% endblock %}

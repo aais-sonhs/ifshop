@@ -565,6 +565,19 @@ a:hover {
     color: var(--twin-text) !important;
 }
 
+/* Sticky table header: container scroll + sticky thead */
+.table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
 .table thead th {
     background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
     color: #fff !important;

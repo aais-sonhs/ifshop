@@ -565,15 +565,17 @@ a:hover {
     color: var(--twin-text) !important;
 }
 
-/* Ensure table container limit and scroll so sticky headers work correctly */
+/* Sticky table header: container scroll + sticky thead */
 .table-responsive {
-    max-height: 75vh;
+    max-height: 70vh;
     overflow-y: auto;
+    overflow-x: auto;
 }
 
-/* Optional: smooth scrolling for table containers */
-.table-responsive {
-    scroll-behavior: smooth;
+.table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 .table thead th {
@@ -585,9 +587,6 @@ a:hover {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 12px 10px !important;
-    position: sticky;
-    top: 0;
-    z-index: 10;
 }
 
 .table-bordered {

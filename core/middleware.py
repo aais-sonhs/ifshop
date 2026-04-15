@@ -51,6 +51,6 @@ class SuperadminAccessMiddleware:
                         status=403
                     )
                 # Page views → redirect to brand management
-                return redirect('/brand_tbl/')
+                return redirect('/brand-tbl/')
 
         return self.get_response(request)

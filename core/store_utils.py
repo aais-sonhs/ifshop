@@ -24,7 +24,7 @@ def brand_owner_required(view_func):
             if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return JsonResponse({'error': 'Superadmin không có quyền xem dữ liệu kinh doanh'}, status=403)
             # Với trang HTML, đưa superadmin về khu vực quản trị brand.
-            return redirect('/brand_tbl/')
+            return redirect('/brand-tbl/')
         return view_func(request, *args, **kwargs)
     return wrapper
 

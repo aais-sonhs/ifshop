@@ -18,9 +18,9 @@ def _get_post_login_redirect(request, user):
             return next_url
 
     if user.is_superuser:
-        return "/brand_tbl/"
+        return "/brand-tbl/"
     if can_view_sales_report(user):
-        return "/report_sales/"
+        return "/report-sales/"
     return "/dashboard/"
 
 

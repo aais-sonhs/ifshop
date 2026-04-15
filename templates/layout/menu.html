@@ -558,6 +558,12 @@ $('#btn_save_avatar').click(function(){
                         <p>Mô hình kinh doanh</p>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="{% url 'category_tbl' %}" class="nav-link {% if active_tab == 'category_tbl' %} active{% endif %}">
+                        <i class="nav-icon fas fa-th-list"></i>
+                        <p>Danh mục</p>
+                    </a>
+                </li>
                 <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}menu-open{% endif %}">
                     <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>

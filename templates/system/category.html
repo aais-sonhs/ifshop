@@ -77,6 +77,25 @@
                 </div>
             </div>
         </div>
+        <div class="row mt-3">
+            <!-- Danh mục vị trí sản phẩm -->
+            <div class="col-md-6">
+                <div class="card card-outline card-teal">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục vị trí sản phẩm</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-success" id="btn_add_location_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="location_cat_tbl">
+                            <thead><tr><th>Tên vị trí</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -167,6 +186,26 @@
         </div>
     </div>
 </div>
+
+<!-- Modal: Vị trí sản phẩm -->
+<div class="modal fade" id="modal_location_cat" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="loc_modal_title">Thêm vị trí</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="loc_id">
+                <div class="form-group"><label>Tên vị trí <span class="text-danger">*</span></label><input type="text" class="form-control" id="loc_name"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success" id="loc_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -178,6 +217,7 @@ $(document).ready(function(){
     loadCashbooks();
     loadProductCats();
     loadWarehouseCats();
+    loadLocationCats();
 
     // ===== DANH MỤC THU CHI =====
     $('#btn_add_finance_cat').click(function(){
@@ -240,6 +280,22 @@ $(document).ready(function(){
         $.ajax({url:'/api/warehouses/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_warehouse_cat').modal('hide'); loadWarehouseCats();}alert(r.message);}
+        });
+    });
+
+    // ===== DANH MỤC VỊ TRÍ SẢN PHẨM =====
+    $('#btn_add_location_cat').click(function(){
+        $('#loc_id').val(''); $('#loc_name').val('');
+        $('#loc_modal_title').text('Thêm vị trí');
+        $('#modal_location_cat').modal('show');
+    });
+
+    $('#loc_save').click(function(){
+        var data = {id:$('#loc_id').val()||null, name:$('#loc_name').val()};
+        if(!data.name){alert('Vui lòng nhập tên vị trí');return;}
+        $.ajax({url:'/api/locations/save/', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){if(r.status==='ok'){$('#modal_location_cat').modal('hide'); loadLocationCats();}alert(r.message);}
         });
     });
 });
@@ -313,6 +369,33 @@ function editWH(id, code, name, address){
     $('#wh_id').val(id); $('#wh_code').val(code); $('#wh_name').val(name); $('#wh_address').val(address);
     $('#wh_modal_title').text('Sửa kho');
     $('#modal_warehouse_cat').modal('show');
+}
+
+function loadLocationCats(){
+    $.get('/api/locations/', function(res){
+        var h='';
+        res.data.forEach(function(d){
+            var statusLabel = d.is_active ? '<span class="badge badge-success">Hoạt động</span>' : '<span class="badge badge-secondary">Ẩn</span>';
+            h += '<tr><td>'+d.name+'</td><td>'+statusLabel+'</td>'+
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editLoc('+d.id+',\''+d.name.replace(/'/g,"\\\'")+'\')">Sửa</button> '+
+                '<button class="btn btn-xs btn-danger" onclick="deleteLoc('+d.id+',\''+d.name.replace(/'/g,"\\\'")+'\')">Xóa</button></div></td></tr>';
+        });
+        $('#location_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+    });
+}
+
+function editLoc(id, name){
+    $('#loc_id').val(id); $('#loc_name').val(name);
+    $('#loc_modal_title').text('Sửa vị trí');
+    $('#modal_location_cat').modal('show');
+}
+
+function deleteLoc(id, name){
+    if(!confirm('Bạn có chắc muốn xóa vị trí "'+name+'"?')) return;
+    $.ajax({url:'/api/locations/delete/', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify({id:id}),
+        success:function(r){alert(r.message); if(r.status==='ok') loadLocationCats();}
+    });
 }
 </script>
 {% endblock %}

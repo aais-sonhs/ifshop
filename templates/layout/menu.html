@@ -1,4 +1,29 @@
 <style>
+    /* ===== Sidebar scroll fix – đảm bảo sidebar cuộn được trên desktop (layout-fixed) ===== */
+    .layout-fixed .main-sidebar {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+    .layout-fixed .main-sidebar .sidebar {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        height: auto !important;
+    }
+    /* Đệm cuối sidebar để mục cuối cùng (BÁO CÁO) luôn cuộn tới được */
+    .sidebar .nav-sidebar {
+        padding-bottom: 60px;
+    }
+    /* Thanh cuộn nhỏ gọn trên desktop */
+    .main-sidebar::-webkit-scrollbar,
+    .main-sidebar .sidebar::-webkit-scrollbar {
+        width: 4px;
+    }
+    .main-sidebar::-webkit-scrollbar-thumb,
+    .main-sidebar .sidebar::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.2);
+        border-radius: 4px;
+    }
+
     .app-navbar {
         display: flex;
         align-items: center;
@@ -249,6 +274,18 @@ $('#btn_save_avatar').click(function(){
             }
         }
     });
+});
+</script>
+<script>
+// Fix: tắt OverlayScrollbars trên sidebar để dùng native scroll,
+// tránh bị cắt mất các mục cuối (BÁO CÁO / BC Bán hàng) trên desktop.
+$(document).ready(function(){
+    var sidebar = $('.main-sidebar .sidebar');
+    if(sidebar.length && sidebar.overlayScrollbars){
+        try { var inst = sidebar.overlayScrollbars(); if(inst) inst.destroy(); } catch(e){}
+    }
+    // Đảm bảo sidebar luôn cuộn được
+    sidebar.css({'overflow-y':'auto','overflow-x':'hidden','height':'auto'});
 });
 </script>
 <!-- /.navbar -->

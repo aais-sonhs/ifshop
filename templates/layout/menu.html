@@ -15,38 +15,30 @@
     }
     /* Nút đóng sidebar trên mobile */
     .sidebar-close-btn {
-        display: none;
+        display: none !important;
     }
     @media (max-width: 991.98px) {
-        /* Brand-link dạng flex để chứa nút đóng */
-        .brand-link {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
         .sidebar-close-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            color: #fff;
-            font-size: 20px;
-            cursor: pointer;
-            z-index: 1060;
-            transition: background 0.2s;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: absolute !important;
+            right: 10px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            width: 36px !important;
+            height: 36px !important;
+            border: none !important;
+            border-radius: 50% !important;
+            background: rgba(0,0,0,0.08) !important;
+            color: #333 !important;
+            font-size: 20px !important;
+            cursor: pointer !important;
+            z-index: 1060 !important;
         }
         .sidebar-close-btn:hover,
         .sidebar-close-btn:active {
-            background: rgba(255,255,255,0.4);
+            background: rgba(0,0,0,0.15) !important;
         }
     }
     /* Thanh cuộn nhỏ gọn trên desktop */
@@ -329,11 +321,12 @@ $(document).ready(function(){
 <aside class="main-sidebar sidebar-dark-primary elevation-4">
 
     <!-- Brand Logo -->
-    <div class="brand-link text-center">
+    <div class="brand-link text-center" style="position:relative;">
         <a href="{% if request.user.is_superuser %}{% url 'brand_tbl' %}{% else %}{% url 'dashboard_page' %}{% endif %}" style="color:inherit;text-decoration:none;">
             <span class="brand-text font-weight-light">📦 Dashboard</span>
         </a>
-        <button type="button" class="sidebar-close-btn" onclick="$('body').removeClass('sidebar-open'); $('body').addClass('sidebar-collapse');" title="Đóng menu">
+        <!-- Nút đóng sidebar trên mobile -->
+        <button type="button" class="sidebar-close-btn" onclick="event.preventDefault();event.stopPropagation();$('body').removeClass('sidebar-open');" title="Đóng menu">
             <i class="fas fa-times"></i>
         </button>
     </div>

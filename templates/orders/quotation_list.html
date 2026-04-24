@@ -1687,8 +1687,9 @@ function calcTotal(){
     });
     var discount = getMoneyValue('#inp_discount_amount');
     var shippingFee = getMoneyValue('#inp_shipping_fee');
+    var finalAmount = Math.max(total - discount + shippingFee, 0);
     $('#lbl_total').text(fmt(total));
-    $('#lbl_final').text(fmt(total - discount + shippingFee));
+    $('#lbl_final').text(fmt(finalAmount));
     $('#cost_warning_row').toggle(hasLossItem);
     syncDuplicateWarnings();
 }
@@ -1891,7 +1892,7 @@ function buildQuotationHTML(res){
     });
     var discount = q.discount_amount || 0;
     var shippingFee = q.shipping_fee || 0;
-    var finalAmt = total - discount + shippingFee;
+    var finalAmt = Math.max(total - discount + shippingFee, 0);
     var custName = q.customer_label || '';
     var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
     var colSpan = hasAnyImage ? 7 : 6;

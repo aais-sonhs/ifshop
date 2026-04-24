@@ -1,3 +1,4 @@
+from datetime import date
 import json
 
 from django.contrib.auth.models import User
@@ -5,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from customers.models import CafeTable, Customer
+from orders.models import Order
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -101,3 +103,25 @@ class CustomerScopeTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy bàn')
+
+    def test_get_customers_uses_live_order_metrics(self):
+        Order.objects.create(
+            code='DH-CUST-001',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            payment_status=1,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=40,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['id'] == self.customer.id)
+        self.assertEqual(row['total_purchased'], 100.0)
+        self.assertEqual(row['total_debt'], 60.0)

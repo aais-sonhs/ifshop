@@ -2938,8 +2938,9 @@ function calcTotal(){
     });
     var discount=getMoneyValue('#inp_discount_amount');
     var shippingFee=getMoneyValue('#inp_shipping_fee');
+    var finalAmount = Math.max(total-discount+shippingFee, 0);
     $('#lbl_total').text(fmt(total));
-    $('#lbl_final').text(fmt(total-discount+shippingFee));
+    $('#lbl_final').text(fmt(finalAmount));
     // Show/hide cost warning
     if(hasLossItem){ $('#cost_warning_row').show(); } else { $('#cost_warning_row').hide(); }
     syncDuplicateWarnings();
@@ -3358,7 +3359,7 @@ function printOrder(id){
         });
         var discount = o.discount_amount || 0;
         var shippingFee = o.shipping_fee || 0;
-        var finalAmt = total - discount + shippingFee;
+        var finalAmt = Math.max(total - discount + shippingFee, 0);
         var html = getPrintHeader() +
             '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
             '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +
@@ -3397,7 +3398,7 @@ function downloadOrderPDF(id){
         });
         var discount = o.discount_amount || 0;
         var shippingFee = o.shipping_fee || 0;
-        var finalAmt = total - discount + shippingFee;
+        var finalAmt = Math.max(total - discount + shippingFee, 0);
         var html = getPrintHeader() +
             '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
             '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +

@@ -45,8 +45,9 @@ def update_order_payment_status(order):
         Decimal(str(receipt.amount or 0))
         for receipt in Receipt.objects.filter(order=order, status=1)
     )
+    target_total = max(Decimal(str(order.final_amount or 0)), Decimal('0'))
     order.paid_amount = total_paid
-    if total_paid >= Decimal(str(order.final_amount or 0)):
+    if total_paid >= target_total:
         order.payment_status = 2
     elif total_paid > 0:
         order.payment_status = 1

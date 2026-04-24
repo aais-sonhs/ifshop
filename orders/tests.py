@@ -178,6 +178,42 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 0)
         self.assertEqual(order.discount_amount, 0)
 
+    def test_save_order_clamps_final_amount_to_zero_when_discount_exceeds_total(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-DISCOUNT-CLAMP',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 150,
+                'shipping_fee': 0,
+                'status': 0,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order = Order.objects.get(id=payload['order_id'])
+        self.assertEqual(float(order.total_amount), 100.0)
+        self.assertEqual(float(order.final_amount), 0.0)
+        self.assertEqual(order.payment_status, 2)
+
     def test_cancel_order_reopens_linked_quotation(self):
         quotation = self._create_quotation(code='BG-CANCEL-001')
         order = self._create_order(code='DH-CANCEL-001', quotation=quotation)
@@ -367,3 +403,36 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(orphan_return.customer_id, order.customer_id)
         self.assertEqual(orphan_return.warehouse_id, order.warehouse_id)
         self.assertEqual(orphan_return.status, 2)
+
+    def test_pos_checkout_clamps_negative_total_to_zero(self):
+        response = self.client.post(
+            reverse('api_pos_checkout'),
+            data=json.dumps({
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'total_price': 100,
+                    'discount_percent': 0,
+                }],
+                'total_amount': 100,
+                'discount_amount': 150,
+                'final_amount': -50,
+                'paid_amount': -50,
+                'status': 5,
+                'payment_status': 2,
+                'note': 'POS âm',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order = Order.objects.get(id=payload['order_id'])
+        self.assertEqual(float(order.total_amount), 100.0)
+        self.assertEqual(float(order.final_amount), 0.0)
+        self.assertEqual(float(order.paid_amount), 0.0)
+        self.assertEqual(order.payment_status, 2)
+        self.assertEqual(order.receipts.count(), 0)

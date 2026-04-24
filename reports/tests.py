@@ -108,3 +108,43 @@ class SalesReportTests(TestCase):
         self.assertEqual(len(payload['return_orders']), 1)
         self.assertEqual(payload['return_orders'][0]['order_code'], '(Thiếu đơn gốc)')
         self.assertEqual(payload['return_orders'][0]['store_name'], self.store.name)
+
+    def test_api_report_sales_allocates_order_level_discount_to_item_scope(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-DISCOUNT',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            discount_amount=20,
+            final_amount=80,
+            paid_amount=80,
+            order_date=today,
+            salesperson='Nhân viên A',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=60,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'product_id': self.product.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['summary']['total_revenue'], 80.0)
+        self.assertEqual(payload['summary']['total_profit'], 20.0)
+        self.assertEqual(payload['order_details'][0]['revenue'], 80.0)
+        self.assertEqual(payload['top_products'][0]['amount'], 80.0)

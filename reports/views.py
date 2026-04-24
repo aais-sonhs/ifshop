@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import datetime
 from functools import wraps
 from django.shortcuts import render
@@ -169,22 +170,34 @@ def _build_sales_report_payload(request, include_filter_options=True):
     if filters['product_id']:
         order_items_qs = order_items_qs.filter(product_id=filters['product_id'])
 
-    order_item_summaries = order_items_qs.values('order_id').annotate(
-        revenue=Sum('total_price'),
-        cost=Sum(F('cost_price') * F('quantity')),
-    )
-    order_item_map = {
-        row['order_id']: {
-            'revenue': float(row['revenue'] or 0),
-            'cost': float(row['cost'] or 0),
-        }
-        for row in order_item_summaries
-    }
+    order_items = list(order_items_qs)
+    order_item_map = defaultdict(lambda: {'revenue': 0.0, 'cost': 0.0})
+    adjusted_item_rows = []
+    for item in order_items:
+        base_total = float(item.order.total_amount or 0)
+        final_total = max(float(item.order.final_amount or 0), 0)
+        line_revenue = float(item.total_price or 0)
+        line_cost = float(item.cost_price or 0) * float(item.quantity or 0)
+        if base_total > 0:
+            adjusted_revenue = line_revenue * final_total / base_total
+        else:
+            adjusted_revenue = line_revenue
+
+        order_item_map[item.order_id]['revenue'] += adjusted_revenue
+        order_item_map[item.order_id]['cost'] += line_cost
+        adjusted_item_rows.append({
+            'order_id': item.order_id,
+            'product_name': item.product.name if item.product else '',
+            'category_name': item.product.category.name if item.product and item.product.category else '',
+            'quantity': float(item.quantity or 0),
+            'revenue': adjusted_revenue,
+            'cost': line_cost,
+        })
 
     order_rows = []
     for order in orders_list:
         item_totals = order_item_map.get(order.id, {'revenue': 0, 'cost': 0})
-        revenue = item_totals['revenue'] if item_scope else float(order.final_amount or 0)
+        revenue = item_totals['revenue'] if item_scope else float(max(order.final_amount or 0, 0))
         cost = item_totals['cost']
 
         if item_scope:
@@ -241,6 +254,38 @@ def _build_sales_report_payload(request, include_filter_options=True):
     total_cost = sum(row['cost'] for row in order_rows)
     total_profit = sum(row['profit'] for row in order_rows)
     loss_count = len([row for row in order_rows if row['is_loss']])
+
+    allowed_order_id_set = set(allowed_order_ids)
+    product_map = {}
+    category_map = {}
+    for item_row in adjusted_item_rows:
+        if item_row['order_id'] not in allowed_order_id_set:
+            continue
+
+        product_key = (item_row['product_name'], item_row['category_name'])
+        if product_key not in product_map:
+            product_map[product_key] = {
+                'name': item_row['product_name'],
+                'category': item_row['category_name'],
+                'qty': 0,
+                'amount': 0,
+                'cost': 0,
+            }
+        product_map[product_key]['qty'] += item_row['quantity']
+        product_map[product_key]['amount'] += item_row['revenue']
+        product_map[product_key]['cost'] += item_row['cost']
+
+        category_key = item_row['category_name'] or 'Không DM'
+        if category_key not in category_map:
+            category_map[category_key] = {
+                'name': category_key,
+                'qty': 0,
+                'revenue': 0,
+                'cost': 0,
+            }
+        category_map[category_key]['qty'] += item_row['quantity']
+        category_map[category_key]['revenue'] += item_row['revenue']
+        category_map[category_key]['cost'] += item_row['cost']
 
     returns_qs = OrderReturn.objects.filter(
         return_date__gte=filters['from_date'],
@@ -363,39 +408,23 @@ def _build_sales_report_payload(request, include_filter_options=True):
             }
     daily_data = [daily_map[key] for key in sorted(daily_map.keys())]
 
-    product_breakdown_qs = order_items_qs.values(
-        'product__name', 'product__category__name'
-    ).annotate(
-        total_qty=Sum('quantity'),
-        total_amount=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_amount', '-total_qty', 'product__name')
-
-    category_breakdown_qs = order_items_qs.values(
-        'product__category__name'
-    ).annotate(
-        total_qty=Sum('quantity'),
-        total_revenue=Sum('total_price'),
-        total_cost=Sum(F('cost_price') * F('quantity')),
-    ).order_by('-total_revenue', 'product__category__name')
-
     product_breakdown = [{
-        'name': row['product__name'],
-        'category': row['product__category__name'] or '',
-        'qty': float(row['total_qty'] or 0),
-        'amount': float(row['total_amount'] or 0),
-        'cost': float(row['total_cost'] or 0),
-        'profit': float(row['total_amount'] or 0) - float(row['total_cost'] or 0),
-    } for row in product_breakdown_qs]
+        'name': row['name'],
+        'category': row['category'] or '',
+        'qty': row['qty'],
+        'amount': row['amount'],
+        'cost': row['cost'],
+        'profit': row['amount'] - row['cost'],
+    } for row in sorted(product_map.values(), key=lambda row: (-row['amount'], -row['qty'], row['name']))]
     product_breakdown = [row for row in product_breakdown if _matches_metric_filters(row)]
 
     category_breakdown = [{
-        'name': row['product__category__name'] or 'Không DM',
-        'qty': float(row['total_qty'] or 0),
-        'revenue': float(row['total_revenue'] or 0),
-        'cost': float(row['total_cost'] or 0),
-        'profit': float(row['total_revenue'] or 0) - float(row['total_cost'] or 0),
-    } for row in category_breakdown_qs]
+        'name': row['name'],
+        'qty': row['qty'],
+        'revenue': row['revenue'],
+        'cost': row['cost'],
+        'profit': row['revenue'] - row['cost'],
+    } for row in sorted(category_map.values(), key=lambda row: (-row['revenue'], row['name']))]
     category_breakdown = [row for row in category_breakdown if _matches_metric_filters(row)]
 
     customer_map = {}

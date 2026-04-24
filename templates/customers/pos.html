@@ -271,16 +271,16 @@ function renderCart(){
 function updateCartTotal(){
     var subtotal = cart.reduce((s,i) => s + i.total, 0);
     var discount = parseInt($('#pos_discount').val()) || 0;
-    var total = subtotal - discount;
+    var total = Math.max(subtotal - discount, 0);
     $('#pos_subtotal').text(fmt(subtotal) + 'đ');
-    $('#pos_total').text(fmt(total > 0 ? total : 0) + 'đ');
+    $('#pos_total').text(fmt(total) + 'đ');
 }
 
 function posCheckout(method){
     if(!cart.length){ alert('Giỏ hàng trống!'); return; }
     var subtotal = cart.reduce((s,i) => s + i.total, 0);
     var discount = parseInt($('#pos_discount').val()) || 0;
-    var total = subtotal - discount;
+    var total = Math.max(subtotal - discount, 0);
     if(!confirm('Xác nhận thanh toán ' + fmt(total) + 'đ (' + (method==='cash'?'Tiền mặt':'Chuyển khoản') + ')?')) return;
 
     var items = cart.map(function(c){
@@ -296,6 +296,7 @@ function posCheckout(method){
         paid_amount: total,
         status: 5,  // Hoàn thành
         payment_status: 2,  // Đã thanh toán
+        payment_method: method === 'cash' ? 1 : 2,
         note: 'POS - ' + (method==='cash'?'Tiền mặt':'CK'),
     };
     if(tableId) orderData.table_id = parseInt(tableId);

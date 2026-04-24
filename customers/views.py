@@ -1,6 +1,7 @@
 import json
 import logging
 from django.db import transaction
+from django.db.models import Sum
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -55,6 +56,28 @@ def _get_point_history_queryset(request, customer_id):
     return customer, transactions
 
 
+def _build_customer_order_metrics_map(request, customers):
+    """Tính tổng mua/công nợ từ đơn hàng thực tế thay vì field cache có thể đã cũ."""
+    customer_ids = list(customers.values_list('id', flat=True))
+    if not customer_ids:
+        return {}
+
+    orders = Order.objects.filter(customer_id__in=customer_ids).exclude(status=6)
+    orders = filter_by_store(orders, request)
+    metrics = {}
+    for row in orders.values('customer_id').annotate(
+        total_purchased=Sum('final_amount'),
+        total_paid=Sum('paid_amount'),
+    ):
+        total_purchased = float(row['total_purchased'] or 0)
+        total_paid = float(row['total_paid'] or 0)
+        metrics[row['customer_id']] = {
+            'total_purchased': total_purchased,
+            'total_debt': max(total_purchased - total_paid, 0),
+        }
+    return metrics
+
+
 @login_required(login_url="/login/")
 @brand_owner_required
 def customer_tbl(request):
@@ -76,6 +99,7 @@ def api_get_customers(request):
     """Trả về danh sách khách hàng trong phạm vi store mà user được phép xem."""
     customers = Customer.objects.select_related('group').all()
     customers = filter_by_store(customers, request)
+    metrics_map = _build_customer_order_metrics_map(request, customers)
     data = [{
         'id': c.id, 'code': c.code, 'name': c.name,
         'avatar_url': c.avatar.url if c.avatar else '',
@@ -89,8 +113,8 @@ def api_get_customers(request):
         'company_address': c.company_address or '',
         'owner_tax_code': c.owner_tax_code or '',
         'group': c.group.name if c.group else '', 'group_id': c.group_id,
-        'total_purchased': float(c.total_purchased),
-        'total_debt': float(c.total_debt),
+        'total_purchased': metrics_map.get(c.id, {}).get('total_purchased', 0),
+        'total_debt': metrics_map.get(c.id, {}).get('total_debt', 0),
         'points': c.points, 'membership_level': c.membership_level,
         'membership_display': c.get_membership_level_display(),
         'gender': c.gender, 'gender_display': c.get_gender_display(),
@@ -650,6 +674,7 @@ def export_customers_excel(request):
 
     customers = Customer.objects.select_related('group').all()
     customers = filter_by_store(customers, request)
+    metrics_map = _build_customer_order_metrics_map(request, customers)
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
@@ -672,8 +697,9 @@ def export_customers_excel(request):
     total_purchased = 0
     total_debt = 0
     for i, c in enumerate(customers, 1):
-        total_purchased += float(c.total_purchased)
-        total_debt += float(c.total_debt)
+        metrics = metrics_map.get(c.id, {'total_purchased': 0, 'total_debt': 0})
+        total_purchased += metrics['total_purchased']
+        total_debt += metrics['total_debt']
         rows.append({
             'stt': i,
             'code': c.code,
@@ -685,8 +711,8 @@ def export_customers_excel(request):
             'tax_code': c.tax_code or '',
             'address': c.address or '',
             'group': c.group.name if c.group else '',
-            'purchased': float(c.total_purchased),
-            'debt': float(c.total_debt),
+            'purchased': metrics['total_purchased'],
+            'debt': metrics['total_debt'],
             'points': c.points,
             'note': c.note or '',
         })

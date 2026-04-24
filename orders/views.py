@@ -52,6 +52,19 @@ def _to_decimal(value, default='0'):
         return Decimal(str(default))
 
 
+def _non_negative_decimal(value, default='0'):
+    return max(_to_decimal(value, default), Decimal('0'))
+
+
+def _normalize_percentage(value):
+    percent = _to_decimal(value)
+    if percent < 0:
+        return Decimal('0')
+    if percent > 100:
+        return Decimal('100')
+    return percent
+
+
 def _adjust_stock_quantity(stock, delta):
     stock.quantity = _to_decimal(stock.quantity) + _to_decimal(delta)
     stock.save(update_fields=['quantity'])
@@ -409,10 +422,16 @@ def _refresh_order_payment(order):
 
 def _calculate_line_total(quantity, unit_price, discount_percent):
     """Tính thành tiền của một dòng hàng sau khi trừ chiết khấu theo dòng."""
-    qty = _to_decimal(quantity)
-    price = _to_decimal(unit_price)
-    discount = _to_decimal(discount_percent)
+    qty = _non_negative_decimal(quantity)
+    price = _non_negative_decimal(unit_price)
+    discount = _normalize_percentage(discount_percent)
     return qty * price * (Decimal('1') - (discount / Decimal('100')))
+
+
+def _calculate_final_amount(total, discount_amount=0, shipping_fee=0):
+    """Tính tổng thanh toán và chặn mọi trường hợp âm do chiết khấu quá lớn."""
+    final_amount = _to_decimal(total) - _non_negative_decimal(discount_amount) + _non_negative_decimal(shipping_fee)
+    return final_amount if final_amount > 0 else Decimal('0')
 
 
 def _build_receipt_items_from_payload(data, order, existing_paid):
@@ -1244,8 +1263,8 @@ def api_save_order(request):
             o.warehouse_id = data.get('warehouse_id') or None
             o.quotation = quotation
             o.order_date = data.get('order_date')
-            o.discount_amount = data.get('discount_amount', 0) or 0
-            o.shipping_fee = data.get('shipping_fee', 0) or 0
+            o.discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
+            o.shipping_fee = _non_negative_decimal(data.get('shipping_fee', 0))
             o.tags = (data.get('tags', '') or '').strip() or None
             new_status = int(data.get('status', 0))
             new_approver_id_raw = data.get('approver_id') or None
@@ -1283,7 +1302,7 @@ def api_save_order(request):
                     o.approval_status = 1  # Chờ duyệt
             else:
                 o.approval_status = 0  # Không cần duyệt
-            o.bonus_amount = data.get('bonus_amount', 0) or 0
+            o.bonus_amount = _non_negative_decimal(data.get('bonus_amount', 0))
 
             # 5. Tính tổng tiền từ danh sách item đã gửi lên.
             items_data = data.get('items', [])
@@ -1297,10 +1316,10 @@ def api_save_order(request):
                 )
 
             o.total_amount = total
-            o.final_amount = total - Decimal(str(o.discount_amount or 0)) + Decimal(str(o.shipping_fee or 0))
+            o.final_amount = _calculate_final_amount(total, o.discount_amount, o.shipping_fee)
             order_discount_ratio = Decimal('0')
-            if total > 0 and Decimal(str(o.discount_amount or 0)) > 0:
-                order_discount_ratio = min(Decimal(str(o.discount_amount or 0)) / total, Decimal('1'))
+            if total > 0 and _to_decimal(o.discount_amount) > 0:
+                order_discount_ratio = min(_to_decimal(o.discount_amount) / total, Decimal('1'))
 
             try:
                 o.save()
@@ -1341,9 +1360,9 @@ def api_save_order(request):
             o.items.all().delete()
             loss_warnings = []
             for item_data in items_data:
-                qty = Decimal(str(item_data.get('quantity', 0)))
-                price = Decimal(str(item_data.get('unit_price', 0)))
-                disc = Decimal(str(item_data.get('discount_percent', 0)))
+                qty = _non_negative_decimal(item_data.get('quantity', 0))
+                price = _non_negative_decimal(item_data.get('unit_price', 0))
+                disc = _normalize_percentage(item_data.get('discount_percent', 0))
                 line_total = _calculate_line_total(qty, price, disc)
                 product = Product.objects.get(id=item_data['product_id'])
                 variant_id = item_data.get('variant_id') or None
@@ -1358,8 +1377,8 @@ def api_save_order(request):
                     except ProductVariant.DoesNotExist:
                         variant_id = None
                 compare_cost = cost if cost > 0 else fallback_cost
-                unit_after_line_discount = price * (1 - disc / 100)
-                unit_after_order_discount = unit_after_line_discount * (1 - order_discount_ratio)
+                unit_after_line_discount = price * (Decimal('1') - disc / Decimal('100'))
+                unit_after_order_discount = unit_after_line_discount * (Decimal('1') - order_discount_ratio)
                 is_below_cost = compare_cost > 0 and unit_after_order_discount < compare_cost
                 if is_below_cost:
                     loss_warnings.append(
@@ -1910,8 +1929,8 @@ def api_save_quotation(request):
             q.customer = _resolve_sale_customer(request, data.get('customer_id'))
             q.quotation_date = data.get('quotation_date')
             q.valid_until = data.get('valid_until') or None
-            q.discount_amount = data.get('discount_amount', 0) or 0
-            q.shipping_fee = data.get('shipping_fee', 0) or 0
+            q.discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
+            q.shipping_fee = _non_negative_decimal(data.get('shipping_fee', 0))
             q.tags = (data.get('tags', '') or '').strip() or None
             q.status = data.get('status', 0)
             q.note = data.get('note', '')
@@ -1920,37 +1939,37 @@ def api_save_quotation(request):
             # Tính tổng từ items
             items_data = data.get('items', [])
             _validate_unique_line_items(items_data)
-            total = 0
+            total = Decimal('0')
             for it in items_data:
-                qty = float(it.get('quantity', 0))
-                price = float(it.get('unit_price', 0))
-                disc = float(it.get('discount_percent', 0))
-                line_total = qty * price * (1 - disc / 100)
+                qty = _non_negative_decimal(it.get('quantity', 0))
+                price = _non_negative_decimal(it.get('unit_price', 0))
+                disc = _normalize_percentage(it.get('discount_percent', 0))
+                line_total = _calculate_line_total(qty, price, disc)
                 total += line_total
 
             q.total_amount = total
-            q.final_amount = total - float(q.discount_amount) + float(q.shipping_fee or 0)
-            quotation_discount_ratio = 0
-            if total > 0 and float(q.discount_amount or 0) > 0:
-                quotation_discount_ratio = min(float(q.discount_amount or 0) / total, 1)
+            q.final_amount = _calculate_final_amount(total, q.discount_amount, q.shipping_fee)
+            quotation_discount_ratio = Decimal('0')
+            if total > 0 and _to_decimal(q.discount_amount) > 0:
+                quotation_discount_ratio = min(_to_decimal(q.discount_amount) / total, Decimal('1'))
             q.save()
 
             # Lưu items
             loss_warnings = []
             for it in items_data:
-                qty = float(it.get('quantity', 0))
-                price = float(it.get('unit_price', 0))
-                disc = float(it.get('discount_percent', 0))
-                line_total = qty * price * (1 - disc / 100)
+                qty = _non_negative_decimal(it.get('quantity', 0))
+                price = _non_negative_decimal(it.get('unit_price', 0))
+                disc = _normalize_percentage(it.get('discount_percent', 0))
+                line_total = _calculate_line_total(qty, price, disc)
                 product = Product.objects.get(id=it['product_id'])
-                compare_cost = float(product.cost_price or product.import_price or 0)
+                compare_cost = _to_decimal(product.cost_price or product.import_price or 0)
                 variant_id = it.get('variant_id') or None
                 if variant_id:
                     from products.models import ProductVariant
                     variant = ProductVariant.objects.filter(id=variant_id).first()
                     if variant:
-                        compare_cost = float(variant.cost_price or variant.import_price or compare_cost)
-                effective_unit_price = price * (1 - disc / 100) * (1 - quotation_discount_ratio)
+                        compare_cost = _to_decimal(variant.cost_price or variant.import_price or compare_cost)
+                effective_unit_price = price * (Decimal('1') - disc / Decimal('100')) * (Decimal('1') - quotation_discount_ratio)
                 if compare_cost > 0 and effective_unit_price < compare_cost:
                     loss_warnings.append(
                         f'{product.code} - {product.name}: bán {int(effective_unit_price):,}đ < vốn {int(compare_cost):,}đ'
@@ -2160,6 +2179,27 @@ def api_pos_checkout(request):
                 store=store, is_active=True
             ).first() if store else None
 
+            subtotal = Decimal('0')
+            normalized_items = []
+            for item_data in items_data:
+                qty = _non_negative_decimal(item_data.get('quantity', 1), default='1')
+                price = _non_negative_decimal(item_data.get('unit_price', 0))
+                disc = _normalize_percentage(item_data.get('discount_percent', 0))
+                line_total = _calculate_line_total(qty, price, disc)
+                subtotal += line_total
+                normalized_items.append({
+                    'product_id': item_data['product_id'],
+                    'quantity': qty,
+                    'unit_price': price,
+                    'discount_percent': disc,
+                    'total_price': line_total,
+                })
+
+            discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
+            final_amount = _calculate_final_amount(subtotal, discount_amount, 0)
+            requested_paid_amount = _non_negative_decimal(data.get('paid_amount', final_amount), default=str(final_amount))
+            paid_amount = min(requested_paid_amount, final_amount)
+
             order = Order(
                 code=code,
                 store=store,
@@ -2167,9 +2207,9 @@ def api_pos_checkout(request):
                 customer_id=data.get('customer_id') or None,
                 status=5,  # Hoàn thành
                 payment_status=0,
-                total_amount=data.get('total_amount', 0),
-                discount_amount=data.get('discount_amount', 0),
-                final_amount=data.get('final_amount', 0),
+                total_amount=subtotal,
+                discount_amount=discount_amount,
+                final_amount=final_amount,
                 paid_amount=0,
                 order_date=date.today(),
                 note=data.get('note', ''),
@@ -2179,7 +2219,7 @@ def api_pos_checkout(request):
             order.save()
 
             # Create items + deduct stock
-            for item_data in items_data:
+            for item_data in normalized_items:
                 product = Product.objects.get(id=item_data['product_id'])
                 oi = OrderItem(
                     order=order,
@@ -2212,7 +2252,6 @@ def api_pos_checkout(request):
                         )
                         _adjust_stock_quantity(stock, -_to_decimal(item_data.get('quantity', 1)))
 
-            paid_amount = Decimal(str(data.get('paid_amount') or data.get('final_amount') or 0))
             if paid_amount > 0:
                 _create_completed_receipt_for_order(
                     order=order,

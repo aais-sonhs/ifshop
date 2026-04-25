@@ -33,8 +33,6 @@ def _env_list(name, default):
 
 
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
-DB_ENGINE = os.getenv('DB_ENGINE', 'postgresql' if DJANGO_ENV == 'production' else 'sqlite').lower()
-IS_SQLITE = DB_ENGINE == 'sqlite'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = _env_bool('DJANGO_DEBUG', DJANGO_ENV != 'production')
@@ -149,31 +147,17 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
-if IS_SQLITE:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': os.getenv('SQLITE_NAME', os.path.join(BASE_DIR, 'db.sqlite3')),
-        }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'ifshop',
+        'USER': 'postgres',
+        'PASSWORD': 'TuanHai2508',
+        'HOST': 'localhost',
+        'PORT': '5432',
+        'CONN_MAX_AGE': 0,
     }
-else:
-    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
-    DB_PASSWORD_FILE = os.getenv('DB_PASSWORD_FILE')
-    if not DB_PASSWORD and DB_PASSWORD_FILE and os.path.exists(DB_PASSWORD_FILE):
-        with open(DB_PASSWORD_FILE, encoding='utf-8') as db_password_file:
-            DB_PASSWORD = db_password_file.read().strip()
-
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'ifshop'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': DB_PASSWORD,
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
-            'CONN_MAX_AGE': 0,
-        }
-    }
+}
 
 
 # Password validation

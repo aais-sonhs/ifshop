@@ -9,6 +9,11 @@ venv/
 
 # db
 db.sqlite3
+*.sqlite3
+*.db
+*.sql
+*.dump
+*.backup
 
 # static & media
 img/
@@ -21,3 +26,4 @@ static/error/
 
 # dev files
 *.txt
+.codex

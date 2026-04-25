@@ -6,6 +6,12 @@ sleep 15
 # Di chuyển đến thư mục dự án Django
 cd /home/aais/Documents/ifshop || exit 1
 
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+
 # Lấy cấu hình từ app.yml
 PORT_APP=$(grep 'PORT_APP' app.yml | awk '{print $2}' | tr -d '[:space:]')
 NUM_WORKERS=$(grep 'NUM_WORKERS' app.yml | awk '{print $2}' | tr -d '[:space:]')
@@ -13,10 +19,51 @@ LOG_LEVEL=$(grep 'LOG_LEVEL' app.yml | awk '{print $2}' | tr -d '[:space:]')
 
 # Mặc định LOG_LEVEL = warning nếu không cấu hình
 LOG_LEVEL=${LOG_LEVEL:-warning}
+DJANGO_ENV=${DJANGO_ENV:-production}
+DJANGO_SECRET_KEY_FILE=${DJANGO_SECRET_KEY_FILE:-"$HOME/.config/ifshop/secret_key"}
+DB_ENGINE=${DB_ENGINE:-postgresql}
+DB_NAME=${DB_NAME:-ifshop}
+DB_USER=${DB_USER:-postgres}
+DB_HOST=${DB_HOST:-localhost}
+DB_PORT=${DB_PORT:-5432}
+DB_PASSWORD_FILE=${DB_PASSWORD_FILE:-"$HOME/.config/ifshop/db_password"}
 
 echo "PORT_APP is: $PORT_APP"
 echo "NUM_WORKERS is: $NUM_WORKERS"
 echo "LOG_LEVEL is: $LOG_LEVEL"
+echo "DJANGO_ENV is: $DJANGO_ENV"
+echo "DB_ENGINE is: $DB_ENGINE"
+echo "DB_NAME is: $DB_NAME"
+echo "DB_HOST is: $DB_HOST"
+echo "DB_PORT is: $DB_PORT"
+
+if [ -z "$DJANGO_SECRET_KEY" ]; then
+  mkdir -p "$(dirname "$DJANGO_SECRET_KEY_FILE")"
+  if [ ! -s "$DJANGO_SECRET_KEY_FILE" ]; then
+    python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())" > "$DJANGO_SECRET_KEY_FILE"
+    chmod 600 "$DJANGO_SECRET_KEY_FILE"
+  fi
+  DJANGO_SECRET_KEY=$(cat "$DJANGO_SECRET_KEY_FILE")
+fi
+
+if [ -z "$DB_PASSWORD" ] && [ -f "$DB_PASSWORD_FILE" ]; then
+  DB_PASSWORD=$(cat "$DB_PASSWORD_FILE")
+fi
+
+if [ "$DJANGO_ENV" = "production" ] && [ "$DB_ENGINE" != "sqlite" ] && [ -z "$DB_PASSWORD" ]; then
+  echo "Cảnh báo: DB_PASSWORD đang trống. Hãy đặt DB_PASSWORD hoặc DB_PASSWORD_FILE nếu PostgreSQL yêu cầu mật khẩu."
+fi
+
+export DJANGO_ENV
+export DJANGO_SECRET_KEY
+export DJANGO_SECRET_KEY_FILE
+export DB_ENGINE
+export DB_NAME
+export DB_USER
+export DB_PASSWORD
+export DB_PASSWORD_FILE
+export DB_HOST
+export DB_PORT
 
 # Kill process đang chiếm port nếu có
 PID=$(lsof -t -i :$PORT_APP)

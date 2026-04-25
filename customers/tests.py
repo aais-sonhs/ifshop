@@ -13,7 +13,10 @@ from system_management.models import Brand, Store, UserProfile
 class CustomerScopeTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.manager = User.objects.create_user(username='customer_manager', password='pass123')
         cls.brand = Brand.objects.create(name='Customers Brand')
+        cls.brand.owner = cls.manager
+        cls.brand.save(update_fields=['owner'])
         cls.store = Store.objects.create(brand=cls.brand, name='Customers Store A', code='CSA')
         cls.other_store = Store.objects.create(brand=cls.brand, name='Customers Store B', code='CSB')
 
@@ -73,13 +76,31 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy khách hàng')
 
-    def test_adjust_points_rejects_foreign_customer(self):
+    def test_regular_staff_cannot_adjust_points(self):
         response = self.client.post(
             reverse('api_adjust_points'),
             data=json.dumps({
-                'customer_id': self.other_customer.id,
+                'customer_id': self.customer.id,
                 'points': 10,
                 'type': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('quyền', payload['message'])
+
+    def test_adjust_points_rejects_non_positive_points(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            reverse('api_adjust_points'),
+            data=json.dumps({
+                'customer_id': self.customer.id,
+                'points': -10,
+                'type': 2,
             }),
             content_type='application/json',
         )
@@ -87,7 +108,7 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
-        self.assertEqual(payload['message'], 'Không tìm thấy khách hàng')
+        self.assertIn('lớn hơn 0', payload['message'])
 
     def test_update_table_status_rejects_foreign_table(self):
         response = self.client.post(
@@ -103,6 +124,47 @@ class CustomerScopeTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy bàn')
+
+    def test_update_table_status_rejects_foreign_order(self):
+        other_order = Order.objects.create(
+            code='DH-TABLE-FOREIGN',
+            store=self.other_store,
+            customer=self.other_customer,
+            total_amount=100,
+            final_amount=100,
+            order_date=date.today(),
+            created_by=self.other_user,
+        )
+
+        response = self.client.post(
+            reverse('api_update_table_status'),
+            data=json.dumps({
+                'id': self.table.id,
+                'status': 1,
+                'order_id': other_order.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Đơn hàng', payload['message'])
+        self.table.refresh_from_db()
+        self.assertIsNone(self.table.current_order_id)
+
+    def test_regular_staff_cannot_save_customer_group(self):
+        response = self.client.post(
+            reverse('api_save_customer_group'),
+            data=json.dumps({
+                'name': 'VIP',
+                'discount_percent': 10,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['status'], 'error')
 
     def test_get_customers_uses_live_order_metrics(self):
         Order.objects.create(

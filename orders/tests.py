@@ -8,14 +8,15 @@ from django.urls import reverse
 from customers.models import Customer
 from finance.models import Receipt
 from orders.models import Order, OrderItem, OrderReturn, Quotation
-from products.models import Product, Warehouse
-from system_management.models import Brand, Store, UserProfile
+from products.models import Product, ProductStock, Warehouse
+from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
 
 class OrderRiskFlowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.brand = Brand.objects.create(name='Test Brand')
+        cls.owner = User.objects.create_user(username='order_owner', password='pass123')
+        cls.brand = Brand.objects.create(name='Test Brand', owner=cls.owner)
         cls.store = Store.objects.create(brand=cls.brand, name='Store A', code='STA')
         cls.other_store = Store.objects.create(brand=cls.brand, name='Store B', code='STB')
 
@@ -48,6 +49,12 @@ class OrderRiskFlowTests(TestCase):
             code='SP-ORDER-001',
             name='Sản phẩm test đơn hàng',
             created_by=cls.user,
+        )
+        cls.other_product = Product.objects.create(
+            store=cls.other_store,
+            code='SP-ORDER-OTHER',
+            name='Sản phẩm store khác',
+            created_by=cls.other_user,
         )
 
     def setUp(self):
@@ -296,6 +303,159 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy')
 
+    def test_save_order_rejects_foreign_warehouse(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-FOREIGN-WH',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.other_warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Kho xuất', payload['message'])
+        self.assertFalse(Order.objects.filter(code='DH-FOREIGN-WH').exists())
+
+    def test_save_order_rejects_foreign_product(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-FOREIGN-PRODUCT',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.other_product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('sản phẩm', payload['message'].lower())
+        self.assertFalse(Order.objects.filter(code='DH-FOREIGN-PRODUCT').exists())
+
+    def test_save_completed_order_rejects_negative_stock_when_disabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Negative stock disabled',
+            opt_allow_negative_stock=False,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=0)
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-NEG-STOCK',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 5,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Tồn kho không đủ', payload['message'])
+        self.assertFalse(Order.objects.filter(code='DH-NEG-STOCK').exists())
+
+    def test_pos_checkout_rejects_negative_stock_when_disabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='POS negative stock disabled',
+            opt_allow_negative_stock=False,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=0)
+
+        response = self.client.post(
+            reverse('api_pos_checkout'),
+            data=json.dumps({
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+                'discount_amount': 0,
+                'paid_amount': 100,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Tồn kho không đủ', payload['message'])
+        self.assertFalse(Order.objects.filter(code__startswith='POS-').exists())
+
+    def test_quotation_detail_blocks_foreign_quotation(self):
+        quotation = self._create_quotation(
+            code='BG-FOREIGN-DETAIL',
+            store=self.other_store,
+            customer=self.other_customer,
+            created_by=self.other_user,
+        )
+
+        response = self.client.get(reverse('api_get_quotation_detail'), {'id': quotation.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertEqual(payload['message'], 'Không tìm thấy')
+
+    def test_brand_owner_cannot_save_order_with_product_from_other_store_than_warehouse(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-CROSS-STORE-PRODUCT',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.other_product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('không cùng cửa hàng', payload['message'])
+        self.assertFalse(Order.objects.filter(code='DH-CROSS-STORE-PRODUCT').exists())
+
     def test_save_order_return_requires_order_and_syncs_order_fields(self):
         order = self._create_order(code='DH-RETURN-001', status=5)
 
@@ -405,6 +565,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(orphan_return.status, 2)
 
     def test_pos_checkout_clamps_negative_total_to_zero(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=1)
+
         response = self.client.post(
             reverse('api_pos_checkout'),
             data=json.dumps({

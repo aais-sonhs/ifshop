@@ -606,18 +606,6 @@ $(document).ready(function(){
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="{% url 'role_group_tbl' %}" class="nav-link {% if active_tab == 'role_group_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-shield"></i>
-                        <p>Nhóm vai trò</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'permission_tbl' %}" class="nav-link {% if active_tab == 'permission_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-key"></i>
-                        <p>Phân quyền</p>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-store-alt"></i>
                         <p>Cửa hàng</p>
@@ -677,6 +665,18 @@ $(document).ready(function(){
                     <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-users-cog"></i>
                         <p>Quản lý tài khoản</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'role_group_tbl' %}" class="nav-link {% if active_tab == 'role_group_tbl' %} active{% endif %}">
+                        <i class="nav-icon fas fa-user-shield"></i>
+                        <p>Nhóm vai trò</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'permission_tbl' %}" class="nav-link {% if active_tab == 'permission_tbl' %} active{% endif %}">
+                        <i class="nav-icon fas fa-key"></i>
+                        <p>Phân quyền</p>
                     </a>
                 </li>
                 <li class="nav-item">

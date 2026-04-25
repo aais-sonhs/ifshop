@@ -5,9 +5,39 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from .models import Staff, Room, Service, ServiceCategory, Booking, BookingItem
-from core.store_utils import filter_by_store, get_user_store
+from customers.models import Customer
+from core.store_utils import can_manage_users, filter_by_store, get_managed_store_ids, get_user_store
 
 logger = logging.getLogger(__name__)
+
+
+def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'):
+    return JsonResponse({'status': 'error', 'message': message}, status=403)
+
+
+def _get_default_store_for_request(request):
+    store = get_user_store(request)
+    if store:
+        return store
+
+    from system_management.models import Store
+
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return None
+    return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _get_booking_for_user(request, booking_id):
+    if not booking_id:
+        return None
+    return filter_by_store(Booking.objects.filter(id=booking_id), request).first()
+
+
+def _get_customer_for_user(request, customer_id):
+    if not customer_id:
+        return None
+    return filter_by_store(Customer.objects.filter(id=customer_id), request).first()
 
 
 # ============ PAGES ============
@@ -58,6 +88,8 @@ def api_get_staff(request):
 def api_save_staff(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình nhân viên spa')
     try:
         data = json.loads(request.body)
         sid = data.get('id')
@@ -79,6 +111,8 @@ def api_save_staff(request):
 def api_delete_staff(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình nhân viên spa')
     try:
         data = json.loads(request.body)
         Staff.objects.filter(id=data.get('id')).delete()
@@ -106,6 +140,8 @@ def api_get_rooms(request):
 def api_save_room(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phòng spa')
     try:
         data = json.loads(request.body)
         rid = data.get('id')
@@ -126,6 +162,8 @@ def api_save_room(request):
 def api_delete_room(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phòng spa')
     try:
         data = json.loads(request.body)
         Room.objects.filter(id=data.get('id')).delete()
@@ -157,6 +195,8 @@ def api_get_services(request):
 def api_save_service(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình dịch vụ spa')
     try:
         data = json.loads(request.body)
         sid = data.get('id')
@@ -179,6 +219,8 @@ def api_save_service(request):
 def api_delete_service(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình dịch vụ spa')
     try:
         data = json.loads(request.body)
         Service.objects.filter(id=data.get('id')).delete()
@@ -198,6 +240,8 @@ def api_get_service_categories(request):
 def api_save_service_category(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình nhóm dịch vụ spa')
     try:
         data = json.loads(request.body)
         cid = data.get('id')
@@ -279,16 +323,24 @@ def api_save_booking(request):
     try:
         data = json.loads(request.body)
         bid = data.get('id')
-        b = Booking.objects.get(id=bid) if bid else Booking()
+        if bid:
+            b = _get_booking_for_user(request, bid)
+            if not b:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy lịch hẹn'})
+        else:
+            b = Booking()
+            b.store = _get_default_store_for_request(request)
+            if not b.store:
+                return JsonResponse({'status': 'error', 'message': 'Tài khoản chưa có phạm vi cửa hàng hợp lệ'})
         if not bid:
             b.created_by = request.user
 
         b.code = data.get('code', '')
-        # Auto-assign store
-        user_store = get_user_store(request)
-        if user_store:
-            b.store = user_store
-        b.customer_id = data.get('customer_id') or None
+        customer_id = data.get('customer_id') or None
+        customer = _get_customer_for_user(request, customer_id) if customer_id else None
+        if customer_id and not customer:
+            return JsonResponse({'status': 'error', 'message': 'Khách hàng không thuộc phạm vi cửa hàng của bạn'})
+        b.customer = customer
         b.customer_name = data.get('customer_name', '')
         b.customer_phone = data.get('customer_phone', '')
         b.staff_id = data.get('staff_id') or None
@@ -365,7 +417,10 @@ def api_delete_booking(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Booking.objects.filter(id=data.get('id')).delete()
+        booking = _get_booking_for_user(request, data.get('id'))
+        if not booking:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy lịch hẹn'})
+        booking.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

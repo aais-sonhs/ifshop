@@ -736,6 +736,7 @@ def report_purchases(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def api_report_purchases(request):
     """API báo cáo nhập hàng"""
     from_date = request.GET.get('from_date')
@@ -783,6 +784,7 @@ def report_inventory(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def api_report_inventory(request):
     """API báo cáo tồn kho"""
     from products.models import ProductStock, Warehouse, ProductCategory
@@ -867,6 +869,7 @@ def report_finance(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def api_report_finance(request):
     """API báo cáo tài chính — hỗ trợ filter theo store + breakdown"""
     from_date = request.GET.get('from_date')
@@ -986,6 +989,7 @@ def report_customers(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def api_report_customers(request):
     """API báo cáo khách hàng — hỗ trợ filter theo store"""
     from customers.models import Customer
@@ -1077,6 +1081,7 @@ def report_staff_sales(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def api_report_staff_sales(request):
     """API báo cáo doanh thu theo nhân viên bán hàng — phục vụ tính KPI & lương"""
     from_date = request.GET.get('from_date')
@@ -1247,6 +1252,7 @@ def api_report_staff_sales(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_staff_sales_excel(request):
     """Xuất báo cáo doanh thu nhân viên ra Excel"""
     import openpyxl
@@ -1671,6 +1677,7 @@ def export_sales_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_inventory_excel(request):
     """Xuất báo cáo tồn kho ra Excel"""
     import openpyxl
@@ -1791,6 +1798,7 @@ def export_inventory_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_orders_excel(request):
     """Xuất danh sách đơn hàng ra Excel"""
     import openpyxl
@@ -1904,6 +1912,7 @@ def export_orders_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_customers_excel(request):
     """Xuất báo cáo khách hàng ra Excel"""
     import openpyxl
@@ -1997,6 +2006,7 @@ def export_customers_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_purchases_excel(request):
     """Xuất báo cáo nhập hàng ra Excel"""
     import openpyxl
@@ -2089,6 +2099,7 @@ def export_purchases_excel(request):
 
 
 @login_required(login_url="/login/")
+@report_permission_required
 def export_finance_excel(request):
     """Xuất báo cáo tài chính ra Excel"""
     import openpyxl

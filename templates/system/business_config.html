@@ -58,6 +58,10 @@
                                     <input type="checkbox" class="custom-control-input mod-toggle" id="mod_customers">
                                     <label class="custom-control-label" for="mod_customers">👥 Khách hàng</label>
                                 </div>
+                                <div class="custom-control custom-switch mb-2">
+                                    <input type="checkbox" class="custom-control-input" id="opt_allow_negative_stock">
+                                    <label class="custom-control-label" for="opt_allow_negative_stock">Cho phép tồn âm</label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -233,6 +237,7 @@ $(document).ready(function(){
         data.opt_loyalty_points = $('#opt_loyalty_points').prop('checked');
         data.opt_loyalty_rate = parseInt($('#opt_loyalty_rate').val()) || 10000;
         data.opt_commission = $('#opt_commission').prop('checked');
+        data.opt_allow_negative_stock = $('#opt_allow_negative_stock').prop('checked');
         $.ajax({
             url: '/api/business-config/save/', type: 'POST',
             contentType: 'application/json',
@@ -263,6 +268,7 @@ function loadConfig(){
         $('#opt_loyalty_points').prop('checked', d.opt_loyalty_points);
         $('#opt_loyalty_rate').val(d.opt_loyalty_rate || 10000);
         $('#opt_commission').prop('checked', d.opt_commission);
+        $('#opt_allow_negative_stock').prop('checked', d.opt_allow_negative_stock);
         if(d.opt_loyalty_points) $('#loyalty_rate_group').show();
         updateSubToggles();
     });

@@ -128,6 +128,71 @@ class FinanceFlowTests(TestCase):
         self.assertIn('Không tìm thấy đơn hàng', payload['message'])
         self.assertFalse(Receipt.objects.filter(code='PT-FOREIGN-001').exists())
 
+    def test_save_receipt_rejects_foreign_customer_without_order(self):
+        response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'code': 'PT-FOREIGN-CUSTOMER',
+                'customer_id': self.other_customer.id,
+                'amount': 100,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Khách hàng', payload['message'])
+        self.assertFalse(Receipt.objects.filter(code='PT-FOREIGN-CUSTOMER').exists())
+
+    def test_save_receipt_rejects_customer_that_mismatches_order(self):
+        order = self._create_order(code='DH-RECEIPT-MISMATCH')
+
+        response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'code': 'PT-MISMATCH-CUSTOMER',
+                'order_id': order.id,
+                'customer_id': self.other_customer.id,
+                'amount': 100,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Khách hàng', payload['message'])
+        self.assertFalse(Receipt.objects.filter(code='PT-MISMATCH-CUSTOMER').exists())
+
+    def test_save_receipt_accepts_string_ids_when_customer_matches_order(self):
+        order = self._create_order(code='DH-RECEIPT-STRING-IDS')
+
+        response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'code': 'PT-STRING-IDS',
+                'order_id': str(order.id),
+                'customer_id': str(self.customer.id),
+                'amount': 100,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        receipt = Receipt.objects.get(code='PT-STRING-IDS')
+        self.assertEqual(receipt.order_id, order.id)
+        self.assertEqual(receipt.customer_id, self.customer.id)
+        self.assertEqual(receipt.store_id, self.store.id)
+
     def test_save_payment_assigns_store_from_goods_receipt(self):
         goods_receipt = self._create_goods_receipt(code='PN-001')
         cash_book = CashBook.objects.create(name='Quỹ B', balance=Decimal('1000'))
@@ -152,3 +217,16 @@ class FinanceFlowTests(TestCase):
         payment = Payment.objects.get(code='PC-STORE-001')
         self.assertEqual(payment.store_id, self.store.id)
         self.assertEqual(payment.goods_receipt_id, goods_receipt.id)
+
+    def test_regular_staff_cannot_save_cashbook(self):
+        response = self.client.post(
+            reverse('api_save_cashbook'),
+            data=json.dumps({
+                'name': 'Quỹ staff',
+                'description': 'Không được tạo',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['status'], 'error')

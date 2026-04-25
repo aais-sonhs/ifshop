@@ -14,7 +14,7 @@ from .models import (
     Packaging, OrderEditHistory,
 )
 from customers.models import Customer
-from products.models import Product, Warehouse, ProductStock
+from products.models import Product, Warehouse, ProductStock, ProductVariant
 from finance.models import Receipt, FinanceCategory, CashBook, PaymentMethodOption
 from finance.services import (
     cancel_receipt_with_effect,
@@ -70,6 +70,37 @@ def _adjust_stock_quantity(stock, delta):
     stock.save(update_fields=['quantity'])
 
 
+def _get_locked_stock(product_id, warehouse_id):
+    stock, _ = ProductStock.objects.select_for_update().get_or_create(
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        defaults={'quantity': 0},
+    )
+    return stock
+
+
+def _allow_negative_stock_for_store(store):
+    if not store:
+        return False
+    try:
+        from system_management.models import BusinessConfig
+        brand = store.brand if getattr(store, 'brand_id', None) else None
+        return bool(BusinessConfig.get_config(brand=brand).opt_allow_negative_stock)
+    except Exception:
+        return False
+
+
+def _adjust_locked_stock(stock, delta, allow_negative=True):
+    delta = _to_decimal(delta)
+    new_quantity = _to_decimal(stock.quantity) + delta
+    if not allow_negative and new_quantity < 0:
+        product_name = stock.product.name if getattr(stock, 'product_id', None) and stock.product else 'sản phẩm'
+        warehouse_name = stock.warehouse.name if getattr(stock, 'warehouse_id', None) and stock.warehouse else 'kho'
+        raise ValueError(f'Tồn kho không đủ cho {product_name} tại {warehouse_name}')
+    stock.quantity = new_quantity
+    stock.save(update_fields=['quantity'])
+
+
 def _get_sales_customers_queryset(request):
     from core.store_utils import get_managed_store_ids
 
@@ -98,8 +129,8 @@ def _get_default_store_for_request(request):
     return _Store.objects.filter(id__in=store_ids).order_by('id').first()
 
 
-def _get_or_create_guest_customer(request):
-    store = _get_default_store_for_request(request)
+def _get_or_create_guest_customer(request, store=None):
+    store = store or _get_default_store_for_request(request)
     store_key = store.id if store else 0
     guest_code = f'{GUEST_CUSTOMER_CODE_PREFIX}{store_key:03d}'
 
@@ -142,6 +173,30 @@ def _resolve_sale_customer(request, customer_id):
     return _get_or_create_guest_customer(request)
 
 
+def _resolve_sales_record_store(request, customer, warehouse, products, current_store=None):
+    """Xác định store nghiệp vụ và chặn trộn dữ liệu giữa các cửa hàng."""
+    store = warehouse.store if warehouse else None
+
+    if customer and not _is_guest_customer(customer) and customer.store_id:
+        if store and store.id != customer.store_id:
+            raise ValueError('Khách hàng không cùng cửa hàng với kho xuất.')
+        store = customer.store
+
+    for product in products:
+        if not product or not product.store_id:
+            continue
+        if store and store.id != product.store_id:
+            raise ValueError(f'Sản phẩm "{product.name}" không cùng cửa hàng với chứng từ.')
+        store = product.store
+
+    store = store or current_store or _get_default_store_for_request(request)
+
+    if store and customer and _is_guest_customer(customer) and customer.store_id != store.id:
+        customer = _get_or_create_guest_customer(request, store=store)
+
+    return store, customer
+
+
 def _filter_order_returns_by_scope(queryset, request):
     """Lọc phiếu trả theo store hợp lệ.
 
@@ -173,6 +228,48 @@ def _get_quotation_for_user(request, quotation_id):
     if not quotation_id:
         return None
     return filter_by_store(Quotation.objects.filter(id=quotation_id), request).first()
+
+
+def _get_warehouse_for_user(request, warehouse_id):
+    """Lấy kho trong phạm vi store mà user được phép thao tác."""
+    if not warehouse_id:
+        return None
+    return filter_by_store(Warehouse.objects.filter(id=warehouse_id), request).first()
+
+
+def _get_product_for_user(request, product_id):
+    """Lấy sản phẩm trong phạm vi store mà user được phép thao tác."""
+    if not product_id:
+        return None
+    return filter_by_store(Product.objects.filter(id=product_id), request).first()
+
+
+def _get_variant_for_product(product, variant_id):
+    if not variant_id:
+        return None
+    return ProductVariant.objects.filter(id=variant_id, product=product).first()
+
+
+def _get_packaging_for_user(request, packaging_id):
+    if not packaging_id:
+        return None
+    return filter_by_store(
+        Packaging.objects.filter(id=packaging_id),
+        request,
+        field_name='order__store',
+    ).first()
+
+
+def _get_approver_for_user(request, approver_id):
+    """Người duyệt phải nằm trong cùng phạm vi store user hiện tại quản lý."""
+    if not approver_id:
+        return None
+    from django.contrib.auth.models import User as AuthUser
+    return AuthUser.objects.filter(
+        id=approver_id,
+        is_active=True,
+        profile__store_id__in=get_managed_store_ids(request.user),
+    ).first()
 
 
 def _mark_quotation_as_used(quotation_id):
@@ -659,6 +756,9 @@ def _apply_order_stock_adjustment(order, direction):
         return
 
     from products.models import ComboItem
+    allow_negative = True
+    if _to_decimal(direction) < 0:
+        allow_negative = _allow_negative_stock_for_store(order.store)
 
     for item in order.items.select_related('product').all():
         product = item.product
@@ -669,21 +769,25 @@ def _apply_order_stock_adjustment(order, direction):
             for combo_item in ComboItem.objects.filter(combo_id=product.id).select_related('product'):
                 if combo_item.product.is_service:
                     continue
-                stock, _ = ProductStock.objects.get_or_create(
+                stock = _get_locked_stock(
                     product_id=combo_item.product_id,
                     warehouse_id=order.warehouse_id,
                 )
-                _adjust_stock_quantity(stock, quantity_delta * _to_decimal(combo_item.quantity))
+                _adjust_locked_stock(
+                    stock,
+                    quantity_delta * _to_decimal(combo_item.quantity),
+                    allow_negative=allow_negative,
+                )
             continue
 
         if product.is_service:
             continue
 
-        stock, _ = ProductStock.objects.get_or_create(
+        stock = _get_locked_stock(
             product_id=product.id,
             warehouse_id=order.warehouse_id,
         )
-        _adjust_stock_quantity(stock, quantity_delta)
+        _adjust_locked_stock(stock, quantity_delta, allow_negative=allow_negative)
 
 
 def _cancel_auto_receipts_for_order(order, note_prefix):
@@ -871,7 +975,8 @@ def order_return_tbl(request):
 @login_required(login_url="/login/")
 @brand_owner_required
 def packaging_tbl(request):
-    orders = list(Order.objects.exclude(status=6).values('id', 'code').order_by('-order_date'))
+    orders = filter_by_store(Order.objects.exclude(status=6), request)
+    orders = list(orders.values('id', 'code').order_by('-order_date'))
     context = {'active_tab': 'packaging_tbl', 'orders': orders}
     return render(request, "orders/packaging_list.html", context)
 
@@ -1260,7 +1365,14 @@ def api_save_order(request):
 
             # 3. Gán dữ liệu đầu vào đã được kiểm tra vào đối tượng đơn hàng.
             o.customer = _resolve_sale_customer(request, data.get('customer_id'))
-            o.warehouse_id = data.get('warehouse_id') or None
+            requested_warehouse_id = data.get('warehouse_id') or None
+            warehouse = _get_warehouse_for_user(request, requested_warehouse_id) if requested_warehouse_id else None
+            if requested_warehouse_id and not warehouse:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Kho xuất không tồn tại hoặc không thuộc phạm vi cửa hàng của bạn.'
+                })
+            o.warehouse = warehouse
             o.quotation = quotation
             o.order_date = data.get('order_date')
             o.discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
@@ -1294,7 +1406,13 @@ def api_save_order(request):
             o.salesperson = sp or None
             o.server_staff = data.get('server_staff', '') or None
             new_approver_id = data.get('approver_id') or None
-            o.approver_id = new_approver_id
+            approver = _get_approver_for_user(request, new_approver_id) if new_approver_id else None
+            if new_approver_id and not approver:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Người duyệt không thuộc phạm vi cửa hàng của bạn.'
+                })
+            o.approver = approver
             # Xác định approval_status dựa trên có/không người duyệt
             if new_approver_id:
                 # Có người duyệt → cần duyệt (nếu chưa duyệt)
@@ -1307,6 +1425,35 @@ def api_save_order(request):
             # 5. Tính tổng tiền từ danh sách item đã gửi lên.
             items_data = data.get('items', [])
             _validate_unique_line_items(items_data)
+            normalized_items = []
+            for item_data in items_data:
+                product = _get_product_for_user(request, item_data.get('product_id'))
+                if not product:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.'
+                    })
+
+                variant_id = item_data.get('variant_id') or None
+                variant = _get_variant_for_product(product, variant_id) if variant_id else None
+                if variant_id and not variant:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
+                    })
+                normalized_items.append((item_data, product, variant))
+
+            try:
+                o.store, o.customer = _resolve_sales_record_store(
+                    request,
+                    o.customer,
+                    warehouse,
+                    [product for _, product, _ in normalized_items],
+                    current_store=o.store,
+                )
+            except ValueError as e:
+                return JsonResponse({'status': 'error', 'message': str(e)})
+
             total = Decimal('0')
             for item_data in items_data:
                 total += _calculate_line_total(
@@ -1359,23 +1506,17 @@ def api_save_order(request):
             # 8. Ghi lại danh sách item mới và tính cảnh báo bán thấp hơn giá vốn.
             o.items.all().delete()
             loss_warnings = []
-            for item_data in items_data:
+            for item_data, product, variant in normalized_items:
                 qty = _non_negative_decimal(item_data.get('quantity', 0))
                 price = _non_negative_decimal(item_data.get('unit_price', 0))
                 disc = _normalize_percentage(item_data.get('discount_percent', 0))
                 line_total = _calculate_line_total(qty, price, disc)
-                product = Product.objects.get(id=item_data['product_id'])
-                variant_id = item_data.get('variant_id') or None
+                variant_id = variant.id if variant else None
                 cost = Decimal(str(product.cost_price or 0))
                 fallback_cost = Decimal(str(product.import_price or 0))
-                if variant_id:
-                    from products.models import ProductVariant
-                    try:
-                        variant = ProductVariant.objects.get(id=variant_id)
-                        cost = Decimal(str(variant.cost_price or 0))
-                        fallback_cost = Decimal(str(variant.import_price or 0))
-                    except ProductVariant.DoesNotExist:
-                        variant_id = None
+                if variant:
+                    cost = Decimal(str(variant.cost_price or 0))
+                    fallback_cost = Decimal(str(variant.import_price or 0))
                 compare_cost = cost if cost > 0 else fallback_cost
                 unit_after_line_discount = price * (Decimal('1') - disc / Decimal('100'))
                 unit_after_order_discount = unit_after_line_discount * (Decimal('1') - order_discount_ratio)
@@ -1842,7 +1983,9 @@ def api_get_quotation_detail(request):
     if not qid:
         return JsonResponse({'status': 'error', 'message': 'Missing id'})
     try:
-        q = Quotation.objects.select_related('customer').get(id=qid)
+        q = _get_quotation_for_user(request, qid)
+        if not q:
+            raise Quotation.DoesNotExist
         items = [{
             'product_id': it.product_id,
             'variant_id': it.variant_id,
@@ -1888,7 +2031,9 @@ def api_save_quotation(request):
             qid = data.get('id')
             old_status = None
             if qid:
-                q = Quotation.objects.get(id=qid)
+                q = _get_quotation_for_user(request, qid)
+                if not q:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy báo giá'})
                 old_status = q.status
                 new_status = int(data.get('status', q.status))
                 if old_status in (3, 4):
@@ -1939,6 +2084,34 @@ def api_save_quotation(request):
             # Tính tổng từ items
             items_data = data.get('items', [])
             _validate_unique_line_items(items_data)
+            normalized_items = []
+            for it in items_data:
+                product = _get_product_for_user(request, it.get('product_id'))
+                if not product:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.'
+                    })
+                variant_id = it.get('variant_id') or None
+                variant = _get_variant_for_product(product, variant_id) if variant_id else None
+                if variant_id and not variant:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
+                    })
+                normalized_items.append((it, product, variant))
+
+            try:
+                q.store, q.customer = _resolve_sales_record_store(
+                    request,
+                    q.customer,
+                    None,
+                    [product for _, product, _ in normalized_items],
+                    current_store=q.store,
+                )
+            except ValueError as e:
+                return JsonResponse({'status': 'error', 'message': str(e)})
+
             total = Decimal('0')
             for it in items_data:
                 qty = _non_negative_decimal(it.get('quantity', 0))
@@ -1956,19 +2129,15 @@ def api_save_quotation(request):
 
             # Lưu items
             loss_warnings = []
-            for it in items_data:
+            for it, product, variant in normalized_items:
                 qty = _non_negative_decimal(it.get('quantity', 0))
                 price = _non_negative_decimal(it.get('unit_price', 0))
                 disc = _normalize_percentage(it.get('discount_percent', 0))
                 line_total = _calculate_line_total(qty, price, disc)
-                product = Product.objects.get(id=it['product_id'])
                 compare_cost = _to_decimal(product.cost_price or product.import_price or 0)
-                variant_id = it.get('variant_id') or None
-                if variant_id:
-                    from products.models import ProductVariant
-                    variant = ProductVariant.objects.filter(id=variant_id).first()
-                    if variant:
-                        compare_cost = _to_decimal(variant.cost_price or variant.import_price or compare_cost)
+                variant_id = variant.id if variant else None
+                if variant:
+                    compare_cost = _to_decimal(variant.cost_price or variant.import_price or compare_cost)
                 effective_unit_price = price * (Decimal('1') - disc / Decimal('100')) * (Decimal('1') - quotation_discount_ratio)
                 if compare_cost > 0 and effective_unit_price < compare_cost:
                     loss_warnings.append(
@@ -1999,7 +2168,10 @@ def api_delete_quotation(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Quotation.objects.filter(id=data.get('id')).delete()
+        quotation = _get_quotation_for_user(request, data.get('id'))
+        if not quotation:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy báo giá'})
+        quotation.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -2108,11 +2280,16 @@ def api_save_packaging(request):
         data = json.loads(request.body)
         pid = data.get('id')
         if pid:
-            p = Packaging.objects.get(id=pid)
+            p = _get_packaging_for_user(request, pid)
+            if not p:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu đóng gói'})
         else:
             p = Packaging()
+        order = _get_order_for_user(request, data.get('order_id'))
+        if not order:
+            return JsonResponse({'status': 'error', 'message': 'Đơn hàng không thuộc phạm vi cửa hàng của bạn.'})
         p.code = data.get('code', '')
-        p.order_id = data.get('order_id') or None
+        p.order = order
         p.status = data.get('status', 0)
         p.weight = data.get('weight', 0) or 0
         p.note = data.get('note', '')
@@ -2135,7 +2312,10 @@ def api_delete_packaging(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        Packaging.objects.filter(id=data.get('id')).delete()
+        packaging = _get_packaging_for_user(request, data.get('id'))
+        if not packaging:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu đóng gói'})
+        packaging.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -2178,6 +2358,9 @@ def api_pos_checkout(request):
             warehouse = Warehouse.objects.filter(
                 store=store, is_active=True
             ).first() if store else None
+            customer = _resolve_sale_customer(request, data.get('customer_id')) if data.get('customer_id') else None
+            if customer and not _is_guest_customer(customer) and store and customer.store_id != store.id:
+                raise ValueError('Khách hàng không cùng cửa hàng với POS hiện tại.')
 
             subtotal = Decimal('0')
             normalized_items = []
@@ -2204,7 +2387,7 @@ def api_pos_checkout(request):
                 code=code,
                 store=store,
                 warehouse=warehouse,
-                customer_id=data.get('customer_id') or None,
+                customer=customer,
                 status=5,  # Hoàn thành
                 payment_status=0,
                 total_amount=subtotal,
@@ -2219,8 +2402,13 @@ def api_pos_checkout(request):
             order.save()
 
             # Create items + deduct stock
+            allow_negative_stock = _allow_negative_stock_for_store(store)
             for item_data in normalized_items:
-                product = Product.objects.get(id=item_data['product_id'])
+                product = _get_product_for_user(request, item_data['product_id'])
+                if not product:
+                    raise ValueError('Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.')
+                if store and product.store_id != store.id:
+                    raise ValueError(f'Sản phẩm "{product.name}" không cùng cửa hàng với POS hiện tại.')
                 oi = OrderItem(
                     order=order,
                     product=product,
@@ -2240,17 +2428,15 @@ def api_pos_checkout(request):
                         combo_items = ComboItem.objects.filter(combo=product).select_related('product')
                         for ci in combo_items:
                             qty_deduct = _to_decimal(ci.quantity) * _to_decimal(item_data.get('quantity', 1))
-                            stock, _ = ProductStock.objects.get_or_create(
-                                product=ci.product, warehouse=warehouse,
-                                defaults={'quantity': 0}
-                            )
-                            _adjust_stock_quantity(stock, -qty_deduct)
+                            stock = _get_locked_stock(ci.product_id, warehouse.id)
+                            _adjust_locked_stock(stock, -qty_deduct, allow_negative=allow_negative_stock)
                     else:
-                        stock, _ = ProductStock.objects.get_or_create(
-                            product=product, warehouse=warehouse,
-                            defaults={'quantity': 0}
+                        stock = _get_locked_stock(product.id, warehouse.id)
+                        _adjust_locked_stock(
+                            stock,
+                            -_to_decimal(item_data.get('quantity', 1)),
+                            allow_negative=allow_negative_stock,
                         )
-                        _adjust_stock_quantity(stock, -_to_decimal(item_data.get('quantity', 1)))
 
             if paid_amount > 0:
                 _create_completed_receipt_for_order(
@@ -2278,7 +2464,9 @@ def api_pos_checkout(request):
             if table_id:
                 try:
                     from customers.models import CafeTable
-                    tbl = CafeTable.objects.get(id=table_id)
+                    tbl = filter_by_store(CafeTable.objects.filter(id=table_id), request).first()
+                    if not tbl:
+                        raise CafeTable.DoesNotExist
                     tbl.status = 0  # Trống
                     tbl.current_order = None
                     tbl.save()
@@ -2291,6 +2479,8 @@ def api_pos_checkout(request):
             'order_code': code,
             'order_id': order.id
         })
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         logger.error(f'POS checkout error: {e}')
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -2415,7 +2605,9 @@ def api_print_order(request):
 
     if source == 'quotation':
         try:
-            quotation = Quotation.objects.select_related('customer').get(id=order_id)
+            quotation = _get_quotation_for_user(request, order_id)
+            if not quotation:
+                raise Quotation.DoesNotExist
         except Quotation.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy báo giá'})
         items = quotation.items.select_related('product').all()
@@ -2448,7 +2640,13 @@ def api_print_order(request):
         valid_until = quotation.valid_until
     else:
         try:
-            order = Order.objects.select_related('customer', 'warehouse', 'created_by').get(id=order_id)
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_related('customer', 'warehouse', 'created_by'),
+            )
+            if not order:
+                raise Order.DoesNotExist
         except Order.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy đơn hàng'})
         items = order.items.select_related('product').all()

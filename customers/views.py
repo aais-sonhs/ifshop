@@ -1,13 +1,14 @@
 import json
 import logging
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from .models import Customer, CustomerGroup, PointTransaction, CafeTable
 from orders.models import Order
 from core.store_utils import (
+    can_manage_users,
     filter_by_store,
     get_managed_store_ids,
     get_user_store,
@@ -15,6 +16,10 @@ from core.store_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'):
+    return JsonResponse({'status': 'error', 'message': message}, status=403)
 
 
 def _get_default_store_for_request(request):
@@ -240,6 +245,8 @@ def api_get_customer_groups(request):
 def api_save_customer_group(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình nhóm khách hàng')
     try:
         data = json.loads(request.body)
         gid = data.get('id')
@@ -261,6 +268,8 @@ def api_save_customer_group(request):
 def api_delete_customer_group(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình nhóm khách hàng')
     try:
         data = json.loads(request.body)
         CustomerGroup.objects.filter(id=data.get('id')).delete()
@@ -428,7 +437,14 @@ def api_update_table_status(request):
         if new_status == 0:  # Trống
             t.current_order = None
         elif 'order_id' in data:
-            t.current_order_id = data['order_id']
+            order_id = data.get('order_id')
+            if order_id:
+                order = filter_by_store(Order.objects.filter(id=order_id), request).first()
+                if not order:
+                    return JsonResponse({'status': 'error', 'message': 'Đơn hàng không thuộc phạm vi cửa hàng của bạn'})
+                t.current_order = order
+            else:
+                t.current_order = None
         t.save()
         return JsonResponse({'status': 'ok', 'message': 'Cập nhật thành công'})
     except Exception as e:
@@ -470,12 +486,18 @@ def api_adjust_points(request):
     """Cộng/trừ điểm thủ công"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền điều chỉnh điểm khách hàng')
     try:
         data = json.loads(request.body)
         cid = data.get('customer_id')
         points = int(data.get('points', 0))
         txn_type = int(data.get('type', 3))  # 3 = điều chỉnh
         desc = data.get('description', 'Điều chỉnh thủ công')
+        if txn_type not in (1, 2, 3):
+            return JsonResponse({'status': 'error', 'message': 'Loại giao dịch điểm không hợp lệ'})
+        if points <= 0:
+            return JsonResponse({'status': 'error', 'message': 'Số điểm phải lớn hơn 0'})
         with transaction.atomic():
             customer = _get_customer_for_user(request, cid, queryset=Customer.objects.select_for_update())
             if not customer:
@@ -599,7 +621,7 @@ def api_dashboard_data(request):
         order__order_date__gte=first_day,
         order__order_date__lte=today,
     ).exclude(order__status=6).aggregate(
-        total=Sum('cost_price')
+        total=Sum(F('cost_price') * F('quantity'))
     )['total'] or 0
     profit = revenue - float(cost)
 

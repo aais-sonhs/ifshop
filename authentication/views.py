@@ -2,7 +2,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.utils.http import url_has_allowed_host_and_scheme
-from .forms import LoginForm, SignUpForm
+from .forms import LoginForm
 from core.store_utils import can_view_sales_report
 
 
@@ -55,22 +55,8 @@ def login_view(request):
 
 
 def register_user(request):
-    """Tạo tài khoản mới từ form đăng ký và trả trạng thái cho template."""
-    msg = None
-    success = 0
-
-    if request.method == "POST":
-        form = SignUpForm(request.POST)
-        if form.is_valid():
-            form.save()
-            msg = 'Tạo tài khoản thành công.'
-            success = 1
-        else:
-            msg = 'Thông tin không hợp lệ'
-    else:
-        form = SignUpForm()
-
-    return render(request, "register.html", {"form": form, "msg": msg, "success": success})
+    """Không cho tự đăng ký public; tài khoản phải tạo qua màn quản lý user."""
+    return redirect("/login/")
 
 
 def logout_user(request):

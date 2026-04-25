@@ -5,6 +5,7 @@ Phần mềm quản lý bán hàng
 
 import os
 import mimetypes
+from django.core.exceptions import ImproperlyConfigured
 
 mimetypes.add_type("text/javascript", ".js", True)
 
@@ -19,13 +20,42 @@ os.makedirs(os.path.join(LOG_DIR, 'server'), exist_ok=True)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'ftov1!91yf@7f7&g2%*@0_e^)ac&f&9jeloc@#v76#^b1dhbl#'
+def _env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _env_list(name, default):
+    raw_value = os.getenv(name, default)
+    return [item.strip() for item in raw_value.split(',') if item.strip()]
+
+
+DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
+DB_ENGINE = os.getenv('DB_ENGINE', 'postgresql' if DJANGO_ENV == 'production' else 'sqlite').lower()
+IS_SQLITE = DB_ENGINE == 'sqlite'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = _env_bool('DJANGO_DEBUG', DJANGO_ENV != 'production')
 
-ALLOWED_HOSTS = ['*']
+# SECURITY WARNING: keep the secret key used in production secret.
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+SECRET_KEY_FILE = os.getenv('DJANGO_SECRET_KEY_FILE')
+if not SECRET_KEY and SECRET_KEY_FILE and os.path.exists(SECRET_KEY_FILE):
+    with open(SECRET_KEY_FILE, encoding='utf-8') as secret_file:
+        SECRET_KEY = secret_file.read().strip()
+
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'unsafe-local-placeholder-key-use-DJANGO_SECRET_KEY-in-production-20260425'
+    else:
+        raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set when DJANGO_ENV is production.')
+
+ALLOWED_HOSTS = _env_list(
+    'DJANGO_ALLOWED_HOSTS',
+    'localhost,127.0.0.1,113.160.218.241,ifshop.ipchello.com,.appliedaisystem.com,.ipchello.com',
+)
 CSRF_TRUSTED_ORIGINS = [
     'https://*.appliedaisystem.com',
     'https://*.127.0.0.1',
@@ -36,6 +66,12 @@ CSRF_TRUSTED_ORIGINS = [
 
 # Đảm bảo Django hiểu là đang giao tiếp qua HTTPS (nếu deploy qua Nginx)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = _env_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
+SESSION_COOKIE_SECURE = _env_bool('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
+SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '31536000' if not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_HSTS_PRELOAD = _env_bool('DJANGO_SECURE_HSTS_PRELOAD', not DEBUG)
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -113,17 +149,31 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ifshop',
-        'USER': 'postgres',
-        'PASSWORD': 'TuanHai2508',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'CONN_MAX_AGE': 0,
+if IS_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.getenv('SQLITE_NAME', os.path.join(BASE_DIR, 'db.sqlite3')),
+        }
     }
-}
+else:
+    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+    DB_PASSWORD_FILE = os.getenv('DB_PASSWORD_FILE')
+    if not DB_PASSWORD and DB_PASSWORD_FILE and os.path.exists(DB_PASSWORD_FILE):
+        with open(DB_PASSWORD_FILE, encoding='utf-8') as db_password_file:
+            DB_PASSWORD = db_password_file.read().strip()
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'ifshop'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': DB_PASSWORD,
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'CONN_MAX_AGE': 0,
+        }
+    }
 
 
 # Password validation

@@ -9,25 +9,25 @@ from django.shortcuts import redirect
 class SuperadminAccessMiddleware:
     """Block superadmin from accessing business routes.
     Allowed paths for superadmin (platform management only):
-    - /brand_tbl/, /api/brands/*, /api/stores/*
-    - /user_management_tbl/, /api/users/*
-    - /category_tbl/, /service_price_tbl/, /api/service_prices/*
-    - /printer_setting_tbl/, /api/printers/*
-    - /business_config/, /api/business_config/*
-    - /role_group_tbl/, /permission_tbl/, /api/role_groups/*
+    - /brand-tbl/, /api/brands/*, /api/stores/*
+    - /user-management-tbl/, /api/users/*
+    - /category-tbl/, /service-price-tbl/, /api/service-prices/*
+    - /printer-setting-tbl/, /api/printers/*
+    - /business-config/, /api/business-config/*
+    - /role-group-tbl/, /permission-tbl/, /api/role-groups/*
     - /login/, /logout/, /register/, /admin/
-    - /api/profile/*, /api/stores_for_user/
+    - /api/profile/*, /api/stores-for-user/
     - Static/media files
     """
 
     ALLOWED_PREFIXES = (
         '/login/', '/logout/', '/register/', '/admin/',
-        '/brand_tbl/', '/api/brands/', '/api/stores/',
-        '/user_management_tbl/', '/api/users/', '/api/stores_for_user/',
-        '/category_tbl/', '/service_price_tbl/', '/api/service_prices/',
-        '/printer_setting_tbl/', '/api/printers/',
-        '/business_config/', '/api/business_config/',
-        '/role_group_tbl/', '/permission_tbl/', '/api/role_groups/',
+        '/brand-tbl/', '/api/brands/', '/api/stores/',
+        '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
+        '/category-tbl/', '/service-price-tbl/', '/api/service-prices/',
+        '/printer-setting-tbl/', '/api/printers/',
+        '/business-config/', '/api/business-config/',
+        '/role-group-tbl/', '/permission-tbl/', '/api/role-groups/',
         '/api/profile/',
         '/static/', '/media/', '/favicon',
     )

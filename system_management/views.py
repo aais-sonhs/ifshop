@@ -5,10 +5,40 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.db import models as db_models
+from django.contrib import messages
 from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, BusinessConfig, Brand, Store
 from core.store_utils import can_manage_users, get_managed_store_ids
 
 logger = logging.getLogger(__name__)
+
+
+def _forbid_json(message='Bạn không có quyền quản lý hệ thống'):
+    return JsonResponse({'status': 'error', 'message': message}, status=403)
+
+
+def _redirect_no_system_access(request, message='Bạn không có quyền quản lý hệ thống'):
+    messages.error(request, message)
+    return redirect('/dashboard/')
+
+
+def _get_other_brand_owner_ids(user):
+    return Brand.objects.filter(
+        owner__isnull=False,
+    ).exclude(owner=user).values_list('owner_id', flat=True)
+
+
+def _get_manageable_users_queryset(request):
+    """Danh sách user mà tài khoản hiện tại được phép thấy/gán quyền."""
+    queryset = User.objects.all()
+    if request.user.is_superuser:
+        return queryset
+
+    managed_store_ids = get_managed_store_ids(request.user)
+    other_brand_owner_ids = _get_other_brand_owner_ids(request.user)
+    return queryset.filter(
+        db_models.Q(profile__store_id__in=managed_store_ids) |
+        db_models.Q(profile__store__isnull=True, is_superuser=False),
+    ).exclude(id__in=other_brand_owner_ids).distinct()
 
 
 def _get_editable_user(request, user_id):
@@ -24,11 +54,12 @@ def _get_editable_user(request, user_id):
         return queryset.filter(id=user_id).first()
 
     managed_store_ids = get_managed_store_ids(request.user)
+    other_brand_owner_ids = _get_other_brand_owner_ids(request.user)
     return queryset.filter(
         db_models.Q(id=user_id),
         db_models.Q(profile__store_id__in=managed_store_ids) |
         db_models.Q(profile__store__isnull=True, is_superuser=False),
-    ).distinct().first()
+    ).exclude(id__in=other_brand_owner_ids).distinct().first()
 
 
 def _get_brand_queryset_for_user(request):
@@ -61,18 +92,24 @@ def _get_store_for_user(request, store_id):
 
 @login_required(login_url="/login/")
 def user_management_tbl(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
     context = {'active_tab': 'user_management_tbl'}
     return render(request, "system/user_management.html", context)
 
 
 @login_required(login_url="/login/")
 def role_group_tbl(request):
+    if not request.user.is_superuser:
+        return _redirect_no_system_access(request, 'Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
     context = {'active_tab': 'role_group_tbl'}
     return render(request, "system/role_group.html", context)
 
 
 @login_required(login_url="/login/")
 def permission_tbl(request):
+    if not request.user.is_superuser:
+        return _redirect_no_system_access(request, 'Chỉ Super Admin được cấu hình quyền toàn hệ thống')
     context = {'active_tab': 'permission_tbl'}
     return render(request, "system/permission.html", context)
 
@@ -85,6 +122,8 @@ def category_tbl(request):
 
 @login_required(login_url="/login/")
 def service_price_tbl(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
     context = {'active_tab': 'service_price_tbl'}
     return render(request, "system/service_price.html", context)
 
@@ -93,6 +132,8 @@ def service_price_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_role_groups(request):
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
     role_groups = RoleGroup.objects.select_related('group').all()
     data = []
     for rg in role_groups:
@@ -113,6 +154,8 @@ def api_save_role_group(request):
     from django.contrib.auth.models import Group
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
     try:
         data = json.loads(request.body)
         rid = data.get('id')
@@ -149,6 +192,8 @@ def api_save_role_group(request):
 def api_delete_role_group(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
     try:
         data = json.loads(request.body)
         rg = RoleGroup.objects.get(id=data.get('id'))
@@ -169,10 +214,14 @@ def api_assign_role_group(request):
     """Gán/bỏ user vào nhóm vai trò"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được gán nhóm vai trò toàn hệ thống')
     try:
         data = json.loads(request.body)
         rg = RoleGroup.objects.get(id=data.get('role_group_id'))
-        user = User.objects.get(id=data.get('user_id'))
+        user = _get_editable_user(request, data.get('user_id'))
+        if not user:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy người dùng trong phạm vi quản lý'}, status=404)
         action = data.get('action', 'add')  # 'add' or 'remove'
 
         if action == 'add':
@@ -257,6 +306,7 @@ def api_get_business_config(request):
             'opt_loyalty_points': c.opt_loyalty_points,
             'opt_loyalty_rate': c.opt_loyalty_rate,
             'opt_commission': c.opt_commission,
+            'opt_allow_negative_stock': c.opt_allow_negative_stock,
         },
         'business_types': BusinessConfig.BUSINESS_TYPE_CHOICES,
     })
@@ -303,6 +353,7 @@ def api_save_business_config(request):
         c.opt_loyalty_points = data.get('opt_loyalty_points', False)
         c.opt_loyalty_rate = data.get('opt_loyalty_rate', 10000)
         c.opt_commission = data.get('opt_commission', False)
+        c.opt_allow_negative_stock = data.get('opt_allow_negative_stock', False)
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu cấu hình thành công! Reload trang để thấy thay đổi trên menu.'})
     except Exception as e:
@@ -313,6 +364,8 @@ def api_save_business_config(request):
 
 @login_required(login_url="/login/")
 def api_get_service_prices(request):
+    if not can_manage_users(request.user):
+        return _forbid_json()
     items = ServicePrice.objects.all()
     data = [{
         'id': s.id, 'name': s.name, 'price': float(s.price),
@@ -326,6 +379,8 @@ def api_get_service_prices(request):
 def api_save_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         sid = data.get('id')
@@ -348,6 +403,8 @@ def api_save_service_price(request):
 def api_delete_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         ServicePrice.objects.filter(id=data.get('id')).delete()
@@ -372,11 +429,12 @@ def api_get_users(request):
         ).distinct()
     elif can_manage_users(request.user):
         store_ids = get_managed_store_ids(request.user)
-        # Include users in managed stores + users without store (just created)
+        other_brand_owner_ids = _get_other_brand_owner_ids(request.user)
+        # Include users in managed stores + unassigned non-owner users.
         users = users.filter(
             db_models.Q(profile__store_id__in=store_ids) |
             db_models.Q(profile__store__isnull=True, is_superuser=False)
-        ).distinct()
+        ).exclude(id__in=other_brand_owner_ids).distinct()
     elif not request.user.is_superuser:
         # Regular user: chỉ thấy chính mình
         users = users.filter(id=request.user.id)
@@ -524,12 +582,16 @@ def api_get_stores_for_user(request):
 
 @login_required(login_url="/login/")
 def printer_setting_tbl(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
     context = {'active_tab': 'printer_setting_tbl'}
     return render(request, "system/printer_setting.html", context)
 
 
 @login_required(login_url="/login/")
 def api_get_printers(request):
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình máy in')
     printers = PrinterSetting.objects.filter(is_active=True)
     data = [{
         'id': p.id, 'name': p.name,
@@ -550,6 +612,8 @@ def api_get_printers(request):
 def api_save_printer(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         pid = data.get('id')
@@ -580,6 +644,8 @@ def api_save_printer(request):
 def api_delete_printer(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         PrinterSetting.objects.filter(id=data.get('id')).delete()
@@ -593,6 +659,8 @@ def api_test_printer(request):
     """Test kết nối máy in LAN"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         import socket
         data = json.loads(request.body)
@@ -703,12 +771,16 @@ th{{background:#f0f0f0;font-weight:bold;text-align:center;}}
 
 @login_required(login_url="/login/")
 def brand_tbl(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
     return render(request, "system/brand_list.html", {'active_tab': 'brand_tbl'})
 
 
 @login_required(login_url="/login/")
 def api_get_brands(request):
     """Trả về danh sách brand/store mà user hiện tại được phép quản trị."""
+    if not can_manage_users(request.user):
+        return _forbid_json()
     brands = _get_brand_queryset_for_user(request).prefetch_related('stores', 'stores__staff_profiles__user')
     data = []
     for b in brands:
@@ -750,7 +822,10 @@ def api_get_brands(request):
             'stores': stores,
             'store_count': len(stores),
         })
-    users = [{'id': u.id, 'name': u.get_full_name() or u.username} for u in User.objects.filter(is_active=True)]
+    users = [
+        {'id': u.id, 'name': u.get_full_name() or u.username}
+        for u in _get_manageable_users_queryset(request).filter(is_active=True)
+    ]
     return JsonResponse({'data': data, 'users': users})
 
 
@@ -758,6 +833,8 @@ def api_get_brands(request):
 def api_save_brand(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         bid = data.get('id')
@@ -788,6 +865,8 @@ def api_save_brand(request):
 def api_delete_brand(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         brand = _get_brand_for_user(request, data.get('id'))
@@ -803,6 +882,8 @@ def api_delete_brand(request):
 def api_save_store(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         sid = data.get('id')
@@ -827,7 +908,10 @@ def api_save_store(request):
         s.address = data.get('address', '')
         s.city = data.get('city', '')
         s.district = data.get('district', '')
-        s.manager_id = data.get('manager_id') or None
+        manager_id = data.get('manager_id') or None
+        if manager_id and not request.user.is_superuser and not _get_editable_user(request, manager_id):
+            return JsonResponse({'status': 'error', 'message': 'Người quản lý không thuộc phạm vi quản lý của bạn'})
+        s.manager_id = manager_id
         s.open_time = data.get('open_time') or None
         s.close_time = data.get('close_time') or None
         s.is_active = data.get('is_active', True)
@@ -841,6 +925,8 @@ def api_save_store(request):
 def api_delete_store(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
     try:
         data = json.loads(request.body)
         store = _get_store_for_user(request, data.get('id'))

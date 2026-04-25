@@ -15,9 +15,13 @@ from .services import (
 from customers.models import Customer
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier
-from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required
+from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required, can_manage_users
 
 logger = logging.getLogger(__name__)
+
+
+def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'):
+    return JsonResponse({'status': 'error', 'message': message}, status=403)
 
 
 def _get_default_store_for_request(request):
@@ -197,6 +201,21 @@ def _get_payment_for_user(request, payment_id, queryset=None):
     return _filter_payments_for_user(base_queryset, request).filter(id=payment_id).first()
 
 
+def _get_customer_for_user(request, customer_id):
+    if not customer_id:
+        return None
+    return filter_by_store(Customer.objects.filter(id=customer_id), request).first()
+
+
+def _normalize_optional_int(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _apply_payment_method_defaults(finance_document):
     """Áp cấu hình mặc định từ phương thức thanh toán lên phiếu thu/phiếu chi.
 
@@ -221,12 +240,25 @@ def _resolve_receipt_scope(request, receipt):
     """Gắn store và customer cho phiếu thu dựa trên đơn hàng liên kết hoặc store mặc định."""
     linked_order = None
     if receipt.order_id:
-        linked_order = filter_by_store(Order.objects.filter(id=receipt.order_id), request).first()
+        order_id = _normalize_optional_int(receipt.order_id)
+        customer_id = _normalize_optional_int(receipt.customer_id)
+        linked_order = filter_by_store(Order.objects.filter(id=order_id), request).first()
         if not linked_order:
             raise ValueError('Không tìm thấy đơn hàng trong phạm vi cửa hàng')
         receipt.store_id = linked_order.store_id
-        if not receipt.customer_id:
-            receipt.customer_id = linked_order.customer_id
+        if customer_id and customer_id != linked_order.customer_id:
+            raise ValueError('Khách hàng không khớp với đơn hàng đã chọn')
+        receipt.order_id = linked_order.id
+        receipt.customer_id = linked_order.customer_id
+        return linked_order
+
+    if receipt.customer_id:
+        customer_id = _normalize_optional_int(receipt.customer_id)
+        customer = _get_customer_for_user(request, customer_id)
+        if not customer:
+            raise ValueError('Khách hàng không thuộc phạm vi cửa hàng của bạn')
+        receipt.customer_id = customer.id
+        receipt.store_id = customer.store_id
         return linked_order
 
     if not receipt.store_id:
@@ -306,7 +338,9 @@ def payment_tbl(request):
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
     payment_methods = _serialize_payment_methods()
     suppliers = list(Supplier.objects.filter(is_active=True).values('id', 'code', 'name'))
-    goods_receipts = list(GoodsReceipt.objects.select_related('supplier').values(
+    goods_receipts_qs = GoodsReceipt.objects.select_related('supplier')
+    goods_receipts_qs = filter_by_store(goods_receipts_qs, request, field_name='warehouse__store')
+    goods_receipts = list(goods_receipts_qs.values(
         'id', 'code', 'supplier__name', 'total_amount', 'status'
     ).order_by('-receipt_date'))
     context = {
@@ -647,6 +681,8 @@ def api_get_finance_categories(request):
 def api_save_finance_category(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình danh mục thu chi')
     try:
         data = json.loads(request.body)
         cid = data.get('id')
@@ -679,6 +715,8 @@ def api_get_cashbooks(request):
 def api_save_cashbook(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình sổ quỹ')
     try:
         data = json.loads(request.body)
         bid = data.get('id')
@@ -715,6 +753,8 @@ def api_get_payment_methods(request):
 def api_save_payment_method(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phương thức thanh toán')
     try:
         data = json.loads(request.body)
         mid = data.get('id')
@@ -741,6 +781,8 @@ def api_save_payment_method(request):
 def api_delete_payment_method(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phương thức thanh toán')
     try:
         data = json.loads(request.body)
         method = PaymentMethodOption.objects.get(id=data.get('id'))

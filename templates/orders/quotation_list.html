@@ -1457,6 +1457,8 @@ $(document).ready(function(){
     });
 
     $('#btn_save').click(function(){
+        var $saveBtn = $(this);
+        if($saveBtn.data('submitting')) return;
         var code = $('#inp_code').val();
         var date = $('#inp_quotation_date').val();
         if(!code || !date){ alert('Vui lòng nhập mã và ngày BG'); return; }
@@ -1497,6 +1499,7 @@ $(document).ready(function(){
         };
         if($('#inp_salesperson').length) data.salesperson = $('#inp_salesperson').val();
 
+        $saveBtn.data('submitting', true).prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
         $.ajax({
             url: '/api/quotations/save/', type: 'POST',
             contentType: 'application/json',
@@ -1517,6 +1520,9 @@ $(document).ready(function(){
                 } else {
                     alert(r.message);
                 }
+            },
+            complete: function(){
+                $saveBtn.data('submitting', false).prop('disabled', false).html('<i class="fas fa-save"></i> Lưu báo giá');
             }
         });
     });

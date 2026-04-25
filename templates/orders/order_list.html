@@ -1480,6 +1480,15 @@ function getDocumentType(){
     return $('input[name="document_type"]:checked').val() || 'order';
 }
 
+function setOrderSaveLoading($btn, isLoading, isQuotation){
+    $btn.data('submitting', isLoading).prop('disabled', isLoading);
+    if(isLoading){
+        $btn.html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
+    } else {
+        $btn.html('<i class="fas fa-save"></i> ' + (isQuotation ? 'Lưu báo giá' : 'Lưu đơn hàng'));
+    }
+}
+
 function setDocumentType(type){
     var normalized = type === 'quotation' ? 'quotation' : 'order';
     $('input[name="document_type"][value="'+normalized+'"]').prop('checked', true);
@@ -2606,6 +2615,8 @@ $(document).ready(function(){
     });
 
     $('#btn_save').click(function(){
+        var $saveBtn = $(this);
+        if($saveBtn.data('submitting')) return;
         var code=$('#inp_code').val(),date=$('#inp_order_date').val();
         var docType = getDocumentType();
         var isQuotation = docType === 'quotation';
@@ -2660,6 +2671,7 @@ $(document).ready(function(){
                 items: items
             };
             if($('#inp_salesperson').length) quotationData.salesperson = $('#inp_salesperson').val();
+            setOrderSaveLoading($saveBtn, true, true);
             $.ajax({url:'/api/quotations/save/',type:'POST',contentType:'application/json',
                 headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(quotationData),
                 success:function(r){
@@ -2677,7 +2689,8 @@ $(document).ready(function(){
                     } else {
                         alert(r.message);
                     }
-                }
+                },
+                complete:function(){ setOrderSaveLoading($saveBtn, false, true); }
             });
             return;
         }
@@ -2713,6 +2726,7 @@ $(document).ready(function(){
         if($('#inp_approver_id').length) data.approver_id = $('#inp_approver_id').val() || null;
         if($('#inp_bonus_amount').length) data.bonus_amount = getMoneyValue('#inp_bonus_amount');
 
+        setOrderSaveLoading($saveBtn, true, false);
         $.ajax({url:'/api/orders/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){
@@ -2730,7 +2744,8 @@ $(document).ready(function(){
                 } else {
                     alert(r.message);
                 }
-            }
+            },
+            complete:function(){ setOrderSaveLoading($saveBtn, false, false); }
         });
     });
 });

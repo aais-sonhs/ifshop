@@ -534,6 +534,8 @@ $(document).ready(function(){
         $('#modal_title').text('Thêm khách hàng');$('#modal_form').modal('show');
     });
     $('#btn_save').click(function(){
+        var $saveBtn = $(this);
+        if($saveBtn.data('submitting')) return;
         var ctype = parseInt($('#inp_customer_type').val());
         var data={id:$('#edit_id').val()||null,
             customer_type: ctype,
@@ -549,6 +551,7 @@ $(document).ready(function(){
         if(!data.code||!data.name){alert('Vui lòng nhập mã và tên KH');return;}
         if(ctype === 2 && (!data.company || !data.tax_code)){alert('Khách hàng Công ty cần nhập tên CTY và MST');return;}
         if(ctype === 3 && !data.company){alert('Hộ kinh doanh cần nhập tên hộ KD');return;}
+        $saveBtn.data('submitting', true).prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
         $.ajax({url:'/api/customers/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){
@@ -571,6 +574,9 @@ $(document).ready(function(){
                     $('#modal_form').modal('hide');loadData();
                 }
                 alert(r.message);
+            },
+            complete:function(){
+                $saveBtn.data('submitting', false).prop('disabled', false).html('<i class="fas fa-save"></i> Lưu');
             }
         });
     });

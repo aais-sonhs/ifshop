@@ -31,6 +31,7 @@
 .pay-btn { width: 100%; padding: 12px; font-size: 16px; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s; }
 .pay-btn:hover { transform: scale(1.02); }
 .pay-btn:active { transform: scale(0.98); }
+.pay-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
 .pay-btn.cash { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
 .pay-btn.transfer { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: #fff; margin-top: 6px; }
 .search-pos { border-radius: 20px; padding: 8px 16px; border: 1px solid #ddd; width: 100%; margin-bottom: 12px; }
@@ -140,6 +141,7 @@ var posProducts = [];
 var posCategories = [];
 var cart = [];
 var currentCat = 'all';
+var posCheckoutSubmitting = false;
 var tableId = new URLSearchParams(window.location.search).get('table_id');
 
 function fmt(n){ return new Intl.NumberFormat('vi-VN').format(Math.round(n)); }
@@ -276,7 +278,20 @@ function updateCartTotal(){
     $('#pos_total').text(fmt(total) + 'đ');
 }
 
+function setPosCheckoutLoading(isLoading){
+    posCheckoutSubmitting = isLoading;
+    $('.pay-btn').prop('disabled', isLoading);
+    if(isLoading){
+        $('.pay-btn.cash').html('<span class="spinner-border spinner-border-sm mr-2"></span>Đang thanh toán...');
+        $('.pay-btn.transfer').html('<span class="spinner-border spinner-border-sm mr-2"></span>Đang thanh toán...');
+    } else {
+        $('.pay-btn.cash').html('<i class="fas fa-money-bill-wave mr-2"></i>Thanh toán tiền mặt');
+        $('.pay-btn.transfer').html('<i class="fas fa-university mr-2"></i>Chuyển khoản');
+    }
+}
+
 function posCheckout(method){
+    if(posCheckoutSubmitting) return;
     if(!cart.length){ alert('Giỏ hàng trống!'); return; }
     var subtotal = cart.reduce((s,i) => s + i.total, 0);
     var discount = parseInt($('#pos_discount').val()) || 0;
@@ -301,6 +316,7 @@ function posCheckout(method){
     };
     if(tableId) orderData.table_id = parseInt(tableId);
 
+    setPosCheckoutLoading(true);
     $.ajax({
         url: '/api/orders/pos-checkout/', type: 'POST',
         contentType: 'application/json',
@@ -319,7 +335,8 @@ function posCheckout(method){
                 }
             } else { alert('Lỗi: ' + r.message); }
         },
-        error: function(){ alert('Lỗi kết nối!'); }
+        error: function(){ alert('Lỗi kết nối!'); },
+        complete: function(){ setPosCheckoutLoading(false); }
     });
 }
 

@@ -565,15 +565,15 @@ a:hover {
     color: var(--twin-text) !important;
 }
 
-/* Sticky table header: container scroll + sticky thead */
-/* Main page tables: fill remaining viewport height (set by JS) */
+/* Table: stretch to bottom of viewport, NO inner scroll */
 .table-responsive {
     overflow-x: auto;
+    overflow-y: visible !important;
 }
-/* Only apply fill-height to top-level page tables, NOT inside modals */
+/* Main page tables: min-height fills to viewport bottom (set by JS) */
 .content-wrapper .table-responsive:not([style*="max-height"]) {
-    max-height: var(--table-fill-height, none);
-    overflow-y: auto;
+    min-height: var(--table-fill-height, auto);
+    max-height: none !important;
 }
 
 .table thead {

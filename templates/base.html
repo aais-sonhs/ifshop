@@ -101,34 +101,36 @@
     </script>
     <script>
     // ===== TABLE FILL HEIGHT =====
-    // Calculate remaining viewport height for each .table-responsive so that
-    // the table stretches to the bottom of the screen (single browser scroll).
+    // Stretch each main-page .table-responsive to the bottom of the viewport.
+    // Only the browser scroll is used; the table itself has no inner scroll.
     (function(){
+        function getAbsoluteTop(el){
+            var top = 0;
+            while(el){ top += el.offsetTop || 0; el = el.offsetParent; }
+            return top;
+        }
         function setTableFillHeight(){
-            var bottomMargin = 24; // px gap from viewport bottom
+            var bottomMargin = 20; // small gap from viewport bottom
+            var vh = window.innerHeight;
             document.querySelectorAll('.content-wrapper .table-responsive').forEach(function(el){
-                // Skip containers that have an explicit inline max-height
+                // Skip containers that have an explicit inline max-height (e.g. modals, report sub-tables)
                 if(el.style.maxHeight) return;
-                var rect = el.getBoundingClientRect();
-                var available = window.innerHeight - rect.top - bottomMargin;
-                if(available < 200) available = 200; // minimum height
-                el.style.setProperty('--table-fill-height', available + 'px');
+                var top = getAbsoluteTop(el);
+                var fill = vh - top - bottomMargin;
+                if(fill < 200) fill = 200; // minimum so very short tables still look decent
+                el.style.setProperty('--table-fill-height', fill + 'px');
             });
         }
-        // Run on DOM ready
         $(document).ready(function(){
             setTableFillHeight();
-            // Recalc on resize
             var resizeTimer;
             $(window).on('resize', function(){
                 clearTimeout(resizeTimer);
                 resizeTimer = setTimeout(setTableFillHeight, 150);
             });
-            // Recalc after AJAX content loads (e.g. DataTables draw)
+            // Recalc when dynamic content changes layout
             $(document).on('draw.dt', function(){ setTimeout(setTableFillHeight, 50); });
-            // Recalc when a tab is shown (Bootstrap tabs)
             $(document).on('shown.bs.tab', function(){ setTimeout(setTableFillHeight, 50); });
-            // Recalc when a collapse is shown
             $(document).on('shown.bs.collapse', function(){ setTimeout(setTableFillHeight, 50); });
         });
     })();

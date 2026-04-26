@@ -101,8 +101,9 @@
     </script>
     <script>
     // ===== TABLE FILL HEIGHT =====
-    // Stretch each main-page .table-responsive to the bottom of the viewport.
-    // Only the browser scroll is used; the table itself has no inner scroll.
+    // Stretch the parent .card to the bottom of the viewport.
+    // Uses flexbox so .table-responsive fills remaining space,
+    // while pagination/info stays visible below the table.
     (function(){
         function getAbsoluteTop(el){
             var top = 0;
@@ -110,15 +111,25 @@
             return top;
         }
         function setTableFillHeight(){
-            var bottomMargin = 20; // small gap from viewport bottom
+            var bottomMargin = 16;
             var vh = window.innerHeight;
             document.querySelectorAll('.content-wrapper .table-responsive').forEach(function(el){
-                // Skip containers that have an explicit inline max-height (e.g. modals, report sub-tables)
+                // Skip tables with explicit inline max-height (sub-tables, modals)
                 if(el.style.maxHeight) return;
-                var top = getAbsoluteTop(el);
+                // Skip tables inside modals
+                if(el.closest('.modal')) return;
+                // Find the closest .card parent
+                var card = el.closest('.card');
+                if(!card || !card.closest('.content-wrapper')) return;
+                // Skip if this card is nested inside another card (e.g. report sub-cards)
+                var parentCard = card.parentElement && card.parentElement.closest('.card');
+                if(parentCard && parentCard.closest('.content-wrapper')) return;
+
+                card.classList.add('card--fill-height');
+                var top = getAbsoluteTop(card);
                 var fill = vh - top - bottomMargin;
-                if(fill < 200) fill = 200; // minimum so very short tables still look decent
-                el.style.setProperty('--table-fill-height', fill + 'px');
+                if(fill < 300) fill = 300;
+                card.style.setProperty('--card-fill-height', fill + 'px');
             });
         }
         $(document).ready(function(){
@@ -128,7 +139,6 @@
                 clearTimeout(resizeTimer);
                 resizeTimer = setTimeout(setTableFillHeight, 150);
             });
-            // Recalc when dynamic content changes layout
             $(document).on('draw.dt', function(){ setTimeout(setTableFillHeight, 50); });
             $(document).on('shown.bs.tab', function(){ setTimeout(setTableFillHeight, 50); });
             $(document).on('shown.bs.collapse', function(){ setTimeout(setTableFillHeight, 50); });

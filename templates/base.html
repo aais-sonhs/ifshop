@@ -99,6 +99,40 @@
         }
     });
     </script>
+    <script>
+    // ===== TABLE FILL HEIGHT =====
+    // Calculate remaining viewport height for each .table-responsive so that
+    // the table stretches to the bottom of the screen (single browser scroll).
+    (function(){
+        function setTableFillHeight(){
+            var bottomMargin = 24; // px gap from viewport bottom
+            document.querySelectorAll('.content-wrapper .table-responsive').forEach(function(el){
+                // Skip containers that have an explicit inline max-height
+                if(el.style.maxHeight) return;
+                var rect = el.getBoundingClientRect();
+                var available = window.innerHeight - rect.top - bottomMargin;
+                if(available < 200) available = 200; // minimum height
+                el.style.setProperty('--table-fill-height', available + 'px');
+            });
+        }
+        // Run on DOM ready
+        $(document).ready(function(){
+            setTableFillHeight();
+            // Recalc on resize
+            var resizeTimer;
+            $(window).on('resize', function(){
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(setTableFillHeight, 150);
+            });
+            // Recalc after AJAX content loads (e.g. DataTables draw)
+            $(document).on('draw.dt', function(){ setTimeout(setTableFillHeight, 50); });
+            // Recalc when a tab is shown (Bootstrap tabs)
+            $(document).on('shown.bs.tab', function(){ setTimeout(setTableFillHeight, 50); });
+            // Recalc when a collapse is shown
+            $(document).on('shown.bs.collapse', function(){ setTimeout(setTableFillHeight, 50); });
+        });
+    })();
+    </script>
     {% block extra_js %}{% endblock %}
 
     <!-- PWA Service Worker -->

@@ -566,10 +566,14 @@ a:hover {
 }
 
 /* Sticky table header: container scroll + sticky thead */
+/* Main page tables: fill remaining viewport height (set by JS) */
 .table-responsive {
-    max-height: 70vh;
-    overflow-y: auto;
     overflow-x: auto;
+}
+/* Only apply fill-height to top-level page tables, NOT inside modals */
+.content-wrapper .table-responsive:not([style*="max-height"]) {
+    max-height: var(--table-fill-height, none);
+    overflow-y: auto;
 }
 
 .table thead {

@@ -99,52 +99,7 @@
         }
     });
     </script>
-    <script>
-    // ===== TABLE FILL HEIGHT =====
-    // Stretch the parent .card to the bottom of the viewport.
-    // Uses flexbox so .table-responsive fills remaining space,
-    // while pagination/info stays visible below the table.
-    (function(){
-        function getAbsoluteTop(el){
-            var top = 0;
-            while(el){ top += el.offsetTop || 0; el = el.offsetParent; }
-            return top;
-        }
-        function setTableFillHeight(){
-            var bottomMargin = 16;
-            var vh = window.innerHeight;
-            document.querySelectorAll('.content-wrapper .table-responsive').forEach(function(el){
-                // Skip tables with explicit inline max-height (sub-tables, modals)
-                if(el.style.maxHeight) return;
-                // Skip tables inside modals
-                if(el.closest('.modal')) return;
-                // Find the closest .card parent
-                var card = el.closest('.card');
-                if(!card || !card.closest('.content-wrapper')) return;
-                // Skip if this card is nested inside another card (e.g. report sub-cards)
-                var parentCard = card.parentElement && card.parentElement.closest('.card');
-                if(parentCard && parentCard.closest('.content-wrapper')) return;
-
-                card.classList.add('card--fill-height');
-                var top = getAbsoluteTop(card);
-                var fill = vh - top - bottomMargin;
-                if(fill < 300) fill = 300;
-                card.style.setProperty('--card-fill-height', fill + 'px');
-            });
-        }
-        $(document).ready(function(){
-            setTableFillHeight();
-            var resizeTimer;
-            $(window).on('resize', function(){
-                clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(setTableFillHeight, 150);
-            });
-            $(document).on('draw.dt', function(){ setTimeout(setTableFillHeight, 50); });
-            $(document).on('shown.bs.tab', function(){ setTimeout(setTableFillHeight, 50); });
-            $(document).on('shown.bs.collapse', function(){ setTimeout(setTableFillHeight, 50); });
-        });
-    })();
-    </script>
+    <script src="{% static 'dist/js/table-scroll.js' %}?{% now 'U' %}" defer></script>
     {% block extra_js %}{% endblock %}
 
     <!-- PWA Service Worker -->

@@ -595,7 +595,6 @@ a:hover {
     border-radius: 3px !important;
 }
 
-
 .table thead th {
     background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;
     color: #fff !important;

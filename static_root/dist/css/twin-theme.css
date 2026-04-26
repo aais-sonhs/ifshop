@@ -565,18 +565,36 @@ a:hover {
     color: var(--twin-text) !important;
 }
 
-/* Sticky table header: container scroll + sticky thead */
-.table-responsive {
-    max-height: 70vh;
-    overflow-y: auto;
-    overflow-x: auto;
+/* Table: table-scroll.js dynamically sets max-height on .table-responsive */
+.content .table-responsive,
+.modal .table-responsive {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
 }
 
-.table thead {
+.content .table-responsive .table thead th,
+.modal .table-responsive .table thead th {
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 2;
 }
+
+/* Active table scroll zone */
+.table-responsive.table-scroll-active {
+    overscroll-behavior: contain;
+}
+
+/* Fix for the table-responsive scrollbar */
+.table-responsive::-webkit-scrollbar {
+    background-color: var(--twin-bg-light) !important;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: rgba(0,0,0,0.15) !important;
+    border-radius: 3px !important;
+}
+
 
 .table thead th {
     background: linear-gradient(135deg, var(--twin-accent), var(--twin-accent-light)) !important;

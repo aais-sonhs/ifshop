@@ -18,6 +18,7 @@ db.sqlite3
 # static & media
 img/
 !static/img/pwa-icon-*.png
+!static/img/no-image.png
 media/
 logs/
 logger/

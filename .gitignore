@@ -20,6 +20,7 @@ img/
 media/
 logs/
 logger/
+static_root/
 static/faces/
 static/file/
 static/error/

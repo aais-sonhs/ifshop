@@ -64,7 +64,7 @@ if [ "$LOG_LEVEL" = "info" ] || [ "$LOG_LEVEL" = "debug" ]; then
 fi
 
 # Thu gom static files (CSS, JS, images) vào static_root/
-python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput --clear 2>/dev/null
 
 # Chạy Uvicorn (ASGI)
 python -m uvicorn config.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG

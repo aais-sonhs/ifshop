@@ -99,6 +99,48 @@ def _filter_sales_returns_by_scope(queryset, request):
     ).distinct()
 
 
+def _get_salesperson_filter_options(request, store_id=''):
+    """Danh sách nhân viên cho filter báo cáo bán hàng trong phạm vi store hợp lệ."""
+    from django.contrib.auth.models import User
+
+    managed_ids = get_managed_store_ids(request.user)
+    if not managed_ids:
+        return []
+
+    scoped_store_ids = list(managed_ids)
+    if store_id:
+        try:
+            selected_store_id = int(store_id)
+        except (TypeError, ValueError):
+            return []
+        if selected_store_id not in scoped_store_ids:
+            return []
+        scoped_store_ids = [selected_store_id]
+
+    names = set()
+
+    users = User.objects.filter(
+        is_active=True,
+        profile__store_id__in=scoped_store_ids,
+    ).distinct().order_by('last_name', 'first_name', 'username')
+    for user in users:
+        name = (user.get_full_name() or user.username or '').strip()
+        if name:
+            names.add(name)
+
+    legacy_salespersons = Order.objects.filter(
+        store_id__in=scoped_store_ids,
+    ).exclude(status=6).exclude(
+        salesperson__isnull=True
+    ).exclude(salesperson='').values_list('salesperson', flat=True)
+    for name in legacy_salespersons:
+        normalized = (name or '').strip()
+        if normalized:
+            names.add(normalized)
+
+    return sorted(names, key=lambda value: value.casefold())
+
+
 def _build_sales_report_payload(request, include_filter_options=True):
     from customers.models import CustomerGroup, Customer
     from products.models import ProductCategory, Product, GoodsReceipt
@@ -159,7 +201,6 @@ def _build_sales_report_payload(request, include_filter_options=True):
         )
     orders_qs = orders_qs.distinct()
 
-    orders_for_options = orders_qs
     orders_list = list(orders_qs.order_by('-order_date', '-id'))
 
     order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
@@ -693,9 +734,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
         customers = list(customers_qs.values('id', 'code', 'name').order_by('name')[:300])
         products = list(products_qs.values('id', 'code', 'name').order_by('name')[:300])
-        salespersons = sorted(set(
-            name for name in orders_for_options.exclude(salesperson__isnull=True).exclude(salesperson='').values_list('salesperson', flat=True)
-        ))
+        salespersons = _get_salesperson_filter_options(request, filters['store_id'])
 
         payload['filter_options'] = {
             'customer_groups': groups,
@@ -1230,8 +1269,8 @@ def api_report_staff_sales(request):
         'grand_paid': sum(d['paid'] for d in staff_data),
     }
 
-    # Danh sách NV cho dropdown filter
-    all_salespersons = sorted(salesperson_names)
+    # Danh sách NV cho dropdown filter lấy từ user/store, không phụ thuộc kỳ báo cáo.
+    all_salespersons = _get_salesperson_filter_options(request, store_id)
 
     # Store list
     from core.store_utils import get_managed_store_ids

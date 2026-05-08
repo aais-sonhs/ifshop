@@ -148,3 +148,43 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['total_profit'], 20.0)
         self.assertEqual(payload['order_details'][0]['revenue'], 80.0)
         self.assertEqual(payload['top_products'][0]['amount'], 80.0)
+
+    def test_api_report_sales_filter_options_include_store_users_without_orders(self):
+        today = date.today()
+        seller = User.objects.create_user(
+            username='seller_report',
+            password='pass123',
+            first_name='Lan',
+            last_name='Nguyen',
+        )
+        UserProfile.objects.create(user=seller, store=self.store)
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertIn('Lan Nguyen', payload['filter_options']['salespersons'])
+
+    def test_api_report_staff_sales_filter_options_include_store_users_without_orders(self):
+        today = date.today()
+        seller = User.objects.create_user(
+            username='staff_sales_report',
+            password='pass123',
+            first_name='Minh',
+            last_name='Tran',
+        )
+        UserProfile.objects.create(user=seller, store=self.store)
+
+        response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertIn('Minh Tran', payload['salespersons'])

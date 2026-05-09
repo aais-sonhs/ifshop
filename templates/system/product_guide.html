@@ -1535,6 +1535,8 @@
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 function sanitizeProductGuideFilename(value) {
     return (value || 'tai-lieu-huong-dan')
@@ -1552,8 +1554,14 @@ function downloadProductGuidePdf() {
     var source = document.getElementById('productDocPrintArea');
     var shell = document.querySelector('.product-doc-shell');
     var button = document.getElementById('btnDownloadProductGuidePdf');
-    if (!source || typeof html2pdf === 'undefined') {
+    if (!source || typeof html2canvas === 'undefined') {
         alert('Chưa tải được thư viện tạo PDF. Vui lòng tải lại trang rồi thử lại.');
+        return;
+    }
+
+    var JsPdfClass = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : window.jsPDF;
+    if (typeof JsPdfClass === 'undefined') {
+        alert('Chưa tải được thư viện xuất PDF. Vui lòng tải lại trang rồi thử lại.');
         return;
     }
 
@@ -1567,20 +1575,13 @@ function downloadProductGuidePdf() {
     }
 
     var filename = sanitizeProductGuideFilename('{{ document.name|escapejs }}') + '.pdf';
-    var options = {
-        margin: [8, 8, 8, 8],
-        filename: filename,
-        image: {type: 'jpeg', quality: 0.98},
-        html2canvas: {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            scrollX: 0,
-            scrollY: 0
-        },
-        jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'},
-        pagebreak: {mode: ['css', 'legacy'], before: '.doc-page'}
-    };
+    var pages = Array.prototype.slice.call(source.querySelectorAll('.doc-page'));
+    var pdf = new JsPdfClass('p', 'mm', 'a4');
+    var pdfWidth = 210;
+    var pdfHeight = 297;
+    var margin = 8;
+    var usableWidth = pdfWidth - (margin * 2);
+    var usableHeight = pdfHeight - (margin * 2);
 
     function resetPdfButton() {
         if (shell) {
@@ -1592,8 +1593,48 @@ function downloadProductGuidePdf() {
         }
     }
 
-    html2pdf().set(options).from(source).save()
-        .then(resetPdfButton)
+    if (!pages.length) {
+        resetPdfButton();
+        alert('Không tìm thấy nội dung để tạo PDF.');
+        return;
+    }
+
+    pages.reduce(function(chain, page, index) {
+        return chain.then(function() {
+            if (button) {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Đang tạo PDF ' + (index + 1) + '/' + pages.length;
+            }
+            return html2canvas(page, {
+                scale: 1.35,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: document.documentElement.scrollWidth
+            }).then(function(canvas) {
+                var imgData = canvas.toDataURL('image/jpeg', 0.96);
+                var imgWidth = usableWidth;
+                var imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                if (index > 0) {
+                    pdf.addPage();
+                }
+
+                if (imgHeight <= usableHeight) {
+                    pdf.addImage(imgData, 'JPEG', margin, margin, imgWidth, imgHeight);
+                    return;
+                }
+
+                var fittedWidth = (canvas.width * usableHeight) / canvas.height;
+                var x = margin + ((usableWidth - fittedWidth) / 2);
+                pdf.addImage(imgData, 'JPEG', x, margin, fittedWidth, usableHeight);
+            });
+        });
+    }, Promise.resolve())
+        .then(function() {
+            pdf.save(filename);
+            resetPdfButton();
+        })
         .catch(function(error) {
             resetPdfButton();
             console.error(error);

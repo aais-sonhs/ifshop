@@ -236,7 +236,7 @@ class SystemManagementScopeTests(TestCase):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Tài liệu hướng dẫn')
-        self.assertContains(response, 'admin_digimart')
+        self.assertNotContains(response, 'abcd@1234')
 
         self.client.force_login(self.superuser)
         super_response = self.client.get(reverse('product_guide'))

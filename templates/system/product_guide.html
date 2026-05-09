@@ -884,18 +884,19 @@
 
                     <div class="doc-credential-strip">
                         <div>
-                            <span>Trang demo</span>
+                            <span>Môi trường</span>
                             <strong>{{ demo_account.site }}</strong>
                         </div>
                         <div>
                             <span>Tài khoản</span>
-                            <strong>{{ demo_account.username }}</strong>
+                            <strong>Cấp riêng khi demo</strong>
                         </div>
                         <div>
-                            <span>Mật khẩu</span>
-                            <strong>{{ demo_account.password }}</strong>
+                            <span>Bảo mật</span>
+                            <strong>Không ghi mật khẩu trong tài liệu</strong>
                         </div>
                     </div>
+                    <p class="doc-muted mt-2 mb-0">{{ demo_account.note }}</p>
                 </div>
 
                 <div>
@@ -917,7 +918,7 @@
                                 <div class="mock-main">
                                     <div class="mock-top">
                                         <div class="mock-title">Dashboard điều hành</div>
-                                        <div class="mock-user"><i></i>{{ demo_account.username }}</div>
+                                        <div class="mock-user"><i></i>Người dùng</div>
                                     </div>
                                     <div class="mock-kpis">
                                         <div class="mock-kpi"><strong>128tr</strong><span>Doanh thu tháng</span></div>

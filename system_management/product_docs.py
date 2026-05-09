@@ -16,8 +16,7 @@ FIELD_ALIASES = {
 
 DEMO_ACCOUNT = {
     'site': 'Trang quản trị Digimart',
-    'username': 'admin_digimart',
-    'password': 'abcd@1234',
+    'note': 'Tài khoản đăng nhập demo được cấp riêng trong buổi giới thiệu hoặc bàn giao.',
 }
 
 COMMON_MODULES = [

@@ -722,6 +722,12 @@
         text-align: center;
     }
 
+    .product-doc-shell.pdf-export .doc-page {
+        border-radius: 0;
+        box-shadow: none;
+        margin-bottom: 0;
+    }
+
     @media (max-width: 991.98px) {
         .doc-hero-layout,
         .doc-two-col {
@@ -831,7 +837,7 @@
             <h4><i class="far fa-question-circle mr-2 text-info"></i>Tài liệu hướng dẫn</h4>
             <div class="doc-muted">Chọn lĩnh vực, xem online hoặc tải thành PDF để gửi khách.</div>
         </div>
-        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="btnDownloadProductGuidePdf" onclick="downloadProductGuidePdf()">
             <i class="fas fa-file-pdf mr-1"></i> Tải PDF
         </button>
     </div>
@@ -1528,4 +1534,71 @@
         </section>
     </div>
 </div>
+
+<script>
+function sanitizeProductGuideFilename(value) {
+    return (value || 'tai-lieu-huong-dan')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'tai-lieu-huong-dan';
+}
+
+function downloadProductGuidePdf() {
+    var source = document.getElementById('productDocPrintArea');
+    var shell = document.querySelector('.product-doc-shell');
+    var button = document.getElementById('btnDownloadProductGuidePdf');
+    if (!source || typeof html2pdf === 'undefined') {
+        alert('Chưa tải được thư viện tạo PDF. Vui lòng tải lại trang rồi thử lại.');
+        return;
+    }
+
+    var originalButtonHtml = button ? button.innerHTML : '';
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Đang tạo PDF';
+    }
+    if (shell) {
+        shell.classList.add('pdf-export');
+    }
+
+    var filename = sanitizeProductGuideFilename('{{ document.name|escapejs }}') + '.pdf';
+    var options = {
+        margin: [8, 8, 8, 8],
+        filename: filename,
+        image: {type: 'jpeg', quality: 0.98},
+        html2canvas: {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            scrollX: 0,
+            scrollY: 0
+        },
+        jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'},
+        pagebreak: {mode: ['css', 'legacy'], before: '.doc-page'}
+    };
+
+    function resetPdfButton() {
+        if (shell) {
+            shell.classList.remove('pdf-export');
+        }
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalButtonHtml;
+        }
+    }
+
+    html2pdf().set(options).from(source).save()
+        .then(resetPdfButton)
+        .catch(function(error) {
+            resetPdfButton();
+            console.error(error);
+            alert('Không tạo được PDF. Vui lòng tải lại trang rồi thử lại.');
+        });
+}
+</script>
 {% endblock %}

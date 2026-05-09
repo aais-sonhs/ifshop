@@ -12,8 +12,13 @@ from .product_docs import (
     COMMON_MODULES,
     COMMON_SETUP_STEPS,
     COMMON_WORKFLOW_SECTIONS,
+    DETAILED_OPERATION_GUIDES,
     DEMO_ACCOUNT,
     DOCUMENT_NAV,
+    FIELD_DEEP_DIVES,
+    IMPLEMENTATION_CHECKLIST,
+    ROLE_GUIDES,
+    TROUBLESHOOTING_GUIDES,
     get_product_document,
     normalize_document_key,
 )
@@ -140,6 +145,11 @@ def product_guide(request):
         'setup_steps': COMMON_SETUP_STEPS,
         'daily_flow': COMMON_DAILY_FLOW,
         'workflow_sections': COMMON_WORKFLOW_SECTIONS,
+        'role_guides': ROLE_GUIDES,
+        'detailed_operation_guides': DETAILED_OPERATION_GUIDES,
+        'implementation_checklist': IMPLEMENTATION_CHECKLIST,
+        'troubleshooting_guides': TROUBLESHOOTING_GUIDES,
+        'field_deep_dive': FIELD_DEEP_DIVES.get(selected_key),
     }
     return render(request, "system/product_guide.html", context)
 

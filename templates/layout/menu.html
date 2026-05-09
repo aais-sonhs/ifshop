@@ -120,9 +120,19 @@
         align-items: center;
         border-radius: 999px;
         display: flex !important;
+        gap: 6px;
         height: 36px;
         justify-content: center;
-        width: 36px;
+        min-width: 36px;
+        padding-left: 0.65rem !important;
+        padding-right: 0.65rem !important;
+        width: auto;
+    }
+
+    .app-navbar-help-label {
+        font-size: 0.86rem;
+        font-weight: 700;
+        line-height: 1;
     }
 
     .app-navbar-help.active,
@@ -162,6 +172,16 @@
             display: none;
         }
 
+        .app-navbar-help {
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+            width: 36px;
+        }
+
+        .app-navbar-help-label {
+            display: none;
+        }
+
         .app-navbar .dropdown-menu {
             max-width: calc(100vw - 24px);
         }
@@ -184,10 +204,10 @@
         <li class="nav-item">
             <a class="nav-link nav-hover app-navbar-help {% if active_tab == 'product_guide' %}active{% endif %}"
                href="{% url 'product_guide' %}"
-               title="Tài liệu giới thiệu sản phẩm"
-               aria-label="Tài liệu giới thiệu sản phẩm">
+               title="Tài liệu hướng dẫn"
+               aria-label="Tài liệu hướng dẫn">
                 <i class="far fa-question-circle"></i>
-                <span class="sr-only">Tài liệu giới thiệu sản phẩm</span>
+                <span class="app-navbar-help-label">Hướng dẫn</span>
             </a>
         </li>
         <li class="nav-item dropdown">

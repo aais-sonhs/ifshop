@@ -136,6 +136,353 @@ COMMON_WORKFLOW_SECTIONS = [
     },
 ]
 
+ROLE_GUIDES = [
+    {
+        'role': 'Chủ doanh nghiệp / Chủ thương hiệu',
+        'goal': 'Nắm tình hình vận hành, kiểm soát dữ liệu, phân quyền người dùng và ra quyết định dựa trên báo cáo.',
+        'permissions': [
+            'Quản lý thương hiệu, cửa hàng, mô hình kinh doanh và các tùy chọn bật tắt module.',
+            'Tạo tài khoản nhân viên, gán cửa hàng, phân quyền theo vai trò và kiểm tra phạm vi dữ liệu.',
+            'Xem dashboard, báo cáo bán hàng, báo cáo tồn kho, báo cáo tài chính, công nợ và hiệu quả nhân viên.',
+            'Duyệt đơn hàng hoặc quy trình nội bộ nếu doanh nghiệp bật chức năng phê duyệt.',
+        ],
+        'daily_tasks': [
+            'Đầu ngày xem dashboard để biết doanh thu, đơn chưa xử lý, công nợ và cảnh báo tồn kho.',
+            'Trong ngày theo dõi các đơn lớn, đơn cần duyệt, sản phẩm bán nhanh hoặc tồn thấp.',
+            'Cuối ngày đối chiếu doanh thu, sổ quỹ, phiếu thu chi, đơn chưa thanh toán và báo cáo theo nhân viên.',
+            'Định kỳ rà soát quyền nhân viên, cửa hàng đang hoạt động và cấu hình module theo mô hình kinh doanh.',
+        ],
+    },
+    {
+        'role': 'Quản lý cửa hàng',
+        'goal': 'Điều phối bán hàng, kiểm kho, xử lý đơn, theo dõi nhân viên và đảm bảo dữ liệu trong ngày chính xác.',
+        'permissions': [
+            'Xem dữ liệu trong cửa hàng được phân công.',
+            'Tạo, sửa, theo dõi đơn hàng, báo giá, trả hàng, đóng gói và khách hàng.',
+            'Kiểm tra tồn kho, tạo đề xuất nhập hàng, kiểm hàng hoặc chuyển kho khi được cấp quyền.',
+            'Xem các báo cáo vận hành cần thiết cho cửa hàng.',
+        ],
+        'daily_tasks': [
+            'Kiểm tra đơn tồn, đơn cần đóng gói, hàng tồn thấp và lịch giao hàng.',
+            'Hỗ trợ nhân viên xử lý giảm giá, đổi trả, thanh toán thiếu hoặc khách hàng đặc biệt.',
+            'Kiểm tra phiếu thu chi phát sinh trong ca và xác nhận tiền cuối ngày.',
+            'Báo lại cho chủ doanh nghiệp các mặt hàng cần nhập, tồn chậm hoặc lỗi dữ liệu cần chỉnh.',
+        ],
+    },
+    {
+        'role': 'Nhân viên bán hàng / Lễ tân',
+        'goal': 'Tạo giao dịch nhanh, đúng giá, đúng khách, đúng phương thức thanh toán và in chứng từ khi cần.',
+        'permissions': [
+            'Tạo đơn hàng, báo giá hoặc POS theo quyền được cấp.',
+            'Tìm kiếm sản phẩm, dịch vụ, khách hàng và áp dụng giảm giá trong phạm vi cho phép.',
+            'Ghi nhận thanh toán, in hóa đơn, phiếu xuất hoặc phiếu dịch vụ.',
+            'Tạo khách hàng mới và cập nhật thông tin liên hệ cơ bản.',
+        ],
+        'daily_tasks': [
+            'Mở màn hình bán hàng hoặc POS, kiểm tra đúng cửa hàng/kho trước khi tạo đơn.',
+            'Chọn khách hàng, thêm sản phẩm/dịch vụ, kiểm tra giá, số lượng, giảm giá và ghi chú.',
+            'Xác nhận phương thức thanh toán, số tiền khách trả, công nợ còn lại và in chứng từ.',
+            'Cuối ca rà lại đơn đã tạo, đơn chưa thanh toán và bàn giao cho quản lý nếu có phát sinh.',
+        ],
+    },
+    {
+        'role': 'Nhân viên kho',
+        'goal': 'Đảm bảo tồn kho đúng thực tế, nhập hàng đúng giá, chuyển hàng đúng điểm và kiểm kê có đối chiếu.',
+        'permissions': [
+            'Xem danh sách sản phẩm, tồn kho, kho, vị trí lưu trữ và lịch sử nhập.',
+            'Tạo đơn đặt hàng nhập, phiếu nhập, phiếu kiểm hàng và phiếu chuyển kho theo quyền.',
+            'Cập nhật số lượng thực nhận, giá nhập, nhà cung cấp và ghi chú chênh lệch.',
+            'Theo dõi hàng tồn thấp, hàng tồn âm, hàng cần điều chuyển hoặc cần kiểm kê.',
+        ],
+        'daily_tasks': [
+            'Kiểm tra cảnh báo tồn thấp và danh sách hàng cần nhập.',
+            'Khi hàng về, đối chiếu đơn đặt hàng nhập với số lượng thực nhận rồi tạo phiếu nhập.',
+            'Kiểm tra chênh lệch tồn, ghi rõ lý do kiểm kê và báo quản lý trước khi xác nhận.',
+            'Cuối ngày đối chiếu hàng bán, hàng trả, hàng chuyển và tồn thực tế các mặt hàng rủi ro cao.',
+        ],
+    },
+    {
+        'role': 'Kế toán / Thu ngân',
+        'goal': 'Kiểm soát dòng tiền, công nợ, phiếu thu chi, phương thức thanh toán và đối soát cuối ngày.',
+        'permissions': [
+            'Tạo phiếu thu, phiếu chi, theo dõi sổ quỹ và danh sách giao dịch tài chính.',
+            'Xem đơn hàng liên quan tới thanh toán, công nợ phải thu và khoản đã thu.',
+            'Cấu hình phương thức thanh toán nếu được phân quyền quản trị.',
+            'Xuất hoặc xem báo cáo tài chính theo ngày, tháng, cửa hàng hoặc phương thức thanh toán.',
+        ],
+        'daily_tasks': [
+            'Kiểm tra số dư đầu ngày và phiếu thu chi chưa đối soát.',
+            'Ghi nhận đúng phương thức thanh toán: tiền mặt, chuyển khoản, thẻ hoặc ví điện tử.',
+            'Theo dõi các đơn còn nợ, phiếu thu bổ sung và khoản chi phát sinh trong ngày.',
+            'Cuối ngày đối chiếu tiền mặt thực tế, chuyển khoản nhận được, sổ quỹ và báo cáo doanh thu.',
+        ],
+    },
+]
+
+DETAILED_OPERATION_GUIDES = [
+    {
+        'title': 'Tạo khách hàng và dùng lại dữ liệu khách',
+        'goal': 'Lưu thông tin khách để tạo đơn nhanh, theo dõi lịch sử mua, công nợ, bảo hành và chăm sóc sau bán.',
+        'steps': [
+            'Vào menu Khách hàng, chọn DS Khách hàng.',
+            'Tạo khách mới bằng tên, số điện thoại, địa chỉ, nhóm khách và thông tin bổ sung nếu có.',
+            'Nếu khách là doanh nghiệp, nhập thêm tên công ty, mã số thuế, địa chỉ xuất hóa đơn và người liên hệ.',
+            'Khi tạo đơn hàng, tìm khách bằng tên hoặc số điện thoại để tự động gắn lịch sử mua và công nợ.',
+            'Định kỳ phân nhóm khách để chạy chương trình chăm sóc, chính sách giá hoặc báo cáo khách hàng.',
+        ],
+        'checks': [
+            'Không tạo trùng khách nếu số điện thoại đã tồn tại.',
+            'Luôn kiểm tra nhóm khách trước khi áp dụng chính sách giá.',
+            'Với khách công nợ, cần nhập đúng thông tin liên hệ để nhắc thu sau này.',
+        ],
+    },
+    {
+        'title': 'Tạo báo giá và chuyển thành đơn hàng',
+        'goal': 'Dùng cho khách cần chốt giá trước, gửi báo giá, sau đó chuyển sang đơn bán khi khách đồng ý.',
+        'steps': [
+            'Vào DS báo giá hoặc màn hình báo giá.',
+            'Chọn khách hàng, ngày báo giá, thời hạn hiệu lực và người phụ trách nếu doanh nghiệp bật tùy chọn này.',
+            'Thêm sản phẩm hoặc dịch vụ, kiểm tra đơn vị tính, số lượng, giá bán, giảm giá và ghi chú.',
+            'Lưu báo giá, in hoặc gửi cho khách theo quy trình nội bộ.',
+            'Khi khách đồng ý, chuyển báo giá thành đơn hàng để tiếp tục thanh toán, xuất kho và in hóa đơn.',
+        ],
+        'checks': [
+            'Kiểm tra hiệu lực báo giá trước khi chuyển đơn.',
+            'Nếu giá bán đã thay đổi, xác nhận lại với quản lý trước khi dùng báo giá cũ.',
+            'Không sửa trực tiếp đơn đã chốt nếu doanh nghiệp yêu cầu lưu lịch sử báo giá ban đầu.',
+        ],
+    },
+    {
+        'title': 'Tạo đơn bán hàng hoặc POS nhanh',
+        'goal': 'Ghi nhận giao dịch bán hàng, trừ tồn kho, theo dõi thanh toán và in chứng từ cho khách.',
+        'steps': [
+            'Mở Bán hàng / BG hoặc POS Bán hàng nếu cửa hàng bật POS.',
+            'Kiểm tra đúng cửa hàng, kho bán và tài khoản nhân viên đang đăng nhập.',
+            'Chọn khách hàng nếu cần lưu lịch sử; với khách lẻ có thể dùng khách mặc định theo quy trình cửa hàng.',
+            'Thêm sản phẩm, biến thể, combo hoặc dịch vụ; kiểm tra tồn kho trước khi chốt.',
+            'Nhập số lượng, giảm giá, phí giao hàng, ghi chú, nhân viên bán hàng hoặc nhân viên phục vụ nếu có.',
+            'Chọn phương thức thanh toán, nhập số tiền đã thu và lưu đơn.',
+            'In hóa đơn A4, phiếu xuất, phiếu bảo hành hoặc hóa đơn K80 tùy mẫu chứng từ đang dùng.',
+        ],
+        'checks': [
+            'Nếu tồn kho không đủ, kiểm tra cấu hình có cho phép bán âm hay không.',
+            'Nếu khách trả thiếu, đơn phải thể hiện đúng công nợ còn lại.',
+            'Nếu đơn cần duyệt, nhân viên không tự ý giao hàng trước khi trạng thái được duyệt.',
+        ],
+    },
+    {
+        'title': 'Xử lý trả hàng, đổi hàng hoặc hoàn tiền',
+        'goal': 'Ghi nhận hàng quay lại kho, tiền hoàn/cấn trừ và lịch sử giao dịch minh bạch.',
+        'steps': [
+            'Tìm đơn gốc hoặc khách hàng liên quan tới giao dịch trả hàng.',
+            'Vào chức năng Trả hàng, chọn sản phẩm, số lượng trả và lý do trả.',
+            'Kiểm tra tình trạng sản phẩm: có nhập lại kho, hỏng, đổi size/mẫu hay cấn trừ đơn mới.',
+            'Xác nhận số tiền hoàn, số tiền cấn trừ hoặc công nợ điều chỉnh.',
+            'Lưu phiếu trả hàng và in chứng từ nếu cửa hàng yêu cầu khách ký xác nhận.',
+        ],
+        'checks': [
+            'Không trả vượt số lượng đã bán trên đơn gốc.',
+            'Nếu hàng lỗi không nhập lại kho bán được, cần ghi chú rõ để xử lý tồn kho.',
+            'Kế toán phải đối chiếu khoản hoàn tiền với sổ quỹ hoặc phương thức thanh toán.',
+        ],
+    },
+    {
+        'title': 'Nhập hàng từ nhà cung cấp',
+        'goal': 'Cập nhật tồn kho, giá nhập, nhà cung cấp và lịch sử mua hàng để tính giá vốn chính xác hơn.',
+        'steps': [
+            'Tạo hoặc chọn nhà cung cấp trước khi nhập hàng.',
+            'Lập đơn đặt hàng nhập nếu cần quản lý hàng đang chờ về.',
+            'Khi nhận hàng, tạo phiếu nhập, chọn kho nhận và nhà cung cấp.',
+            'Thêm từng sản phẩm, biến thể, số lượng thực nhận, giá nhập và ghi chú chênh lệch nếu có.',
+            'Lưu phiếu nhập để hệ thống cập nhật tồn kho và lịch sử giá nhập.',
+            'Kiểm tra lại báo cáo nhập hàng hoặc lịch sử nhập của sản phẩm sau khi lưu.',
+        ],
+        'checks': [
+            'Giá nhập phải nhập đúng trước thuế/sau thuế theo quy định nội bộ của doanh nghiệp.',
+            'Số lượng thực nhận có thể khác số lượng đặt, cần ghi chú để đối chiếu nhà cung cấp.',
+            'Không nhập nhầm kho nếu doanh nghiệp có nhiều cửa hàng hoặc kho tổng.',
+        ],
+    },
+    {
+        'title': 'Kiểm hàng và điều chỉnh tồn kho',
+        'goal': 'Đối chiếu tồn hệ thống với tồn thực tế, phát hiện thất thoát, sai lệch nhập xuất hoặc hàng hỏng.',
+        'steps': [
+            'Chọn kho cần kiểm, nhóm sản phẩm hoặc danh sách sản phẩm cần kiểm.',
+            'Đếm số lượng thực tế tại kệ, kho hoặc phòng lưu trữ.',
+            'Nhập số lượng thực tế vào phiếu kiểm hàng.',
+            'Kiểm tra cột chênh lệch, ghi lý do: bán thiếu ghi nhận, nhập thiếu, hỏng, mất, trả hàng hoặc chuyển kho chưa cập nhật.',
+            'Chỉ xác nhận phiếu kiểm khi quản lý đã đồng ý với chênh lệch.',
+            'Sau khi xác nhận, kiểm tra lại tồn kho và báo cáo tồn.',
+        ],
+        'checks': [
+            'Nên kiểm các sản phẩm bán chạy, giá trị cao hoặc hay lệch tồn trước.',
+            'Không dùng kiểm hàng để che lỗi quy trình; cần ghi chú nguyên nhân để cải thiện vận hành.',
+            'Nếu chênh lệch lớn, nên kiểm lại lần hai trước khi xác nhận.',
+        ],
+    },
+    {
+        'title': 'Chuyển kho giữa cửa hàng hoặc kho tổng',
+        'goal': 'Điều chuyển hàng đúng điểm bán, giảm thiếu hàng cục bộ và giữ lịch sử luân chuyển rõ ràng.',
+        'steps': [
+            'Vào Chuyển hàng nếu doanh nghiệp có nhiều kho/cửa hàng.',
+            'Chọn kho xuất, kho nhận, ngày chuyển và người phụ trách.',
+            'Thêm sản phẩm cần chuyển, số lượng chuyển và ghi chú lý do chuyển.',
+            'Kiểm tra tồn kho xuất có đủ số lượng hay không.',
+            'Lưu phiếu chuyển và đối chiếu hàng thực nhận tại kho nhận.',
+            'Sau khi hoàn tất, kiểm tra tồn ở cả kho xuất và kho nhận.',
+        ],
+        'checks': [
+            'Không chuyển nhầm kho nhận.',
+            'Hàng đang vận chuyển cần có người chịu trách nhiệm nhận bàn giao.',
+            'Nếu kho nhận nhận thiếu, phải ghi chú và báo quản lý trước khi xác nhận số thực nhận.',
+        ],
+    },
+    {
+        'title': 'Ghi nhận phiếu thu, phiếu chi và công nợ',
+        'goal': 'Theo dõi dòng tiền thực tế, số tiền đã thu, khoản còn nợ và chi phí vận hành.',
+        'steps': [
+            'Khi khách thanh toán, tạo phiếu thu hoặc ghi nhận thanh toán ngay trên đơn hàng.',
+            'Chọn đúng khách hàng, đơn hàng liên quan, số tiền thu và phương thức thanh toán.',
+            'Khi phát sinh chi phí, tạo phiếu chi với danh mục chi, người nhận, số tiền và ghi chú.',
+            'Kiểm tra sổ quỹ để xem dòng tiền vào/ra theo ngày.',
+            'Đối chiếu các đơn còn nợ với danh sách phiếu thu bổ sung.',
+        ],
+        'checks': [
+            'Không ghi nhận một khoản thu hai lần cho cùng một đơn.',
+            'Phiếu chi nên có lý do rõ ràng để báo cáo tài chính không bị mơ hồ.',
+            'Cuối ngày phải đối chiếu tiền mặt, chuyển khoản và tổng phiếu thu chi.',
+        ],
+    },
+    {
+        'title': 'Xem báo cáo và ra quyết định',
+        'goal': 'Biến dữ liệu bán hàng, kho, khách hàng và tài chính thành thông tin quản trị dễ hiểu.',
+        'steps': [
+            'Vào nhóm Báo cáo trên sidebar.',
+            'Chọn báo cáo phù hợp: bán hàng, nhập hàng, tồn kho, tài chính, khách hàng hoặc nhân viên bán hàng.',
+            'Chọn khoảng thời gian, cửa hàng, kho hoặc bộ lọc liên quan.',
+            'Đọc số tổng trước, sau đó xem chi tiết theo sản phẩm, khách hàng, nhân viên hoặc chứng từ.',
+            'Đối chiếu báo cáo với sổ quỹ, tồn kho và đơn hàng khi có số liệu bất thường.',
+            'Xuất dữ liệu nếu cần gửi kế toán, chủ doanh nghiệp hoặc lưu hồ sơ nội bộ.',
+        ],
+        'checks': [
+            'Báo cáo chỉ chính xác khi đơn hàng, nhập hàng và thu chi được nhập đúng thời điểm.',
+            'Nếu doanh thu và tiền thu lệch nhau, kiểm tra công nợ và phương thức thanh toán.',
+            'Nếu tồn kho âm hoặc lệch, kiểm tra đơn bán, phiếu nhập, phiếu trả và phiếu kiểm hàng.',
+        ],
+    },
+]
+
+IMPLEMENTATION_CHECKLIST = [
+    {
+        'phase': 'Trước triển khai',
+        'items': [
+            'Xác định lĩnh vực của khách: bán lẻ, F&B, spa, thời trang, nhà thuốc hoặc mô hình tùy chỉnh.',
+            'Chốt danh sách module sẽ dùng ngay trong giai đoạn đầu và module để mở rộng sau.',
+            'Thu thập dữ liệu sản phẩm/dịch vụ, khách hàng, nhà cung cấp, tồn kho đầu kỳ và tài khoản nhân viên.',
+            'Xác định quy trình bán hàng: bán trực tiếp, báo giá trước, duyệt đơn, giao hàng, trả hàng, công nợ.',
+            'Xác định mẫu in: hóa đơn K80, A4, phiếu xuất, phiếu bảo hành, báo giá hoặc chứng từ nội bộ.',
+        ],
+    },
+    {
+        'phase': 'Trong lúc cấu hình',
+        'items': [
+            'Tạo thương hiệu, cửa hàng, kho, người quản lý và thông tin liên hệ.',
+            'Bật đúng mô hình kinh doanh và các module cần thiết trong màn hình Mô hình kinh doanh.',
+            'Tạo tài khoản người dùng theo vai trò, gán cửa hàng và phân quyền phù hợp.',
+            'Nhập danh mục sản phẩm, dịch vụ, nhóm khách hàng, nhà cung cấp và phương thức thanh toán.',
+            'Nhập tồn đầu kỳ hoặc phiếu nhập đầu tiên để hệ thống có dữ liệu kho chính xác.',
+        ],
+    },
+    {
+        'phase': 'Chạy thử',
+        'items': [
+            'Tạo một khách hàng mẫu và một đơn bán mẫu từ đầu tới cuối.',
+            'Thử báo giá, chuyển đơn, thanh toán, in hóa đơn và kiểm tra công nợ.',
+            'Thử nhập hàng, kiểm hàng, trả hàng và xem tồn kho sau mỗi thao tác.',
+            'Thử phiếu thu, phiếu chi, sổ quỹ và báo cáo bán hàng trong ngày.',
+            'Ghi lại các điểm chưa đúng quy trình thực tế để điều chỉnh trước khi vận hành thật.',
+        ],
+    },
+    {
+        'phase': 'Bàn giao',
+        'items': [
+            'Gửi tài khoản đăng nhập, tài liệu hướng dẫn đúng lĩnh vực và checklist thao tác theo vai trò.',
+            'Đào tạo riêng cho chủ doanh nghiệp, quản lý, bán hàng, kho và kế toán.',
+            'Yêu cầu khách tự tạo lại một quy trình bán hàng hoàn chỉnh trên tài khoản demo.',
+            'Chốt ngày bắt đầu nhập dữ liệu thật và người chịu trách nhiệm hỗ trợ trong ngày đầu.',
+            'Sau 3-7 ngày, rà soát báo cáo, tồn kho, công nợ và các lỗi thao tác thường gặp.',
+        ],
+    },
+]
+
+TROUBLESHOOTING_GUIDES = [
+    {
+        'problem': 'Không thấy menu hoặc chức năng cần dùng',
+        'causes': [
+            'Tài khoản chưa được phân quyền đúng vai trò.',
+            'Module đó chưa được bật trong Mô hình kinh doanh.',
+            'Người dùng đang đăng nhập nhầm cửa hàng hoặc tài khoản.',
+        ],
+        'fixes': [
+            'Chủ thương hiệu kiểm tra lại tài khoản trong Quản lý người dùng.',
+            'Kiểm tra màn hình Mô hình kinh doanh để bật module cần dùng.',
+            'Đăng xuất và đăng nhập lại bằng đúng tài khoản được cấp.',
+        ],
+    },
+    {
+        'problem': 'Tồn kho không khớp thực tế',
+        'causes': [
+            'Chưa nhập tồn đầu kỳ hoặc nhập nhầm kho.',
+            'Có đơn bán, trả hàng, chuyển kho hoặc phiếu nhập chưa được ghi nhận.',
+            'Nhân viên bán âm hoặc kiểm hàng chưa ghi rõ lý do chênh lệch.',
+        ],
+        'fixes': [
+            'Kiểm tra lịch sử nhập, bán, trả hàng và chuyển kho của sản phẩm.',
+            'Lọc theo đúng kho/cửa hàng trước khi kết luận lệch tồn.',
+            'Tạo phiếu kiểm hàng có ghi chú nguyên nhân nếu cần điều chỉnh.',
+        ],
+    },
+    {
+        'problem': 'Doanh thu và tiền thực thu không bằng nhau',
+        'causes': [
+            'Có đơn khách chưa thanh toán đủ nên phát sinh công nợ.',
+            'Một số giao dịch dùng chuyển khoản, thẻ hoặc ví điện tử chưa về tiền.',
+            'Phiếu thu hoặc phiếu chi được nhập thiếu, nhập trùng hoặc chọn sai ngày.',
+        ],
+        'fixes': [
+            'Xem danh sách đơn còn nợ và phiếu thu liên quan.',
+            'Đối chiếu báo cáo bán hàng với sổ quỹ theo cùng khoảng thời gian.',
+            'Kiểm tra phương thức thanh toán của từng đơn trước khi chốt ca.',
+        ],
+    },
+    {
+        'problem': 'Không in được hóa đơn hoặc chứng từ',
+        'causes': [
+            'Máy in chưa được cấu hình hoặc chưa chọn đúng khổ giấy.',
+            'Trình duyệt chặn cửa sổ in hoặc thiết bị chưa kết nối máy in.',
+            'Mẫu in chưa phù hợp với loại chứng từ đang dùng.',
+        ],
+        'fixes': [
+            'Kiểm tra Cài đặt máy in và thử in test.',
+            'Cho phép pop-up/in trên trình duyệt nếu bị chặn.',
+            'Chọn đúng mẫu K80, A4, phiếu xuất, báo giá hoặc hóa đơn theo nhu cầu.',
+        ],
+    },
+    {
+        'problem': 'Báo cáo thiếu dữ liệu',
+        'causes': [
+            'Chọn sai khoảng thời gian, cửa hàng, kho hoặc bộ lọc.',
+            'Đơn hàng chưa lưu/chưa hoàn tất hoặc dữ liệu chưa được nhập đúng ngày.',
+            'Người dùng không có quyền xem phạm vi báo cáo đó.',
+        ],
+        'fixes': [
+            'Đặt lại bộ lọc và kiểm tra ngày bắt đầu/kết thúc.',
+            'Mở danh sách đơn hàng, phiếu nhập hoặc phiếu thu chi để đối chiếu dữ liệu gốc.',
+            'Nhờ chủ thương hiệu kiểm tra lại quyền xem báo cáo.',
+        ],
+    },
+]
+
 PRODUCT_DOCUMENTS = {
     'retail': {
         'name': 'Digimart cho Bán lẻ / Siêu thị',
@@ -274,6 +621,201 @@ PRODUCT_DOCUMENTS = {
             {'title': 'Huấn luyện theo vai trò', 'body': 'Nhân viên bán hàng, kho, kế toán và quản lý được hướng dẫn theo đúng màn hình họ sử dụng hàng ngày.'},
         ],
         'metrics': ['Module đang bật', 'Hiệu quả theo cửa hàng', 'Doanh thu', 'Tồn kho', 'Công nợ', 'Dữ liệu khách hàng'],
+    },
+}
+
+FIELD_DEEP_DIVES = {
+    'retail': {
+        'title': 'Hướng dẫn chi tiết cho mô hình bán lẻ',
+        'sections': [
+            {
+                'title': 'Danh mục và mã hàng',
+                'items': [
+                    'Nên thống nhất quy tắc mã hàng trước khi nhập dữ liệu: theo nhóm hàng, thương hiệu, kích thước hoặc mã vạch có sẵn.',
+                    'Mỗi sản phẩm cần có tên dễ tìm, đơn vị tính, nhóm hàng, giá bán, giá nhập tham khảo và kho mặc định.',
+                    'Với hàng có nhiều phiên bản, dùng biến thể để tách màu, dung tích, cấu hình, size hoặc quy cách đóng gói.',
+                    'Vị trí lưu kho/kệ nên được nhập rõ để nhân viên tìm hàng nhanh khi bán và kiểm kê.',
+                ],
+            },
+            {
+                'title': 'Bán tại quầy',
+                'items': [
+                    'Nhân viên mở POS, tìm sản phẩm bằng tên/mã/mã vạch, thêm vào giỏ và kiểm tra số lượng tồn.',
+                    'Nếu khách là khách thân thiết, chọn khách trước khi thanh toán để lưu lịch sử mua.',
+                    'Khi có giảm giá, nhân viên cần ghi đúng lý do hoặc xin quản lý duyệt theo quy định nội bộ.',
+                    'Sau khi khách thanh toán, in hóa đơn K80 hoặc chứng từ phù hợp, đồng thời hệ thống tự cập nhật tồn kho.',
+                ],
+            },
+            {
+                'title': 'Kiểm soát cuối ngày',
+                'items': [
+                    'Đối chiếu số đơn trong ngày với tổng tiền mặt, chuyển khoản và các phương thức thanh toán khác.',
+                    'Kiểm tra danh sách đơn còn nợ, đơn trả hàng và phiếu chi phát sinh trong ngày.',
+                    'Xem top sản phẩm bán chạy, tồn kho thấp và mặt hàng cần nhập bổ sung.',
+                    'Với sản phẩm dễ thất thoát, nên kiểm tồn nhanh cuối ngày hoặc cuối ca.',
+                ],
+            },
+        ],
+    },
+    'fnb': {
+        'title': 'Hướng dẫn chi tiết cho nhà hàng / quán cafe',
+        'sections': [
+            {
+                'title': 'Chuẩn bị menu và bàn',
+                'items': [
+                    'Tạo danh mục món theo nhóm: đồ uống, món chính, topping, combo, hàng bán kèm hoặc nguyên vật liệu.',
+                    'Bật POS bán nhanh và quản lý bàn nếu quán phục vụ tại chỗ.',
+                    'Đặt tên bàn/khu vực rõ ràng để nhân viên chọn đúng bàn, tránh gộp nhầm hóa đơn.',
+                    'Nếu có nhiều ca, cần thống nhất quy trình bàn giao tiền và đơn chưa thanh toán giữa các ca.',
+                ],
+            },
+            {
+                'title': 'Nhận order và thanh toán',
+                'items': [
+                    'Nhân viên chọn bàn hoặc mở POS mang đi, thêm món, số lượng và ghi chú yêu cầu của khách.',
+                    'Khi khách gọi thêm món, mở lại bàn đang phục vụ để cập nhật thay vì tạo đơn mới.',
+                    'Khi thanh toán, kiểm tra lại toàn bộ món, giảm giá, phụ thu, phương thức thanh toán và in hóa đơn.',
+                    'Đơn bán mang đi nên xử lý nhanh trên POS, hạn chế thao tác nhiều bước.',
+                ],
+            },
+            {
+                'title': 'Đối soát ca bán',
+                'items': [
+                    'Cuối ca kiểm tra bàn còn mở, đơn đã thanh toán, đơn hủy và đơn chỉnh sửa.',
+                    'Đối chiếu tiền mặt thực tế với phiếu thu và doanh thu theo phương thức thanh toán.',
+                    'Theo dõi món bán chạy, nguyên vật liệu tồn thấp và chi phí phát sinh trong ngày.',
+                    'Nếu có thất thoát nguyên liệu, dùng kiểm hàng để ghi nhận và tìm nguyên nhân.',
+                ],
+            },
+        ],
+    },
+    'spa': {
+        'title': 'Hướng dẫn chi tiết cho spa / dịch vụ',
+        'sections': [
+            {
+                'title': 'Thiết lập dịch vụ và nguồn lực',
+                'items': [
+                    'Tạo danh sách dịch vụ, thời lượng dự kiến, giá bán, nhóm dịch vụ và mô tả nếu cần tư vấn.',
+                    'Khai báo nhân viên/kỹ thuật viên, phòng, giường hoặc khu vực phục vụ.',
+                    'Nếu có liệu trình nhiều buổi, nên thống nhất cách ghi chú số buổi còn lại và lịch hẹn tiếp theo.',
+                    'Khách hàng nên được lưu đầy đủ số điện thoại, ngày sinh, nhu cầu, tình trạng da/sức khỏe nếu phù hợp quy trình tư vấn.',
+                ],
+            },
+            {
+                'title': 'Đặt lịch và phục vụ',
+                'items': [
+                    'Lễ tân tạo khách, chọn dịch vụ, thời gian, nhân viên phụ trách, phòng và ghi chú nhu cầu.',
+                    'Trước giờ hẹn, kiểm tra lịch để tránh trùng phòng, trùng kỹ thuật viên hoặc thiếu thời gian chuẩn bị.',
+                    'Khi khách đến, cập nhật trạng thái lịch hẹn và ghi nhận dịch vụ phát sinh nếu khách đổi gói.',
+                    'Sau khi hoàn tất, tạo thanh toán và ghi chú chăm sóc sau dịch vụ.',
+                ],
+            },
+            {
+                'title': 'Chăm sóc khách quay lại',
+                'items': [
+                    'Dùng lịch sử dịch vụ để tư vấn gói phù hợp, nhắc lịch tái khám/tái chăm sóc hoặc bán thêm sản phẩm.',
+                    'Lọc khách lâu chưa quay lại để tạo danh sách gọi điện chăm sóc.',
+                    'Theo dõi doanh thu theo dịch vụ và hiệu suất kỹ thuật viên để điều phối lịch hợp lý.',
+                    'Cuối ngày đối chiếu lịch đã phục vụ với tiền thu và công nợ dịch vụ.',
+                ],
+            },
+        ],
+    },
+    'fashion': {
+        'title': 'Hướng dẫn chi tiết cho thời trang / giày dép',
+        'sections': [
+            {
+                'title': 'Sản phẩm nhiều size, màu',
+                'items': [
+                    'Tạo sản phẩm cha theo mẫu, sau đó tách biến thể theo size, màu, chất liệu hoặc phiên bản.',
+                    'Mỗi biến thể nên có mã riêng để bán, đổi trả và kiểm kho chính xác.',
+                    'Khi nhập hàng, nhập đúng từng biến thể để tránh tình trạng tổng tồn đúng nhưng từng size/màu bị sai.',
+                    'Nên thêm ảnh đại diện sản phẩm để nhân viên bán hàng tìm nhanh hơn.',
+                ],
+            },
+            {
+                'title': 'Bán hàng và đổi trả',
+                'items': [
+                    'Nhân viên phải chọn đúng size/màu trước khi lưu đơn.',
+                    'Nếu khách đổi size, dùng quy trình trả hàng/đổi hàng để tồn kho quay lại đúng biến thể.',
+                    'Giảm giá theo chương trình cần được ghi nhận rõ để báo cáo doanh thu và lợi nhuận không bị hiểu sai.',
+                    'Với đơn online, nên ghi chú kênh bán, phí giao hàng và trạng thái đóng gói.',
+                ],
+            },
+            {
+                'title': 'Điều chuyển và xả tồn',
+                'items': [
+                    'Theo dõi tồn chậm theo mẫu, size, màu và cửa hàng.',
+                    'Dùng chuyển kho để đưa hàng từ nơi bán chậm sang nơi có nhu cầu cao.',
+                    'Trước chiến dịch giảm giá, xuất danh sách tồn để chọn nhóm hàng cần xả.',
+                    'Sau chương trình, xem báo cáo để biết mẫu nào bán tốt và mẫu nào cần dừng nhập.',
+                ],
+            },
+        ],
+    },
+    'pharmacy': {
+        'title': 'Hướng dẫn chi tiết cho nhà thuốc',
+        'sections': [
+            {
+                'title': 'Khai báo thuốc và vật tư',
+                'items': [
+                    'Tạo danh mục theo nhóm thuốc, thực phẩm chức năng, vật tư y tế hoặc hàng chăm sóc sức khỏe.',
+                    'Nhập rõ đơn vị tính, quy cách, vị trí kệ, giá bán và giá nhập.',
+                    'Nếu một mặt hàng có nhiều quy cách, nên tách biến thể hoặc sản phẩm riêng theo quy định quản lý nội bộ.',
+                    'Nhà thuốc nên kiểm tra kỹ tên sản phẩm để tránh nhầm hàng có tên gần giống nhau.',
+                ],
+            },
+            {
+                'title': 'Bán tại quầy',
+                'items': [
+                    'Nhân viên tìm sản phẩm, kiểm tồn, chọn đúng quy cách và số lượng trước khi thanh toán.',
+                    'Nếu khách mua lại thường xuyên, chọn khách để lưu lịch sử mua.',
+                    'Với hàng cần tư vấn, ghi chú thông tin cần theo dõi theo quy trình của nhà thuốc.',
+                    'Sau thanh toán, in hóa đơn nếu khách cần hoặc lưu giao dịch để đối chiếu cuối ngày.',
+                ],
+            },
+            {
+                'title': 'Kiểm tồn và nhập hàng',
+                'items': [
+                    'Theo dõi tồn thấp để đặt hàng kịp thời, đặc biệt với nhóm bán chạy.',
+                    'Khi nhập hàng, kiểm tra số lượng, giá nhập và nhà cung cấp trước khi lưu phiếu.',
+                    'Kiểm kê định kỳ các mặt hàng giá trị cao hoặc dễ nhầm quy cách.',
+                    'Đối chiếu báo cáo nhập, bán và tồn để phát hiện sai lệch sớm.',
+                ],
+            },
+        ],
+    },
+    'custom': {
+        'title': 'Hướng dẫn chi tiết cho mô hình tùy chỉnh',
+        'sections': [
+            {
+                'title': 'Khảo sát trước khi cấu hình',
+                'items': [
+                    'Ghi lại quy trình thực tế của khách: bán trực tiếp, bán theo báo giá, bán dịch vụ, đặt lịch, quản lý bàn hay quản lý kho.',
+                    'Xác định dữ liệu nào bắt buộc phải có trước ngày chạy thật và dữ liệu nào có thể bổ sung sau.',
+                    'Xác định ai là người tạo đơn, ai duyệt, ai thu tiền, ai nhập kho và ai xem báo cáo.',
+                    'Chốt thuật ngữ hiển thị với khách để tài liệu đào tạo dễ hiểu.',
+                ],
+            },
+            {
+                'title': 'Cấu hình theo module',
+                'items': [
+                    'Bật các module cần dùng trong giai đoạn đầu, tránh bật quá nhiều làm nhân viên rối.',
+                    'Nếu có nghiệp vụ đặc thù, mô tả rõ cách dùng module hiện có để đáp ứng quy trình đó.',
+                    'Tạo nhóm quyền theo vai trò thật trong doanh nghiệp thay vì tạo một tài khoản dùng chung.',
+                    'Chuẩn hóa danh mục trước khi nhập dữ liệu lớn để hạn chế sửa lại nhiều lần.',
+                ],
+            },
+            {
+                'title': 'Đào tạo và mở rộng',
+                'items': [
+                    'Đào tạo theo tình huống thật của khách, không chỉ giới thiệu từng menu.',
+                    'Ngày đầu chạy thật nên có người hỗ trợ theo dõi đơn, kho và thu chi.',
+                    'Sau một tuần, xem báo cáo để phát hiện chỗ nhập sai hoặc quy trình chưa phù hợp.',
+                    'Khi khách đã quen, có thể bật thêm module nâng cao như duyệt đơn, POS, bàn cafe, spa hoặc báo cáo nhân viên.',
+                ],
+            },
+        ],
     },
 }
 

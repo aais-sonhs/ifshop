@@ -170,6 +170,91 @@
         padding: 7px 11px;
     }
 
+    .doc-version-ribbon {
+        align-items: center;
+        background: #0f172a;
+        border-radius: 8px;
+        color: #fff;
+        display: inline-flex;
+        font-size: 0.88rem;
+        font-weight: 900;
+        gap: 8px;
+        margin-bottom: 16px;
+        padding: 9px 13px;
+    }
+
+    .doc-cover-stats {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 18px;
+    }
+
+    .doc-cover-stat {
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid #dbe4ef;
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .doc-cover-stat strong {
+        color: #0f766e;
+        display: block;
+        font-size: 1.3rem;
+        font-weight: 900;
+        line-height: 1.1;
+    }
+
+    .doc-cover-stat span {
+        color: #475569;
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 800;
+        margin-top: 5px;
+    }
+
+    .doc-toc-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-bottom: 24px;
+    }
+
+    .doc-toc-item {
+        background: #f8fafc;
+        border: 1px solid #dbe4ef;
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 38px minmax(0, 1fr);
+        min-height: 96px;
+        padding: 14px;
+    }
+
+    .doc-toc-number {
+        align-items: center;
+        background: #14b8a6;
+        border-radius: 8px;
+        color: #fff;
+        display: inline-flex;
+        font-size: 0.85rem;
+        font-weight: 900;
+        height: 34px;
+        justify-content: center;
+        width: 34px;
+    }
+
+    .doc-toc-item h3 {
+        font-size: 0.98rem;
+        margin-bottom: 4px;
+    }
+
+    .doc-toc-item p {
+        font-size: 0.86rem;
+        line-height: 1.45;
+        margin: 0;
+    }
+
     .doc-credential-strip {
         background: #111827;
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -671,6 +756,8 @@
         .doc-grid,
         .doc-grid-3,
         .doc-step-grid,
+        .doc-cover-stats,
+        .doc-toc-grid,
         .doc-credential-strip,
         .mock-kpis,
         .mock-pos {
@@ -762,10 +849,29 @@
         <section class="doc-page doc-cover" data-page="Trang 1">
             <div class="doc-hero-layout">
                 <div>
+                    <div class="doc-version-ribbon">
+                        <i class="fas fa-book-open"></i>
+                        Bản hướng dẫn chi tiết - dùng để đào tạo và bàn giao khách hàng
+                    </div>
                     <span class="doc-kicker">Tài liệu hướng dẫn sử dụng</span>
                     <h1>{{ document.name }}</h1>
                     <p class="doc-lead">{{ document.tagline }}</p>
                     <p>{{ document.audience }}</p>
+
+                    <div class="doc-cover-stats">
+                        <div class="doc-cover-stat">
+                            <strong>15</strong>
+                            <span>trang nội dung hướng dẫn</span>
+                        </div>
+                        <div class="doc-cover-stat">
+                            <strong>5</strong>
+                            <span>vai trò sử dụng chính</span>
+                        </div>
+                        <div class="doc-cover-stat">
+                            <strong>9</strong>
+                            <span>nghiệp vụ thao tác chi tiết</span>
+                        </div>
+                    </div>
 
                     <div class="doc-pill-list">
                         <span>Bán hàng</span>
@@ -844,12 +950,57 @@
         <section class="doc-page" data-page="Trang 2">
             <div class="doc-section-head">
                 <div>
-                    <span class="doc-kicker">Tổng quan sản phẩm</span>
-                    <h2>Một nền tảng quản trị cho nhiều mô hình kinh doanh</h2>
+                    <span class="doc-kicker">Mục lục hướng dẫn</span>
+                    <h2>Những phần chính trong tài liệu chi tiết</h2>
                 </div>
                 <p>
-                    Digimart gom bán hàng, kho, khách hàng, thu chi và báo cáo về cùng một hệ thống. Mỗi thương hiệu có thể bật tắt module theo lĩnh vực để nhân viên chỉ nhìn thấy đúng phần cần dùng.
+                    Lần cập nhật này bổ sung rõ các phần hướng dẫn sử dụng thực tế: ai dùng phần nào, thao tác từng nghiệp vụ, checklist triển khai, lỗi thường gặp và hướng dẫn riêng theo lĩnh vực.
                 </p>
+            </div>
+
+            <div class="doc-toc-grid">
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">1</span>
+                    <div>
+                        <h3>Tổng quan và module</h3>
+                        <p>Giới thiệu sản phẩm, giao diện web, module chính và cách bật theo mô hình.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">2</span>
+                    <div>
+                        <h3>Thiết lập ban đầu</h3>
+                        <p>Thương hiệu, cửa hàng, kho, người dùng, phân quyền và dữ liệu cần chuẩn bị.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">3</span>
+                    <div>
+                        <h3>Luồng dùng hằng ngày</h3>
+                        <p>Đầu ngày, trong ngày, cuối ngày và các việc cần kiểm tra theo ca.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">4</span>
+                    <div>
+                        <h3>Hướng dẫn theo vai trò</h3>
+                        <p>Chủ doanh nghiệp, quản lý, bán hàng, kho, kế toán dùng những chức năng nào.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">5</span>
+                    <div>
+                        <h3>Thao tác nghiệp vụ</h3>
+                        <p>Khách hàng, báo giá, POS, trả hàng, nhập hàng, kiểm hàng, chuyển kho, thu chi, báo cáo.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">6</span>
+                    <div>
+                        <h3>Triển khai và hỗ trợ</h3>
+                        <p>Checklist bàn giao, lỗi thường gặp và hướng dẫn chuyên sâu theo từng lĩnh vực.</p>
+                    </div>
+                </div>
             </div>
 
             <div class="doc-two-col">

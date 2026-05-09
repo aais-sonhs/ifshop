@@ -116,6 +116,21 @@
         max-width: 240px;
     }
 
+    .app-navbar-help {
+        align-items: center;
+        border-radius: 999px;
+        display: flex !important;
+        height: 36px;
+        justify-content: center;
+        width: 36px;
+    }
+
+    .app-navbar-help.active,
+    .app-navbar-help:hover {
+        background: rgba(14, 165, 233, 0.12);
+        color: #0f766e !important;
+    }
+
     .app-navbar-profile span {
         display: block;
         max-width: 170px;
@@ -166,6 +181,15 @@
     </div>
     <!-- Right navbar links -->
     <ul class="navbar-nav ml-auto app-navbar-right">
+        <li class="nav-item">
+            <a class="nav-link nav-hover app-navbar-help {% if active_tab == 'product_guide' %}active{% endif %}"
+               href="{% url 'product_guide' %}"
+               title="Tài liệu giới thiệu sản phẩm"
+               aria-label="Tài liệu giới thiệu sản phẩm">
+                <i class="far fa-question-circle"></i>
+                <span class="sr-only">Tài liệu giới thiệu sản phẩm</span>
+            </a>
+        </li>
         <li class="nav-item dropdown">
             <a class="nav-link nav-hover app-navbar-profile" data-toggle="dropdown" href="#">
                 <img id="nav_avatar" src="" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid #ddd;display:none;">

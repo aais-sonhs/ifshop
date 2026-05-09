@@ -16,7 +16,7 @@ class SuperadminAccessMiddleware:
     - /business-config/, /api/business-config/*
     - /role-group-tbl/, /permission-tbl/, /api/role-groups/*
     - /login/, /logout/, /register/, /admin/
-    - /api/profile/*, /api/stores-for-user/
+    - /api/profile/*, /api/stores-for-user/, /product-guide/
     - Static/media files
     """
 
@@ -28,6 +28,7 @@ class SuperadminAccessMiddleware:
         '/printer-setting-tbl/', '/api/printers/',
         '/business-config/', '/api/business-config/',
         '/role-group-tbl/', '/permission-tbl/', '/api/role-groups/',
+        '/product-guide/',
         '/api/profile/',
         '/static/', '/media/', '/favicon',
     )

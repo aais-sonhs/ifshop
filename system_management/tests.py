@@ -232,6 +232,17 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(api_response.status_code, 200)
         self.assertIn('data', api_response.json())
 
+    def test_product_guide_is_available_for_owner_and_superadmin(self):
+        response = self.client.get(reverse('product_guide'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Tài liệu giới thiệu sản phẩm')
+        self.assertContains(response, 'admin_digimart')
+
+        self.client.force_login(self.superuser)
+        super_response = self.client.get(reverse('product_guide'))
+        self.assertEqual(super_response.status_code, 200)
+        self.assertContains(super_response, 'Tài liệu giới thiệu sản phẩm')
+
     def test_business_config_exposes_and_saves_negative_stock_option(self):
         response = self.client.get(reverse('api_get_business_config'))
         self.assertEqual(response.status_code, 200)

@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .product-doc-shell {
+        color: #1f2937;
+        font-family: Inter, "Source Sans Pro", Arial, sans-serif;
+        margin: 0 auto;
+        max-width: 1180px;
+    }
+
+    .product-doc-toolbar {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+        margin-bottom: 14px;
+    }
+
+    .product-doc-toolbar h4 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin: 0;
+    }
+
+    .doc-field-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    .doc-field-tabs .btn {
+        border-radius: 8px;
+        flex: 0 0 auto;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .doc-page {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+        margin-bottom: 18px;
+        min-height: 960px;
+        overflow: hidden;
+        padding: 44px;
+        page-break-after: always;
+        position: relative;
+    }
+
+    .doc-page::after {
+        bottom: 24px;
+        color: #94a3b8;
+        content: attr(data-page);
+        font-size: 12px;
+        font-weight: 700;
+        position: absolute;
+        right: 36px;
+        text-transform: uppercase;
+    }
+
+    .doc-kicker {
+        color: #0f766e;
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+    }
+
+    .doc-cover {
+        background:
+            linear-gradient(120deg, rgba(20, 184, 166, 0.12), rgba(245, 158, 11, 0.08)),
+            #fff;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .doc-cover h1,
+    .doc-page h2 {
+        color: #111827;
+        font-weight: 800;
+        letter-spacing: 0;
+    }
+
+    .doc-cover h1 {
+        font-size: 2.65rem;
+        line-height: 1.08;
+        margin-bottom: 16px;
+        max-width: 860px;
+    }
+
+    .doc-cover .lead {
+        color: #374151;
+        font-size: 1.1rem;
+        line-height: 1.7;
+        max-width: 780px;
+    }
+
+    .doc-page h2 {
+        font-size: 1.85rem;
+        margin-bottom: 12px;
+    }
+
+    .doc-page h3 {
+        color: #0f766e;
+        font-size: 1.05rem;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+
+    .doc-page p,
+    .doc-page li {
+        font-size: 0.98rem;
+        line-height: 1.65;
+    }
+
+    .doc-credential-box {
+        background: #111827;
+        border-radius: 8px;
+        color: #fff;
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 28px;
+        padding: 18px;
+    }
+
+    .doc-credential-box span {
+        color: #9ca3af;
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 700;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+    }
+
+    .doc-credential-box strong {
+        display: block;
+        font-size: 1rem;
+        overflow-wrap: anywhere;
+    }
+
+    .doc-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 22px;
+    }
+
+    .doc-grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .doc-panel {
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 18px;
+    }
+
+    .doc-panel .doc-icon {
+        align-items: center;
+        background: #ecfdf5;
+        border-radius: 8px;
+        color: #0f766e;
+        display: inline-flex;
+        height: 38px;
+        justify-content: center;
+        margin-bottom: 12px;
+        width: 38px;
+    }
+
+    .doc-number {
+        align-items: center;
+        background: #f59e0b;
+        border-radius: 999px;
+        color: #111827;
+        display: inline-flex;
+        font-weight: 800;
+        height: 30px;
+        justify-content: center;
+        margin-bottom: 10px;
+        width: 30px;
+    }
+
+    .doc-flow {
+        border-left: 3px solid #14b8a6;
+        margin-top: 22px;
+        padding-left: 18px;
+    }
+
+    .doc-flow-item {
+        margin-bottom: 18px;
+        padding-bottom: 14px;
+    }
+
+    .doc-flow-item:not(:last-child) {
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .doc-flow-time {
+        color: #b45309;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .doc-check-list {
+        margin: 16px 0 0;
+        padding-left: 18px;
+    }
+
+    .doc-check-list li {
+        margin-bottom: 8px;
+    }
+
+    .doc-badge-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 18px;
+    }
+
+    .doc-badge-list span {
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        border-radius: 999px;
+        color: #3730a3;
+        font-size: 0.86rem;
+        font-weight: 700;
+        padding: 7px 11px;
+    }
+
+    .doc-note {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        color: #78350f;
+        margin-top: 20px;
+        padding: 14px 16px;
+    }
+
+    @media (max-width: 767.98px) {
+        .doc-page {
+            min-height: auto;
+            padding: 24px;
+        }
+
+        .doc-cover h1 {
+            font-size: 2rem;
+        }
+
+        .doc-grid,
+        .doc-grid-3,
+        .doc-credential-box {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media print {
+        @page {
+            margin: 12mm;
+            size: A4;
+        }
+
+        .main-header,
+        .main-sidebar,
+        .product-doc-toolbar,
+        .doc-field-tabs {
+            display: none !important;
+        }
+
+        .content-wrapper {
+            margin-left: 0 !important;
+            padding-top: 0 !important;
+        }
+
+        .content-wrapper > .content,
+        .content {
+            padding: 0 !important;
+        }
+
+        .product-doc-shell {
+            max-width: none;
+        }
+
+        .doc-page {
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            margin: 0;
+            min-height: auto;
+            padding: 0;
+        }
+    }
+</style>
+
+<div class="product-doc-shell">
+    <div class="product-doc-toolbar">
+        <div>
+            <span class="doc-kicker">Help center</span>
+            <h4><i class="far fa-question-circle mr-2 text-info"></i>Tài liệu giới thiệu sản phẩm</h4>
+        </div>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="window.print()">
+            <i class="fas fa-print mr-1"></i> In / PDF
+        </button>
+    </div>
+
+    <div class="doc-field-tabs">
+        {% for item in doc_nav %}
+        <a class="btn btn-sm {% if item.active %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           href="{% url 'product_guide' %}?field={{ item.key }}">
+            <i class="{{ item.icon }} mr-1"></i>{{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <div id="productDocPrintArea">
+        <section class="doc-page doc-cover" data-page="Trang 1">
+            <div>
+                <span class="doc-kicker">Tài liệu giới thiệu sản phẩm</span>
+                <h1>{{ document.name }}</h1>
+                <p class="lead">{{ document.tagline }}</p>
+                <div class="doc-badge-list">
+                    <span>Quản lý bán hàng</span>
+                    <span>Kho và giá vốn</span>
+                    <span>Khách hàng</span>
+                    <span>Thu chi</span>
+                    <span>Báo cáo</span>
+                </div>
+            </div>
+
+            <div>
+                <div class="doc-credential-box">
+                    <div>
+                        <span>Trang</span>
+                        <strong>{{ demo_account.site }}</strong>
+                    </div>
+                    <div>
+                        <span>Tài khoản demo</span>
+                        <strong>{{ demo_account.username }}</strong>
+                    </div>
+                    <div>
+                        <span>Mật khẩu demo</span>
+                        <strong>{{ demo_account.password }}</strong>
+                    </div>
+                </div>
+                <p class="text-muted mt-3 mb-0">
+                    Tài khoản demo dùng cho giới thiệu sản phẩm và đào tạo ban đầu. Khi triển khai thật, doanh nghiệp nên đổi mật khẩu và phân quyền theo từng vai trò.
+                </p>
+            </div>
+        </section>
+
+        <section class="doc-page" data-page="Trang 2">
+            <span class="doc-kicker">Sản phẩm dành cho ai</span>
+            <h2>Phạm vi triển khai</h2>
+            <p>{{ document.audience }}</p>
+
+            <div class="doc-grid">
+                {% for item in document.positioning %}
+                <div class="doc-panel">
+                    <h3>{{ item.title }}</h3>
+                    <p class="mb-0">{{ item.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <h3 class="mt-4">Giá trị phần mềm mang lại</h3>
+            <ul class="doc-check-list">
+                {% for item in document.business_value %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="doc-page" data-page="Trang 3">
+            <span class="doc-kicker">Năng lực cốt lõi</span>
+            <h2>Các module chính</h2>
+            <p>
+                Digimart được thiết kế theo các module nghiệp vụ độc lập nhưng dùng chung dữ liệu. Doanh nghiệp có thể bật tắt module theo lĩnh vực để giao diện gọn và đúng cách vận hành.
+            </p>
+
+            <div class="doc-grid doc-grid-3">
+                {% for module in common_modules %}
+                <div class="doc-panel">
+                    <span class="doc-icon"><i class="{{ module.icon }}"></i></span>
+                    <h3>{{ module.title }}</h3>
+                    <p class="mb-0">{{ module.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="doc-page" data-page="Trang 4">
+            <span class="doc-kicker">Khách hàng bắt đầu sử dụng</span>
+            <h2>Quy trình triển khai ban đầu</h2>
+            <p>
+                Các bước dưới đây giúp khách hàng đi từ dữ liệu trắng tới vận hành thật. Đội triển khai có thể dùng phần này làm checklist khi bàn giao từng lĩnh vực.
+            </p>
+
+            <div class="doc-grid">
+                {% for step in setup_steps %}
+                <div class="doc-panel">
+                    <span class="doc-number">{{ forloop.counter }}</span>
+                    <h3>{{ step.title }}</h3>
+                    <p class="mb-0">{{ step.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="doc-note">
+                <strong>Gợi ý triển khai:</strong>
+                Sau khi nhập dữ liệu ban đầu, nên tạo một ngày chạy thử gồm bán hàng, nhập hàng, thu chi, in hóa đơn và xem báo cáo để nhân viên quen thao tác trước khi dùng chính thức.
+            </div>
+        </section>
+
+        <section class="doc-page" data-page="Trang 5">
+            <span class="doc-kicker">Khách sử dụng hàng ngày</span>
+            <h2>Luồng vận hành trong ngày</h2>
+            <p>
+                Phần này dành cho chủ cửa hàng, quản lý và nhân viên khi dùng phần mềm mỗi ngày.
+            </p>
+
+            <div class="doc-flow">
+                {% for item in daily_flow %}
+                <div class="doc-flow-item">
+                    <div class="doc-flow-time">{{ item.time }}</div>
+                    <h3>{{ item.title }}</h3>
+                    <p class="mb-0">{{ item.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <h3 class="mt-4">Vai trò thường gặp</h3>
+            <div class="doc-grid doc-grid-3">
+                <div class="doc-panel">
+                    <h3>Chủ / Quản lý</h3>
+                    <p class="mb-0">Xem dashboard, báo cáo, duyệt đơn nếu có, kiểm soát người dùng, tồn kho, công nợ và hiệu quả cửa hàng.</p>
+                </div>
+                <div class="doc-panel">
+                    <h3>Nhân viên bán hàng</h3>
+                    <p class="mb-0">Tạo báo giá, đơn hàng, POS, chọn khách, in hóa đơn, xử lý trả hàng theo quyền được cấp.</p>
+                </div>
+                <div class="doc-panel">
+                    <h3>Kho / Kế toán</h3>
+                    <p class="mb-0">Nhập hàng, kiểm hàng, chuyển kho, ghi nhận phiếu thu chi, theo dõi sổ quỹ và đối soát cuối ngày.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="doc-page" data-page="Trang 6">
+            <span class="doc-kicker">Hướng dẫn nghiệp vụ chi tiết</span>
+            <h2>Các thao tác khách hàng sẽ dùng thường xuyên</h2>
+
+            {% for section in workflow_sections %}
+            <div class="doc-panel mb-3">
+                <h3>{{ section.title }}</h3>
+                <ul class="doc-check-list">
+                    {% for item in section.items %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </section>
+
+        <section class="doc-page" data-page="Trang 7">
+            <span class="doc-kicker">Tài liệu theo lĩnh vực</span>
+            <h2>Quy trình riêng cho {{ document.name }}</h2>
+            <p>
+                Mỗi lĩnh vực có một tài liệu riêng để nhân viên đọc đúng nghiệp vụ của họ. Nội dung dưới đây là phần chuyên ngành của tài liệu đang chọn.
+            </p>
+
+            <div class="doc-grid">
+                {% for item in document.field_workflows %}
+                <div class="doc-panel">
+                    <h3>{{ item.title }}</h3>
+                    <p class="mb-0">{{ item.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="doc-page" data-page="Trang 8">
+            <span class="doc-kicker">Quản trị và mở rộng</span>
+            <h2>Báo cáo, phân quyền và nhân bản tài liệu</h2>
+            <p>
+                Sau khi vận hành ổn định, khách hàng dùng báo cáo để kiểm soát hiệu quả và dùng phân quyền để giữ dữ liệu đúng phạm vi từng người.
+            </p>
+
+            <h3>Chỉ số nên theo dõi</h3>
+            <div class="doc-badge-list">
+                {% for metric in document.metrics %}
+                <span>{{ metric }}</span>
+                {% endfor %}
+            </div>
+
+            <div class="doc-grid mt-4">
+                <div class="doc-panel">
+                    <h3>Phân quyền theo vai trò</h3>
+                    <p class="mb-0">
+                        Chủ thương hiệu quản lý người dùng, nhóm quyền và cửa hàng. Nhân viên chỉ thấy chức năng cần dùng, giúp thao tác đơn giản và giảm rủi ro sửa nhầm dữ liệu.
+                    </p>
+                </div>
+                <div class="doc-panel">
+                    <h3>Mỗi lĩnh vực một tài liệu</h3>
+                    <p class="mb-0">
+                        Khi triển khai cho ngành khác, chọn tab lĩnh vực ở đầu trang để có bản giới thiệu và hướng dẫn riêng. Có thể in từng bản thành PDF để gửi khách hoặc dùng khi đào tạo.
+                    </p>
+                </div>
+            </div>
+
+            <div class="doc-note">
+                <strong>Bàn giao khuyến nghị:</strong>
+                Gửi khách bản PDF đúng lĩnh vực, tài khoản demo, checklist dữ liệu cần chuẩn bị và lịch đào tạo theo vai trò. Cách này giúp khách hiểu sản phẩm trước, sau đó học thao tác chi tiết ngay trên phần mềm.
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

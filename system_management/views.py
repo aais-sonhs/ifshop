@@ -7,6 +7,16 @@ from django.contrib.auth.models import User
 from django.db import models as db_models
 from django.contrib import messages
 from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, BusinessConfig, Brand, Store
+from .product_docs import (
+    COMMON_DAILY_FLOW,
+    COMMON_MODULES,
+    COMMON_SETUP_STEPS,
+    COMMON_WORKFLOW_SECTIONS,
+    DEMO_ACCOUNT,
+    DOCUMENT_NAV,
+    get_product_document,
+    normalize_document_key,
+)
 from core.store_utils import can_manage_users, get_managed_store_ids
 
 logger = logging.getLogger(__name__)
@@ -88,6 +98,50 @@ def _get_store_for_user(request, store_id):
     if not store_id:
         return None
     return _get_store_queryset_for_user(request).filter(id=store_id).first()
+
+
+def _get_request_brand(request):
+    """Resolve the current user's brand for product documentation defaults."""
+    brand = None
+    try:
+        profile = request.user.profile
+        if profile.store:
+            brand = profile.store.brand
+    except Exception:
+        brand = None
+
+    if not brand:
+        brand = Brand.objects.filter(owner=request.user).first()
+    return brand
+
+
+@login_required(login_url="/login/")
+def product_guide(request):
+    selected_key = normalize_document_key(request.GET.get('field', ''))
+
+    if not selected_key:
+        brand = _get_request_brand(request)
+        selected_key = normalize_document_key(BusinessConfig.get_config(brand=brand).business_type)
+
+    selected_key, document = get_product_document(selected_key)
+    doc_nav = []
+    for item in DOCUMENT_NAV:
+        nav_item = item.copy()
+        nav_item['active'] = item['key'] == selected_key
+        doc_nav.append(nav_item)
+
+    context = {
+        'active_tab': 'product_guide',
+        'selected_doc_key': selected_key,
+        'document': document,
+        'doc_nav': doc_nav,
+        'demo_account': DEMO_ACCOUNT,
+        'common_modules': COMMON_MODULES,
+        'setup_steps': COMMON_SETUP_STEPS,
+        'daily_flow': COMMON_DAILY_FLOW,
+        'workflow_sections': COMMON_WORKFLOW_SECTIONS,
+    }
+    return render(request, "system/product_guide.html", context)
 
 
 @login_required(login_url="/login/")

@@ -8,7 +8,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     Packaging, OrderEditHistory,
@@ -1213,42 +1213,88 @@ def api_quick_create_customer(request):
 
 @login_required(login_url="/login/")
 def api_get_orders(request):
-    orders = Order.objects.select_related('customer', 'customer__group', 'warehouse').prefetch_related('receipts').all()
+    active_receipts = Receipt.objects.select_related('payment_method_option').filter(status=1)
+    orders = Order.objects.select_related(
+        'customer', 'customer__group', 'warehouse', 'created_by', 'approver'
+    ).prefetch_related(
+        'items__product',
+        Prefetch('receipts', queryset=active_receipts, to_attr='active_receipts'),
+    ).all()
     orders = filter_by_store(orders, request)
-    data = [{
-        'id': o.id, 'code': o.code,
-        'customer': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
-        'customer_id': o.customer_id,
-        'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
-        'warehouse': o.warehouse.name if o.warehouse else '',
-        'warehouse_id': o.warehouse_id,
-        'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
-        'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
-        'total_amount': float(o.total_amount),
-        'discount_amount': float(o.discount_amount),
-        'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
-        'final_amount': float(o.final_amount),
-        'paid_amount': float(o.paid_amount),
-        'remaining_amount': max(float(o.final_amount) - float(o.paid_amount), 0),
-        'status': o.status, 'status_display': o.get_status_display(),
-        'payment_status': o.payment_status,
-        'payment_status_display': o.get_payment_status_display(),
-        'has_receipt': o.receipts.filter(status=1).exists(),
-        'receipt_count': o.receipts.filter(status=1).count(),
-        'tags': o.tags or '',
-        'note': o.note or '',
-        'customer_group': o.customer.group.name if o.customer and o.customer.group else '',
-        'customer_group_id': o.customer.group_id if o.customer else None,
-        'creator_name': o.creator_name or '',
-        'salesperson': o.salesperson or '',
-        'server_staff': o.server_staff or '',
-        'approver_id': o.approver_id,
-        'approver_name': o.approver.get_full_name() if o.approver else '',
-        'approval_status': o.approval_status,
-        'approval_status_display': o.get_approval_status_display(),
-        'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
-        'bonus_amount': float(o.bonus_amount),
-    } for o in orders]
+    data = []
+    for o in orders:
+        receipts = list(getattr(o, 'active_receipts', []))
+        payment_method_names = sorted({
+            r.get_payment_method_label()
+            for r in receipts
+            if r.get_payment_method_label()
+        })
+        items = list(o.items.all())
+        product_labels = []
+        product_search_parts = []
+        product_ids = []
+        for item in items:
+            product = item.product
+            if not product:
+                continue
+            product_ids.append(product.id)
+            label = ' - '.join(part for part in [product.code, product.name] if part)
+            if label:
+                product_labels.append(label)
+            product_search_parts.extend([
+                str(product.id),
+                product.code or '',
+                product.name or '',
+                getattr(product, 'barcode', '') or '',
+            ])
+        creator_display = o.creator_name or ''
+        if not creator_display and o.created_by:
+            creator_display = o.created_by.get_full_name() or o.created_by.username
+        data.append({
+            'id': o.id, 'code': o.code,
+            'customer': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
+            'customer_id': o.customer_id,
+            'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
+            'warehouse': o.warehouse.name if o.warehouse else '',
+            'warehouse_id': o.warehouse_id,
+            'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
+            'created_date': o.created_at.strftime('%Y-%m-%d') if o.created_at else '',
+            'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
+            'total_amount': float(o.total_amount),
+            'discount_amount': float(o.discount_amount),
+            'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
+            'final_amount': float(o.final_amount),
+            'paid_amount': float(o.paid_amount),
+            'remaining_amount': max(float(o.final_amount) - float(o.paid_amount), 0),
+            'status': o.status, 'status_display': o.get_status_display(),
+            'payment_status': o.payment_status,
+            'payment_status_display': o.get_payment_status_display(),
+            'payment_method_option_ids': [
+                r.payment_method_option_id for r in receipts if r.payment_method_option_id
+            ],
+            'payment_method_names': payment_method_names,
+            'payment_method_display': ', '.join(payment_method_names),
+            'has_receipt': bool(receipts),
+            'receipt_count': len(receipts),
+            'tags': o.tags or '',
+            'note': o.note or '',
+            'customer_group': o.customer.group.name if o.customer and o.customer.group else '',
+            'customer_group_id': o.customer.group_id if o.customer else None,
+            'creator_id': o.created_by_id,
+            'creator_name': creator_display,
+            'salesperson': o.salesperson or '',
+            'server_staff': o.server_staff or '',
+            'product_ids': product_ids,
+            'product_names': product_labels,
+            'product_display': ', '.join(product_labels[:3]) + ('...' if len(product_labels) > 3 else ''),
+            'product_search': ' '.join(product_search_parts),
+            'approver_id': o.approver_id,
+            'approver_name': o.approver.get_full_name() if o.approver else '',
+            'approval_status': o.approval_status,
+            'approval_status_display': o.get_approval_status_display(),
+            'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
+            'bonus_amount': float(o.bonus_amount),
+        })
     return JsonResponse({'data': data})
 
 
@@ -2496,26 +2542,56 @@ def export_orders_excel(request):
     from core.store_utils import filter_by_store
     from datetime import datetime
 
+    active_receipts = Receipt.objects.select_related('payment_method_option').filter(status=1)
     orders = Order.objects.select_related(
         'customer', 'warehouse', 'created_by'
+    ).prefetch_related(
+        'items__product',
+        Prefetch('receipts', queryset=active_receipts, to_attr='active_receipts'),
     ).all().order_by('-order_date', '-id')
     orders = filter_by_store(orders, request)
 
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
+    date_from = request.GET.get('date_from') or request.GET.get('from_date')
+    date_to = request.GET.get('date_to') or request.GET.get('to_date')
+    created_from = request.GET.get('created_from')
+    created_to = request.GET.get('created_to')
     status = request.GET.get('status')
+    payment_status = request.GET.get('payment_status')
+    payment_method = request.GET.get('payment_method')
+    creator = request.GET.get('creator')
+    product = (request.GET.get('product') or '').strip()
     if date_from:
         orders = orders.filter(order_date__gte=date_from)
     if date_to:
         orders = orders.filter(order_date__lte=date_to)
-    if status:
+    if created_from:
+        orders = orders.filter(created_at__date__gte=created_from)
+    if created_to:
+        orders = orders.filter(created_at__date__lte=created_to)
+    if status not in [None, '']:
         orders = orders.filter(status=int(status))
+    if payment_status not in [None, '']:
+        orders = orders.filter(payment_status=int(payment_status))
+    if payment_method:
+        orders = orders.filter(receipts__status=1, receipts__payment_method_option_id=payment_method)
+    if creator:
+        orders = orders.filter(created_by_id=creator)
+    if product:
+        orders = orders.filter(
+            Q(items__product__code__icontains=product) |
+            Q(items__product__name__icontains=product) |
+            Q(items__product__barcode__icontains=product)
+        )
+    if payment_method or product:
+        orders = orders.distinct()
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
         {'key': 'code', 'label': 'Mã ĐH', 'width': 14},
         {'key': 'date', 'label': 'Ngày', 'width': 13},
+        {'key': 'created_at', 'label': 'Ngày tạo', 'width': 18},
         {'key': 'customer', 'label': 'Khách hàng', 'width': 24},
+        {'key': 'products', 'label': 'Sản phẩm', 'width': 32},
         {'key': 'warehouse', 'label': 'Kho', 'width': 16},
         {'key': 'total', 'label': 'Tổng tiền hàng', 'width': 16},
         {'key': 'discount', 'label': 'Chiết khấu', 'width': 14},
@@ -2524,6 +2600,7 @@ def export_orders_excel(request):
         {'key': 'paid', 'label': 'Đã trả', 'width': 16},
         {'key': 'debt', 'label': 'Còn nợ', 'width': 16},
         {'key': 'payment', 'label': 'Thanh toán', 'width': 16},
+        {'key': 'payment_method', 'label': 'PT thanh toán', 'width': 18},
         {'key': 'status', 'label': 'Trạng thái', 'width': 14},
         {'key': 'creator', 'label': 'Người tạo', 'width': 16},
         {'key': 'note', 'label': 'Ghi chú', 'width': 28},
@@ -2534,6 +2611,17 @@ def export_orders_excel(request):
     total_paid = 0
     total_debt = 0
     for i, o in enumerate(orders, 1):
+        receipts = list(getattr(o, 'active_receipts', []))
+        payment_methods = sorted({
+            r.get_payment_method_label()
+            for r in receipts
+            if r.get_payment_method_label()
+        })
+        products = [
+            ' - '.join(part for part in [it.product.code, it.product.name] if part)
+            for it in o.items.all()
+            if it.product
+        ]
         debt = max(float(o.final_amount) - float(o.paid_amount), 0)
         total_final += float(o.final_amount)
         total_paid += float(o.paid_amount)
@@ -2542,7 +2630,9 @@ def export_orders_excel(request):
             'stt': i,
             'code': o.code,
             'date': o.order_date,
+            'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
             'customer': o.customer.name if o.customer else '',
+            'products': ', '.join(products),
             'warehouse': o.warehouse.name if o.warehouse else '',
             'total': float(o.total_amount),
             'discount': float(o.discount_amount),
@@ -2551,6 +2641,7 @@ def export_orders_excel(request):
             'paid': float(o.paid_amount),
             'debt': debt,
             'payment': o.get_payment_status_display(),
+            'payment_method': ', '.join(payment_methods),
             'status': o.get_status_display(),
             'creator': (o.created_by.get_full_name() or o.created_by.username) if o.created_by else '',
             'note': o.note or '',

@@ -117,16 +117,16 @@
 
         var html = '<div class="dropdown d-inline-block cc-dropdown">' +
             '<button class="btn btn-sm btn-outline-secondary dropdown-toggle cc-trigger" data-toggle="dropdown" title="Tùy chỉnh cột hiển thị">' +
-            '<i class="fas fa-columns mr-1"></i>Cột</button>' +
+            '<i class="fas fa-columns mr-1"></i>Tùy chỉnh hiển thị</button>' +
             '<div class="dropdown-menu cc-menu">' +
             '<div class="cc-header">' +
-            '<div class="cc-title"><i class="fas fa-eye"></i><span>Hien thi cot</span></div>' +
-            '<div class="cc-subtitle">Chon cac cot can hien trong bang ban hang.</div>' +
+            '<div class="cc-title"><i class="fas fa-eye"></i><span>Hiển thị cột</span></div>' +
+            '<div class="cc-subtitle">Chọn các cột cần hiện trong bảng.</div>' +
             '</div>' +
             '<div class="cc-body">' + itemsHtml + '</div>' +
             '<div class="cc-footer">' +
-            '<button class="btn btn-sm btn-outline-primary cc-select-all">Chon tat ca</button>' +
-            '<button class="btn btn-sm btn-outline-secondary cc-reset">Mac dinh</button></div>' +
+            '<button class="btn btn-sm btn-outline-primary cc-select-all">Chọn tất cả</button>' +
+            '<button class="btn btn-sm btn-outline-secondary cc-reset">Mặc định</button></div>' +
             '</div></div>';
 
         $container.prepend(html);

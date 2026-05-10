@@ -24,7 +24,7 @@
         </div>
         <div class="row mb-2" style="gap:6px 0;">
             <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm theo mã đơn, tên KH, SĐT, tag...">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm mã đơn, KH, SĐT, sản phẩm, tag...">
             </div>
             <div class="col-md-2"><select class="form-control form-control-sm" id="filter_payment_status"><option value="">-- Thanh toán --</option><option value="0">Chưa TT</option><option value="1">TT một phần</option><option value="2">Đã TT đủ</option></select></div>
             <div class="col-md-2"><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Nhóm KH</option>{% for g in customer_groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div>
@@ -34,6 +34,25 @@
                 <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Tìm</button>
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
+        </div>
+        <div class="row mb-2" style="gap:6px 0;">
+            <div class="col-md-2">
+                <select class="form-control form-control-sm select2" id="filter_payment_method" data-placeholder="-- Phương thức TT --" style="width:100%;">
+                    <option value="">-- Phương thức TT --</option>
+                    {% for m in payment_methods %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm select2" id="filter_creator" data-placeholder="-- Người tạo --" style="width:100%;">
+                    <option value="">-- Người tạo --</option>
+                    {% for u in system_users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter_product" placeholder="Tìm sản phẩm trong đơn...">
+            </div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày" aria-label="Tạo từ ngày"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày" aria-label="Tạo đến ngày"></div>
         </div>
         <div class="mb-2" id="active_order_filter_summary"></div>
         <div class="row mb-2">
@@ -56,7 +75,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:140px;">Thao tác</th></tr></thead>
+                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="payment_method">PT thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:140px;">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -1731,8 +1750,12 @@ var orderColConfig = new ColumnConfig({
         {key: 'customer',  label: 'Khách hàng',     default: true},
         {key: 'warehouse', label: 'Kho',            default: true},
         {key: 'date',      label: 'Ngày đặt',       default: true},
+        {key: 'created_at', label: 'Ngày tạo',      default: false},
+        {key: 'creator',   label: 'Người tạo',      default: false},
+        {key: 'products',  label: 'Sản phẩm',       default: false},
         {key: 'total',     label: 'Tổng tiền',      default: true},
         {key: 'payment',   label: 'Thanh toán',     default: true},
+        {key: 'payment_method', label: 'PT thanh toán', default: false},
         {key: 'status',    label: 'Trạng thái',     default: true},
         {key: 'actions',   label: 'Thao tác',       default: true},
     ]
@@ -3193,11 +3216,27 @@ function renderOrderFilterSummary(totalCount, filteredCount){
     if($('#filter_customer_group').val()){
         chips.push({key:'customer_group', label:'Nhóm KH', value:$('#filter_customer_group option:selected').text()});
     }
+    if($('#filter_payment_method').val()){
+        chips.push({key:'payment_method', label:'Phương thức TT', value:$('#filter_payment_method option:selected').text()});
+    }
+    if($('#filter_creator').val()){
+        chips.push({key:'creator', label:'Người tạo', value:$('#filter_creator option:selected').text()});
+    }
+    if($('#filter_product').val().trim()){
+        chips.push({key:'product', label:'Sản phẩm', value:$('#filter_product').val().trim()});
+    }
     if($('#filter_from_date').val() || $('#filter_to_date').val()){
         chips.push({
             key:'date',
             label:'Ngày đặt',
             value:($('#filter_from_date').val() || '...') + ' - ' + ($('#filter_to_date').val() || '...')
+        });
+    }
+    if($('#filter_created_from').val() || $('#filter_created_to').val()){
+        chips.push({
+            key:'created_date',
+            label:'Ngày tạo',
+            value:($('#filter_created_from').val() || '...') + ' - ' + ($('#filter_created_to').val() || '...')
         });
     }
     if($('#filter_text').val().trim()){
@@ -3230,8 +3269,13 @@ function loadData(){
         filterStatus = filterStatus.toString();
         var filterPayment = $('#filter_payment_status').val();
         var filterGroup = $('#filter_customer_group').val();
+        var filterPaymentMethod = $('#filter_payment_method').val();
+        var filterCreator = $('#filter_creator').val();
+        var filterProduct = ($('#filter_product').val() || '').trim().toLowerCase();
         var filterFrom = $('#filter_from_date').val();
         var filterTo = $('#filter_to_date').val();
+        var filterCreatedFrom = $('#filter_created_from').val();
+        var filterCreatedTo = $('#filter_created_to').val();
         var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
 
         // Count by status for tabs
@@ -3250,10 +3294,26 @@ function loadData(){
             if(filterStatus !== '' && d.status != filterStatus) return false;
             if(filterPayment !== '' && d.payment_status != filterPayment) return false;
             if(filterGroup && d.customer_group_id != filterGroup) return false;
+            if(filterPaymentMethod){
+                var methodIds = (d.payment_method_option_ids || []).map(function(id){ return String(id); });
+                if(methodIds.indexOf(filterPaymentMethod) < 0) return false;
+            }
+            if(filterCreator && String(d.creator_id || '') !== filterCreator) return false;
+            if(filterProduct){
+                var productText = ((d.product_search || '') + ' ' + (d.product_display || '')).toLowerCase();
+                if(productText.indexOf(filterProduct) < 0) return false;
+            }
             if(filterFrom && d.order_date < filterFrom) return false;
             if(filterTo && d.order_date > filterTo) return false;
+            if(filterCreatedFrom && (!d.created_date || d.created_date < filterCreatedFrom)) return false;
+            if(filterCreatedTo && (!d.created_date || d.created_date > filterCreatedTo)) return false;
             if(filterText){
-                var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + d.note + ' ' + (d.tags || '') + ' ' + (d.customer_group || '')).toLowerCase();
+                var searchable = (
+                    d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' +
+                    d.note + ' ' + (d.tags || '') + ' ' + (d.customer_group || '') + ' ' +
+                    (d.creator_name || '') + ' ' + (d.product_search || '') + ' ' +
+                    (d.payment_method_display || '')
+                ).toLowerCase();
                 if(searchable.indexOf(filterText) < 0) return false;
             }
             return true;
@@ -3327,12 +3387,16 @@ function loadData(){
                 orderColConfig.td('customer', customerHtml)+
                 orderColConfig.td('warehouse', d.warehouse)+
                 orderColConfig.td('date', fmtDt(d.order_date, d.created_at))+
+                orderColConfig.td('created_at', escapeHtml(d.created_at || ''))+
+                orderColConfig.td('creator', escapeHtml(d.creator_name || ''))+
+                orderColConfig.td('products', escapeHtml(d.product_display || ''))+
                 orderColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
                 orderColConfig.td('payment', paymentHtml)+
+                orderColConfig.td('payment_method', escapeHtml(d.payment_method_display || ''))+
                 orderColConfig.td('status', statusHtml)+
                 orderColConfig.td('actions', actions, 'class="text-center"')+
                 '</tr>';
-        });$('#data_tbl tbody').html(h||'<tr><td colspan="10" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        });$('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         orderColConfig.apply();
         refreshBulkToolbar();
     });
@@ -3344,12 +3408,22 @@ $('#btn_export_orders').click(function(){
     var params = [];
     var from = $('#filter_from_date').val();
     var to = $('#filter_to_date').val();
+    var createdFrom = $('#filter_created_from').val();
+    var createdTo = $('#filter_created_to').val();
     var status = $('.filter-tab.active').data('status');
     var ps = $('#filter_payment_status').val();
+    var paymentMethod = $('#filter_payment_method').val();
+    var creator = $('#filter_creator').val();
+    var product = ($('#filter_product').val() || '').trim();
     if(from) params.push('from_date='+from);
     if(to) params.push('to_date='+to);
+    if(createdFrom) params.push('created_from='+createdFrom);
+    if(createdTo) params.push('created_to='+createdTo);
     if(status !== '' && status !== undefined) params.push('status='+status);
     if(ps !== '') params.push('payment_status='+ps);
+    if(paymentMethod) params.push('payment_method='+encodeURIComponent(paymentMethod));
+    if(creator) params.push('creator='+encodeURIComponent(creator));
+    if(product) params.push('product='+encodeURIComponent(product));
     window.location.href = url + params.join('&');
 });
 
@@ -3365,7 +3439,10 @@ $('#btn_clear_filter').click(function(){
     $('#filter_text').val('');
     $('#filter_payment_status').val('');
     $('#filter_customer_group').val('');
+    $('#filter_payment_method, #filter_creator').val('').trigger('change.select2');
+    $('#filter_product').val('');
     $('#filter_from_date, #filter_to_date').val('');
+    $('#filter_created_from, #filter_created_to').val('');
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
     loadData();
@@ -3384,8 +3461,16 @@ $(document).on('click', '.order-filter-chip-remove', function(){
         $('#filter_payment_status').val('');
     } else if(key === 'customer_group'){
         $('#filter_customer_group').val('');
+    } else if(key === 'payment_method'){
+        $('#filter_payment_method').val('').trigger('change.select2');
+    } else if(key === 'creator'){
+        $('#filter_creator').val('').trigger('change.select2');
+    } else if(key === 'product'){
+        $('#filter_product').val('');
     } else if(key === 'date'){
         $('#filter_from_date, #filter_to_date').val('');
+    } else if(key === 'created_date'){
+        $('#filter_created_from, #filter_created_to').val('');
     } else if(key === 'text'){
         $('#filter_text').val('');
     }
@@ -3394,8 +3479,15 @@ $(document).on('click', '.order-filter-chip-remove', function(){
 
 // Real-time filters
 $('#filter_text').on('input', function(){ loadData(); });
-$('#filter_customer_group').on('change', function(){ loadData(); });
-$('#filter_payment_status').on('change', function(){ loadData(); });
+$('#filter_product').on('input', function(){ loadData(); });
+$('#filter_text, #filter_product').on('keydown', function(e){
+    if(e.key === 'Enter'){
+        e.preventDefault();
+        loadData();
+    }
+});
+$('#filter_customer_group, #filter_payment_status, #filter_payment_method, #filter_creator').on('change', function(){ loadData(); });
+$('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to').on('change', function(){ loadData(); });
 $(document).on('change', '.order-row-check', function(){ refreshBulkToolbar(); });
 $('#check_all_orders').on('change', function(){
     $('.order-row-check').prop('checked', $(this).is(':checked'));
@@ -3761,7 +3853,11 @@ function renderSavedFiltersMenu(){
         if(f.status !== undefined && f.status !== '') desc.push($('.filter-tab[data-status="'+f.status+'"]').contents().first().text().trim() || 'Trạng thái');
         if(f.payment_status) desc.push($('#filter_payment_status option[value="'+f.payment_status+'"]').text() || 'Thanh toán');
         if(f.customer_group_text) desc.push(f.customer_group_text);
+        if(f.payment_method_text) desc.push(f.payment_method_text);
+        if(f.creator_text) desc.push(f.creator_text);
+        if(f.product) desc.push('SP: ' + f.product);
         if(f.from_date || f.to_date) desc.push((f.from_date || '...') + ' - ' + (f.to_date || '...'));
+        if(f.created_from || f.created_to) desc.push('Tạo: ' + (f.created_from || '...') + ' - ' + (f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">' + desc.join(' · ') + '</small>' : '';
         var $item = $('<div class="dropdown-item d-flex justify-content-between align-items-center" style="cursor:pointer;">' +
             '<span class="filter-load-btn flex-grow-1" data-idx="'+idx+'">'+label+descText+'</span>' +
@@ -3781,8 +3877,15 @@ $('#btn_save_filter').click(function(){
         payment_status: $('#filter_payment_status').val(),
         customer_group: $('#filter_customer_group').val(),
         customer_group_text: $('#filter_customer_group').val() ? ($('#filter_customer_group option:selected').text() || '') : '',
+        payment_method: $('#filter_payment_method').val(),
+        payment_method_text: $('#filter_payment_method').val() ? ($('#filter_payment_method option:selected').text() || '') : '',
+        creator: $('#filter_creator').val(),
+        creator_text: $('#filter_creator').val() ? ($('#filter_creator option:selected').text() || '') : '',
+        product: $('#filter_product').val(),
         from_date: $('#filter_from_date').val(),
         to_date: $('#filter_to_date').val(),
+        created_from: $('#filter_created_from').val(),
+        created_to: $('#filter_created_to').val(),
         text: $('#filter_text').val()
     };
     var filters = getSavedFilters();
@@ -3802,8 +3905,13 @@ $(document).on('click', '.filter-load-btn', function(){
     $('.filter-tab[data-status="'+statusValue+'"]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
     $('#filter_payment_status').val(f.payment_status || '');
     $('#filter_customer_group').val(f.customer_group || '');
+    $('#filter_payment_method').val(f.payment_method || '').trigger('change.select2');
+    $('#filter_creator').val(f.creator || '').trigger('change.select2');
+    $('#filter_product').val(f.product || '');
     $('#filter_from_date').val(f.from_date || '');
     $('#filter_to_date').val(f.to_date || '');
+    $('#filter_created_from').val(f.created_from || '');
+    $('#filter_created_to').val(f.created_to || '');
     $('#filter_text').val(f.text || '');
     loadData();
     if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);

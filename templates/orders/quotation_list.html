@@ -149,23 +149,20 @@
                     <div class="card-body p-0">
                         <!-- THANH TÌM KIẾM SẢN PHẨM — LUÔN HIỂN THỊ, LUÔN SẴN SÀNG -->
                         <div class="px-2 pt-2 pb-1" style="background:linear-gradient(135deg, #e3f2fd 0%, #f5f5f5 100%); border-bottom:2px solid #42a5f5; position:relative;">
-                            <div class="input-group">
+                            <form class="input-group" id="quick_product_search_form" onsubmit="return handleQuickProductSearchSubmit(this);">
                                 <div class="input-group-prepend">
                                     <span class="input-group-text" style="background:#1976d2; border-color:#1976d2;"><i class="fas fa-search text-white"></i></span>
                                 </div>
                                 <input type="text" class="form-control" id="quick_search_product"
                                     placeholder="🔍 Tìm & thêm sản phẩm — gõ tên, mã SP hoặc quét barcode... (↑↓ chọn, Enter thêm)"
                                     autocomplete="off"
-                                    onkeydown="return handleQuickProductInputKeydown(event, this);"
-                                    onkeypress="return handleQuickProductInputKeydown(event, this);"
-                                    onkeyup="return handleQuickProductInputKeydown(event, this);"
                                     style="font-size:14px; border:2px solid #42a5f5; border-left:none; background:#fff;">
                                 <div class="input-group-append">
                                     <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
                                         <i class="fas fa-plus-circle"></i> <span class="d-none d-md-inline">Tạo SP</span>
                                     </button>
                                 </div>
-                            </div>
+                            </form>
                             <div class="d-flex justify-content-between mt-1">
                                 <small class="text-muted" id="search_status_hint"><i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay</small>
                                 <small class="text-muted" id="search_count_hint"></small>
@@ -668,12 +665,9 @@ function getQuickProductMatches(searchTerm){
     }
     return matches;
 }
-function handleQuickProductInputKeydown(event, input){
-    if(!isQuickProductEnterEvent(event)) return true;
-    var term = (input.value || '').trim();
+function submitQuickProductTerm(term){
+    term = (term || '').trim();
     if(!term) return false;
-    event.preventDefault();
-    if(event.stopPropagation) event.stopPropagation();
     if(!markQuickProductEnterHandled()) return false;
     var matches = getQuickProductMatches(term);
     if(matches.length){
@@ -689,6 +683,16 @@ function handleQuickProductInputKeydown(event, input){
         openQuickProductCreateDialog(term);
     }
     return false;
+}
+function handleQuickProductSearchSubmit(form){
+    var input = $(form).find('#quick_search_product')[0] || document.getElementById('quick_search_product');
+    return submitQuickProductTerm(input ? input.value : '');
+}
+function handleQuickProductInputKeydown(event, input){
+    if(!isQuickProductEnterEvent(event)) return true;
+    event.preventDefault();
+    if(event.stopPropagation) event.stopPropagation();
+    return submitQuickProductTerm(input ? input.value : '');
 }
 function handleProductSelect2Enter(event){
     var target = event.target;
@@ -1400,7 +1404,7 @@ $(document).ready(function(){
             var noResultHtml = '<div class="p-3 text-center">' +
                 '<i class="fas fa-search text-muted" style="font-size:24px;"></i>' +
                 '<div class="mt-1 text-muted">Không có sản phẩm phù hợp bộ lọc</div>' +
-                '<button class="btn btn-sm btn-outline-info mt-2" onclick="$(document).trigger(jQuery.Event(\'keydown\',{key:\'F3\'}))"><i class="fas fa-plus-circle mr-1"></i>Tạo sản phẩm mới</button>' +
+                '<button class="btn btn-sm btn-outline-info mt-2" type="button" onclick="openQuickProductCreateDialog($(\'#quick_search_product\').val().trim())"><i class="fas fa-plus-circle mr-1"></i>Tạo sản phẩm mới</button>' +
                 '</div>';
             $('#quick_search_results').html(noResultHtml).show();
             setQuickSearchStatusHint('<i class="fas fa-times-circle text-danger mr-1"></i>Không có sản phẩm phù hợp bộ lọc');
@@ -1479,15 +1483,6 @@ $(document).ready(function(){
         return false;
     }
 
-    document.addEventListener('keydown', function(nativeEvent){
-        var target = nativeEvent.target;
-        if(!target || target.id !== 'quick_search_product') return;
-        if(nativeEvent.key !== 'Enter' && nativeEvent.keyCode !== 13) return;
-        nativeEvent.preventDefault();
-        nativeEvent.stopPropagation();
-        handleQuickProductEnter($(target));
-    }, true);
-
     $('#quick_search_product').on('keydown', function(e){
         var $items = $('#quick_search_results .quick-search-item');
         var $active = $items.filter('.qs-active');
@@ -1515,7 +1510,7 @@ $(document).ready(function(){
         }
         if(e.key === 'Enter' || e.which === 13 || e.keyCode === 13){
             e.preventDefault();
-            handleQuickProductEnter($(this));
+            handleQuickProductSearchSubmit($('#quick_product_search_form')[0]);
             return;
         }
         if(e.key === 'Escape'){

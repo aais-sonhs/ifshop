@@ -13,6 +13,7 @@ urlpatterns = [
     path('cost-adjustment-tbl/', views.cost_adjustment_tbl, name='cost_adjustment_tbl'),
     # APIs
     path('api/products/', views.api_get_products, name='api_get_products'),
+    path('api/products/check-code/', views.api_check_product_code, name='api_check_product_code'),
     path('api/products/save/', views.api_save_product, name='api_save_product'),
     path('api/products/delete/', views.api_delete_product, name='api_delete_product'),
     path('api/warehouses/', views.api_get_warehouses, name='api_get_warehouses'),

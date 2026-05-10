@@ -705,6 +705,30 @@ def api_get_products(request):
 
 
 @login_required(login_url="/login/")
+def api_check_product_code(request):
+    term = (request.GET.get('term') or '').strip()
+    if not term:
+        return JsonResponse({'status': 'ok', 'exists': False})
+
+    products = filter_by_store(Product.objects.filter(is_active=True), request)
+    product = products.filter(code__iexact=term).first()
+    if not product:
+        product = products.filter(barcode__iexact=term).first()
+    if not product:
+        return JsonResponse({'status': 'ok', 'exists': False})
+
+    return JsonResponse({
+        'status': 'ok',
+        'exists': True,
+        'product': {
+            'id': product.id,
+            'code': product.code,
+            'name': product.name,
+        }
+    })
+
+
+@login_required(login_url="/login/")
 def api_save_product(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})

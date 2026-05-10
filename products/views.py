@@ -644,6 +644,7 @@ def api_get_products(request):
         recent_import_prices = []
         purchase_receipt_count = 0
         purchase_total_quantity = 0
+        purchase_price_changed = False
         if receipt_items:
             latest_item = receipt_items[0]
             latest_purchase = {
@@ -662,6 +663,10 @@ def api_get_products(request):
                 if item.goods_receipt_id:
                     seen_receipts.add(item.goods_receipt_id)
             purchase_receipt_count = len(seen_receipts)
+            purchase_price_changed = len({
+                float(item.unit_price or 0)
+                for item in receipt_items
+            }) > 1
             recent_import_prices = [{
                 'date': item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if item.goods_receipt and item.goods_receipt.receipt_date else '',
                 'price': float(item.unit_price),
@@ -700,6 +705,7 @@ def api_get_products(request):
             'recent_import_prices': recent_import_prices,
             'purchase_receipt_count': purchase_receipt_count,
             'purchase_total_quantity': purchase_total_quantity,
+            'purchase_price_changed': purchase_price_changed,
         })
     return JsonResponse({'data': data})
 

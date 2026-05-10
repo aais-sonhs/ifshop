@@ -156,6 +156,7 @@
                                 <input type="text" class="form-control" id="quick_search_product"
                                     placeholder="🔍 Tìm & thêm sản phẩm — gõ tên, mã SP hoặc quét barcode... (↑↓ chọn, Enter thêm)"
                                     autocomplete="off"
+                                    onkeydown="return handleQuickProductInputKeydown(event, this);"
                                     style="font-size:14px; border:2px solid #42a5f5; border-left:none; background:#fff;">
                                 <div class="input-group-append">
                                     <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
@@ -619,7 +620,77 @@ var QUOTATION_WAREHOUSES = [
 ];
 var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
+window._activeProductSelect2 = null;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function openQuickProductCreateDialog(searchTerm){
+    $('#quick_search_results').hide();
+    $('#qp_name').val(searchTerm || '');
+    $('#qp_code').val('');
+    $('#qp_unit').val('Cái');
+    if(typeof setMoneyValue === 'function'){
+        setMoneyValue('#qp_cost_price', 0);
+        setMoneyValue('#qp_selling_price', 0);
+    } else {
+        $('#qp_cost_price, #qp_selling_price').val('0');
+    }
+    $('#qp_is_service').prop('checked', false);
+    $('#modal_quick_product').modal('show');
+    setTimeout(function(){ $('#qp_name').focus(); }, 300);
+}
+function getQuickProductMatches(searchTerm){
+    var keyword = (searchTerm || '').trim().toLowerCase();
+    if(!keyword) return [];
+    var matches = (allProducts || []).filter(function(p){
+        var searchText = [
+            p.name || '',
+            p.code || '',
+            p.barcode || ''
+        ].join(' ').toLowerCase();
+        return searchText.indexOf(keyword) >= 0;
+    });
+    if(typeof matchesQuickSearchStockFilter === 'function'){
+        matches = matches.filter(matchesQuickSearchStockFilter);
+    }
+    if(typeof sortQuickSearchResults === 'function'){
+        matches = sortQuickSearchResults(matches);
+    }
+    return matches;
+}
+function handleQuickProductInputKeydown(event, input){
+    var key = event.key || event.keyCode;
+    if(key !== 'Enter' && key !== 13) return true;
+    var term = (input.value || '').trim();
+    if(!term) return false;
+    event.preventDefault();
+    if(event.stopPropagation) event.stopPropagation();
+    var matches = getQuickProductMatches(term);
+    if(matches.length){
+        if(typeof addItemFromProduct === 'function'){
+            addItemFromProduct(matches[0]);
+            $('#quick_search_product').val('').focus();
+            $('#quick_search_results').hide();
+            if(typeof setQuickSearchStatusHint === 'function'){
+                setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + matches[0].name + '</b>');
+            }
+        }
+    } else {
+        openQuickProductCreateDialog(term);
+    }
+    return false;
+}
+document.addEventListener('keydown', function(event){
+    var target = event.target;
+    if(!target || !target.classList || !target.classList.contains('select2-search__field')) return;
+    if(!window._activeProductSelect2) return;
+    var key = event.key || event.keyCode;
+    if(key !== 'Enter' && key !== 13) return;
+    var term = (target.value || '').trim();
+    if(!term || getQuickProductMatches(term).length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    $(window._activeProductSelect2).select2('close');
+    openQuickProductCreateDialog(term);
+}, true);
 function fmtDt(dateStr, createdAt){
     if(!dateStr) return '';
     var p = dateStr.split('-');
@@ -1457,15 +1528,7 @@ $(document).ready(function(){
 
     function openQuickProductModalFromSearch(searchTerm){
         if(!$('#modal_form').hasClass('show') && !$('#quick_search_product').is(':visible')) return;
-        $('#quick_search_results').hide();
-        $('#qp_name').val(searchTerm || '');
-        $('#qp_code').val('');
-        $('#qp_unit').val('Cái');
-        setMoneyValue('#qp_cost_price', 0);
-        setMoneyValue('#qp_selling_price', 0);
-        $('#qp_is_service').prop('checked', false);
-        $('#modal_quick_product').modal('show');
-        setTimeout(function(){ $('#qp_name').focus(); }, 300);
+        openQuickProductCreateDialog(searchTerm);
     }
 
     // F3 shortcut - tạo nhanh sản phẩm
@@ -1693,6 +1756,14 @@ function addItemRow(item){
 
     var $row = $('#items_tbl tbody tr:last');
     $row.find('.sel_product').select2({width:'100%',theme:'bootstrap4',placeholder:'-- Chọn SP --',allowClear:true,dropdownParent:$('#modal_form')});
+    $row.find('.sel_product')
+        .on('select2:open', function(){ window._activeProductSelect2 = this; })
+        .on('select2:close', function(){
+            var selectEl = this;
+            setTimeout(function(){
+                if(window._activeProductSelect2 === selectEl) window._activeProductSelect2 = null;
+            }, 0);
+        });
 
     // Set value if editing
     if(item && item.product_id){

@@ -723,7 +723,14 @@ def api_check_product_code(request):
         'product': {
             'id': product.id,
             'code': product.code,
+            'barcode': product.barcode or '',
             'name': product.name,
+            'unit': product.unit,
+            'selling_price': float(product.selling_price),
+            'import_price': float(product.import_price),
+            'cost_price': float(product.cost_price),
+            'image_url': product.image.url if product.image else '',
+            'is_service': product.is_service,
         }
     })
 

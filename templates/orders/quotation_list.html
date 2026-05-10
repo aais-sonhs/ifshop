@@ -621,20 +621,18 @@ var QUOTATION_WAREHOUSES = [
 var currentQuickSearchStockFilter = 'all';
 var currentCustomerSearchTerm = '';
 window._activeProductSelect2 = null;
-window._quickProductEnterHandledAt = 0;
+window._quickProductCodeCheckInFlight = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function isQuickProductEnterEvent(event){
     return event && (event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13 || event.which === 13);
 }
-function markQuickProductEnterHandled(){
-    var now = Date.now();
-    if(now - window._quickProductEnterHandledAt < 250) return false;
-    window._quickProductEnterHandledAt = now;
-    return true;
-}
 function openQuickProductCreateDialog(searchTerm){
     var rawTerm = (searchTerm || '').trim();
     $('#quick_search_results').hide();
+    if(window._activeProductSelect2){
+        try { $(window._activeProductSelect2).select2('close'); } catch(err) {}
+        window._activeProductSelect2 = null;
+    }
     $('#qp_name').val('');
     $('#qp_code').val(rawTerm);
     $('#qp_unit').val('Cái');
@@ -667,23 +665,54 @@ function getQuickProductMatches(searchTerm){
     }
     return matches;
 }
-function submitQuickProductTerm(term){
+function resetQuickProductSearchAfterAdd(product){
+    $('#quick_search_product').val('').focus();
+    $('#quick_search_results').hide();
+    if(product && typeof setQuickSearchStatusHint === 'function'){
+        setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + product.name + '</b>');
+    }
+}
+function selectProductInActiveRow(product, selectEl){
+    if(!product || !selectEl) return false;
+    var $select = $(selectEl);
+    if(!$select.length) return false;
+    var $option = $select.find('option').filter(function(){
+        return Number($(this).val()) === Number(product.id);
+    }).first();
+    if(!$option.length) return false;
+    $select.val($option.val()).trigger('change').trigger('change.select2');
+    try { $select.select2('close'); } catch(err) {}
+    window._activeProductSelect2 = null;
+    return true;
+}
+function addCheckedProductToDocument(product, selectEl){
+    if(selectProductInActiveRow(product, selectEl)) return true;
+    if(product && typeof addItemFromProduct === 'function'){
+        addItemFromProduct(product);
+        resetQuickProductSearchAfterAdd(product);
+        return true;
+    }
+    return false;
+}
+function submitQuickProductTerm(term, options){
     term = (term || '').trim();
     if(!term) return false;
-    if(!markQuickProductEnterHandled()) return false;
+    if(window._quickProductCodeCheckInFlight) return false;
+
+    options = options || {};
+    var sourceSelectEl = options.selectEl || null;
+    window._quickProductCodeCheckInFlight = true;
+    $('#quick_search_results').hide();
+    if(typeof setQuickSearchStatusHint === 'function'){
+        setQuickSearchStatusHint('<i class="fas fa-spinner fa-spin text-info mr-1"></i>Đang kiểm tra mã sản phẩm...');
+    }
 
     $.get('/api/products/check-code/', {term: term}, function(res){
         if(res.status === 'ok' && res.exists && res.product){
             var product = (allProducts || []).find(function(p){
                 return Number(p.id) === Number(res.product.id);
             });
-            if(product && typeof addItemFromProduct === 'function'){
-                addItemFromProduct(product);
-                $('#quick_search_product').val('').focus();
-                $('#quick_search_results').hide();
-                if(typeof setQuickSearchStatusHint === 'function'){
-                    setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + product.name + '</b>');
-                }
+            if(addCheckedProductToDocument(product, sourceSelectEl)){
                 return;
             }
             $.get('/api/products-select/', function(productRes){
@@ -692,10 +721,8 @@ function submitQuickProductTerm(term){
                 var reloadedProduct = allProducts.find(function(p){
                     return Number(p.id) === Number(res.product.id);
                 });
-                if(reloadedProduct && typeof addItemFromProduct === 'function'){
-                    addItemFromProduct(reloadedProduct);
-                    $('#quick_search_product').val('').focus();
-                    $('#quick_search_results').hide();
+                if(!addCheckedProductToDocument(reloadedProduct, sourceSelectEl) && typeof setQuickSearchStatusHint === 'function'){
+                    setQuickSearchStatusHint('<i class="fas fa-exclamation-triangle text-warning mr-1"></i>Đã thấy mã nhưng chưa tải được chi tiết sản phẩm');
                 }
             });
         } else {
@@ -706,13 +733,12 @@ function submitQuickProductTerm(term){
             return String(p.code || '').toLowerCase() === term.toLowerCase() ||
                 String(p.barcode || '').toLowerCase() === term.toLowerCase();
         });
-        if(exactLocal && typeof addItemFromProduct === 'function'){
-            addItemFromProduct(exactLocal);
-            $('#quick_search_product').val('').focus();
-            $('#quick_search_results').hide();
+        if(addCheckedProductToDocument(exactLocal, sourceSelectEl)){
             return;
         }
         openQuickProductCreateDialog(term);
+    }).always(function(){
+        window._quickProductCodeCheckInFlight = false;
     });
 
     return false;
@@ -725,44 +751,27 @@ function handleQuickProductInputKeydown(event, input){
     if(!isQuickProductEnterEvent(event)) return true;
     event.preventDefault();
     if(event.stopPropagation) event.stopPropagation();
+    if(event.stopImmediatePropagation) event.stopImmediatePropagation();
     return submitQuickProductTerm(input ? input.value : '');
 }
 function handleAnyProductSearchEnter(event){
     if(!isQuickProductEnterEvent(event)) return;
     var target = event.target;
     var term = '';
-    var isProductSearch = false;
+    var sourceSelectEl = null;
     if(target && target.id === 'quick_search_product'){
         term = target.value || '';
-        isProductSearch = true;
     } else if(target && target.classList && target.classList.contains('select2-search__field') && window._activeProductSelect2){
         term = target.value || '';
-        isProductSearch = true;
+        sourceSelectEl = window._activeProductSelect2;
     }
-    if(!isProductSearch) return;
+    if(!term) return;
     event.preventDefault();
     event.stopPropagation();
     if(event.stopImmediatePropagation) event.stopImmediatePropagation();
-    submitQuickProductTerm(term);
+    submitQuickProductTerm(term, {selectEl: sourceSelectEl});
 }
 document.addEventListener('keydown', handleAnyProductSearchEnter, true);
-document.addEventListener('keypress', handleAnyProductSearchEnter, true);
-function handleProductSelect2Enter(event){
-    var target = event.target;
-    if(!target || !target.classList || !target.classList.contains('select2-search__field')) return;
-    if(!window._activeProductSelect2) return;
-    if(!isQuickProductEnterEvent(event)) return;
-    var term = (target.value || '').trim();
-    if(!term || getQuickProductMatches(term).length) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if(!markQuickProductEnterHandled()) return;
-    $(window._activeProductSelect2).select2('close');
-    openQuickProductCreateDialog(term);
-}
-document.addEventListener('keydown', handleProductSelect2Enter, true);
-document.addEventListener('keypress', handleProductSelect2Enter, true);
-document.addEventListener('keyup', handleProductSelect2Enter, true);
 function fmtDt(dateStr, createdAt){
     if(!dateStr) return '';
     var p = dateStr.split('-');
@@ -1436,15 +1445,6 @@ $(document).ready(function(){
         searchTimeout = setTimeout(function(){
             var results = getQuickProductSearchResults(term);
 
-            // Exact code match → auto-add (barcode scanner)
-            if(results.length === 1 && (
-                String(results[0].code || '').toLowerCase() === term ||
-                String(results[0].barcode || '').toLowerCase() === term
-            )){
-                addQuickSearchProduct(results[0]);
-                return;
-            }
-
             $('#search_count_hint').text(results.length + ' SP');
             results = sortQuickSearchResults(results);
             renderProductSearchResults(results.slice(0, 12), term, false);
@@ -1507,35 +1507,7 @@ $(document).ready(function(){
         setQuickSearchStockFilter($(this).data('filter') || 'all');
     });
 
-    function handleQuickProductEnter($input){
-        var term = $input.val().trim();
-        if(term){
-            clearTimeout(searchTimeout);
-            var instantResults = getQuickProductSearchResults(term);
-            if(!instantResults.length){
-                openQuickProductModalFromSearch(term);
-                return true;
-            }
-            var $active = $('#quick_search_results .quick-search-item.qs-active');
-            var activeProductId = $active.length ? Number($active.data('product-id')) : null;
-            var activeStillMatches = activeProductId && instantResults.some(function(p){ return Number(p.id) === activeProductId; });
-            if(activeStillMatches){
-                $active.click();
-            } else {
-                addQuickSearchProduct(instantResults[0]);
-            }
-            return true;
-        }
-        var $items = $('#quick_search_results .quick-search-item');
-        var $activeEmpty = $items.filter('.qs-active');
-        var $sel = $activeEmpty.length ? $activeEmpty : $items.first();
-        if($sel.length){
-            $sel.click();
-            return true;
-        }
-        return false;
-    }
-
+    // Enter key on search = check exact product code/barcode via backend
     $('#quick_search_product').on('keydown', function(e){
         var $items = $('#quick_search_results .quick-search-item');
         var $active = $items.filter('.qs-active');

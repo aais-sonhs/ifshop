@@ -212,14 +212,14 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(RoleGroup.objects.filter(name='Owner Global Role').exists())
 
-    def test_regular_staff_cannot_read_printer_settings(self):
+    def test_regular_staff_can_read_active_printers_for_print_preview(self):
         PrinterSetting.objects.create(name='LAN Printer', printer_type='lan', ip_address='192.168.1.10')
         self.client.force_login(self.staff_a)
 
         response = self.client.get(reverse('api_get_printers'))
 
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['status'], 'error')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data'][0]['name'], 'LAN Printer')
 
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)

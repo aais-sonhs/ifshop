@@ -16,21 +16,93 @@
         {% include "layout/print_preview.html" %}
     </div>
     <!-- ./wrapper -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@1.5.2/dist/select2-bootstrap4.min.css">
+    <link rel="stylesheet" href="{% static 'plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css' %}?{% now 'U' %}">
     <script>
-    // Auto init Select2 cho tất cả select có class 'select2'
-    $(document).ready(function(){
-        $.fn.select2.defaults.set("theme", "bootstrap4");
-        $.fn.select2.defaults.set("language", {noResults: function(){return "Không tìm thấy";}});
-        $.fn.select2.defaults.set("allowClear", true);
-        $.fn.select2.defaults.set("placeholder", "-- Chọn --");
-        // Init cho select ngoài modal
-        $('.select2').each(function(){
-            var $modal = $(this).closest('.modal');
-            var opts = {width:'100%'};
-            if($modal.length) opts.dropdownParent = $modal;
-            $(this).select2(opts);
+    function getSelect2Placeholder($select){
+        var explicit = $select.data('placeholder') || $select.attr('placeholder');
+        if(explicit) return explicit;
+        var firstText = $.trim($select.find('option:first').text());
+        return firstText || '-- Chọn --';
+    }
+
+    function shouldUseSearchableSelect($select, force){
+        if(!$select.length || !$select.is('select')) return false;
+        if($select.data('select2') || $select.hasClass('select2-hidden-accessible')) return false;
+        if($select.hasClass('no-select2') || $select.data('searchable') === false) return false;
+        if($select.hasClass('d-none') || $select.closest('.d-none').length) return false;
+        if($select.closest('.dataTables_length, .dt-length').length) return false;
+        if(force || $select.hasClass('select2') || $select.data('searchable') === true || $select.prop('multiple')) return true;
+        if(!$select.hasClass('form-control') && !$select.hasClass('custom-select')) return false;
+        return $select.find('option').length > 6;
+    }
+
+    function buildSearchableSelectOptions($select, parentModal){
+        var $modal = parentModal ? $(parentModal) : $select.closest('.modal');
+        var hasBlankOption = $select.prop('multiple') || $select.find('option:first').val() === '';
+        var styleWidth = ($select.attr('style') || '').match(/width\s*:/i);
+        var opts = {
+            width: $select.data('width') || (styleWidth ? 'style' : '100%'),
+            theme: 'bootstrap4',
+            placeholder: getSelect2Placeholder($select),
+            allowClear: $select.data('allow-clear') !== undefined ? !!$select.data('allow-clear') : hasBlankOption,
+            minimumResultsForSearch: 0,
+            language: {
+                noResults: function(){ return 'Không tìm thấy'; },
+                searching: function(){ return 'Đang tìm...'; },
+                inputTooShort: function(args){ return 'Nhập thêm ' + (args.minimum - args.input.length) + ' ký tự'; }
+            }
+        };
+        if($modal.length) opts.dropdownParent = $modal;
+        return opts;
+    }
+
+    function initSearchableSelects(context, force, parentModal){
+        if(!$.fn.select2) return;
+        var $context = context ? $(context) : $(document);
+        var $selects = $context.is('select') ? $context : $context.find('select');
+        $selects.each(function(){
+            var $select = $(this);
+            if(!shouldUseSearchableSelect($select, force)) return;
+            $select.select2(buildSearchableSelectOptions($select, parentModal));
         });
+    }
+
+    window.initSearchableSelects = initSearchableSelects;
+    window.initSelect2 = function(selector, parentModal){
+        initSearchableSelects(selector, true, parentModal);
+    };
+
+    // Auto init Select2 cho select dài để có thể gõ tìm kiếm trong dropdown.
+    $(document).ready(function(){
+        if($.fn.select2){
+            $.fn.select2.defaults.set('theme', 'bootstrap4');
+            $.fn.select2.defaults.set('language', {noResults: function(){return 'Không tìm thấy';}});
+            initSearchableSelects(document);
+
+            var selectInitTimer = null;
+            var selectObserver = new MutationObserver(function(mutations){
+                var touchedSelects = [];
+                var shouldScan = false;
+                mutations.forEach(function(mutation){
+                    if(mutation.target && mutation.target.tagName === 'SELECT'){
+                        touchedSelects.push(mutation.target);
+                    }
+                    if((mutation.type === 'childList' && mutation.addedNodes.length) ||
+                        (mutation.target && mutation.target.tagName === 'SELECT')){
+                        shouldScan = true;
+                    }
+                });
+                if(!shouldScan) return;
+                clearTimeout(selectInitTimer);
+                selectInitTimer = setTimeout(function(){
+                    if(touchedSelects.length){
+                        $(touchedSelects).filter('.select2-hidden-accessible').trigger('change.select2');
+                    }
+                    initSearchableSelects(document);
+                }, 80);
+            });
+            selectObserver.observe(document.body, {childList: true, subtree: true});
+        }
 
         // Căn giữa cột "Thao tác" trong tất cả các bảng
         function centerThaoTacColumns(){
@@ -52,12 +124,6 @@
             observer.observe(this, {childList: true, subtree: true});
         });
     });
-    // Helper: init select2 cho element mới thêm vào DOM (dùng trong JS)
-    function initSelect2(selector, parentModal){
-        var opts = {width:'100%', theme:'bootstrap4', allowClear:true, placeholder:'-- Chọn --'};
-        if(parentModal) opts.dropdownParent = $(parentModal);
-        $(selector).select2(opts);
-    }
     // ===== MONEY FORMAT UTILITY =====
     // Auto-format số có dấu phân cách hàng nghìn khi gõ
     function formatMoneyInput(el){
@@ -114,4 +180,3 @@
     </script>
 </body>
 </html>
-

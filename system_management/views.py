@@ -654,8 +654,6 @@ def printer_setting_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_printers(request):
-    if not can_manage_users(request.user):
-        return _forbid_json('Bạn không có quyền cấu hình máy in')
     printers = PrinterSetting.objects.filter(is_active=True)
     data = [{
         'id': p.id, 'name': p.name,

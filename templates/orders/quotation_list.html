@@ -1253,6 +1253,28 @@ $(document).ready(function(){
         }
     });
 
+    function getQuickProductSearchResults(term){
+        var keyword = (term || '').trim().toLowerCase();
+        if(!keyword) return [];
+        return sortQuickSearchResults(allProducts.filter(function(p){
+            var searchText = [
+                p.name || '',
+                p.code || '',
+                p.barcode || ''
+            ].join(' ').toLowerCase();
+            return searchText.indexOf(keyword) >= 0;
+        }).filter(matchesQuickSearchStockFilter));
+    }
+
+    function addQuickSearchProduct(product){
+        if(!product) return;
+        addItemFromProduct(product);
+        $('#quick_search_product').val('').focus();
+        $('#quick_search_results').hide();
+        setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + product.name + '</b>');
+        setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+    }
+
     $('#quick_search_product').on('input', function(){
         var term = $(this).val().trim().toLowerCase();
         clearTimeout(searchTimeout);
@@ -1269,26 +1291,14 @@ $(document).ready(function(){
             return;
         }
         searchTimeout = setTimeout(function(){
-            var results = allProducts.filter(function(p){
-                var searchText = [
-                    p.name || '',
-                    p.code || '',
-                    p.barcode || ''
-                ].join(' ').toLowerCase();
-                return searchText.indexOf(term) >= 0;
-            });
-            results = results.filter(matchesQuickSearchStockFilter);
+            var results = getQuickProductSearchResults(term);
 
             // Exact code match → auto-add (barcode scanner)
             if(results.length === 1 && (
                 String(results[0].code || '').toLowerCase() === term ||
                 String(results[0].barcode || '').toLowerCase() === term
             )){
-                addItemFromProduct(results[0]);
-                $('#quick_search_product').val('');
-                $('#quick_search_results').hide();
-                setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + results[0].name + '</b>');
-                setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+                addQuickSearchProduct(results[0]);
                 return;
             }
 
@@ -1338,11 +1348,7 @@ $(document).ready(function(){
     $(document).on('click', '.quick-search-item', function(){
         var pid = $(this).data('product-id');
         var product = allProducts.find(function(p){ return p.id == pid; });
-        if(product) addItemFromProduct(product);
-        $('#quick_search_product').val('').focus();
-        $('#quick_search_results').hide();
-        setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + (product ? product.name : '') + '</b>');
-        setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
+        addQuickSearchProduct(product);
     });
     $(document).on('click', '.quick-search-alert-badge', function(e){
         e.preventDefault();
@@ -1384,9 +1390,25 @@ $(document).ready(function(){
         }
         if(e.key === 'Enter'){
             e.preventDefault();
+            var term = $(this).val().trim();
+            if(term){
+                clearTimeout(searchTimeout);
+                var instantResults = getQuickProductSearchResults(term);
+                if(!instantResults.length){
+                    openQuickProductModalFromSearch(term);
+                    return;
+                }
+                var activeProductId = $active.length ? Number($active.data('product-id')) : null;
+                var activeStillMatches = activeProductId && instantResults.some(function(p){ return Number(p.id) === activeProductId; });
+                if(activeStillMatches){
+                    $active.click();
+                } else {
+                    addQuickSearchProduct(instantResults[0]);
+                }
+                return;
+            }
             var $sel = $active.length ? $active : $items.first();
             if($sel.length) $sel.click();
-            else if($(this).val().trim()) openQuickProductModalFromSearch($(this).val().trim());
         }
         if(e.key === 'Escape'){
             $('#quick_search_results').hide();

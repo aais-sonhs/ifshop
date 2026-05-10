@@ -53,6 +53,29 @@ class ProductInventoryFlowTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
+    def test_save_product_auto_generates_code_when_blank(self):
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'name': 'San pham tao nhanh',
+                'unit': 'Cai',
+                'cost_price': '1000',
+                'import_price': '1000',
+                'selling_price': '1500',
+                'variants': '[]',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        product = Product.objects.get(name='San pham tao nhanh')
+        self.assertRegex(product.code, r'^SP\d{3}$')
+        self.assertEqual(payload['product']['id'], product.id)
+        self.assertEqual(payload['product']['code'], product.code)
+        self.assertEqual(product.store_id, self.store.id)
+
     def test_delete_goods_receipt_reverts_stock(self):
         receipt = GoodsReceipt.objects.create(
             code='P00001',

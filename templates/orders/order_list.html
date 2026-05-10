@@ -509,8 +509,8 @@
                 <div class="row">
                     <div class="col-md-4">
                         <div class="form-group">
-                            <label>Mã SP <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control form-control-sm" id="qp_code" placeholder="VD: SP001">
+                            <label>Mã SP</label>
+                            <input type="text" class="form-control form-control-sm" id="qp_code" placeholder="Tự sinh nếu bỏ trống">
                         </div>
                     </div>
                     <div class="col-md-8">
@@ -2434,12 +2434,20 @@ $(document).ready(function(){
         }
         searchTimeout = setTimeout(function(){
             var results = allProducts.filter(function(p){
-                return p.name.toLowerCase().indexOf(term)>=0 || p.code.toLowerCase().indexOf(term)>=0;
+                var searchText = [
+                    p.name || '',
+                    p.code || '',
+                    p.barcode || ''
+                ].join(' ').toLowerCase();
+                return searchText.indexOf(term) >= 0;
             });
             results = results.filter(matchesQuickSearchStockFilter);
 
             // Exact code match → auto-add (barcode scanner behavior)
-            if(results.length === 1 && results[0].code.toLowerCase() === term){
+            if(results.length === 1 && (
+                String(results[0].code || '').toLowerCase() === term ||
+                String(results[0].barcode || '').toLowerCase() === term
+            )){
                 addItemFromProduct(results[0]);
                 $('#quick_search_product').val('');
                 $('#quick_search_results').hide();
@@ -2581,9 +2589,7 @@ $(document).ready(function(){
             if(!$('#modal_form').hasClass('show')) return;
             var searchTerm = $('#quick_search_product').val().trim();
             $('#qp_name').val(searchTerm);
-            // Auto-gen code
-            var nextCode = 'SP' + String(allProducts.length + 1).padStart(4, '0');
-            $('#qp_code').val(nextCode);
+            $('#qp_code').val('');
             $('#qp_unit').val('Cái');
             setMoneyValue('#qp_cost_price', 0);
             setMoneyValue('#qp_selling_price', 0);
@@ -2597,7 +2603,7 @@ $(document).ready(function(){
     $('#btn_save_quick_product').click(function(){
         var code = $('#qp_code').val().trim();
         var name = $('#qp_name').val().trim();
-        if(!code || !name){ alert('Vui lòng nhập mã và tên sản phẩm'); return; }
+        if(!name){ alert('Vui lòng nhập tên sản phẩm'); return; }
         var formData = new FormData();
         formData.append('code', code);
         formData.append('name', name);
@@ -2617,10 +2623,13 @@ $(document).ready(function(){
                     $.get('/api/products-select/', function(res){
                         allProducts = res.data;
                         updateQuickSearchFilterLabels();
-                        var newProduct = allProducts.find(function(p){ return p.code === code; });
+                        var newProductId = r.product ? r.product.id : null;
+                        var newProductCode = r.product ? r.product.code : code;
+                        var newProduct = allProducts.find(function(p){ return (newProductId && p.id === newProductId) || (newProductCode && p.code === newProductCode); });
                         if(newProduct) addItemFromProduct(newProduct);
                     });
                     $('#modal_quick_product').modal('hide');
+                    setTimeout(function(){ $('#quick_search_product').focus(); }, 200);
                     toastr ? toastr.success('Tạo SP "'+name+'" thành công!') : alert('Tạo SP thành công!');
                 } else { alert(r.message); }
             }

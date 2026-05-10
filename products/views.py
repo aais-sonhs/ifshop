@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -49,6 +50,22 @@ def _generate_next_goods_receipt_code():
         next_number += 1
         candidate = f'P{next_number:05d}'
     return candidate
+
+
+def _generate_next_product_code():
+    prefix = 'SP'
+    max_number = 0
+    for code in Product.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.match(r'^SP-?(\d+)$', code or '', re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
+
+    next_number = max_number + 1
+    while True:
+        candidate = f'{prefix}{next_number:03d}'
+        if not Product.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_number += 1
 
 
 def _get_default_store_for_request(request):
@@ -703,10 +720,10 @@ def api_save_product(request):
                 was_combo = False
                 existing_combo_signature = set()
 
-            product.code = (request.POST.get('code', '') or '').strip()
+            product.code = (request.POST.get('code', '') or '').strip() or (product.code or _generate_next_product_code())
             product.name = (request.POST.get('name', '') or '').strip()
-            if not product.code or not product.name:
-                return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập mã và tên SP'})
+            if not product.name:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên SP'})
 
             product.barcode = request.POST.get('barcode', '')
             product.unit = request.POST.get('unit', 'Cái')
@@ -792,7 +809,15 @@ def api_save_product(request):
             else:
                 product.combo_items.all().delete()
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Lưu thành công',
+            'product': {
+                'id': product.id,
+                'code': product.code,
+                'name': product.name,
+            }
+        })
     except Product.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
     except ValueError as e:

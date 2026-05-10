@@ -1061,6 +1061,7 @@ def api_get_products_for_select(request):
         data.append({
             'id': p.id,
             'code': p.code,
+            'barcode': p.barcode or '',
             'name': p.name,
             'unit': p.unit,
             'image': p.image.url if p.image else '',

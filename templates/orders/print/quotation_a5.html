@@ -1,0 +1,34 @@
+{% extends "orders/print/quotation_a4.html" %}
+{% block title %}Báo giá A5 — {{ order.code }}{% endblock %}
+{% block toolbar_title %}Báo giá A5 — {{ order.code }}{% endblock %}
+{% block page_margin %}8mm{% endblock %}
+{% block extra_style %}
+{{ block.super }}
+@page { size: A5 portrait; margin: 8mm; }
+.invoice { max-width: 148mm; padding: 12px; font-size: 11px; }
+.inv-header { margin-bottom: 10px; gap: 12px; }
+.inv-header .logo { width: 54px; height: 54px; }
+.inv-header .company h2 { font-size: 14px; margin-bottom: 2px; }
+.inv-header .company p { font-size: 10px; line-height: 1.25; }
+.inv-title { margin: 10px 0; }
+.inv-title h1 { font-size: 18px; letter-spacing: 1px; }
+.inv-title .code { font-size: 11px; }
+.inv-meta { gap: 18px; margin-bottom: 10px; }
+.inv-meta .label { font-size: 9px; }
+.inv-meta .value { font-size: 11px; }
+.inv-table { margin: 8px 0; }
+.inv-table th { padding: 5px 6px; font-size: 10px; }
+.inv-table td { padding: 5px 6px; font-size: 10px; }
+.inv-totals { width: 220px; margin-top: 8px; }
+.inv-totals .row { font-size: 11px; padding: 3px 0; }
+.inv-totals .grand { font-size: 13px; padding-top: 5px; }
+.inv-note { padding: 7px 9px; margin-top: 8px; font-size: 10px; }
+.inv-footer { margin-top: 24px; }
+.inv-footer .sig-block { width: 150px; }
+.inv-footer .sig-label { font-size: 10px; margin-bottom: 42px; }
+.inv-footer .sig-name { font-size: 10px; }
+@media print {
+    .invoice { max-width: none; width: 100%; padding: 0; }
+    .inv-footer, .inv-totals { page-break-inside: avoid; }
+}
+{% endblock %}

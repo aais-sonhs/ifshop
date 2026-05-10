@@ -2579,6 +2579,7 @@ def export_orders_excel(request):
 def api_print_order(request):
     """
     GET /api/orders/print/?id=<order_id>&type=k80|a4|quotation|warranty|export
+    Quy ước mẫu in: a4 = hóa đơn A4, quotation = báo giá A5.
     Renders a print-ready HTML page for the given order.
     Also supports source=quotation to print from Quotation model.
     """
@@ -2589,7 +2590,7 @@ def api_print_order(request):
     TEMPLATES = {
         'k80': 'orders/print/receipt_k80.html',
         'a4': 'orders/print/invoice_a4.html',
-        'quotation': 'orders/print/quotation_a4.html',
+        'quotation': 'orders/print/quotation_a5.html',
         'warranty': 'orders/print/warranty_a4.html',
         'export': 'orders/print/export_a4.html',
     }

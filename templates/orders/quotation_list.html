@@ -370,14 +370,14 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden;">
             <div class="modal-header py-3" style="background:linear-gradient(135deg,#1565c0,#0d47a1);border:none;">
-                <h5 class="modal-title text-white"><i class="fas fa-print mr-2"></i>Lưu thành công — Chọn phiếu in</h5>
+                <h5 class="modal-title text-white"><i class="fas fa-print mr-2"></i>Cấu hình in chứng từ</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body p-4">
                 <div class="text-center mb-3">
                     <div class="d-inline-flex align-items-center px-3 py-2" style="background:#e8f5e9;border-radius:8px;">
                         <i class="fas fa-check-circle text-success mr-2" style="font-size:20px;"></i>
-                        <span style="font-size:14px;">Đơn <strong id="print_order_code"></strong> đã lưu. Chọn loại phiếu để in:</span>
+                        <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong>. Chọn loại phiếu để in:</span>
                     </div>
                 </div>
                 <div class="row" id="print_options_grid">
@@ -392,14 +392,14 @@
                         <div class="print-option-card" data-print-type="a4">
                             <div class="print-icon" style="background:linear-gradient(135deg,#1565c0,#0d47a1);"><i class="fas fa-file-invoice"></i></div>
                             <div class="print-label">Hóa đơn A4</div>
-                            <div class="print-desc">Đơn hàng chính thức</div>
+                            <div class="print-desc">Hóa đơn / đơn hàng</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-4 mb-3">
                         <div class="print-option-card" data-print-type="quotation">
                             <div class="print-icon" style="background:linear-gradient(135deg,#e65100,#bf360c);"><i class="fas fa-file-alt"></i></div>
-                            <div class="print-label">Báo giá</div>
-                            <div class="print-desc">Phiếu báo giá A4</div>
+                            <div class="print-label">Báo giá A5</div>
+                            <div class="print-desc">Phiếu báo giá</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-4 mb-3">
@@ -622,6 +622,13 @@ var currentCustomerSearchTerm = '';
 window._activeProductSelect2 = null;
 window._quickProductCodeCheckInFlight = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function openPrintConfig(source, id, code){
+    if(!id) return;
+    window._lastSavedOrderId = id;
+    window._lastSavedOrderSource = source === 'order' ? 'order' : 'quotation';
+    $('#print_order_code').text(code || '');
+    $('#modal_print_config').modal('show');
+}
 function isQuickProductEnterEvent(event){
     return event && (event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13 || event.which === 13);
 }
@@ -1711,11 +1718,8 @@ $(document).ready(function(){
                     if(r.message && r.message.indexOf('Cảnh báo') >= 0){
                         toastr ? toastr.warning(r.message) : alert(r.message);
                     }
-                    // Show print modal
-                    window._lastSavedOrderId = r.order_id;
-                    window._lastSavedOrderSource = 'quotation';
-                    $('#print_order_code').text(r.order_code || code);
-                    $('#modal_print_config').modal('show');
+                    // Show print configuration modal
+                    openPrintConfig('quotation', r.order_id, r.order_code || code);
                 } else {
                     alert(r.message);
                 }
@@ -2192,8 +2196,7 @@ function buildQuotationHTML(res){
 function printQuotation(id){
     $.get('/api/quotations/detail/?id=' + id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
-        var html = buildQuotationHTML(res);
-        printPreviewHTML(html, 'BaoGia_' + res.quotation.code);
+        openPrintConfig('quotation', id, res.quotation.code);
     });
 }
 

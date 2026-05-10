@@ -595,14 +595,14 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden;">
             <div class="modal-header py-3" style="background:linear-gradient(135deg,#1565c0,#0d47a1);border:none;">
-                <h5 class="modal-title text-white"><i class="fas fa-print mr-2"></i>Lưu thành công — Chọn phiếu in</h5>
+                <h5 class="modal-title text-white"><i class="fas fa-print mr-2"></i>Cấu hình in chứng từ</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body p-4">
                 <div class="text-center mb-3">
                     <div class="d-inline-flex align-items-center px-3 py-2" style="background:#e8f5e9;border-radius:8px;">
                         <i class="fas fa-check-circle text-success mr-2" style="font-size:20px;"></i>
-                        <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong> đã lưu. Chọn loại phiếu để in:</span>
+                        <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong>. Chọn loại phiếu để in:</span>
                     </div>
                 </div>
                 <div class="row" id="print_options_grid">
@@ -612,7 +612,7 @@
                             <div class="print-icon" style="background:linear-gradient(135deg,#ff6f00,#e65100);">
                                 <i class="fas fa-receipt"></i>
                             </div>
-                            <div class="print-label">Đơn hàng K80</div>
+                            <div class="print-label">Hóa đơn K80</div>
                             <div class="print-desc">Giấy nhiệt 80mm</div>
                         </div>
                     </div>
@@ -622,18 +622,18 @@
                             <div class="print-icon" style="background:linear-gradient(135deg,#1565c0,#0d47a1);">
                                 <i class="fas fa-file-invoice"></i>
                             </div>
-                            <div class="print-label">Đơn hàng A4</div>
-                            <div class="print-desc">Đơn hàng chính thức</div>
+                            <div class="print-label">Hóa đơn A4</div>
+                            <div class="print-desc">Hóa đơn / đơn hàng</div>
                         </div>
                     </div>
-                    <!-- Quotation -->
+                    <!-- Quotation A5 -->
                     <div class="col-6 col-md-4 mb-3">
-                        <div class="print-option-card" data-print-type="quotation" title="In báo giá cho khách">
+                        <div class="print-option-card" data-print-type="quotation" title="In báo giá A5 cho khách">
                             <div class="print-icon" style="background:linear-gradient(135deg,#e65100,#bf360c);">
                                 <i class="fas fa-file-alt"></i>
                             </div>
-                            <div class="print-label">Báo giá</div>
-                            <div class="print-desc">Phiếu báo giá A4</div>
+                            <div class="print-label">Báo giá A5</div>
+                            <div class="print-desc">Phiếu báo giá</div>
                         </div>
                     </div>
                     <!-- Warranty -->
@@ -1641,6 +1641,15 @@ function updateQuickSearchFilterLabels(){
 
 function getDocumentType(){
     return $('input[name="document_type"]:checked').val() || 'order';
+}
+
+function openPrintConfig(source, id, code){
+    if(!id) return;
+    var normalizedSource = source === 'quotation' ? 'quotation' : 'order';
+    window._lastSavedOrderId = id;
+    window._lastSavedOrderSource = normalizedSource;
+    $('#print_order_code').text(code || '');
+    $('#modal_print_config').modal('show');
 }
 
 function setOrderSaveLoading($btn, isLoading, isQuotation){
@@ -2883,10 +2892,7 @@ $(document).ready(function(){
                         } else if(typeof toastr !== 'undefined') {
                             toastr.success('Đã lưu báo giá. Có thể xem lại tại danh sách báo giá.');
                         }
-                        window._lastSavedOrderId = r.order_id;
-                        window._lastSavedOrderSource = 'quotation';
-                        $('#print_order_code').text(r.order_code || code);
-                        $('#modal_print_config').modal('show');
+                        openPrintConfig('quotation', r.order_id, r.order_code || code);
                     } else {
                         alert(r.message);
                     }
@@ -2937,11 +2943,8 @@ $(document).ready(function(){
                     if(r.message && r.message.indexOf('Cảnh báo') >= 0){
                         toastr ? toastr.warning(r.message) : alert(r.message);
                     }
-                    // Show print modal
-                    window._lastSavedOrderId = r.order_id;
-                    window._lastSavedOrderSource = 'order';
-                    $('#print_order_code').text(r.order_code || code);
-                    $('#modal_print_config').modal('show');
+                    // Show print configuration modal
+                    openPrintConfig('order', r.order_id, r.order_code || code);
                 } else {
                     alert(r.message);
                 }
@@ -3640,39 +3643,7 @@ function deleteItem(id){
 function printOrder(id){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
-        var o=res.order;
-        var itemsHtml = '';
-        var total = 0;
-        res.items.forEach(function(it, i){
-            var lineTotal = it.quantity * it.unit_price * (1 - it.discount_percent/100);
-            total += lineTotal;
-            itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td><td>'+it.product_code+' - '+it.product_name+'</td>'+
-                '<td class="text-center">'+(it.unit||'')+'</td><td class="text-center">'+it.quantity+'</td>'+
-                '<td class="text-right">'+fmtMoney(it.unit_price)+'</td>'+
-                '<td class="text-center">'+(it.discount_percent||0)+'%</td>'+
-                '<td class="text-right">'+fmtMoney(lineTotal)+'</td></tr>';
-        });
-        var discount = o.discount_amount || 0;
-        var shippingFee = o.shipping_fee || 0;
-        var finalAmt = Math.max(total - discount + shippingFee, 0);
-        var html = getPrintHeader() +
-            '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
-            '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +
-            '<div class="print-info"><table>' +
-            '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + (res.order.customer_label || '') + '</td></tr>' +
-            '<tr><td class="label">Ng\u00E0y \u0111\u1EB7t:</td><td>' + (o.order_date||'') + '</td><td class="label">Kho xu\u1EA5t:</td><td>' + (o.warehouse_id ? $('#inp_warehouse_id option[value="'+o.warehouse_id+'"]').text() : '') + '</td></tr>' +
-            '</table></div>' +
-            '<table class="print-table"><thead><tr><th>STT</th><th>S\u1EA3n ph\u1EA9m</th><th>\u0110VT</th><th>SL</th><th>\u0110\u01A1n gi\u00E1</th><th>CK</th><th>Th\u00E0nh ti\u1EC1n</th></tr></thead>' +
-            '<tbody>' + itemsHtml + '</tbody>' +
-            '<tfoot><tr><td colspan="6" class="text-right">T\u1ED5ng c\u1ED9ng:</td><td class="text-right">' + fmtMoney(total) + '</td></tr>' +
-            (discount > 0 ? '<tr><td colspan="6" class="text-right">Chi\u1EBFt kh\u1EA5u:</td><td class="text-right">-' + fmtMoney(discount) + '</td></tr>' : '') +
-            (shippingFee > 0 ? '<tr><td colspan="6" class="text-right">Ph\u00ED v\u1EADn chuy\u1EC3n:</td><td class="text-right">' + fmtMoney(shippingFee) + '</td></tr>' : '') +
-            '<tr><td colspan="6" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
-            '</tfoot></table>' +
-            '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +
-            getPrintSignatures('Ng\u01B0\u1EDDi mua h\u00E0ng', 'Ng\u01B0\u1EDDi b\u00E1n h\u00E0ng') +
-            getPrintFooter();
-        printPreviewHTML(html, 'DonHang_' + o.code);
+        openPrintConfig('order', id, res.order.code);
     });
 }
 

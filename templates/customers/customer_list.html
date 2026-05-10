@@ -111,7 +111,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-4"><div class="form-group"><label>Mã KH <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_code"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Mã KH</label><input type="text" class="form-control" id="inp_code" placeholder="Tự sinh nếu bỏ trống"></div></div>
                     <div class="col-md-4"><div class="form-group"><label>Nhóm KH</label><select class="form-control" id="inp_group_id"><option value="">-- Chọn --</option>{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div></div>
                 </div>
                 <div class="row">
@@ -263,6 +263,7 @@
 .customer-order-card{border:1px solid #d9ecff;border-radius:6px;background:#fff;padding:10px 12px;}
 .customer-order-items{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
 .customer-order-items .badge{font-weight:normal;}
+.customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 </style>
 {% endblock %}
 
@@ -390,14 +391,18 @@ function renderCustomerFilterSummary(filteredCount, totalCount){
 
 function filterCustomers(list){
     var filters = getCurrentCustomerFilters();
-    var keyword = filters.search.toLowerCase();
+    var rawKeyword = filters.search;
+    var keyword = normalizeCustomerText(rawKeyword);
+    var keywordDigits = onlyDigits(rawKeyword);
 
     return list.filter(function(d){
         if(keyword){
             var searchable = [
                 d.name, d.phone, d.code, d.email, d.company, d.address, d.note, d.group
-            ].join(' ').toLowerCase();
-            if(searchable.indexOf(keyword) < 0) return false;
+            ].join(' ');
+            var textMatched = normalizeCustomerText(searchable).indexOf(keyword) >= 0;
+            var phoneMatched = keywordDigits.length >= 3 && onlyDigits(d.phone || '').indexOf(keywordDigits) >= 0;
+            if(!textMatched && !phoneMatched) return false;
         }
         if(filters.group && String(d.group_id || '') !== filters.group) return false;
         if(filters.type && String(d.customer_type || '') !== filters.type) return false;
@@ -410,6 +415,84 @@ function filterCustomers(list){
         if(filters.debt === 'no_debt' && Number(d.total_debt || 0) > 0) return false;
         return true;
     });
+}
+
+function normalizeCustomerText(value){
+    var text = String(value || '').toLowerCase();
+    if(text.normalize) text = text.normalize('NFD');
+    return text.replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+}
+
+function onlyDigits(value){
+    return String(value || '').replace(/\D/g, '');
+}
+
+function isPhoneLike(value){
+    return onlyDigits(value).length >= 7;
+}
+
+function resetCustomerForm(){
+    $('#edit_id').val('');
+    $('input[id^=inp_],textarea[id^=inp_]').val('');
+    $('#inp_group_id').val('');
+    $('#inp_customer_type').val('1');
+    toggleCustomerType();
+    $('#avatar_preview').attr('src', defaultAvatar);
+    $('#inp_avatar_file').val('');
+}
+
+function openCustomerCreateFromSearch(term){
+    var raw = (term || '').trim();
+    resetCustomerForm();
+    if(isPhoneLike(raw)){
+        $('#inp_phone').val(onlyDigits(raw));
+    } else {
+        $('#inp_name').val(raw);
+    }
+    $('#modal_title').text('Thêm khách hàng');
+    $('#modal_form').modal('show');
+    setTimeout(function(){
+        if(isPhoneLike(raw)) $('#inp_name').focus();
+        else $('#inp_phone').focus();
+    }, 250);
+}
+
+function findBestCustomerMatch(list, term){
+    var normalized = normalizeCustomerText(term);
+    var digits = onlyDigits(term);
+    if(digits.length >= 3){
+        var phoneMatch = list.find(function(c){ return onlyDigits(c.phone || '') === digits; });
+        if(phoneMatch) return phoneMatch;
+    }
+    var exactTextMatch = list.find(function(c){
+        return normalizeCustomerText(c.code) === normalized || normalizeCustomerText(c.name) === normalized;
+    });
+    return exactTextMatch || list[0];
+}
+
+function focusCustomerRow(customerId){
+    var $row = $('#customer_row_' + customerId);
+    if(!$row.length) return;
+    $('#data_tbl tbody tr').removeClass('customer-row-highlight');
+    $row.addClass('customer-row-highlight');
+    $row[0].scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(function(){ $row.removeClass('customer-row-highlight'); }, 2000);
+}
+
+function submitCustomerSearch(){
+    renderTable();
+    var term = ($('#filter_search').val() || '').trim();
+    var filtered = filterCustomers(allCustomers);
+    if(filtered.length === 0){
+        if(term) openCustomerCreateFromSearch(term);
+        return;
+    }
+
+    var target = findBestCustomerMatch(filtered, term);
+    if(target) focusCustomerRow(target.id);
+    if(filtered.length > 1 && typeof toastr !== 'undefined'){
+        toastr.info('Tìm thấy ' + filtered.length + ' khách hàng');
+    }
 }
 
 function getCustomerSavedFilters(){
@@ -471,8 +554,13 @@ $(document).ready(function(){
     loadData();
     renderCustomerSavedFilters();
     $('#filter_search').on('input', function(){ renderTable(); });
+    $('#filter_search').on('keydown', function(e){
+        if(e.key !== 'Enter') return;
+        e.preventDefault();
+        submitCustomerSearch();
+    });
     $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status').on('change', function(){ renderTable(); });
-    $('#btn_search_customer').click(function(){ renderTable(); });
+    $('#btn_search_customer').click(function(){ submitCustomerSearch(); });
     $('#btn_clear_customer_filters').click(function(){
         $('#filter_search').val('');
         $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status').val('');
@@ -527,11 +615,12 @@ $(document).ready(function(){
         else alert('Đã xóa bộ lọc');
     });
     $('#btn_add').click(function(){
-        $('#edit_id').val('');$('input[id^=inp_],textarea[id^=inp_]').val('');$('#inp_group_id').val('');
-        $('#inp_customer_type').val('1'); toggleCustomerType();
-        $('#avatar_preview').attr('src', defaultAvatar);
-        $('#inp_avatar_file').val('');
+        resetCustomerForm();
         $('#modal_title').text('Thêm khách hàng');$('#modal_form').modal('show');
+        setTimeout(function(){ $('#inp_name').focus(); }, 250);
+    });
+    $(document).on('click', '#btn_create_customer_from_search', function(){
+        openCustomerCreateFromSearch($('#filter_search').val());
     });
     $('#btn_save').click(function(){
         var $saveBtn = $(this);
@@ -548,7 +637,7 @@ $(document).ready(function(){
             owner_tax_code:$('#inp_owner_tax_code').val(),
             address:$('#inp_address').val(),note:$('#inp_note').val(),
             group_id:$('#inp_group_id').val()};
-        if(!data.code||!data.name){alert('Vui lòng nhập mã và tên KH');return;}
+        if(!data.name){alert('Vui lòng nhập tên KH');return;}
         if(ctype === 2 && (!data.company || !data.tax_code)){alert('Khách hàng Công ty cần nhập tên CTY và MST');return;}
         if(ctype === 3 && !data.company){alert('Hộ kinh doanh cần nhập tên hộ KD');return;}
         $saveBtn.data('submitting', true).prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
@@ -799,7 +888,13 @@ function renderTable(){
             customerColConfig.td('actions', actionsHtml, 'class="text-center text-nowrap"')+
             '</tr>';
     });
-    if(!h) h = '<tr><td colspan="14" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp</td></tr>';
+    if(!h){
+        var searchTerm = getCurrentCustomerFilters().search;
+        var createHtml = searchTerm
+            ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="btn_create_customer_from_search"><i class="fas fa-plus"></i> Thêm khách từ thông tin đang tìm</button></div>'
+            : '';
+        h = '<tr><td colspan="14" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp' + createHtml + '</td></tr>';
+    }
     $('#data_tbl tbody').html(h);
     customerColConfig.apply();
     renderCustomerFilterSummary(filtered.length, allCustomers.length);

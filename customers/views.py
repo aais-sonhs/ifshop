@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from django.db import transaction
 from django.db.models import F, Sum
 from django.shortcuts import render
@@ -34,6 +35,24 @@ def _get_default_store_for_request(request):
     if not store_ids:
         return None
     return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _generate_next_customer_code():
+    prefix = 'KH'
+    last_customer = Customer.all_objects.filter(code__startswith=prefix).exclude(
+        code__startswith='KHLE-'
+    ).order_by('-id').first()
+    next_num = 1
+    if last_customer:
+        match = re.search(r'KH(\d+)', last_customer.code or '')
+        if match:
+            next_num = int(match.group(1)) + 1
+
+    while True:
+        code = f'{prefix}{next_num:03d}'
+        if not Customer.all_objects.filter(code=code).exists():
+            return code
+        next_num += 1
 
 
 def _get_customer_for_user(request, customer_id, queryset=None):
@@ -145,8 +164,10 @@ def api_save_customer(request):
             c.created_by = request.user
             # Khách hàng mới luôn được gán về store mặc định user đang quản lý.
             c.store = _get_default_store_for_request(request)
-        c.code = data.get('code', '')
-        c.name = data.get('name', '')
+        c.code = (data.get('code') or '').strip() or _generate_next_customer_code()
+        c.name = (data.get('name') or '').strip()
+        if not c.name:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên khách hàng'})
         c.customer_type = data.get('customer_type', 1)
         c.phone = data.get('phone', '')
         c.email = data.get('email', '')

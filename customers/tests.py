@@ -60,6 +60,24 @@ class CustomerScopeTests(TestCase):
         customer = Customer.objects.get(code='CKH003')
         self.assertEqual(customer.store_id, self.store.id)
 
+    def test_save_customer_auto_generates_code_when_blank(self):
+        response = self.client.post(
+            reverse('api_save_customer'),
+            data=json.dumps({
+                'name': 'Customer Auto Code',
+                'phone': '0909009009',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        customer = Customer.objects.get(name='Customer Auto Code')
+        self.assertRegex(customer.code, r'^KH\d{3}$')
+        self.assertEqual(customer.phone, '0909009009')
+        self.assertEqual(customer.store_id, self.store.id)
+
     def test_save_customer_rejects_foreign_customer_edit(self):
         response = self.client.post(
             reverse('api_save_customer'),

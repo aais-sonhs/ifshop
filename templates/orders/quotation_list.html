@@ -1363,6 +1363,45 @@ $(document).ready(function(){
     $(document).on('click', '.quick-search-filter-btn', function(){
         setQuickSearchStockFilter($(this).data('filter') || 'all');
     });
+
+    function handleQuickProductEnter($input){
+        var term = $input.val().trim();
+        if(term){
+            clearTimeout(searchTimeout);
+            var instantResults = getQuickProductSearchResults(term);
+            if(!instantResults.length){
+                openQuickProductModalFromSearch(term);
+                return true;
+            }
+            var $active = $('#quick_search_results .quick-search-item.qs-active');
+            var activeProductId = $active.length ? Number($active.data('product-id')) : null;
+            var activeStillMatches = activeProductId && instantResults.some(function(p){ return Number(p.id) === activeProductId; });
+            if(activeStillMatches){
+                $active.click();
+            } else {
+                addQuickSearchProduct(instantResults[0]);
+            }
+            return true;
+        }
+        var $items = $('#quick_search_results .quick-search-item');
+        var $activeEmpty = $items.filter('.qs-active');
+        var $sel = $activeEmpty.length ? $activeEmpty : $items.first();
+        if($sel.length){
+            $sel.click();
+            return true;
+        }
+        return false;
+    }
+
+    document.addEventListener('keydown', function(nativeEvent){
+        var target = nativeEvent.target;
+        if(!target || target.id !== 'quick_search_product') return;
+        if(nativeEvent.key !== 'Enter' && nativeEvent.keyCode !== 13) return;
+        nativeEvent.preventDefault();
+        nativeEvent.stopPropagation();
+        handleQuickProductEnter($(target));
+    }, true);
+
     $('#quick_search_product').on('keydown', function(e){
         var $items = $('#quick_search_results .quick-search-item');
         var $active = $items.filter('.qs-active');
@@ -1388,27 +1427,10 @@ $(document).ready(function(){
             if($cur2.length) $cur2[0].scrollIntoView({block:'nearest'});
             return;
         }
-        if(e.key === 'Enter'){
+        if(e.key === 'Enter' || e.which === 13 || e.keyCode === 13){
             e.preventDefault();
-            var term = $(this).val().trim();
-            if(term){
-                clearTimeout(searchTimeout);
-                var instantResults = getQuickProductSearchResults(term);
-                if(!instantResults.length){
-                    openQuickProductModalFromSearch(term);
-                    return;
-                }
-                var activeProductId = $active.length ? Number($active.data('product-id')) : null;
-                var activeStillMatches = activeProductId && instantResults.some(function(p){ return Number(p.id) === activeProductId; });
-                if(activeStillMatches){
-                    $active.click();
-                } else {
-                    addQuickSearchProduct(instantResults[0]);
-                }
-                return;
-            }
-            var $sel = $active.length ? $active : $items.first();
-            if($sel.length) $sel.click();
+            handleQuickProductEnter($(this));
+            return;
         }
         if(e.key === 'Escape'){
             $('#quick_search_results').hide();
@@ -1434,7 +1456,7 @@ $(document).ready(function(){
     });
 
     function openQuickProductModalFromSearch(searchTerm){
-        if(!$('#modal_form').hasClass('show')) return;
+        if(!$('#modal_form').hasClass('show') && !$('#quick_search_product').is(':visible')) return;
         $('#quick_search_results').hide();
         $('#qp_name').val(searchTerm || '');
         $('#qp_code').val('');

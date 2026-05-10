@@ -35,6 +35,7 @@
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
         </div>
+        <div class="mb-2" id="active_order_filter_summary"></div>
         <div class="row mb-2">
             <div class="col-md-12 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <span id="col_config_container"></span>
@@ -160,6 +161,9 @@
                                     <span class="input-group-text bg-white"><i class="fas fa-user text-primary"></i></span>
                                 </div>
                                 <input type="text" class="form-control" id="inp_customer_search" placeholder="Gõ tên hoặc SĐT khách hàng..." autocomplete="off">
+                                <div class="input-group-append" id="btn_quick_customer_inline" style="display:none;">
+                                    <button class="btn btn-outline-success" type="button" title="Tạo nhanh khách hàng"><i class="fas fa-user-plus"></i></button>
+                                </div>
                                 <div class="input-group-append" id="btn_clear_customer" style="display:none;">
                                     <button class="btn btn-outline-secondary" type="button" title="Xóa khách hàng"><i class="fas fa-times"></i></button>
                                 </div>
@@ -2107,6 +2111,16 @@ function hasExactCustomerMatch(results, term){
     });
 }
 
+function shouldShowQuickCustomerButton(term, results){
+    term = (term || '').trim();
+    if(!term || $('#inp_customer_id').val()) return false;
+    return !hasExactCustomerMatch(results || searchCustomers(term), term);
+}
+
+function syncQuickCustomerButton(term, results){
+    $('#btn_quick_customer_inline').toggle(shouldShowQuickCustomerButton(term, results));
+}
+
 function renderCustomerDropdown(results, term){
     var $dd = $('#customer_dropdown');
     var html = '';
@@ -2130,12 +2144,14 @@ function renderCustomerDropdown(results, term){
         html += '<div class="px-3 py-2 text-muted text-center">Gõ tên hoặc SĐT để tìm khách hàng</div>';
     }
     $dd.html(html).show();
+    syncQuickCustomerButton(term, results);
 }
 
 function selectCustomer(id, name, phone){
     $('#inp_customer_id').val(id);
     var label = name + (phone ? ' - ' + phone : '');
     $('#inp_customer_search').val(label).addClass('border-success font-weight-bold');
+    $('#btn_quick_customer_inline').hide();
     $('#btn_clear_customer').show();
     $('#customer_dropdown').hide();
 }
@@ -2143,6 +2159,7 @@ function selectCustomer(id, name, phone){
 function clearCustomer(){
     $('#inp_customer_id').val('');
     $('#inp_customer_search').val('').removeClass('border-success font-weight-bold').attr('placeholder', 'Gõ tên hoặc SĐT khách hàng...');
+    $('#btn_quick_customer_inline').hide();
     $('#btn_clear_customer').hide();
     $('#customer_dropdown').hide();
 }
@@ -2186,6 +2203,12 @@ function initCustomerPicker(){
         openQuickCustomerModalWithTerm(term);
     });
 
+    $('#btn_quick_customer_inline').off('click.custQuickInline').on('click.custQuickInline', function(){
+        var term = $('#inp_customer_search').val().trim();
+        $('#customer_dropdown').hide();
+        openQuickCustomerModalWithTerm(term);
+    });
+
     // Clear customer
     $('#btn_clear_customer').off('click.custClear').on('click.custClear', function(){
         clearCustomer();
@@ -2205,6 +2228,20 @@ function initCustomerPicker(){
             e.preventDefault();
             $('#inp_customer_search').focus().select();
         }
+    });
+
+    $('#inp_customer_search').off('keydown.custEnter').on('keydown.custEnter', function(e){
+        if(e.key !== 'Enter' || $('#inp_customer_id').val()) return;
+        var term = $(this).val().trim();
+        if(!term) return;
+        var results = searchCustomers(term);
+        e.preventDefault();
+        if(results.length){
+            selectCustomer(results[0].id, results[0].name, results[0].phone || '');
+        } else if(shouldShowQuickCustomerButton(term, results)){
+            openQuickCustomerModalWithTerm(term);
+        }
+        $('#customer_dropdown').hide();
     });
 }
 
@@ -2962,6 +2999,55 @@ function calcTotal(){
     syncPaymentSummary();
 }
 
+function getOrderStatusFilterText(statusValue){
+    if(statusValue === undefined || statusValue === null || statusValue === '') return '';
+    return $.trim($('.filter-tab[data-status="'+statusValue+'"]').contents().first().text()) || '';
+}
+
+function renderOrderFilterSummary(totalCount, filteredCount){
+    var chips = [];
+    var activeStatus = $('.filter-tab.active').data('status');
+    if(activeStatus === undefined) activeStatus = '';
+    activeStatus = activeStatus.toString();
+    if(activeStatus !== ''){
+        chips.push({key:'status', label:'Trạng thái', value:getOrderStatusFilterText(activeStatus)});
+    }
+    if($('#filter_payment_status').val()){
+        chips.push({key:'payment', label:'Thanh toán', value:$('#filter_payment_status option:selected').text()});
+    }
+    if($('#filter_customer_group').val()){
+        chips.push({key:'customer_group', label:'Nhóm KH', value:$('#filter_customer_group option:selected').text()});
+    }
+    if($('#filter_from_date').val() || $('#filter_to_date').val()){
+        chips.push({
+            key:'date',
+            label:'Ngày đặt',
+            value:($('#filter_from_date').val() || '...') + ' - ' + ($('#filter_to_date').val() || '...')
+        });
+    }
+    if($('#filter_text').val().trim()){
+        chips.push({key:'text', label:'Từ khóa', value:$('#filter_text').val().trim()});
+    }
+
+    if(!chips.length){
+        $('#active_order_filter_summary').html(
+            '<div class="small text-muted"><i class="fas fa-filter mr-1"></i>Đang xem tất cả đơn hàng · ' +
+            filteredCount + '/' + totalCount + ' đơn</div>'
+        );
+        return;
+    }
+    var html = '<div class="d-flex align-items-center flex-wrap" style="gap:6px;">' +
+        '<span class="small text-muted mr-1"><i class="fas fa-filter mr-1"></i>Đang lọc ' + filteredCount + '/' + totalCount + ' đơn:</span>';
+    chips.forEach(function(chip){
+        html += '<span class="badge badge-light border px-2 py-1">' +
+            '<span class="text-muted">' + escapeHtml(chip.label) + ':</span> ' + escapeHtml(chip.value) +
+            ' <button type="button" class="btn btn-link btn-xs p-0 ml-1 text-muted order-filter-chip-remove" data-filter="' + chip.key + '" title="Bỏ lọc">&times;</button>' +
+            '</span>';
+    });
+    html += '<button class="btn btn-xs btn-outline-secondary ml-1" id="btn_clear_filter_summary"><i class="fas fa-times mr-1"></i>Xóa lọc</button></div>';
+    $('#active_order_filter_summary').html(html);
+}
+
 function loadData(){
     $.get('/api/orders/',function(res){
         var filterStatus = $('.filter-tab.active').data('status');
@@ -2997,6 +3083,7 @@ function loadData(){
             }
             return true;
         });
+        renderOrderFilterSummary(res.data.length, filtered.length);
 
         var h='';filtered.forEach(function(d,i){
             var customerHtml = d.customer;
@@ -3106,6 +3193,27 @@ $('#btn_clear_filter').click(function(){
     $('#filter_from_date, #filter_to_date').val('');
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    loadData();
+});
+
+$(document).on('click', '#btn_clear_filter_summary', function(){
+    $('#btn_clear_filter').trigger('click');
+});
+
+$(document).on('click', '.order-filter-chip-remove', function(){
+    var key = $(this).data('filter');
+    if(key === 'status'){
+        $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
+        $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    } else if(key === 'payment'){
+        $('#filter_payment_status').val('');
+    } else if(key === 'customer_group'){
+        $('#filter_customer_group').val('');
+    } else if(key === 'date'){
+        $('#filter_from_date, #filter_to_date').val('');
+    } else if(key === 'text'){
+        $('#filter_text').val('');
+    }
     loadData();
 });
 

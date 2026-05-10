@@ -2555,6 +2555,7 @@ $(document).ready(function(){
             e.preventDefault();
             var $sel = $active.length ? $active : $items.first();
             if($sel.length) $sel.click();
+            else if($(this).val().trim()) openQuickProductModalFromSearch($(this).val().trim());
         }
         if(e.key === 'Escape'){
             $('#quick_search_results').hide();
@@ -2570,7 +2571,7 @@ $(document).ready(function(){
 
     // "Tạo SP" button in search bar → triggers F3 shortcut
     $('#btn_quick_create_product_hint').click(function(){
-        $(document).trigger(jQuery.Event('keydown', {key: 'F3'}));
+        openQuickProductModalFromSearch($('#quick_search_product').val().trim());
     });
 
     // F2 shortcut - focus vào ô tìm sản phẩm
@@ -2582,20 +2583,24 @@ $(document).ready(function(){
         }
     });
 
+    function openQuickProductModalFromSearch(searchTerm){
+        if(!$('#modal_form').hasClass('show')) return;
+        $('#quick_search_results').hide();
+        $('#qp_name').val(searchTerm || '');
+        $('#qp_code').val('');
+        $('#qp_unit').val('Cái');
+        setMoneyValue('#qp_cost_price', 0);
+        setMoneyValue('#qp_selling_price', 0);
+        $('#qp_is_service').prop('checked', false);
+        $('#modal_quick_product').modal('show');
+        setTimeout(function(){ $('#qp_name').focus(); }, 300);
+    }
+
     // F3 shortcut - tạo nhanh sản phẩm
     $(document).on('keydown', function(e){
         if(e.key === 'F3'){
             e.preventDefault();
-            if(!$('#modal_form').hasClass('show')) return;
-            var searchTerm = $('#quick_search_product').val().trim();
-            $('#qp_name').val(searchTerm);
-            $('#qp_code').val('');
-            $('#qp_unit').val('Cái');
-            setMoneyValue('#qp_cost_price', 0);
-            setMoneyValue('#qp_selling_price', 0);
-            $('#qp_is_service').prop('checked', false);
-            $('#modal_quick_product').modal('show');
-            setTimeout(function(){ $('#qp_name').focus(); }, 300);
+            openQuickProductModalFromSearch($('#quick_search_product').val().trim());
         }
     });
 

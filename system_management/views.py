@@ -571,6 +571,7 @@ def api_get_users(request):
         store_name = ''
         store_id = None
         brand_name = ''
+        position = ''
         user_groups = list(u.groups.all())
         role_group_ids = []
         for group in user_groups:
@@ -578,9 +579,11 @@ def api_get_users(request):
             if role_group:
                 role_group_ids.append(role_group.id)
         try:
-            if hasattr(u, 'profile') and u.profile.store:
-                store_name = u.profile.store.name
-                store_id = u.profile.store_id
+            if hasattr(u, 'profile'):
+                position = u.profile.position or ''
+                if u.profile.store:
+                    store_name = u.profile.store.name
+                    store_id = u.profile.store_id
         except Exception:
             pass
         # Brand mà user sở hữu
@@ -597,6 +600,7 @@ def api_get_users(request):
             'is_superuser': u.is_superuser,
             'groups': ', '.join([g.name for g in user_groups]),
             'group_ids': role_group_ids,
+            'position': position,
             'store_name': store_name,
             'store_id': store_id,
             'brand_name': brand_name,
@@ -668,6 +672,9 @@ def api_save_user(request):
         profile, _ = UserProfile.objects.get_or_create(user=user)
         if not uid or 'store_id' in data:
             profile.store_id = store_id or None
+        if 'position' in data:
+            profile.position = data.get('position') or ''
+        if not uid or 'store_id' in data or 'position' in data:
             profile.save()
 
         if 'group_ids' in data:

@@ -228,6 +228,7 @@ class SystemManagementScopeTests(TestCase):
                 'last_name': 'A',
                 'email': 'staff-a@example.com',
                 'store_id': self.store.id,
+                'position': 'Kế toán',
                 'is_active': True,
                 'group_ids': [role_group.id],
             }),
@@ -241,11 +242,14 @@ class SystemManagementScopeTests(TestCase):
         list_response = self.client.get(reverse('api_get_users'))
         row = next(item for item in list_response.json()['data'] if item['id'] == self.staff_a.id)
         self.assertEqual(row['group_ids'], [role_group.id])
+        self.assertEqual(row['position'], 'Kế toán')
 
     def test_password_only_update_preserves_user_profile_and_groups(self):
         auth_group = Group.objects.create(name='Bán hàng')
         RoleGroup.objects.create(name='Bán hàng', group=auth_group, is_active=True)
         self.staff_a.groups.add(auth_group)
+        self.staff_a.profile.position = 'Nhân viên bán hàng'
+        self.staff_a.profile.save(update_fields=['position'])
 
         response = self.client.post(
             reverse('api_save_user'),
@@ -261,6 +265,7 @@ class SystemManagementScopeTests(TestCase):
         self.staff_a.refresh_from_db()
         self.staff_a.profile.refresh_from_db()
         self.assertEqual(self.staff_a.profile.store_id, self.store.id)
+        self.assertEqual(self.staff_a.profile.position, 'Nhân viên bán hàng')
         self.assertTrue(self.staff_a.groups.filter(id=auth_group.id).exists())
         self.assertTrue(self.staff_a.check_password('newpass123'))
 

@@ -73,6 +73,16 @@
                     <label>Cửa hàng</label>
                     <select class="form-control form-control-sm" id="inp_store_id"><option value="">-- Chưa gán --</option></select>
                 </div>
+                <div class="form-group">
+                    <label>Chức vụ</label>
+                    <input type="text" class="form-control form-control-sm" id="inp_position" list="position_suggestions" placeholder="Ví dụ: Giám đốc, Kế toán, Nhân viên bán hàng">
+                    <datalist id="position_suggestions">
+                        <option value="Giám đốc">
+                        <option value="Kế toán">
+                        <option value="Quản lý cửa hàng">
+                        <option value="Nhân viên bán hàng">
+                    </datalist>
+                </div>
                 {% if not request.user.is_superuser %}
                 <div class="form-group">
                     <label>Nhóm phân quyền</label>
@@ -132,7 +142,7 @@ $(document).ready(function(){
     $('#btn_add_user').click(function(){
         $('#user_id').val('');
         $('#inp_username').val('').prop('disabled', false);
-        $('#inp_first_name,#inp_last_name,#inp_email,#inp_password').val('');
+        $('#inp_first_name,#inp_last_name,#inp_email,#inp_password,#inp_position').val('');
         $('#inp_is_active').prop('checked', true);
         $('#inp_store_id').val('');
         $('#inp_role_group_ids').val([]);
@@ -156,6 +166,7 @@ $(document).ready(function(){
             email: $('#inp_email').val(),
             password: password,
             store_id: $('#inp_store_id').val() || null,
+            position: $('#inp_position').val(),
             is_active: $('#inp_is_active').prop('checked')
         };
         if($('#inp_role_group_ids').length){
@@ -225,7 +236,8 @@ function renderTable(){
         var roleBadge = '';
         if(u.is_superuser) roleBadge = '<span class="badge badge-danger">Admin</span> ';
         if(u.groups) roleBadge += '<span class="badge badge-info">'+escapeHtml(u.groups)+'</span>';
-        if(!u.is_superuser && !u.groups) roleBadge = '<span class="badge badge-light">Chưa phân quyền</span>';
+        if(!u.is_superuser && !u.groups && u.position) roleBadge = '<span class="badge badge-secondary">Chức vụ: '+escapeHtml(u.position)+'</span>';
+        if(!u.is_superuser && !u.groups && !u.position) roleBadge = '<span class="badge badge-light">Chưa phân quyền</span>';
 
         h += '<tr>';
         h += '<td class="text-center">'+(i+1)+'</td>';
@@ -261,6 +273,7 @@ function editUser(u){
     $('#inp_email').val(u.email);
     $('#inp_password').val('');
     $('#inp_store_id').val(u.store_id);
+    $('#inp_position').val(u.position || '');
     $('#inp_role_group_ids').val((u.group_ids||[]).map(function(id){return String(id);}));
     $('#inp_is_active').prop('checked', u.is_active);
     $('#lbl_pw_required').hide(); $('#lbl_pw_hint').show();

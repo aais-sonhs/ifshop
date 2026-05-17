@@ -228,16 +228,16 @@
                     <div class="col-md-12">
                         <div class="payment-compact-card">
                             <div class="d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
-	                                <div>
-	                                    <strong><i class="fas fa-money-bill-wave text-success mr-1"></i> Thanh toán</strong>
-	                                    <span class="badge badge-light border ml-2" id="payment_status_hint">Chưa thu</span>
-	                                    <a href="{% url 'setting_payment_methods' %}" target="_blank" class="small ml-2">Cấu hình phương thức</a>
-	                                </div>
+                                <div>
+                                    <strong><i class="fas fa-money-bill-wave text-success mr-1"></i> Thanh toán</strong>
+                                    <span class="badge badge-light border ml-2" id="payment_status_hint">Chưa thu</span>
+                                </div>
                                 <button type="button" class="btn btn-sm btn-outline-success" id="btn_toggle_payment">
                                     <i class="fas fa-money-bill-wave mr-1"></i> Thanh toán
                                 </button>
                             </div>
                             <div id="payment_lines_container" class="mt-2" style="display:none;"></div>
+                            <small class="text-muted d-block mt-1">Phương thức (tiền mặt / chuyển khoản / ...) được tạo trước ở mục <a href="{% url 'setting_payment_methods' %}" target="_blank">Cấu hình phương thức</a>; ở đây chỉ chọn và nhập số tiền.</small>
                         </div>
                     </div>
                 </div>
@@ -552,16 +552,21 @@
                 </div>
                 <div id="bulk_collect_order_list" class="border rounded mb-2" style="max-height:160px;overflow-y:auto;"></div>
                 <div class="form-group mb-2">
-                    <label>Số tiền thực thu</label>
-                    <input type="text" class="form-control form-control-sm text-right font-weight-bold" id="bulk_collect_actual_amount" value="0" readonly>
+                    <label class="d-flex justify-content-between align-items-center">
+                        <span>Số tiền thực thu <span class="text-danger">*</span></span>
+                        <button type="button" class="btn btn-xs btn-link p-0" id="bulk_fill_total" title="Lấy đúng số cần thu">Lấy đủ</button>
+                    </label>
+                    <input type="text" class="form-control form-control-sm text-right font-weight-bold money-format" id="bulk_collect_actual_amount" value="0">
+                    <small class="text-muted" id="bulk_collect_diff_hint"></small>
                 </div>
-	                <div class="form-group mb-0">
-	                    <label>Phương thức nhận tiền <a href="{% url 'setting_payment_methods' %}" target="_blank" class="small ml-1">Cấu hình</a></label>
-	                    <select class="form-control form-control-sm" id="bulk_payment_method">
+                <div class="form-group mb-0">
+                    <label>Phương thức nhận tiền (tiền mặt / chuyển khoản / ...) <a href="{% url 'setting_payment_methods' %}" target="_blank" class="small ml-1">Cấu hình</a></label>
+                    <select class="form-control form-control-sm" id="bulk_payment_method">
                         {% for m in payment_methods %}
                         <option value="{{ m.legacy_type }}" data-method-option-id="{{ m.id }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}{% if m.default_cash_book__name %} — {{ m.default_cash_book__name }}{% endif %}</option>
                         {% endfor %}
                     </select>
+                    <small class="text-muted">Số tiền sẽ được ghi nhận vào tài khoản gắn với phương thức đã chọn.</small>
                 </div>
             </div>
             <div class="modal-footer py-2">
@@ -1448,7 +1453,22 @@ function getFlowStockClass(value){
 }
 
 function getProductRetailPrice(product){
-    return Number((product && (product.retail_price !== undefined ? product.retail_price : product.selling_price)) || 0);
+    if(!product) return 0;
+    // Ưu tiên giá bán lẻ; nếu chưa thiết lập thì fallback theo thứ tự:
+    // giá sỉ BH → giá sỉ KBH → giá vốn → giá nhập → 0.
+    var candidates = [
+        product.retail_price,
+        product.selling_price,
+        product.wholesale_price_warranty,
+        product.wholesale_price_no_warranty,
+        product.cost_price,
+        product.import_price,
+    ];
+    for(var i = 0; i < candidates.length; i++){
+        var v = Number(candidates[i] || 0);
+        if(v > 0) return v;
+    }
+    return 0;
 }
 
 	function formatStockMetric(label, value, className){
@@ -2433,6 +2453,8 @@ function renderBulkCollectSummary(){
     $('#bulk_collect_count').text(selectedOrders.length);
     $('#bulk_collect_total').text(fmt(totalRemaining));
     $('#bulk_collect_actual_amount').val(fmt(totalRemaining));
+    $('#bulk_collect_actual_amount').data('total-required', totalRemaining);
+    updateBulkCollectDiffHint();
     $('#bulk_collect_zero_hint').toggle(selectedOrders.length > 0 && totalRemaining <= 0);
     $('#btn_confirm_bulk_collect').prop('disabled', selectedOrders.length === 0 || totalRemaining <= 0 || hasMixedCustomers);
 
@@ -2458,6 +2480,39 @@ function renderBulkCollectSummary(){
     }
     $('#bulk_collect_order_list').html(html);
 }
+
+function getBulkActualAmount(){
+    var raw = ($('#bulk_collect_actual_amount').val() || '').toString().replace(/[^0-9]/g, '');
+    return Number(raw) || 0;
+}
+
+function updateBulkCollectDiffHint(){
+    var required = Number($('#bulk_collect_actual_amount').data('total-required') || 0);
+    var actual = getBulkActualAmount();
+    var diff = actual - required;
+    var $hint = $('#bulk_collect_diff_hint');
+    if(required <= 0){
+        $hint.text('').removeClass('text-danger text-success text-warning');
+        return;
+    }
+    if(diff === 0){
+        $hint.removeClass('text-danger text-warning').addClass('text-success')
+            .text('✓ Khớp với tổng cần thu');
+    } else if(diff > 0){
+        $hint.removeClass('text-danger text-success').addClass('text-warning')
+            .text('Thực thu nhiều hơn cần thu ' + fmt(diff) + 'đ — phần dư sẽ ghi nhận như công nợ trả trước.');
+    } else {
+        $hint.removeClass('text-success text-warning').addClass('text-danger')
+            .text('Còn thiếu ' + fmt(Math.abs(diff)) + 'đ so với tổng cần thu.');
+    }
+}
+
+$(document).on('input', '#bulk_collect_actual_amount', updateBulkCollectDiffHint);
+$(document).on('click', '#bulk_fill_total', function(){
+    var required = Number($('#bulk_collect_actual_amount').data('total-required') || 0);
+    $('#bulk_collect_actual_amount').val(fmt(required));
+    updateBulkCollectDiffHint();
+});
 
 function refreshBulkToolbar(){
     var selectedOrders = getSelectedOrderSummaries();

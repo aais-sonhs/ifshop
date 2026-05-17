@@ -1651,7 +1651,12 @@ def api_delete_stock_check(request):
 
 @login_required(login_url="/login/")
 def api_get_purchase_orders(request):
-    orders = PurchaseOrder.objects.select_related('supplier', 'warehouse').prefetch_related('items__product').all()
+    orders = (
+        PurchaseOrder.objects
+        .select_related('supplier', 'warehouse')
+        .prefetch_related('items__product')
+        .order_by('-order_date', '-id')
+    )
     orders = filter_by_store(orders, request, field_name='warehouse__store')
     data = []
     for o in orders:

@@ -1160,7 +1160,7 @@ function renderPurchasePriceRange(receipt){
 
 function renderRecentPurchaseReceipts(product, productNameJs){
     var receipts = product.recent_purchase_receipts || [];
-    var detailButton = '<button type="button" class="btn btn-xs btn-outline-primary mt-1" onclick="viewPurchaseHistory('+product.id+','+productNameJs+')" title="Xem từng phiếu nhập của sản phẩm">Chi tiết nhập</button>';
+    var detailButton = '<button type="button" class="btn btn-xs btn-outline-primary mt-1" onclick="viewPurchaseHistory('+product.id+','+productNameJs+')" title="Xem từng phiếu nhập của sản phẩm"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button>';
     if(!receipts.length){
         return '<div class="small text-muted" style="min-width:180px;">' +
             '<span class="badge badge-light border">Chưa có phiếu nhập</span><br>' +
@@ -1271,7 +1271,7 @@ function loadData(done){
                 (d.is_combo
                 ? '<button class="btn btn-xs btn-warning" onclick=\'editItem('+productPayload+ ')\'>Sửa</button> '
                 : '<button class="btn btn-xs btn-info" onclick=\'editItem('+productPayload+ ')\'>Sửa</button> ') +
-                '<button class="btn btn-xs btn-outline-primary" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')" title="Từng phiếu nhập của sản phẩm">Chi tiết nhập</button> ' +
+                '<button class="btn btn-xs btn-outline-primary" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')" title="Xem lịch sử từng đơn nhập, bán và biến động giá của sản phẩm này"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button> ' +
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
 
             h += '<tr id="product_row_'+d.id+'">'+

@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from customers.models import Customer, CustomerGroup
 from orders.models import Order, OrderItem, OrderReturn
-from products.models import Product, ProductCategory, Warehouse
+from products.models import Product, ProductCategory, ProductVariant, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -178,6 +178,124 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['total_profit'], 20.0)
         self.assertEqual(payload['order_details'][0]['revenue'], 80.0)
         self.assertEqual(payload['top_products'][0]['amount'], 80.0)
+
+    def test_api_report_sales_includes_sapo_style_sku_details(self):
+        today = date.today()
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size_name='Size A',
+            sku='SKU-RP-001-A',
+        )
+        seller = User.objects.create_user(
+            username='sku_report_seller',
+            password='pass123',
+            first_name='Minh',
+            last_name='Ban Hang',
+        )
+        order = Order.objects.create(
+            code='DH-RP-SKU',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=200,
+            discount_amount=20,
+            final_amount=180,
+            paid_amount=180,
+            order_date=today,
+            salesperson='Nhân viên SKU',
+            created_by=seller,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            variant=variant,
+            quantity=2,
+            unit_price=100,
+            cost_price=70,
+            total_price=200,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(len(payload['sku_details']), 1)
+        row = payload['sku_details'][0]
+        self.assertEqual(row['date'], today.strftime('%d/%m/%Y'))
+        self.assertEqual(row['customer'], self.customer.name)
+        self.assertEqual(row['product_name'], self.product.name)
+        self.assertEqual(row['sku'], 'SKU-RP-001-A')
+        self.assertEqual(row['order_code'], order.code)
+        self.assertEqual(row['salesperson'], 'Nhân viên SKU')
+        self.assertEqual(row['revenue'], 180.0)
+        self.assertEqual(row['cost'], 140.0)
+        self.assertEqual(row['profit'], 40.0)
+
+    def test_api_report_sales_includes_daily_finance_summary(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-DAILY',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=200,
+            discount_amount=20,
+            final_amount=180,
+            paid_amount=180,
+            order_date=today,
+            salesperson='Nhân viên ngày',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=100,
+            cost_price=70,
+            total_price=200,
+        )
+        OrderReturn.objects.create(
+            code='TH-RP-DAILY',
+            order=order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            total_refund=30,
+            return_date=today,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['summary']['total_goods_amount'], 200.0)
+        self.assertEqual(payload['summary']['total_net_revenue'], 150.0)
+        self.assertEqual(payload['summary']['total_gross_profit'], 10.0)
+        self.assertEqual(payload['summary']['gross_margin'], 6.7)
+        self.assertEqual(len(payload['daily_finance']), 1)
+        row = payload['daily_finance'][0]
+        self.assertEqual(row['date'], today.strftime('%d/%m/%Y'))
+        self.assertEqual(row['goods_amount'], 200.0)
+        self.assertEqual(row['revenue'], 180.0)
+        self.assertEqual(row['returns'], 30.0)
+        self.assertEqual(row['net_revenue'], 150.0)
+        self.assertEqual(row['cost'], 140.0)
+        self.assertEqual(row['gross_profit'], 10.0)
+        self.assertEqual(row['gross_margin'], 6.7)
+        self.assertEqual(row['net_profit'], 10.0)
 
     def test_api_report_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()

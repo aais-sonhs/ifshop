@@ -320,8 +320,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
     orders_list = list(orders_qs.order_by('-order_date', '-id'))
 
     order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
-        'product', 'product__category', 'product__category__parent',
-        'order', 'order__customer', 'order__customer__group'
+        'product', 'product__category', 'product__category__parent', 'variant',
+        'order', 'order__customer', 'order__customer__group', 'order__created_by'
     )
     if filters['category_id']:
         order_items_qs = order_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
@@ -342,16 +342,29 @@ def _build_sales_report_payload(request, include_filter_options=True):
         else:
             adjusted_revenue = line_revenue
 
-        category = item.product.category if item.product else None
+        product = item.product
+        order = item.order
+        category = product.category if product else None
         root_category = category.parent if category and category.parent_id else category
         product_type = category if category and category.parent_id else None
         line_profit = adjusted_revenue - line_cost
+        salesperson = order.salesperson or order.creator_name or ''
+        if not salesperson and order.created_by_id:
+            salesperson = order.created_by.get_full_name() or order.created_by.username
         adjusted_item_rows.append({
+            'id': item.id,
             'order_id': item.order_id,
-            'product_name': item.product.name if item.product else '',
+            'order_code': order.code,
+            'date': order.order_date.strftime('%d/%m/%Y') if order.order_date else '',
+            'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
+            'customer_name': order.customer.name if order.customer else '',
+            'salesperson': salesperson,
+            'product_name': product.name if product else (item.item_name or 'Dịch vụ'),
+            'sku': item.variant.sku if item.variant else (product.code if product else 'DV'),
             'category_name': root_category.name if root_category else '',
             'product_type_name': product_type.name if product_type else '',
             'quantity': float(item.quantity or 0),
+            'goods_amount': line_revenue,
             'revenue': adjusted_revenue,
             'cost': line_cost,
             'line_profit': line_profit,
@@ -360,8 +373,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
     if line_profit_scope:
         adjusted_item_rows = [row for row in adjusted_item_rows if _matches_line_profit_filters(row)]
 
-    order_item_map = defaultdict(lambda: {'revenue': 0.0, 'cost': 0.0})
+    order_item_map = defaultdict(lambda: {'goods_amount': 0.0, 'revenue': 0.0, 'cost': 0.0})
     for item_row in adjusted_item_rows:
+        order_item_map[item_row['order_id']]['goods_amount'] += item_row['goods_amount']
         order_item_map[item_row['order_id']]['revenue'] += item_row['revenue']
         order_item_map[item_row['order_id']]['cost'] += item_row['cost']
 
@@ -369,7 +383,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
     for order in orders_list:
         if item_scope and order.id not in order_item_map:
             continue
-        item_totals = order_item_map.get(order.id, {'revenue': 0, 'cost': 0})
+        item_totals = order_item_map.get(order.id, {'goods_amount': 0, 'revenue': 0, 'cost': 0})
+        goods_amount = item_totals['goods_amount'] if item_scope else float(max(order.total_amount or 0, 0))
         revenue = item_totals['revenue'] if item_scope else float(max(order.final_amount or 0, 0))
         cost = item_totals['cost']
 
@@ -398,6 +413,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'store_id': order.store_id,
             'store_name': order.store.name if order.store else '',
             'salesperson': order.salesperson or '',
+            'goods_amount': goods_amount,
             'revenue': revenue,
             'paid': paid,
             'debt': revenue - paid,
@@ -425,6 +441,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         order_items_qs = order_items_qs.none()
 
     total_orders = len(order_rows)
+    total_goods_amount = sum(row['goods_amount'] for row in order_rows)
     total_revenue = sum(row['revenue'] for row in order_rows)
     total_debt = sum(row['debt'] for row in order_rows)
     total_cost = sum(row['cost'] for row in order_rows)
@@ -434,6 +451,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
     allowed_order_id_set = set(allowed_order_ids)
     product_map = {}
     category_map = {}
+    sku_details = []
     for item_row in adjusted_item_rows:
         if item_row['order_id'] not in allowed_order_id_set:
             continue
@@ -463,6 +481,30 @@ def _build_sales_report_payload(request, include_filter_options=True):
         category_map[category_key]['qty'] += item_row['quantity']
         category_map[category_key]['revenue'] += item_row['revenue']
         category_map[category_key]['cost'] += item_row['cost']
+
+        if _matches_metric_filters(item_row):
+            sku_details.append({
+                'id': item_row['id'],
+                'date': item_row['date'],
+                'date_raw': item_row['date_raw'],
+                'customer': item_row['customer_name'],
+                'product_name': item_row['product_name'],
+                'sku': item_row['sku'],
+                'order_id': item_row['order_id'],
+                'order_code': item_row['order_code'],
+                'salesperson': item_row['salesperson'],
+                'quantity': item_row['quantity'],
+                'revenue': item_row['revenue'],
+                'cost': item_row['cost'],
+                'profit': item_row['line_profit'],
+                'line_profit': item_row['line_profit'],
+            })
+
+    sku_details = sorted(
+        sku_details,
+        key=lambda row: (row['date_raw'], row['order_id'], row['id']),
+        reverse=True,
+    )
 
     returns_qs = OrderReturn.objects.filter(
         return_date__gte=filters['from_date'],
@@ -565,12 +607,14 @@ def _build_sales_report_payload(request, include_filter_options=True):
             daily_map[key] = {
                 'date': date_obj.strftime(time_group_meta['display_format']),
                 'count': 0,
+                'goods_amount': 0,
                 'revenue': 0,
                 'cost': 0,
                 'profit': 0,
                 'returns': 0,
             }
         daily_map[key]['count'] += 1
+        daily_map[key]['goods_amount'] += row['goods_amount']
         daily_map[key]['revenue'] += row['revenue']
         daily_map[key]['cost'] += row['cost']
         daily_map[key]['profit'] += row['profit']
@@ -584,12 +628,65 @@ def _build_sales_report_payload(request, include_filter_options=True):
             daily_map[bucket_key] = {
                 'date': bucket_label,
                 'count': 0,
+                'goods_amount': 0,
                 'revenue': 0,
                 'cost': 0,
                 'profit': 0,
                 'returns': amount,
             }
     daily_data = [daily_map[key] for key in sorted(daily_map.keys())]
+
+    daily_finance_map = {}
+    for row in sorted(order_rows, key=lambda item: item['date_raw'] or ''):
+        date_key = row['date_raw']
+        if not date_key:
+            continue
+        date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+        if date_key not in daily_finance_map:
+            daily_finance_map[date_key] = {
+                'date': date_obj.strftime('%d/%m/%Y'),
+                'date_raw': date_key,
+                'goods_amount': 0,
+                'revenue': 0,
+                'returns': 0,
+                'net_revenue': 0,
+                'cost': 0,
+                'gross_profit': 0,
+                'gross_margin': 0,
+                'net_profit': 0,
+            }
+        daily_finance_map[date_key]['goods_amount'] += row['goods_amount']
+        daily_finance_map[date_key]['revenue'] += row['revenue']
+        daily_finance_map[date_key]['cost'] += row['cost']
+    for date_key, amount in returns_by_date.items():
+        date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+        if date_key not in daily_finance_map:
+            daily_finance_map[date_key] = {
+                'date': date_obj.strftime('%d/%m/%Y'),
+                'date_raw': date_key,
+                'goods_amount': 0,
+                'revenue': 0,
+                'returns': 0,
+                'net_revenue': 0,
+                'cost': 0,
+                'gross_profit': 0,
+                'gross_margin': 0,
+                'net_profit': 0,
+            }
+        daily_finance_map[date_key]['returns'] += amount
+
+    daily_finance = []
+    for row in [daily_finance_map[key] for key in sorted(daily_finance_map.keys())]:
+        revenue = float(row.get('revenue') or 0)
+        returns = float(row.get('returns') or 0)
+        cost = float(row.get('cost') or 0)
+        net_revenue = revenue - returns
+        gross_profit = net_revenue - cost
+        row['net_revenue'] = net_revenue
+        row['gross_profit'] = gross_profit
+        row['gross_margin'] = round(gross_profit / net_revenue * 100, 1) if net_revenue > 0 else 0
+        row['net_profit'] = gross_profit
+        daily_finance.append(row)
 
     product_breakdown = [{
         'name': row['name'],
@@ -855,15 +952,24 @@ def _build_sales_report_payload(request, include_filter_options=True):
         store_breakdown = sorted(store_map.values(), key=lambda row: (-row['revenue'], row['store_name']))
         store_breakdown = [row for row in store_breakdown if _matches_metric_filters(row)]
 
+    total_net_revenue = total_revenue - returns_total
+    total_gross_profit = total_net_revenue - total_cost
+    gross_margin = round(total_gross_profit / total_net_revenue * 100, 1) if total_net_revenue > 0 else 0
+
     payload = {
         'has_multiple_stores': has_multiple,
         'stores': stores_list,
         'summary': {
             'total_orders': total_orders,
+            'total_goods_amount': total_goods_amount,
             'total_revenue': total_revenue,
+            'total_net_revenue': total_net_revenue,
             'total_cost': total_cost,
             'total_profit': total_profit,
+            'total_gross_profit': total_gross_profit,
+            'total_net_profit': total_gross_profit,
             'profit_margin': round(total_profit / total_revenue * 100, 1) if total_revenue > 0 else 0,
+            'gross_margin': gross_margin,
             'total_returns': returns_total,
             'returns_count': returns_count,
             'total_debt': total_debt,
@@ -872,6 +978,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         },
         'timeline': daily_data,
         'daily': daily_data,
+        'daily_finance': daily_finance,
         'time_group': filters['time_group'],
         'time_group_label': time_group_meta['label'],
         'order_details': order_rows,
@@ -884,6 +991,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         'top_products': top_products,
         'top_customers': top_customers,
         'product_breakdown': product_breakdown,
+        'sku_details': sku_details,
         'customer_breakdown': customer_breakdown,
         'staff_breakdown': staff_breakdown,
         'return_orders': return_order_rows,
@@ -1666,7 +1774,9 @@ def export_sales_excel(request):
     payload = _build_sales_report_payload(request, include_filter_options=False)
     summary = payload.get('summary', {})
     daily = payload.get('daily', [])
+    daily_finance = payload.get('daily_finance') or daily
     product_breakdown = payload.get('product_breakdown', [])
+    sku_details = payload.get('sku_details', [])
     category_breakdown = payload.get('category_breakdown', [])
     customer_kind_breakdown = payload.get('customer_kind_breakdown', [])
     group_breakdown = payload.get('group_breakdown', [])
@@ -1769,7 +1879,88 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 20, 12, 18, 18, 18, 15], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 2: Mặt hàng =====
+    # ===== Sheet 2: Tổng hợp ngày =====
+    ws_daily = wb.create_sheet('Tổng hợp ngày')
+    daily_headers = [
+        'Ngày', 'Tiền hàng', 'Doanh thu', 'Doanh thu thuần', 'Tiền vốn',
+        'Lợi nhuận gộp', 'Tỷ suất lợi nhuận gộp', 'Lợi nhuận ròng',
+    ]
+    for col, h in enumerate(daily_headers, 1):
+        cell = ws_daily.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    daily_totals = {
+        'goods_amount': 0,
+        'revenue': 0,
+        'net_revenue': 0,
+        'cost': 0,
+        'gross_profit': 0,
+        'net_profit': 0,
+    }
+    for idx, row in enumerate(daily_finance, 2):
+        goods_amount = float(row.get('goods_amount') or 0)
+        revenue = float(row.get('revenue') or 0)
+        net_revenue = float(row.get('net_revenue') or 0)
+        cost = float(row.get('cost') or 0)
+        gross_profit = float(row.get('gross_profit') or 0)
+        gross_margin = float(row.get('gross_margin') or 0)
+        net_profit = float(row.get('net_profit') or 0)
+        values = [
+            row.get('date') or '',
+            goods_amount,
+            revenue,
+            net_revenue,
+            cost,
+            gross_profit,
+            gross_margin / 100,
+            net_profit,
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws_daily.cell(row=idx, column=col, value=val)
+            cell.border = thin
+            if col in (2, 3, 4, 5, 6, 8):
+                cell.number_format = money_fmt
+            if col == 7:
+                cell.number_format = '0.0%'
+            if col in (6, 8) and float(val or 0) < 0:
+                cell.font = Font(bold=True, color='FF0000')
+        daily_totals['goods_amount'] += goods_amount
+        daily_totals['revenue'] += revenue
+        daily_totals['net_revenue'] += net_revenue
+        daily_totals['cost'] += cost
+        daily_totals['gross_profit'] += gross_profit
+        daily_totals['net_profit'] += net_profit
+
+    total_margin = (
+        daily_totals['gross_profit'] / daily_totals['net_revenue']
+        if daily_totals['net_revenue'] > 0 else 0
+    )
+    daily_total_row = len(daily_finance) + 2
+    for col, val in enumerate([
+        'TỔNG',
+        daily_totals['goods_amount'],
+        daily_totals['revenue'],
+        daily_totals['net_revenue'],
+        daily_totals['cost'],
+        daily_totals['gross_profit'],
+        total_margin,
+        daily_totals['net_profit'],
+    ], 1):
+        cell = ws_daily.cell(row=daily_total_row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col in (2, 3, 4, 5, 6, 8):
+            cell.number_format = money_fmt
+        if col == 7:
+            cell.number_format = '0.0%'
+
+    for i, w in enumerate([16, 18, 18, 18, 18, 18, 20, 18], 1):
+        ws_daily.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet 3: Mặt hàng =====
     ws2 = wb.create_sheet('Mặt hàng')
     sp_headers = ['STT', 'Sản phẩm', 'Nhóm mặt hàng', 'Loại SP', 'SL bán', 'Doanh thu', 'Giá vốn', 'LN dòng', 'Biên LN']
     for col, h in enumerate(sp_headers, 1):
@@ -1805,7 +1996,63 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 35, 20, 18, 12, 18, 18, 18, 12], 1):
         ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 3: Nhóm mặt hàng =====
+    # ===== Sheet 4: Chi tiết SKU =====
+    ws_sku = wb.create_sheet('Chi tiết SKU')
+    sku_headers = [
+        'Ngày', 'Tên khách hàng', 'Tên sản phẩm', 'Mã SKU', 'Mã đơn hàng',
+        'Tên nhân viên', 'Doanh thu thuần', 'Tiền vốn', 'Lợi nhuận gộp',
+    ]
+    for col, h in enumerate(sku_headers, 1):
+        cell = ws_sku.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    sku_totals = {'revenue': 0, 'cost': 0, 'profit': 0}
+    for idx, row in enumerate(sku_details, 2):
+        revenue = float(row.get('revenue') or 0)
+        cost = float(row.get('cost') or 0)
+        profit = float(row.get('profit') or 0)
+        values = [
+            row.get('date') or '',
+            row.get('customer') or '',
+            row.get('product_name') or '',
+            row.get('sku') or '',
+            row.get('order_code') or '',
+            row.get('salesperson') or '',
+            revenue,
+            cost,
+            profit,
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws_sku.cell(row=idx, column=col, value=val)
+            cell.border = thin
+            if col in (7, 8, 9):
+                cell.number_format = money_fmt
+            if profit < 0:
+                cell.fill = loss_fill
+            if col == 9 and profit < 0:
+                cell.font = Font(bold=True, color='FF0000')
+        sku_totals['revenue'] += revenue
+        sku_totals['cost'] += cost
+        sku_totals['profit'] += profit
+
+    sku_total_row = len(sku_details) + 2
+    for col, val in enumerate([
+        '', '', '', '', '', 'TỔNG',
+        sku_totals['revenue'], sku_totals['cost'], sku_totals['profit'],
+    ], 1):
+        cell = ws_sku.cell(row=sku_total_row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col in (7, 8, 9):
+            cell.number_format = money_fmt
+
+    for i, w in enumerate([14, 28, 36, 18, 16, 22, 18, 18, 18], 1):
+        ws_sku.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet 5: Nhóm mặt hàng =====
     ws3 = wb.create_sheet('Nhóm mặt hàng')
     cat_headers = ['STT', 'Nhóm mặt hàng', 'SL bán', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Biên LN']
     for col, h in enumerate(cat_headers, 1):
@@ -1833,7 +2080,7 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 28, 12, 18, 18, 18, 12], 1):
         ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 4: Khách buôn/lẻ =====
+    # ===== Sheet 6: Khách buôn/lẻ =====
     ws_kind = wb.create_sheet('Khách buôn lẻ')
     kind_headers = ['STT', 'Kiểu khách', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Đã thu', 'Công nợ', 'Tỷ trọng']
     for col, h in enumerate(kind_headers, 1):
@@ -1867,7 +2114,7 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 22, 12, 18, 18, 18, 18, 18, 12], 1):
         ws_kind.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 5: Nhóm khách hàng =====
+    # ===== Sheet 7: Nhóm khách hàng =====
     ws4 = wb.create_sheet('Nhóm khách hàng')
     grp_headers = ['STT', 'Nhóm KH', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Đã thu', 'Công nợ', 'Tỷ trọng']
     for col, h in enumerate(grp_headers, 1):
@@ -1901,7 +2148,7 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 24, 12, 18, 18, 18, 18, 18, 12], 1):
         ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 6: Chi tiết đơn hàng =====
+    # ===== Sheet 8: Chi tiết đơn hàng =====
     ws5 = wb.create_sheet('Chi tiết đơn hàng')
     od_headers = [
         'STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Kiểu khách', 'Nhóm KH',

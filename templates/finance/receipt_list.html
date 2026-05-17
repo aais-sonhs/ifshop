@@ -199,6 +199,9 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
+                <div id="receipt_lock_note" class="alert alert-warning py-2 px-3" style="display:none;">
+                    Phiếu thu đã tạo chỉ được sửa thông tin thanh toán, diễn giải, ghi chú và trạng thái. Đơn hàng/khách hàng/danh mục được giữ cố định.
+                </div>
                 <div class="row">
                     <div class="col-md-4">
                         <div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label>
@@ -230,6 +233,7 @@
                             <select class="form-control form-control-sm select2" id="inp_order_id">
                                 <option value="">-- Chọn đơn hàng --</option>
                             </select>
+                            <small class="form-text text-muted" id="order_lock_note" style="display:none;">Đơn hàng đã cố định cho phiếu thu này.</small>
                             <div id="order_info" class="mt-2" style="display:none;">
                                 <table class="table table-sm table-bordered mb-0">
                                     <tr><td class="text-muted" style="width:40%">Tổng đơn hàng:</td><td class="font-weight-bold text-right" id="lbl_order_total">0</td></tr>
@@ -438,6 +442,7 @@ function setQuickDateRange(range){
 
 var allOrders = [];
 var allReceipts = [];
+var currentEditingReceipt = null;
 var RECEIPT_FILTER_KEY = 'ifshop_receipt_filters';
 
 var allColumns = [
@@ -786,6 +791,54 @@ function loadOrders(){
     });
 }
 
+function syncReceiptPaymentMethodSelects(methods, selectedId){
+    methods = methods || [];
+    var currentFilter = $('#f_method').val() || '';
+    var currentReceiptMethod = selectedId || $('#inp_payment_method').val() || '';
+    var activeMethods = methods.filter(function(method){
+        return method.is_active || String(method.id) === String(currentReceiptMethod);
+    });
+
+    var filterOptions = '<option value="">Mọi hình thức</option>';
+    var receiptOptions = '';
+    activeMethods.forEach(function(method){
+        var defaultCashBookId = method.default_cash_book_id || '';
+        var optionHtml = '<option value="'+method.id+'" data-legacy-type="'+method.legacy_type+'" data-default-cash-book-id="'+defaultCashBookId+'">'+escapeHtml(method.name)+'</option>';
+        filterOptions += '<option value="'+method.id+'">'+escapeHtml(method.name)+'</option>';
+        receiptOptions += optionHtml;
+    });
+
+    $('#f_method').html(filterOptions).val(currentFilter);
+    if(currentFilter && !$('#f_method').val()) $('#f_method').val('');
+
+    $('#inp_payment_method').html(receiptOptions);
+    if(currentReceiptMethod && $('#inp_payment_method option[value="'+currentReceiptMethod+'"]').length){
+        $('#inp_payment_method').val(currentReceiptMethod);
+    } else {
+        $('#inp_payment_method').val($('#inp_payment_method option:first').val() || '');
+    }
+}
+
+function renderLockedReceiptOrder(receipt){
+    if(!receipt || !receipt.order_id){
+        $('#order_section').hide();
+        $('#order_info').hide();
+        $('#order_lock_note').hide();
+        return;
+    }
+    var label = (receipt.order || 'Đơn hàng') + ' | ' + (receipt.customer || '') +
+        ' | Tổng: ' + fmt(receipt.order_final_amount || 0) +
+        ' | Còn nợ: ' + fmt(receipt.order_remaining || 0);
+    $('#order_section').show();
+    $('#inp_order_id').html('<option value="'+receipt.order_id+'" selected>'+escapeHtml(label)+'</option>').val(receipt.order_id);
+    $('#lbl_order_total').text(fmt(receipt.order_final_amount || 0));
+    $('#lbl_order_paid').text(fmt(receipt.order_paid_amount || 0));
+    $('#lbl_order_remaining').text(fmt(receipt.order_remaining || 0));
+    $('#order_info').show();
+    $('#order_lock_note').show();
+    $('#btn_fill_remaining').hide();
+}
+
 function loadData(){
     $.get('/api/receipts/', function(res){
         allReceipts = res.data || [];
@@ -840,8 +893,7 @@ function renderTable(filtered){
         if(visible.indexOf('status') >= 0) html += '<td data-col="status"><span class="badge badge-'+statusClass+'">'+escapeHtml(receipt.status_display)+'</span></td>';
         if(visible.indexOf('actions') >= 0) html += '<td data-col="actions" class="text-nowrap">' +
             '<div class="btn-action-group">' +
-            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(receipt).replace(/\'/g, '&#39;')+')\'>Sửa</button> ' +
-            '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+receipt.id+')">Xóa</button>' +
+            '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(receipt).replace(/\'/g, '&#39;')+')\'>Sửa</button>' +
             '</div></td>';
         html += '</tr>';
     });
@@ -975,6 +1027,7 @@ function buildExportUrl(){
 }
 
 function editItem(receipt){
+    currentEditingReceipt = receipt;
     $('#edit_id').val(receipt.id);
     $('#inp_code').val(receipt.code);
     $('#inp_category_id').val(receipt.category_id);
@@ -987,36 +1040,18 @@ function editItem(receipt){
     $('#inp_description').val(receipt.description);
     $('#inp_note').val(receipt.note);
 
-    var categoryName = $('#inp_category_id').find('option:selected').text().toLowerCase().trim();
-    if(categoryName.indexOf('bán hàng') >= 0 || categoryName.indexOf('thu công nợ') >= 0){
-        $('#order_section').show();
-        loadOrders();
-        setTimeout(function(){
-            if(receipt.order_id){ $('#inp_order_id').val(receipt.order_id).trigger('change'); }
-        }, 500);
-    } else {
+    $('#receipt_lock_note').show();
+    $('#inp_code,#inp_category_id,#inp_customer_id,#inp_order_id').prop('disabled', true);
+    $('#inp_code,#inp_category_id,#inp_customer_id,#inp_order_id').trigger('change.select2');
+    if(receipt.order_id) renderLockedReceiptOrder(receipt);
+    else {
         $('#order_section').hide();
-        $('#inp_order_id').val('');
-        $('#order_info').hide();
+        $('#inp_order_id').html('<option value="">-- Không gắn đơn hàng --</option>').val('');
+        $('#order_info,#order_lock_note').hide();
     }
 
     $('#modal_title').text('Sửa phiếu thu');
     $('#modal_form').modal('show');
-}
-
-function deleteItem(id){
-    if(!confirm('Bạn có chắc muốn xóa?')) return;
-    $.ajax({
-        url: '/api/receipts/delete/',
-        type: 'POST',
-        contentType: 'application/json',
-        headers: {'X-CSRFToken': '{{csrf_token}}'},
-        data: JSON.stringify({id: id}),
-        success: function(r){
-            loadData();
-            alert(r.message);
-        }
-    });
 }
 
 $(document).ready(function(){
@@ -1153,6 +1188,7 @@ $(document).ready(function(){
     });
 
     $('#inp_category_id').change(function(){
+        if(currentEditingReceipt) return;
         var categoryName = $(this).find('option:selected').text().toLowerCase().trim();
         if(categoryName.indexOf('bán hàng') >= 0 || categoryName.indexOf('thu công nợ') >= 0){
             $('#order_section').show();
@@ -1165,7 +1201,15 @@ $(document).ready(function(){
     });
 
     $('#inp_customer_id').change(function(){
+        if(currentEditingReceipt) return;
         if($('#order_section').is(':visible')) loadOrders();
+    });
+
+    $('#inp_payment_method').change(function(){
+        var defaultCashBookId = $(this).find('option:selected').data('default-cash-book-id');
+        if(defaultCashBookId){
+            $('#inp_cash_book_id').val(defaultCashBookId).trigger('change.select2');
+        }
     });
 
     $('#inp_order_id').change(function(){
@@ -1190,6 +1234,10 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
+        currentEditingReceipt = null;
+        $('#modal_form').find('input, select, textarea').prop('disabled', false);
+        $('#receipt_lock_note,#order_lock_note').hide();
+        $('#btn_fill_remaining').show();
         $('#edit_id').val('');
         $('#inp_description,#inp_note').val('');
         $('#inp_amount').val(0);
@@ -1198,7 +1246,7 @@ $(document).ready(function(){
         var today = new Date().toISOString().split('T')[0];
         $('#inp_receipt_date').val(today);
         $('#inp_status').val('0');
-        $('#inp_payment_method').val('2');
+        $('#inp_payment_method').val($('#inp_payment_method option:first').val() || '');
         $('#order_section').hide();
         $('#order_info').hide();
         var prefix = 'PT-';
@@ -1221,20 +1269,29 @@ $(document).ready(function(){
         if(!code || !date){ alert('Vui lòng nhập mã và ngày thu'); return; }
         if(amount <= 0){ alert('Vui lòng nhập số tiền'); return; }
 
+        var editingReceipt = currentEditingReceipt || null;
         var $methodOpt = $('#inp_payment_method option:selected');
+        var selectedMethodOptionId = $methodOpt.val() || null;
+        var selectedPaymentMethod = parseInt($methodOpt.data('legacy-type'), 10);
+        if(editingReceipt && !selectedMethodOptionId){
+            selectedMethodOptionId = editingReceipt.payment_method_option_id || null;
+        }
+        if(!selectedPaymentMethod){
+            selectedPaymentMethod = editingReceipt ? (parseInt(editingReceipt.payment_method, 10) || 2) : 2;
+        }
         var data = {
             id: $('#edit_id').val() || null,
-            code: code,
-            category_id: $('#inp_category_id').val(),
-            customer_id: $('#inp_customer_id').val(),
+            code: editingReceipt ? editingReceipt.code : code,
+            category_id: editingReceipt ? editingReceipt.category_id : $('#inp_category_id').val(),
+            customer_id: editingReceipt ? editingReceipt.customer_id : $('#inp_customer_id').val(),
             cash_book_id: $('#inp_cash_book_id').val(),
-            order_id: $('#inp_order_id').val() || null,
+            order_id: editingReceipt ? editingReceipt.order_id : ($('#inp_order_id').val() || null),
             receipt_date: date,
             amount: amount,
             description: $('#inp_description').val(),
             status: parseInt($('#inp_status').val(), 10),
-            payment_method: parseInt($methodOpt.data('legacy-type'), 10) || 2,
-            payment_method_option_id: $methodOpt.val() || null,
+            payment_method: selectedPaymentMethod,
+            payment_method_option_id: selectedMethodOptionId,
             note: $('#inp_note').val()
         };
 
@@ -1253,6 +1310,14 @@ $(document).ready(function(){
             }
         });
     });
+
+    $('#modal_form').on('hidden.bs.modal', function(){
+        currentEditingReceipt = null;
+        $('#modal_form').find('input, select, textarea').prop('disabled', false);
+        $('#modal_form').find('select.select2').trigger('change.select2');
+        $('#receipt_lock_note,#order_lock_note').hide();
+        $('#btn_fill_remaining').show();
+    });
 });
 
 // ============ QUẢN LÝ PHƯƠNG THỨC NHẬN TIỀN ============
@@ -1260,15 +1325,16 @@ $('#btn_manage_payment_methods').click(function(){
     loadPaymentMethods();
     $('#modal_payment_methods').modal('show');
 });
-function loadPaymentMethods(){
+function loadPaymentMethods(selectedId){
     $.get('/api/payment-methods/', function(res){
+        syncReceiptPaymentMethodSelects(res.data || [], selectedId);
         var h='';
         res.data.forEach(function(m){
             h += '<tr>' +
-                '<td>'+m.code+'</td>' +
-                '<td>'+m.name+'</td>' +
-                '<td>'+m.legacy_type_display+'</td>' +
-                '<td>'+(m.default_cash_book||'—')+'</td>' +
+                '<td>'+escapeHtml(m.code || '')+'</td>' +
+                '<td>'+escapeHtml(m.name || '')+'</td>' +
+                '<td>'+escapeHtml(m.legacy_type_display || '')+'</td>' +
+                '<td>'+escapeHtml(m.default_cash_book || '—')+'</td>' +
                 '<td class="text-center">'+(m.is_active ? '<span class="badge badge-success">Đang dùng</span>' : '<span class="badge badge-secondary">Tắt</span>')+'</td>' +
                 '<td><button class="btn btn-xs btn-info" onclick=\'editPaymentMethod('+JSON.stringify(m).replace(/\'/g,"&#39;")+')\'><i class="fas fa-edit"></i></button></td>' +
                 '</tr>';
@@ -1289,14 +1355,20 @@ function editPaymentMethod(m){
     $('#pm_form_title').text(m.id ? 'Sửa phương thức' : 'Thêm phương thức');
     $('#pm_form_section').show();
 }
-$('#btn_add_payment_method').click(function(){
+$(document).on('click', '#btn_add_payment_method', function(){
     editPaymentMethod({});
 });
-$('#btn_save_pm').click(function(){
+$(document).on('click', '#btn_save_pm', function(){
+    var code = ($('#pm_code').val() || '').trim();
+    var name = ($('#pm_name').val() || '').trim();
+    if(!code || !name){
+        alert('Vui lòng nhập mã và tên phương thức');
+        return;
+    }
     var data = {
         id: $('#pm_edit_id').val() || null,
-        code: $('#pm_code').val(),
-        name: $('#pm_name').val(),
+        code: code,
+        name: name,
         description: $('#pm_description').val(),
         legacy_type: parseInt($('#pm_legacy_type').val()) || 3,
         default_cash_book_id: $('#pm_default_cash_book_id').val() || null,
@@ -1310,7 +1382,7 @@ $('#btn_save_pm').click(function(){
         data:JSON.stringify(data),
         success:function(r){
             if(r.status==='ok'){
-                loadPaymentMethods();
+                loadPaymentMethods(r.method ? r.method.id : null);
                 $('#pm_form_section').hide();
                 alert(r.message);
             } else { alert(r.message); }

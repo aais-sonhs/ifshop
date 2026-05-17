@@ -511,7 +511,7 @@
                     </div>
                     <div class="col-md-4">
                         <div class="form-group">
-                            <label>Giá bán <span class="text-danger">*</span></label>
+                            <label>Giá bán lẻ <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-sm money-format" id="qp_selling_price" value="0">
                         </div>
                     </div>
@@ -1447,6 +1447,10 @@ function getFlowStockClass(value){
     return 'text-muted';
 }
 
+function getProductRetailPrice(product){
+    return Number((product && (product.retail_price !== undefined ? product.retail_price : product.selling_price)) || 0);
+}
+
 	function formatStockMetric(label, value, className){
 	    return '<span class="text-muted">' + label + ':</span> <span class="' + className + '">' + fmt(value) + '</span>';
 	}
@@ -1455,6 +1459,9 @@ function getProductWarehouseRows(product){
     if(!product || product.is_service) return [];
 
     var keysMap = {};
+    ORDER_WAREHOUSES.forEach(function(warehouse){
+        keysMap[String(warehouse.id)] = true;
+    });
     ['stocks', 'reserved_stocks', 'pending_stocks', 'sellable_stocks'].forEach(function(field){
         var stockMap = product[field] || {};
         Object.keys(stockMap).forEach(function(key){
@@ -1494,12 +1501,32 @@ function getProductWarehouseRows(product){
     return rows;
 }
 
-function getStockDisplayState(info, qty){
+function getProductStockAlertInfo(product){
+    var info = getStockForProduct(product ? product.id : null);
+    if(!product || info.isService){
+        return {negativeStock: 0, oversoldStock: 0, hasNegative: false, hasOversold: false};
+    }
+    var rows = getProductWarehouseRows(product);
+    var minActual = info.actualStock;
+    var minSellable = info.sellableStock;
+    rows.forEach(function(row){
+        minActual = Math.min(minActual, row.actualStock);
+        minSellable = Math.min(minSellable, row.sellableStock);
+    });
+    return {
+        negativeStock: minActual,
+        oversoldStock: minSellable,
+        hasNegative: minActual < 0,
+        hasOversold: minSellable < 0
+    };
+}
+
+function getStockDisplayState(info, qty, alertInfo){
     if(info.isService){
         return {cellClass: 'text-muted', title: ''};
     }
-    if(info.actualStock < 0 || info.sellableStock < 0){
-        return {cellClass: 'text-danger font-weight-bold', title: 'Tồn kho đang âm ở kho đang xem.'};
+    if((alertInfo && (alertInfo.hasNegative || alertInfo.hasOversold)) || info.actualStock < 0 || info.sellableStock < 0){
+        return {cellClass: 'text-danger font-weight-bold', title: 'Tồn kho đang âm hoặc tồn có thể bán đang âm ở ít nhất một kho.'};
     }
     if(qty > info.stock){
         if(ALLOW_NEGATIVE_STOCK){
@@ -1531,7 +1558,7 @@ function renderStockCellHtml(product, info, qty){
     var summaryLabel = selectedWarehouseId
         ? ('Kho xuất: ' + getWarehouseNameById(selectedWarehouseId))
         : 'Tổng tất cả kho';
-    var displayState = getStockDisplayState(info, qty);
+    var displayState = getStockDisplayState(info, qty, getProductStockAlertInfo(product));
     var warehouseRows = getProductWarehouseRows(product);
     var detailsHtml = warehouseRows.map(function(row){
         var isSelected = selectedWarehouseId && String(row.warehouseId) === String(selectedWarehouseId);
@@ -1566,7 +1593,7 @@ function renderStockCellForRow($row){
 
     var qty = parseFloat($row.find('.inp_qty').val()) || 0;
     var info = getStockForProduct(productId);
-    var displayState = getStockDisplayState(info, qty);
+    var displayState = getStockDisplayState(info, qty, getProductStockAlertInfo(product));
     $stockCell
         .html(renderStockCellHtml(product, info, qty))
         .attr('title', displayState.title || '')
@@ -1584,7 +1611,7 @@ function renderQuickSearchStockText(product){
     var scopeLabel = selectedWarehouseId
         ? ('Kho xuất ' + getWarehouseNameById(selectedWarehouseId))
         : 'Tổng kho';
-    var summaryClass = getStockDisplayState(info, 0).cellClass;
+    var summaryClass = getStockDisplayState(info, 0, getProductStockAlertInfo(product)).cellClass;
     var rowsHtml = getProductWarehouseRows(product).map(function(row){
         var isSelected = selectedWarehouseId && String(row.warehouseId) === String(selectedWarehouseId);
 	        var html = '<div class="quick-search-stock-row' + (isSelected ? ' is-selected' : '') + '">' +
@@ -1616,11 +1643,12 @@ function renderQuickSearchAlertBadges(product){
     }
 
     var badges = [];
-    if(info.actualStock < 0){
-        badges.push('<span class="quick-search-alert-badge is-negative" data-filter="negative" title="Bấm để lọc các mã đang âm kho.">Âm ' + fmt(Math.abs(info.actualStock)) + '</span>');
+    var alertInfo = getProductStockAlertInfo(product);
+    if(alertInfo.hasNegative){
+        badges.push('<span class="quick-search-alert-badge is-negative" data-filter="negative" title="Bấm để lọc các mã đang âm kho.">Âm kho ' + fmt(alertInfo.negativeStock) + '</span>');
     }
-    if(info.sellableStock < 0){
-        badges.push('<span class="quick-search-alert-badge is-oversold" data-filter="oversold" title="Bấm để lọc các mã đang vượt tồn bán được.">Vượt ' + fmt(Math.abs(info.sellableStock)) + '</span>');
+    if(alertInfo.hasOversold){
+        badges.push('<span class="quick-search-alert-badge is-oversold" data-filter="oversold" title="Bấm để lọc các mã đang vượt tồn bán được.">Có thể bán ' + fmt(alertInfo.oversoldStock) + '</span>');
     }
 
     if(!badges.length){
@@ -1668,14 +1696,15 @@ function setQuickSearchStockFilter(filterKey){
 function matchesQuickSearchStockFilter(product){
     if(!product) return false;
     var info = getStockForProduct(product.id);
+    var alertInfo = getProductStockAlertInfo(product);
     if(currentQuickSearchStockFilter === 'available'){
         return info.isService || info.stock > 0;
     }
     if(currentQuickSearchStockFilter === 'negative'){
-        return !info.isService && info.actualStock < 0;
+        return !info.isService && alertInfo.hasNegative;
     }
     if(currentQuickSearchStockFilter === 'oversold'){
-        return !info.isService && info.actualStock >= 0 && info.sellableStock < 0;
+        return !info.isService && !alertInfo.hasNegative && alertInfo.hasOversold;
     }
     return true;
 }
@@ -1690,15 +1719,16 @@ function sortQuickSearchResults(results){
             primary: 0,
             secondary: 0,
         };
+        var alertInfo = getProductStockAlertInfo(product);
 
         if(currentQuickSearchStockFilter === 'negative'){
-            sortMeta.bucket = (!info.isService && info.actualStock < 0) ? 0 : 1;
-            sortMeta.primary = info.actualStock;
-            sortMeta.secondary = info.sellableStock;
+            sortMeta.bucket = (!info.isService && alertInfo.hasNegative) ? 0 : 1;
+            sortMeta.primary = alertInfo.negativeStock;
+            sortMeta.secondary = alertInfo.oversoldStock;
         } else if(currentQuickSearchStockFilter === 'oversold'){
-            sortMeta.bucket = (!info.isService && info.actualStock >= 0 && info.sellableStock < 0) ? 0 : 1;
-            sortMeta.primary = info.sellableStock;
-            sortMeta.secondary = info.actualStock;
+            sortMeta.bucket = (!info.isService && !alertInfo.hasNegative && alertInfo.hasOversold) ? 0 : 1;
+            sortMeta.primary = alertInfo.oversoldStock;
+            sortMeta.secondary = alertInfo.negativeStock;
         } else if(currentQuickSearchStockFilter === 'available'){
             sortMeta.bucket = info.isService ? 1 : 0;
             sortMeta.primary = info.isService ? 0 : (0 - info.stock);
@@ -1742,13 +1772,14 @@ function updateQuickSearchFilterLabels(){
 
     allProducts.forEach(function(product){
         var info = getStockForProduct(product.id);
+        var alertInfo = getProductStockAlertInfo(product);
         if(info.isService || info.stock > 0){
             counts.available += 1;
         }
-        if(!info.isService && info.actualStock < 0){
+        if(!info.isService && alertInfo.hasNegative){
             counts.negative += 1;
         }
-        if(!info.isService && info.actualStock >= 0 && info.sellableStock < 0){
+        if(!info.isService && !alertInfo.hasNegative && alertInfo.hasOversold){
             counts.oversold += 1;
         }
     });
@@ -3321,7 +3352,7 @@ function addItemFromProduct(product){
         variant_id: null,
         unit: product.unit,
         quantity: 1,
-        unit_price: product.selling_price,
+        unit_price: getProductRetailPrice(product),
         discount_percent: 0,
         image_url: product.image_url || '',
     };
@@ -3356,14 +3387,14 @@ function addItemRow(item){
                 if(sel){
                     hasItemOption = true;
                 }
-                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+v.selling_price+'" data-cost="'+v.cost_price+'" data-variant-id="'+v.id+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+getProductRetailPrice(p)+'" data-variant-price="'+(v.selling_price||0)+'" data-cost="'+v.cost_price+'" data-variant-id="'+v.id+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
             });
         } else {
             var sel=(item&&item.product_id==p.id)?'selected':'';
             if(sel){
                 hasItemOption = true;
             }
-            opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+p.selling_price+'" data-cost="'+p.cost_price+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
+            opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+getProductRetailPrice(p)+'" data-cost="'+p.cost_price+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
         }
     });
     if(item && item.product_id && !hasItemOption){

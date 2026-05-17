@@ -1,4 +1,5 @@
 import logging
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from functools import wraps
@@ -19,6 +20,19 @@ from core.store_utils import (
 logger = logging.getLogger(__name__)
 
 
+CUSTOMER_KIND_OPTIONS = [
+    {'value': 'retail', 'label': 'Khách lẻ'},
+    {'value': 'wholesale', 'label': 'Khách buôn / sỉ'},
+    {'value': 'other', 'label': 'Khác / chưa phân loại'},
+]
+
+RETAIL_GROUP_KEYWORDS = ('lẻ', 'le', 'bán lẻ', 'ban le', 'retail')
+WHOLESALE_GROUP_KEYWORDS = (
+    'sỉ', 'si', 'buôn', 'buon', 'bán buôn', 'ban buon',
+    'đại lý', 'dai ly', 'wholesale',
+)
+
+
 def _parse_sales_report_number(value):
     """Chuyển tham số số từ query string sang float; trả None nếu rỗng hoặc sai định dạng."""
     if value in (None, ''):
@@ -27,6 +41,89 @@ def _parse_sales_report_number(value):
         return float(str(value).replace(',', '').strip())
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_report_text(value):
+    text = str(value or '').casefold()
+    text = ''.join(
+        char for char in unicodedata.normalize('NFKD', text)
+        if not unicodedata.combining(char)
+    )
+    return text.replace('đ', 'd')
+
+
+def _parse_filter_int(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _report_lookup(prefix, suffix):
+    return f'{prefix}__{suffix}' if prefix else suffix
+
+
+def _group_name_keyword_q(prefix, keywords):
+    query = Q()
+    for keyword in keywords:
+        query |= Q(**{_report_lookup(prefix, 'group__name__icontains'): keyword})
+    return query
+
+
+def _get_sales_report_customer_kind_q(kind, prefix='customer'):
+    """Lọc khách lẻ/khách buôn theo nhóm khách hàng hiện có, không cần thêm schema."""
+    if kind not in {'retail', 'wholesale', 'other'}:
+        return Q()
+
+    null_customer_q = Q(**{_report_lookup(prefix, 'isnull'): True}) if prefix else Q()
+    retail_q = null_customer_q | _group_name_keyword_q(prefix, RETAIL_GROUP_KEYWORDS)
+    wholesale_q = _group_name_keyword_q(prefix, WHOLESALE_GROUP_KEYWORDS)
+    if kind == 'retail':
+        return retail_q
+    if kind == 'wholesale':
+        return wholesale_q
+    has_customer_q = Q(**{_report_lookup(prefix, 'isnull'): False}) if prefix else Q()
+    return has_customer_q & ~(retail_q | wholesale_q)
+
+
+def _get_sales_report_return_customer_kind_q(kind):
+    if kind not in {'retail', 'wholesale', 'other'}:
+        return Q()
+    return (
+        (Q(order__isnull=False) & _get_sales_report_customer_kind_q(kind, 'order__customer')) |
+        (Q(order__isnull=True) & _get_sales_report_customer_kind_q(kind, 'customer'))
+    )
+
+
+def _classify_sales_report_customer_kind(customer):
+    if not customer:
+        return 'retail', 'Khách lẻ'
+    group_name = customer.group.name if getattr(customer, 'group', None) else ''
+    normalized_group = _normalize_report_text(group_name)
+    if any(keyword in normalized_group for keyword in ('si', 'buon', 'ban buon', 'dai ly', 'wholesale')):
+        return 'wholesale', 'Khách buôn / sỉ'
+    if any(keyword in normalized_group for keyword in ('le', 'ban le', 'retail')):
+        return 'retail', 'Khách lẻ'
+    return 'other', 'Khác / chưa phân loại'
+
+
+def _get_product_category_scope_q(category_id, prefix):
+    category_id = _parse_filter_int(category_id)
+    if category_id is None:
+        return Q()
+    return (
+        Q(**{f'{prefix}category_id': category_id}) |
+        Q(**{f'{prefix}category__parent_id': category_id})
+    )
+
+
+def _get_product_category_direct_q(category_id, prefix):
+    category_id = _parse_filter_int(category_id)
+    if category_id is None:
+        return Q()
+    return Q(**{f'{prefix}category_id': category_id})
 
 
 def sales_report_privileged_required(view_func):
@@ -56,8 +153,10 @@ def _get_sales_report_filters(request):
         'to_date': to_date,
         'time_group': time_group,
         'store_id': request.GET.get('store_id') or '',
+        'customer_kind': request.GET.get('customer_kind', '').strip(),
         'customer_group_id': request.GET.get('customer_group_id') or '',
         'category_id': request.GET.get('category_id') or '',
+        'product_type_id': request.GET.get('product_type_id') or '',
         'profit_filter': request.GET.get('profit_filter', '').strip(),
         'customer_id': request.GET.get('customer_id') or '',
         'product_id': request.GET.get('product_id') or '',
@@ -67,6 +166,8 @@ def _get_sales_report_filters(request):
         'revenue_max': _parse_sales_report_number(request.GET.get('revenue_max')),
         'cost_min': _parse_sales_report_number(request.GET.get('cost_min')),
         'cost_max': _parse_sales_report_number(request.GET.get('cost_max')),
+        'line_profit_min': _parse_sales_report_number(request.GET.get('line_profit_min')),
+        'line_profit_max': _parse_sales_report_number(request.GET.get('line_profit_max')),
         'profit_min': _parse_sales_report_number(request.GET.get('profit_min')),
         'profit_max': _parse_sales_report_number(request.GET.get('profit_max')),
     }
@@ -147,7 +248,10 @@ def _build_sales_report_payload(request, include_filter_options=True):
     from system_management.models import Store
 
     filters = _get_sales_report_filters(request)
-    item_scope = bool(filters['category_id'] or filters['product_id'])
+    line_profit_scope = filters['line_profit_min'] is not None or filters['line_profit_max'] is not None
+    item_scope = bool(
+        filters['category_id'] or filters['product_type_id'] or filters['product_id'] or line_profit_scope
+    )
 
     def _matches_metric_filters(row):
         revenue = float(row.get('revenue', row.get('amount', 0)) or 0)
@@ -167,6 +271,14 @@ def _build_sales_report_payload(request, include_filter_options=True):
             return False
         return True
 
+    def _matches_line_profit_filters(row):
+        line_profit = float(row.get('line_profit', row.get('profit', 0)) or 0)
+        if filters['line_profit_min'] is not None and line_profit < filters['line_profit_min']:
+            return False
+        if filters['line_profit_max'] is not None and line_profit > filters['line_profit_max']:
+            return False
+        return True
+
     orders_qs = Order.objects.filter(
         order_date__gte=filters['from_date'],
         order_date__lte=filters['to_date'],
@@ -177,6 +289,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     if filters['store_id']:
         orders_qs = orders_qs.filter(store_id=filters['store_id'])
+    if filters['customer_kind']:
+        orders_qs = orders_qs.filter(_get_sales_report_customer_kind_q(filters['customer_kind']))
     if filters['customer_group_id']:
         orders_qs = orders_qs.filter(customer__group_id=filters['customer_group_id'])
     if filters['customer_id']:
@@ -184,7 +298,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
     if filters['salesperson']:
         orders_qs = orders_qs.filter(salesperson__iexact=filters['salesperson'])
     if filters['category_id']:
-        orders_qs = orders_qs.filter(items__product__category_id=filters['category_id'])
+        orders_qs = orders_qs.filter(_get_product_category_scope_q(filters['category_id'], 'items__product__'))
+    if filters['product_type_id']:
+        orders_qs = orders_qs.filter(_get_product_category_direct_q(filters['product_type_id'], 'items__product__'))
     if filters['product_id']:
         orders_qs = orders_qs.filter(items__product_id=filters['product_id'])
     if filters['search']:
@@ -204,15 +320,17 @@ def _build_sales_report_payload(request, include_filter_options=True):
     orders_list = list(orders_qs.order_by('-order_date', '-id'))
 
     order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
-        'product', 'product__category', 'order', 'order__customer', 'order__customer__group'
+        'product', 'product__category', 'product__category__parent',
+        'order', 'order__customer', 'order__customer__group'
     )
     if filters['category_id']:
-        order_items_qs = order_items_qs.filter(product__category_id=filters['category_id'])
+        order_items_qs = order_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
+    if filters['product_type_id']:
+        order_items_qs = order_items_qs.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
     if filters['product_id']:
         order_items_qs = order_items_qs.filter(product_id=filters['product_id'])
 
     order_items = list(order_items_qs)
-    order_item_map = defaultdict(lambda: {'revenue': 0.0, 'cost': 0.0})
     adjusted_item_rows = []
     for item in order_items:
         base_total = float(item.order.total_amount or 0)
@@ -224,19 +342,33 @@ def _build_sales_report_payload(request, include_filter_options=True):
         else:
             adjusted_revenue = line_revenue
 
-        order_item_map[item.order_id]['revenue'] += adjusted_revenue
-        order_item_map[item.order_id]['cost'] += line_cost
+        category = item.product.category if item.product else None
+        root_category = category.parent if category and category.parent_id else category
+        product_type = category if category and category.parent_id else None
+        line_profit = adjusted_revenue - line_cost
         adjusted_item_rows.append({
             'order_id': item.order_id,
             'product_name': item.product.name if item.product else '',
-            'category_name': item.product.category.name if item.product and item.product.category else '',
+            'category_name': root_category.name if root_category else '',
+            'product_type_name': product_type.name if product_type else '',
             'quantity': float(item.quantity or 0),
             'revenue': adjusted_revenue,
             'cost': line_cost,
+            'line_profit': line_profit,
         })
+
+    if line_profit_scope:
+        adjusted_item_rows = [row for row in adjusted_item_rows if _matches_line_profit_filters(row)]
+
+    order_item_map = defaultdict(lambda: {'revenue': 0.0, 'cost': 0.0})
+    for item_row in adjusted_item_rows:
+        order_item_map[item_row['order_id']]['revenue'] += item_row['revenue']
+        order_item_map[item_row['order_id']]['cost'] += item_row['cost']
 
     order_rows = []
     for order in orders_list:
+        if item_scope and order.id not in order_item_map:
+            continue
         item_totals = order_item_map.get(order.id, {'revenue': 0, 'cost': 0})
         revenue = item_totals['revenue'] if item_scope else float(max(order.final_amount or 0, 0))
         cost = item_totals['cost']
@@ -251,6 +383,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             paid = float(order.paid_amount or 0)
 
         profit = revenue - cost
+        customer_kind, customer_kind_label = _classify_sales_report_customer_kind(order.customer)
         order_rows.append({
             'id': order.id,
             'code': order.code,
@@ -258,6 +391,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
             'customer': order.customer.name if order.customer else '',
             'customer_id': order.customer_id,
+            'customer_kind': customer_kind,
+            'customer_kind_label': customer_kind_label,
             'customer_group': order.customer.group.name if order.customer and order.customer.group else '',
             'customer_group_id': order.customer.group_id if order.customer else None,
             'store_id': order.store_id,
@@ -303,11 +438,12 @@ def _build_sales_report_payload(request, include_filter_options=True):
         if item_row['order_id'] not in allowed_order_id_set:
             continue
 
-        product_key = (item_row['product_name'], item_row['category_name'])
+        product_key = (item_row['product_name'], item_row['category_name'], item_row['product_type_name'])
         if product_key not in product_map:
             product_map[product_key] = {
                 'name': item_row['product_name'],
                 'category': item_row['category_name'],
+                'product_type': item_row['product_type_name'],
                 'qty': 0,
                 'amount': 0,
                 'cost': 0,
@@ -341,6 +477,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
             Q(order__isnull=True, warehouse__store_id=filters['store_id']) |
             Q(order__isnull=True, warehouse__isnull=True, customer__store_id=filters['store_id'])
         )
+    if filters['customer_kind']:
+        returns_qs = returns_qs.filter(_get_sales_report_return_customer_kind_q(filters['customer_kind']))
     if filters['customer_group_id']:
         returns_qs = returns_qs.filter(
             Q(order__customer__group_id=filters['customer_group_id']) |
@@ -371,7 +509,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
     if item_scope:
         return_items_qs = OrderReturnItem.objects.filter(order_return__in=returns_qs)
         if filters['category_id']:
-            return_items_qs = return_items_qs.filter(product__category_id=filters['category_id'])
+            return_items_qs = return_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
+        if filters['product_type_id']:
+            return_items_qs = return_items_qs.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
         if filters['product_id']:
             return_items_qs = return_items_qs.filter(product_id=filters['product_id'])
         returns_total = float(return_items_qs.aggregate(s=Sum('total_price'))['s'] or 0)
@@ -392,7 +532,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     return_items_for_breakdown = OrderReturnItem.objects.filter(order_return__in=returns_qs)
     if filters['category_id']:
-        return_items_for_breakdown = return_items_for_breakdown.filter(product__category_id=filters['category_id'])
+        return_items_for_breakdown = return_items_for_breakdown.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
+    if filters['product_type_id']:
+        return_items_for_breakdown = return_items_for_breakdown.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
     if filters['product_id']:
         return_items_for_breakdown = return_items_for_breakdown.filter(product_id=filters['product_id'])
     return_items_for_breakdown = return_items_for_breakdown.select_related(
@@ -452,10 +594,12 @@ def _build_sales_report_payload(request, include_filter_options=True):
     product_breakdown = [{
         'name': row['name'],
         'category': row['category'] or '',
+        'product_type': row.get('product_type') or '',
         'qty': row['qty'],
         'amount': row['amount'],
         'cost': row['cost'],
         'profit': row['amount'] - row['cost'],
+        'line_profit': row['amount'] - row['cost'],
     } for row in sorted(product_map.values(), key=lambda row: (-row['amount'], -row['qty'], row['name']))]
     product_breakdown = [row for row in product_breakdown if _matches_metric_filters(row)]
 
@@ -469,6 +613,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
     category_breakdown = [row for row in category_breakdown if _matches_metric_filters(row)]
 
     customer_map = {}
+    customer_kind_map = {}
     group_map = {}
     staff_map = {}
     store_map = {}
@@ -477,6 +622,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
         if customer_key not in customer_map:
             customer_map[customer_key] = {
                 'name': row['customer'] or 'Khách lẻ',
+                'customer_kind': row['customer_kind'],
+                'customer_kind_label': row['customer_kind_label'],
                 'group': row['customer_group'] or '',
                 'orders': 0,
                 'amount': 0,
@@ -491,6 +638,25 @@ def _build_sales_report_payload(request, include_filter_options=True):
         customer_map[customer_key]['profit'] += row['profit']
         customer_map[customer_key]['paid'] += row['paid']
         customer_map[customer_key]['debt'] += row['debt']
+
+        customer_kind_key = row['customer_kind']
+        if customer_kind_key not in customer_kind_map:
+            customer_kind_map[customer_kind_key] = {
+                'key': customer_kind_key,
+                'name': row['customer_kind_label'],
+                'orders': 0,
+                'amount': 0,
+                'cost': 0,
+                'profit': 0,
+                'paid': 0,
+                'debt': 0,
+            }
+        customer_kind_map[customer_kind_key]['orders'] += 1
+        customer_kind_map[customer_kind_key]['amount'] += row['revenue']
+        customer_kind_map[customer_kind_key]['cost'] += row['cost']
+        customer_kind_map[customer_kind_key]['profit'] += row['profit']
+        customer_kind_map[customer_kind_key]['paid'] += row['paid']
+        customer_kind_map[customer_kind_key]['debt'] += row['debt']
 
         group_name = row['customer_group'] or 'Không nhóm'
         if group_name not in group_map:
@@ -557,13 +723,18 @@ def _build_sales_report_payload(request, include_filter_options=True):
                     'returns_amount': 0,
                 }
             if item_scope:
-                ret_amount = float(
-                    OrderReturnItem.objects.filter(order_return=ret).filter(
-                        **({'product__category_id': filters['category_id']} if filters['category_id'] else {})
-                    ).filter(
-                        **({'product_id': filters['product_id']} if filters['product_id'] else {})
-                    ).aggregate(s=Sum('total_price'))['s'] or 0
-                )
+                scoped_return_items = OrderReturnItem.objects.filter(order_return=ret)
+                if filters['category_id']:
+                    scoped_return_items = scoped_return_items.filter(
+                        _get_product_category_scope_q(filters['category_id'], 'product__')
+                    )
+                if filters['product_type_id']:
+                    scoped_return_items = scoped_return_items.filter(
+                        _get_product_category_direct_q(filters['product_type_id'], 'product__')
+                    )
+                if filters['product_id']:
+                    scoped_return_items = scoped_return_items.filter(product_id=filters['product_id'])
+                ret_amount = float(scoped_return_items.aggregate(s=Sum('total_price'))['s'] or 0)
             else:
                 ret_amount = float(ret.total_refund or 0)
             staff_map[staff_name]['returns_amount'] += ret_amount
@@ -573,9 +744,13 @@ def _build_sales_report_payload(request, include_filter_options=True):
     top_customers = customer_breakdown[:5]
     group_breakdown = sorted(group_map.values(), key=lambda row: (-row['amount'], row['name']))
     group_breakdown = [row for row in group_breakdown if _matches_metric_filters(row)]
+    customer_kind_breakdown = sorted(customer_kind_map.values(), key=lambda row: (-row['amount'], row['name']))
+    customer_kind_breakdown = [row for row in customer_kind_breakdown if _matches_metric_filters(row)]
     for row in customer_breakdown:
         row['contribution'] = round(row['amount'] / total_revenue * 100, 1) if total_revenue > 0 else 0
     for row in group_breakdown:
+        row['contribution'] = round(row['amount'] / total_revenue * 100, 1) if total_revenue > 0 else 0
+    for row in customer_kind_breakdown:
         row['contribution'] = round(row['amount'] / total_revenue * 100, 1) if total_revenue > 0 else 0
 
     staff_breakdown = sorted(staff_map.values(), key=lambda row: (-row['revenue'], row['salesperson']))
@@ -701,6 +876,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         'time_group_label': time_group_meta['label'],
         'order_details': order_rows,
         'store_breakdown': store_breakdown,
+        'customer_kind_breakdown': customer_kind_breakdown,
         'group_breakdown': group_breakdown,
         'category_breakdown': category_breakdown,
         'order_status_breakdown': order_status_breakdown,
@@ -724,21 +900,45 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     if include_filter_options:
         groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
-        categories = list(ProductCategory.objects.filter(is_active=True).values('id', 'name').order_by('name'))
+        categories = list(
+            ProductCategory.objects.filter(is_active=True)
+            .values('id', 'name', 'parent_id')
+            .order_by('parent__name', 'name')
+        )
+        root_categories = [category for category in categories if not category['parent_id']]
+        product_types = [category for category in categories if category['parent_id']]
+        if filters['category_id']:
+            selected_category_id = _parse_filter_int(filters['category_id'])
+            if selected_category_id is not None:
+                product_types = [category for category in product_types if category['parent_id'] == selected_category_id]
+
+        category_name_map = {category['id']: category['name'] for category in categories}
+        for category in product_types:
+            category['parent_name'] = category_name_map.get(category['parent_id'], '')
 
         customers_qs = filter_by_store(Customer.objects.filter(is_active=True), request)
         products_qs = filter_by_store(Product.objects.filter(is_active=True), request)
         if filters['store_id']:
             customers_qs = customers_qs.filter(store_id=filters['store_id'])
             products_qs = products_qs.filter(store_id=filters['store_id'])
+        if filters['customer_kind']:
+            customers_qs = customers_qs.filter(_get_sales_report_customer_kind_q(filters['customer_kind'], ''))
+        if filters['customer_group_id']:
+            customers_qs = customers_qs.filter(group_id=filters['customer_group_id'])
+        if filters['category_id']:
+            products_qs = products_qs.filter(_get_product_category_scope_q(filters['category_id'], ''))
+        if filters['product_type_id']:
+            products_qs = products_qs.filter(_get_product_category_direct_q(filters['product_type_id'], ''))
 
         customers = list(customers_qs.values('id', 'code', 'name').order_by('name')[:300])
         products = list(products_qs.values('id', 'code', 'name').order_by('name')[:300])
         salespersons = _get_salesperson_filter_options(request, filters['store_id'])
 
         payload['filter_options'] = {
+            'customer_kinds': CUSTOMER_KIND_OPTIONS,
             'customer_groups': groups,
-            'categories': categories,
+            'categories': root_categories,
+            'product_types': product_types,
             'customers': customers,
             'products': products,
             'salespersons': salespersons,
@@ -1468,6 +1668,7 @@ def export_sales_excel(request):
     daily = payload.get('daily', [])
     product_breakdown = payload.get('product_breakdown', [])
     category_breakdown = payload.get('category_breakdown', [])
+    customer_kind_breakdown = payload.get('customer_kind_breakdown', [])
     group_breakdown = payload.get('group_breakdown', [])
     order_details = payload.get('order_details', [])
     time_group_label = payload.get('time_group_label', 'Ngày')
@@ -1499,10 +1700,18 @@ def export_sales_excel(request):
     filter_labels = []
     if filters.get('store_id'):
         filter_labels.append(f"Cửa hàng: {filters['store_id']}")
+    if filters.get('customer_kind'):
+        kind_label = next(
+            (option['label'] for option in CUSTOMER_KIND_OPTIONS if option['value'] == filters['customer_kind']),
+            filters['customer_kind'],
+        )
+        filter_labels.append(f"Kiểu khách: {kind_label}")
     if filters.get('customer_group_id'):
         filter_labels.append(f"Nhóm KH: {filters['customer_group_id']}")
     if filters.get('category_id'):
-        filter_labels.append(f"Nhóm hàng: {filters['category_id']}")
+        filter_labels.append(f"Nhóm mặt hàng: {filters['category_id']}")
+    if filters.get('product_type_id'):
+        filter_labels.append(f"Loại SP: {filters['product_type_id']}")
     if filters.get('profit_filter'):
         filter_labels.append(f"Lợi nhuận: {filters['profit_filter']}")
     for key, label in (
@@ -1510,8 +1719,10 @@ def export_sales_excel(request):
         ('revenue_max', 'DT đến'),
         ('cost_min', 'GV từ'),
         ('cost_max', 'GV đến'),
-        ('profit_min', 'LN từ'),
-        ('profit_max', 'LN đến'),
+        ('line_profit_min', 'LN dòng từ'),
+        ('line_profit_max', 'LN dòng đến'),
+        ('profit_min', 'LN gộp từ'),
+        ('profit_max', 'LN gộp đến'),
     ):
         if filters.get(key) is not None:
             filter_labels.append(f"{label}: {int(filters[key]) if float(filters[key]).is_integer() else filters[key]}")
@@ -1560,7 +1771,7 @@ def export_sales_excel(request):
 
     # ===== Sheet 2: Mặt hàng =====
     ws2 = wb.create_sheet('Mặt hàng')
-    sp_headers = ['STT', 'Sản phẩm', 'Danh mục', 'SL bán', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Biên LN']
+    sp_headers = ['STT', 'Sản phẩm', 'Nhóm mặt hàng', 'Loại SP', 'SL bán', 'Doanh thu', 'Giá vốn', 'LN dòng', 'Biên LN']
     for col, h in enumerate(sp_headers, 1):
         cell = ws2.cell(row=1, column=col, value=h)
         cell.font = sub_font
@@ -1575,22 +1786,23 @@ def export_sales_excel(request):
         ws2.cell(row=idx + 1, column=1, value=idx).border = thin
         ws2.cell(row=idx + 1, column=2, value=p.get('name') or '').border = thin
         ws2.cell(row=idx + 1, column=3, value=p.get('category') or '').border = thin
-        ws2.cell(row=idx + 1, column=4, value=float(p.get('qty') or 0)).border = thin
-        c = ws2.cell(row=idx + 1, column=5, value=amt)
+        ws2.cell(row=idx + 1, column=4, value=p.get('product_type') or '').border = thin
+        ws2.cell(row=idx + 1, column=5, value=float(p.get('qty') or 0)).border = thin
+        c = ws2.cell(row=idx + 1, column=6, value=amt)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx + 1, column=6, value=cst)
+        c = ws2.cell(row=idx + 1, column=7, value=cst)
         c.number_format = money_fmt
         c.border = thin
-        c = ws2.cell(row=idx + 1, column=7, value=profit)
+        c = ws2.cell(row=idx + 1, column=8, value=profit)
         c.number_format = money_fmt
         c.border = thin
-        ws2.cell(row=idx + 1, column=8, value=margin / 100).number_format = '0.0%'
-        ws2.cell(row=idx + 1, column=8).border = thin
+        ws2.cell(row=idx + 1, column=9, value=margin / 100).number_format = '0.0%'
+        ws2.cell(row=idx + 1, column=9).border = thin
         if profit < 0:
             c.font = Font(bold=True, color='FF0000')
 
-    for i, w in enumerate([6, 35, 20, 12, 18, 18, 18, 12], 1):
+    for i, w in enumerate([6, 35, 20, 18, 12, 18, 18, 18, 12], 1):
         ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     # ===== Sheet 3: Nhóm mặt hàng =====
@@ -1621,7 +1833,41 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 28, 12, 18, 18, 18, 12], 1):
         ws3.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 4: Nhóm khách hàng =====
+    # ===== Sheet 4: Khách buôn/lẻ =====
+    ws_kind = wb.create_sheet('Khách buôn lẻ')
+    kind_headers = ['STT', 'Kiểu khách', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Đã thu', 'Công nợ', 'Tỷ trọng']
+    for col, h in enumerate(kind_headers, 1):
+        cell = ws_kind.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    for idx, row in enumerate(customer_kind_breakdown, 1):
+        values = [
+            idx,
+            row.get('name') or '',
+            int(row.get('orders') or 0),
+            float(row.get('amount') or 0),
+            float(row.get('cost') or 0),
+            float(row.get('profit') or 0),
+            float(row.get('paid') or 0),
+            float(row.get('debt') or 0),
+            (float(row.get('contribution') or 0) / 100),
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws_kind.cell(row=idx + 1, column=col, value=val)
+            cell.border = thin
+            if col in (4, 5, 6, 7, 8):
+                cell.number_format = money_fmt
+            if col == 9:
+                cell.number_format = '0.0%'
+            if col == 6 and float(row.get('profit') or 0) < 0:
+                cell.font = Font(bold=True, color='FF0000')
+
+    for i, w in enumerate([6, 22, 12, 18, 18, 18, 18, 18, 12], 1):
+        ws_kind.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet 5: Nhóm khách hàng =====
     ws4 = wb.create_sheet('Nhóm khách hàng')
     grp_headers = ['STT', 'Nhóm KH', 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Đã thu', 'Công nợ', 'Tỷ trọng']
     for col, h in enumerate(grp_headers, 1):
@@ -1655,9 +1901,13 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 24, 12, 18, 18, 18, 18, 18, 12], 1):
         ws4.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 5: Chi tiết đơn hàng =====
+    # ===== Sheet 6: Chi tiết đơn hàng =====
     ws5 = wb.create_sheet('Chi tiết đơn hàng')
-    od_headers = ['STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Nhóm KH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trạng thái']
+    od_headers = [
+        'STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Kiểu khách', 'Nhóm KH',
+        'Doanh thu', 'Đã thu', 'Công nợ', 'Giá vốn', 'Lợi nhuận', 'Báo lỗ',
+        'TT đơn', 'TT thanh toán',
+    ]
     for col, h in enumerate(od_headers, 1):
         cell = ws5.cell(row=1, column=col, value=h)
         cell.font = sub_font
@@ -1665,7 +1915,7 @@ def export_sales_excel(request):
         cell.border = thin
 
     od_row = 2
-    od_grand = {'revenue': 0, 'cost': 0, 'profit': 0}
+    od_grand = {'revenue': 0, 'paid': 0, 'debt': 0, 'cost': 0, 'profit': 0}
     for idx, o in enumerate(order_details, 1):
         is_loss = bool(o.get('is_loss'))
         vals = [
@@ -1673,37 +1923,48 @@ def export_sales_excel(request):
             o.get('code') or '',
             o.get('date') or '',
             o.get('customer') or '',
+            o.get('customer_kind_label') or '',
             o.get('customer_group') or '',
             float(o.get('revenue') or 0),
+            float(o.get('paid') or 0),
+            float(o.get('debt') or 0),
             float(o.get('cost') or 0),
             float(o.get('profit') or 0),
+            'Lỗ' if is_loss else '',
             o.get('status_display') or '',
+            o.get('payment_status_display') or '',
         ]
         for col, val in enumerate(vals, 1):
             cell = ws5.cell(row=od_row, column=col, value=val)
             cell.border = thin
-            if col in (6, 7, 8):
+            if col in (7, 8, 9, 10, 11):
                 cell.number_format = money_fmt
             if is_loss:
                 cell.fill = loss_fill
-            if col == 8 and is_loss:
+            if col == 11 and is_loss:
                 cell.font = Font(bold=True, color='FF0000')
 
         od_grand['revenue'] += float(o.get('revenue') or 0)
+        od_grand['paid'] += float(o.get('paid') or 0)
+        od_grand['debt'] += float(o.get('debt') or 0)
         od_grand['cost'] += float(o.get('cost') or 0)
         od_grand['profit'] += float(o.get('profit') or 0)
         od_row += 1
 
-    # Total row for sheet 3
-    for col, val in enumerate(['', 'TỔNG', '', '', '', od_grand['revenue'], od_grand['cost'], od_grand['profit'], ''], 1):
+    # Total row for order detail
+    for col, val in enumerate([
+        '', 'TỔNG', '', '', '', '',
+        od_grand['revenue'], od_grand['paid'], od_grand['debt'],
+        od_grand['cost'], od_grand['profit'], '', '', '',
+    ], 1):
         cell = ws5.cell(row=od_row, column=col, value=val)
         cell.font = Font(bold=True)
         cell.fill = total_fill
         cell.border = thin
-        if col in (6, 7, 8):
+        if col in (7, 8, 9, 10, 11):
             cell.number_format = money_fmt
 
-    for i, w in enumerate([6, 12, 12, 25, 15, 18, 18, 18, 15], 1):
+    for i, w in enumerate([6, 12, 12, 25, 18, 15, 18, 18, 18, 18, 18, 10, 15, 18], 1):
         ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     response = HttpResponse(

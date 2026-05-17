@@ -140,22 +140,20 @@ def report_permission_required(view_func):
 
 def _normalize_role_text(value):
     raw = unicodedata.normalize('NFKD', str(value or ''))
+    raw = raw.replace('đ', 'd').replace('Đ', 'D')
     raw = ''.join(ch for ch in raw if not unicodedata.combining(ch)).lower()
     return re.sub(r'[^a-z0-9]+', ' ', raw).strip()
 
 
 def can_view_sales_report(user):
     """
-    Báo cáo bán hàng cho:
-    - Brand owner (chủ cửa hàng)
-    - Giám đốc
-    - Kế toán
+    Báo cáo bán hàng chỉ dành cho tài khoản Giám đốc / Kế toán.
+
+    Brand owner vẫn có quyền quản trị nghiệp vụ chung, nhưng riêng báo cáo bán
+    hàng là dữ liệu nhạy cảm nên phải được gán rõ chức vụ/nhóm phù hợp.
     """
     if not user or not user.is_authenticated or user.is_superuser:
         return False
-
-    if is_brand_owner(user):
-        return True
 
     labels = list(user.groups.values_list('name', flat=True))
     try:

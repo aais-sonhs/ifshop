@@ -1321,7 +1321,8 @@ def api_get_products_for_select(request):
             pending_stocks[warehouse_key] = pending_qty
             sellable_stocks[warehouse_key] = actual_qty - reserved_qty
 
-        # Variants
+        # Variants are legacy in the current product form. Keep their own price
+        # for reference, but the order screen defaults to the product retail price.
         variants = [{
             'id': v.id,
             'size_name': v.size_name,
@@ -1329,6 +1330,7 @@ def api_get_products_for_select(request):
             'import_price': float(v.import_price),
             'cost_price': float(v.cost_price),
             'selling_price': float(v.selling_price),
+            'retail_price': float(p.selling_price),
         } for v in p.variants.filter(is_active=True)]
 
         # Combo items
@@ -1372,6 +1374,7 @@ def api_get_products_for_select(request):
             'category_id': p.category_id,
             'category_name': p.category.name if p.category else '',
             'selling_price': float(p.selling_price),
+            'retail_price': float(p.selling_price),
             'import_price': float(p.import_price),
             'cost_price': float(p.cost_price),
             'price': float(p.selling_price),
@@ -1399,17 +1402,18 @@ def _auto_next_order_code():
     Luôn tăng tiến, không bao giờ tái sử dụng mã đã hủy/xóa (giống Sapo).
     """
     prefix = 'DH-'
-    # Tìm số lớn nhất hiện có trong TẤT CẢ orders (kể cả soft-delete)
     max_num = 0
-    for code in Order.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
-        match = re.search(r'DH-(\d+)', code)
+    for code in Order.all_objects.filter(code__istartswith='DH').values_list('code', flat=True):
+        match = re.match(r'^DH-?(\d+)$', (code or '').strip(), re.IGNORECASE)
         if match:
-            num = int(match.group(1))
-            if num > max_num:
-                max_num = num
+            max_num = max(max_num, int(match.group(1)))
+
     next_num = max_num + 1
-    code = f'{prefix}{next_num:03d}'
-    return code
+    while True:
+        candidate = f'{prefix}{next_num:03d}'
+        if not Order.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
 
 
 @login_required(login_url="/login/")

@@ -1,15 +1,19 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from products.models import (
+    ComboItem,
     GoodsReceipt,
     GoodsReceiptItem,
     Product,
+    ProductCategory,
+    ProductLocation,
     ProductStock,
     StockCheck,
     StockCheckItem,
@@ -75,6 +79,246 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['product']['id'], product.id)
         self.assertEqual(payload['product']['code'], product.code)
         self.assertEqual(product.store_id, self.store.id)
+
+    def test_product_list_exposes_category_and_product_type_levels(self):
+        category = ProductCategory.objects.create(name='May moc')
+        product_type = ProductCategory.objects.create(name='May xay', parent=category)
+        self.product.category = product_type
+        self.product.save(update_fields=['category'])
+
+        response = self.client.get(reverse('api_get_products'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['category'], 'May moc')
+        self.assertEqual(row['category_id'], category.id)
+        self.assertEqual(row['product_type'], 'May xay')
+        self.assertEqual(row['product_type_id'], product_type.id)
+        self.assertEqual(row['category_record_id'], product_type.id)
+
+    def test_product_list_keeps_zero_and_negative_stock_by_warehouse(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('0'),
+        )
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_b,
+            quantity=Decimal('-2'),
+        )
+
+        response = self.client.get(reverse('api_get_products'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        stock_by_warehouse = {
+            item['warehouse_id']: item['quantity']
+            for item in row['stock_by_warehouse']
+        }
+        self.assertEqual(stock_by_warehouse[self.warehouse_a.id], 0.0)
+        self.assertEqual(stock_by_warehouse[self.warehouse_b.id], -2.0)
+        self.assertEqual(row['total_stock'], -2.0)
+
+    def test_brand_owner_can_create_product_type_under_category(self):
+        category = ProductCategory.objects.create(name='Linh kien may moc')
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse('api_save_category'),
+            data=json.dumps({
+                'name': 'May ep',
+                'parent_id': category.id,
+                'description': 'Loai san pham',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        product_type = ProductCategory.objects.get(name='May ep')
+        self.assertEqual(product_type.parent_id, category.id)
+        self.assertEqual(payload['category']['parent_id'], category.id)
+
+    def test_brand_owner_can_quick_create_supplier_with_auto_code(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse('api_save_supplier'),
+            data=json.dumps({
+                'name': 'NCC Tao nhanh',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        supplier = Supplier.objects.get(name='NCC Tao nhanh')
+        self.assertRegex(supplier.code, r'^NCC\d{3}$')
+        self.assertEqual(payload['supplier']['id'], supplier.id)
+        self.assertEqual(payload['supplier']['code'], supplier.code)
+
+    def test_brand_owner_can_quick_create_product_location(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse('api_save_location'),
+            data=json.dumps({
+                'name': 'Ke A1',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        location = ProductLocation.objects.get(name='Ke A1')
+        self.assertEqual(payload['id'], location.id)
+        self.assertEqual(payload['name'], location.name)
+
+    def test_save_combo_product_creates_items_and_exposes_combo_metadata(self):
+        self.product.cost_price = Decimal('100')
+        self.product.selling_price = Decimal('150')
+        self.product.save(update_fields=['cost_price', 'selling_price'])
+
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'name': 'Combo test',
+                'unit': 'Bo',
+                'selling_price': '250',
+                'wholesale_price_no_warranty': '240',
+                'wholesale_price_warranty': '260',
+                'is_combo': '1',
+                'combo_items': json.dumps([
+                    {'product_id': self.product.id, 'quantity': '2'},
+                ]),
+                'skip_variants': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        combo = Product.objects.get(id=payload['product']['id'])
+        self.assertTrue(combo.is_combo)
+        self.assertEqual(combo.selling_price, Decimal('250'))
+        self.assertEqual(combo.cost_price, Decimal('200'))
+        combo_item = ComboItem.objects.get(combo=combo)
+        self.assertEqual(combo_item.product_id, self.product.id)
+        self.assertEqual(combo_item.quantity, Decimal('2.00'))
+
+        products_payload = self.client.get(reverse('api_get_products')).json()['data']
+        combo_row = next(item for item in products_payload if item['id'] == combo.id)
+        component_row = next(item for item in products_payload if item['id'] == self.product.id)
+        self.assertTrue(combo_row['is_combo'])
+        self.assertEqual(combo_row['combo_items'][0]['product_id'], self.product.id)
+        self.assertEqual(combo_row['combo_items'][0]['selling_price'], 150.0)
+        self.assertEqual(component_row['combo_parent_count'], 1)
+        self.assertEqual(component_row['combo_parents'][0]['id'], combo.id)
+
+    def test_product_purchase_history_api_returns_selected_product_receipts_only(self):
+        other_same_store_product = Product.objects.create(
+            store=self.store,
+            code='SP-002',
+            name='San pham khac cung store',
+            created_by=self.user,
+        )
+        receipt = GoodsReceipt.objects.create(
+            code='P-HISTORY-001',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=date.today(),
+            status=1,
+            total_amount=Decimal('170'),
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=Decimal('5'),
+            unit_price=Decimal('20'),
+            total_price=Decimal('100'),
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=other_same_store_product,
+            quantity=Decimal('7'),
+            unit_price=Decimal('10'),
+            total_price=Decimal('70'),
+        )
+
+        response = self.client.get(
+            reverse('api_product_purchase_history'),
+            data={'product_id': self.product.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['total_entries'], 1)
+        self.assertEqual(payload['summary']['total_receipts'], 1)
+        self.assertEqual(payload['summary']['total_quantity'], 5.0)
+        self.assertEqual(payload['summary']['total_amount'], 100.0)
+        self.assertEqual(payload['data'][0]['receipt_code'], 'P-HISTORY-001')
+        self.assertEqual(payload['receipts'][0]['receipt_code'], 'P-HISTORY-001')
+        self.assertEqual(payload['receipts'][0]['quantity'], 5.0)
+        self.assertEqual(payload['receipts'][0]['total_price'], 100.0)
+        self.assertEqual(len(payload['receipts'][0]['items']), 1)
+
+    def test_product_purchase_history_api_groups_items_by_receipt(self):
+        receipt = GoodsReceipt.objects.create(
+            code='P-HISTORY-GROUP-001',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=date.today(),
+            status=1,
+            total_amount=Decimal('250'),
+            note='Nhap nhieu dong',
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=Decimal('5'),
+            unit_price=Decimal('20'),
+            total_price=Decimal('100'),
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=Decimal('3'),
+            unit_price=Decimal('50'),
+            total_price=Decimal('150'),
+        )
+
+        response = self.client.get(
+            reverse('api_product_purchase_history'),
+            data={'product_id': self.product.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['total_entries'], 2)
+        self.assertEqual(payload['summary']['total_receipts'], 1)
+        self.assertEqual(payload['summary']['total_quantity'], 8.0)
+        self.assertEqual(payload['summary']['total_amount'], 250.0)
+
+        receipt_row = payload['receipts'][0]
+        self.assertEqual(receipt_row['receipt_code'], 'P-HISTORY-GROUP-001')
+        self.assertEqual(receipt_row['item_count'], 2)
+        self.assertEqual(receipt_row['quantity'], 8.0)
+        self.assertEqual(receipt_row['total_price'], 250.0)
+        self.assertEqual(receipt_row['min_unit_price'], 20.0)
+        self.assertEqual(receipt_row['max_unit_price'], 50.0)
+        self.assertEqual(len(receipt_row['items']), 2)
 
     def test_delete_goods_receipt_reverts_stock(self):
         receipt = GoodsReceipt.objects.create(
@@ -186,6 +430,48 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['items_count'], 2)
         self.assertEqual(row['total_quantity'], 7.5)
         self.assertEqual(sum(item['quantity'] for item in row['items']), 7.5)
+
+    def test_goods_receipt_list_shows_newest_receipt_first_with_same_receipt_date(self):
+        today = date.today()
+        now = timezone.now()
+        older = GoodsReceipt.objects.create(
+            code='P-ORDER-OLDER',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=today,
+            status=1,
+            total_amount=Decimal('10'),
+            created_by=self.user,
+        )
+        middle = GoodsReceipt.objects.create(
+            code='P-ORDER-MIDDLE',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=today,
+            status=1,
+            total_amount=Decimal('20'),
+            created_by=self.user,
+        )
+        newest = GoodsReceipt.objects.create(
+            code='P-ORDER-NEWEST',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=today,
+            status=1,
+            total_amount=Decimal('30'),
+            created_by=self.user,
+        )
+        GoodsReceipt.objects.filter(id=older.id).update(created_at=now - timedelta(minutes=2))
+        GoodsReceipt.objects.filter(id=middle.id).update(created_at=now - timedelta(minutes=1))
+        GoodsReceipt.objects.filter(id=newest.id).update(created_at=now)
+
+        response = self.client.get(reverse('api_get_goods_receipts'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item['code'] for item in response.json()['data'][:3]],
+            ['P-ORDER-NEWEST', 'P-ORDER-MIDDLE', 'P-ORDER-OLDER'],
+        )
 
     def test_delete_completed_stock_transfer_reverts_stock(self):
         transfer = StockTransfer.objects.create(

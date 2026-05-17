@@ -102,6 +102,54 @@ def _build_customer_order_metrics_map(request, customers):
     return metrics
 
 
+def _safe_float(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _serialize_order_item_history(item, order=None):
+    """Chuẩn hóa dòng hàng trong lịch sử mua, gồm cả dòng dịch vụ không có tồn kho."""
+    product = item.product
+    quantity = _safe_float(item.quantity)
+    unit_price = _safe_float(item.unit_price)
+    discount_percent = _safe_float(item.discount_percent)
+    total_price = _safe_float(item.total_price)
+    if total_price <= 0 and quantity > 0:
+        total_price = quantity * unit_price * (1 - discount_percent / 100)
+    net_unit_price = (total_price / quantity) if quantity > 0 else unit_price * (1 - discount_percent / 100)
+
+    product_code = product.code if product else 'DV'
+    product_name = product.name if product else (item.item_name or 'Dịch vụ')
+    unit = product.unit if product else (item.unit or '')
+    product_image = product.image.url if product and product.image else ''
+    product_search = ' '.join(part for part in [
+        str(product.id) if product else '',
+        product_code,
+        product_name,
+        getattr(product, 'barcode', '') if product else '',
+        unit,
+        'dịch vụ service' if not product else '',
+    ] if part)
+
+    return {
+        'product_id': product.id if product else None,
+        'product_name': product_name,
+        'product_code': product_code,
+        'product_image': product_image,
+        'product_search': product_search,
+        'unit': unit,
+        'is_service_line': not bool(product),
+        'quantity': quantity,
+        'unit_price': unit_price,
+        'discount_percent': discount_percent,
+        'net_unit_price': net_unit_price,
+        'total_price': total_price,
+        'order_total': _safe_float(order.final_amount) if order else 0,
+    }
+
+
 def _build_customer_product_history_map(request, customers):
     """Tập hợp hàng hóa đã mua để lọc khách hàng theo sản phẩm."""
     customer_ids = list(customers.values_list('id', flat=True))
@@ -112,25 +160,35 @@ def _build_customer_product_history_map(request, customers):
     orders = filter_by_store(orders, request)
     product_map = {}
     for order in orders:
-        bucket = product_map.setdefault(order.customer_id, {'labels': set(), 'search_parts': set()})
+        bucket = product_map.setdefault(order.customer_id, {
+            'labels': set(),
+            'search_parts': set(),
+            'filter_items': [],
+        })
         for item in order.items.all():
-            product = item.product
-            if not product:
-                continue
-            label = ' - '.join(part for part in [product.code, product.name] if part)
+            item_payload = _serialize_order_item_history(item, order=order)
+            label = ' - '.join(part for part in [
+                item_payload['product_code'],
+                item_payload['product_name'],
+            ] if part)
             if label:
                 bucket['labels'].add(label)
-            bucket['search_parts'].update([
-                str(product.id),
-                product.code or '',
-                product.name or '',
-                getattr(product, 'barcode', '') or '',
-            ])
+            bucket['search_parts'].add(item_payload['product_search'])
+            bucket['filter_items'].append({
+                'product_search': item_payload['product_search'],
+                'product_code': item_payload['product_code'],
+                'product_name': item_payload['product_name'],
+                'unit_price': item_payload['unit_price'],
+                'net_unit_price': item_payload['net_unit_price'],
+                'line_total': item_payload['total_price'],
+                'order_total': item_payload['order_total'],
+            })
 
     return {
         customer_id: {
             'names': sorted(data['labels']),
             'search': ' '.join(sorted(part for part in data['search_parts'] if part)),
+            'filter_items': data['filter_items'],
         }
         for customer_id, data in product_map.items()
     }
@@ -184,6 +242,7 @@ def api_get_customers(request):
         'creator_name': (c.created_by.get_full_name() or c.created_by.username) if c.created_by else '',
         'purchased_product_names': product_history_map.get(c.id, {}).get('names', []),
         'purchased_product_search': product_history_map.get(c.id, {}).get('search', ''),
+        'purchase_filter_items': product_history_map.get(c.id, {}).get('filter_items', []),
         'note': c.note or '', 'is_active': c.is_active,
     } for c in customers]
     return JsonResponse({'data': data})
@@ -357,6 +416,7 @@ def api_customer_orders(request):
         if not customer:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
         orders_qs = Order.objects.filter(customer=customer).select_related('warehouse').prefetch_related('items__product').order_by('-order_date', '-id')
+        orders_qs = filter_by_store(orders_qs, request)
         total_orders_all = orders_qs.count()
         orders = orders_qs[:limit] if limit and limit > 0 else orders_qs
         data = []
@@ -364,15 +424,7 @@ def api_customer_orders(request):
         total_debt = 0
         for o in orders:
             debt = float(o.final_amount) - float(o.paid_amount)
-            items = [{
-                'product_name': it.product.name,
-                'product_code': it.product.code,
-                'product_image': it.product.image.url if it.product.image else '',
-                'quantity': float(it.quantity),
-                'unit_price': float(it.unit_price),
-                'discount_percent': float(it.discount_percent),
-                'total_price': float(it.total_price),
-            } for it in o.items.all()]
+            items = [_serialize_order_item_history(it, order=o) for it in o.items.all()]
 
             data.append({
                 'id': o.id, 'code': o.code,

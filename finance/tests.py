@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from customers.models import Customer
-from finance.models import CashBook, Payment, Receipt
+from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier, Warehouse
 from system_management.models import Brand, Store, UserProfile
@@ -192,6 +192,134 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(receipt.order_id, order.id)
         self.assertEqual(receipt.customer_id, self.customer.id)
         self.assertEqual(receipt.store_id, self.store.id)
+
+    def test_save_receipt_cannot_change_linked_order_when_editing(self):
+        original_order = self._create_order(code='DH-RECEIPT-LOCKED-1')
+        other_order = self._create_order(code='DH-RECEIPT-LOCKED-2')
+        receipt = Receipt.objects.create(
+            code='PT-LOCKED-ORDER',
+            store=self.store,
+            customer=self.customer,
+            order=original_order,
+            amount=Decimal('50'),
+            receipt_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'id': receipt.id,
+                'code': receipt.code,
+                'category_id': None,
+                'customer_id': self.customer.id,
+                'order_id': other_order.id,
+                'amount': 60,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+                'description': 'Thu thêm',
+                'note': 'Không được đổi đơn',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('đơn hàng', payload['message'].lower())
+
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.order_id, original_order.id)
+        self.assertEqual(receipt.amount, Decimal('50'))
+
+    def test_delete_receipt_endpoint_rejects_deletion(self):
+        receipt = Receipt.objects.create(
+            code='PT-NO-DELETE',
+            store=self.store,
+            customer=self.customer,
+            amount=Decimal('50'),
+            receipt_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_delete_receipt'),
+            data=json.dumps({'id': receipt.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('không được xóa', payload['message'].lower())
+        self.assertTrue(Receipt.objects.filter(id=receipt.id).exists())
+
+    def test_save_receipt_partial_edit_preserves_fixed_and_payment_fields(self):
+        order = self._create_order(code='DH-RECEIPT-PARTIAL-EDIT')
+        cash_book = CashBook.objects.create(name='Quỹ giữ nguyên', balance=Decimal('1000'))
+        receipt = Receipt.objects.create(
+            code='PT-PARTIAL-EDIT',
+            store=self.store,
+            customer=self.customer,
+            order=order,
+            cash_book=cash_book,
+            amount=Decimal('75'),
+            receipt_date=date.today(),
+            status=0,
+            payment_method=1,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'id': receipt.id,
+                'description': 'Chỉ sửa diễn giải',
+                'note': 'Giữ nguyên đơn và hình thức thanh toán',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.order_id, order.id)
+        self.assertEqual(receipt.customer_id, self.customer.id)
+        self.assertEqual(receipt.cash_book_id, cash_book.id)
+        self.assertEqual(receipt.amount, Decimal('75'))
+        self.assertEqual(receipt.payment_method, 1)
+        self.assertEqual(receipt.description, 'Chỉ sửa diễn giải')
+        self.assertEqual(receipt.note, 'Giữ nguyên đơn và hình thức thanh toán')
+
+    def test_brand_owner_can_create_payment_method_option(self):
+        owner = User.objects.create_user(username='finance_owner', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        cash_book = CashBook.objects.create(name='Tài khoản MoMo', balance=Decimal('0'))
+        self.client.force_login(owner)
+
+        response = self.client.post(
+            reverse('api_save_payment_method'),
+            data=json.dumps({
+                'code': 'momo_test',
+                'name': 'Ví MoMo test',
+                'legacy_type': 3,
+                'default_cash_book_id': cash_book.id,
+                'sort_order': 10,
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        method = PaymentMethodOption.objects.get(code='MOMO_TEST')
+        self.assertEqual(payload['method']['id'], method.id)
+        self.assertEqual(method.default_cash_book_id, cash_book.id)
 
     def test_save_payment_assigns_store_from_goods_receipt(self):
         goods_receipt = self._create_goods_receipt(code='PN-001')

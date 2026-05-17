@@ -6,7 +6,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from customers.models import CafeTable, Customer
-from orders.models import Order
+from orders.models import Order, OrderItem
+from products.models import Product
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -205,3 +206,67 @@ class CustomerScopeTests(TestCase):
         row = next(item for item in payload['data'] if item['id'] == self.customer.id)
         self.assertEqual(row['total_purchased'], 100.0)
         self.assertEqual(row['total_debt'], 60.0)
+
+    def test_customer_order_history_includes_product_price_filters_and_service_lines(self):
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-CUST-HIST',
+            name='Máy lịch sử',
+            unit='Cái',
+            created_by=self.user,
+        )
+        order = Order.objects.create(
+            code='DH-CUST-HIST',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            payment_status=2,
+            total_amount=350,
+            final_amount=350,
+            paid_amount=350,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=2,
+            unit_price=100,
+            discount_percent=10,
+            total_price=180,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=None,
+            item_name='Dịch vụ cài đặt',
+            unit='Lần',
+            is_service_line=True,
+            quantity=1,
+            unit_price=170,
+            total_price=170,
+        )
+
+        orders_response = self.client.get(reverse('api_customer_orders'), {'customer_id': self.customer.id})
+
+        self.assertEqual(orders_response.status_code, 200)
+        orders_payload = orders_response.json()
+        self.assertEqual(orders_payload['status'], 'ok', msg=orders_response.content.decode())
+        order_payload = next(item for item in orders_payload['orders'] if item['id'] == order.id)
+        service_item = next(item for item in order_payload['items'] if item['is_service_line'])
+        product_item = next(item for item in order_payload['items'] if item['product_id'] == product.id)
+        self.assertEqual(service_item['product_name'], 'Dịch vụ cài đặt')
+        self.assertEqual(service_item['product_code'], 'DV')
+        self.assertEqual(product_item['net_unit_price'], 90.0)
+
+        customers_response = self.client.get(reverse('api_get_customers'))
+        self.assertEqual(customers_response.status_code, 200)
+        customer_payload = next(
+            item for item in customers_response.json()['data']
+            if item['id'] == self.customer.id
+        )
+        self.assertIn('Máy lịch sử', customer_payload['purchased_product_search'])
+        self.assertIn('Dịch vụ cài đặt', customer_payload['purchased_product_search'])
+        self.assertTrue(any(
+            item['net_unit_price'] == 90.0
+            for item in customer_payload['purchase_filter_items']
+        ))

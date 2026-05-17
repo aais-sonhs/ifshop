@@ -4,9 +4,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from customers.models import Customer
+from customers.models import Customer, CustomerGroup
 from orders.models import Order, OrderItem, OrderReturn
-from products.models import Product, Warehouse
+from products.models import Product, ProductCategory, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -34,6 +34,36 @@ class SalesReportTests(TestCase):
 
     def setUp(self):
         self.client.force_login(self.user)
+
+    def test_api_report_sales_rejects_regular_staff(self):
+        staff = User.objects.create_user(username='regular_report_staff', password='pass123')
+        UserProfile.objects.create(user=staff, store=self.store, position='Quản lý cửa hàng')
+        self.client.force_login(staff)
+
+        response = self.client.get(reverse('api_report_sales'))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['status'], 'error')
+
+    def test_api_report_sales_rejects_brand_owner_without_sales_report_role(self):
+        owner = User.objects.create_user(username='owner_without_sales_report_role', password='pass123')
+        Brand.objects.create(name='Owner Without Sales Report Role', owner=owner)
+        self.client.force_login(owner)
+
+        response = self.client.get(reverse('api_report_sales'))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['status'], 'error')
+
+    def test_api_report_sales_allows_director_position(self):
+        director = User.objects.create_user(username='director_report', password='pass123')
+        UserProfile.objects.create(user=director, store=self.store, position='Giám đốc')
+        self.client.force_login(director)
+
+        response = self.client.get(reverse('api_report_sales'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
 
     def test_api_report_sales_counts_linked_returns(self):
         today = date.today()
@@ -168,6 +198,259 @@ class SalesReportTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
         self.assertIn('Lan Nguyen', payload['filter_options']['salespersons'])
+
+    def test_api_report_sales_filters_customer_kind_wholesale(self):
+        today = date.today()
+        wholesale_group = CustomerGroup.objects.create(name='Khách sỉ')
+        retail_group = CustomerGroup.objects.create(name='Khách lẻ')
+        wholesale_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-SI',
+            name='Khách mua sỉ',
+            group=wholesale_group,
+            created_by=self.user,
+        )
+        retail_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-LE',
+            name='Khách mua lẻ',
+            group=retail_group,
+            created_by=self.user,
+        )
+
+        wholesale_order = Order.objects.create(
+            code='DH-RP-SI',
+            store=self.store,
+            customer=wholesale_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=wholesale_order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=60,
+            total_price=100,
+        )
+        retail_order = Order.objects.create(
+            code='DH-RP-LE',
+            store=self.store,
+            customer=retail_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=80,
+            final_amount=80,
+            paid_amount=80,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=retail_order,
+            product=self.product,
+            quantity=1,
+            unit_price=80,
+            cost_price=50,
+            total_price=80,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'wholesale',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['order_details'][0]['code'], wholesale_order.code)
+        self.assertEqual(payload['order_details'][0]['customer_kind'], 'wholesale')
+        self.assertEqual(payload['customer_kind_breakdown'][0]['name'], 'Khách buôn / sỉ')
+
+    def test_api_report_sales_root_category_filter_includes_child_type(self):
+        today = date.today()
+        root_category = ProductCategory.objects.create(name='Máy móc')
+        product_type = ProductCategory.objects.create(name='Máy xay', parent=root_category)
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-MAY-XAY',
+            name='Máy xay sinh tố',
+            category=product_type,
+            created_by=self.user,
+        )
+        order = Order.objects.create(
+            code='DH-RP-ROOT-CAT',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=200,
+            final_amount=200,
+            paid_amount=200,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            quantity=1,
+            unit_price=200,
+            cost_price=120,
+            total_price=200,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'category_id': root_category.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['product_breakdown'][0]['category'], root_category.name)
+        self.assertEqual(payload['product_breakdown'][0]['product_type'], product_type.name)
+        self.assertEqual(payload['category_breakdown'][0]['name'], root_category.name)
+
+    def test_api_report_sales_product_type_filter_limits_child_category(self):
+        today = date.today()
+        root_category = ProductCategory.objects.create(name='Nhóm máy')
+        selected_type = ProductCategory.objects.create(name='Máy ép', parent=root_category)
+        other_type = ProductCategory.objects.create(name='Máy xay', parent=root_category)
+        selected_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-MAY-EP',
+            name='Máy ép',
+            category=selected_type,
+            created_by=self.user,
+        )
+        other_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-MAY-XAY-2',
+            name='Máy xay khác',
+            category=other_type,
+            created_by=self.user,
+        )
+        selected_order = Order.objects.create(
+            code='DH-RP-TYPE-1',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=300,
+            final_amount=300,
+            paid_amount=300,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=selected_order,
+            product=selected_product,
+            quantity=1,
+            unit_price=300,
+            cost_price=200,
+            total_price=300,
+        )
+        other_order = Order.objects.create(
+            code='DH-RP-TYPE-2',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=150,
+            final_amount=150,
+            paid_amount=150,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=other_order,
+            product=other_product,
+            quantity=1,
+            unit_price=150,
+            cost_price=90,
+            total_price=150,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'product_type_id': selected_type.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['order_details'][0]['code'], selected_order.code)
+        self.assertEqual(payload['product_breakdown'][0]['product_type'], selected_type.name)
+
+    def test_api_report_sales_filters_line_profit_and_shows_loss_order(self):
+        today = date.today()
+        loss_order = Order.objects.create(
+            code='DH-RP-LOSS-LINE',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=loss_order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=130,
+            total_price=100,
+        )
+        profit_order = Order.objects.create(
+            code='DH-RP-PROFIT-LINE',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=120,
+            final_amount=120,
+            paid_amount=120,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=profit_order,
+            product=self.product,
+            quantity=1,
+            unit_price=120,
+            cost_price=80,
+            total_price=120,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'line_profit_max': -1,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['order_details'][0]['code'], loss_order.code)
+        self.assertTrue(payload['order_details'][0]['is_loss'])
+        self.assertEqual(payload['summary']['loss_count'], 1)
 
     def test_api_report_staff_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()

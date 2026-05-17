@@ -32,7 +32,7 @@ def _apply_receipt_cashbook_delta(effect, multiplier, require_applied=True):
     if amount == 0:
         return False
     cash_book = CashBook.objects.select_for_update().get(id=effect['cash_book_id'])
-    cash_book.balance += amount
+    cash_book.balance = Decimal(str(cash_book.balance or 0)) + amount
     cash_book.save(update_fields=['balance'])
     return True
 

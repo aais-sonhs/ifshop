@@ -4,12 +4,11 @@ from decimal import Decimal
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q
 from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
-    delete_receipt_with_effect,
     save_receipt_with_effect,
 )
 from customers.models import Customer
@@ -223,6 +222,33 @@ def _normalize_optional_int(value):
         return None
 
 
+def _validate_receipt_immutable_fields(receipt, data):
+    """Phiếu thu đã tạo không được đổi chứng từ gốc/khách/danh mục."""
+    immutable_fields = [
+        ('code', 'Mã phiếu'),
+        ('category_id', 'Danh mục'),
+        ('customer_id', 'Khách hàng'),
+        ('order_id', 'Đơn hàng'),
+    ]
+
+    for field_name, label in immutable_fields:
+        if field_name not in data:
+            continue
+        old_value = getattr(receipt, field_name)
+        new_value = data.get(field_name)
+
+        if field_name == 'code':
+            if (new_value or '').strip() != (old_value or ''):
+                raise ValueError(f'Không được đổi {label.lower()} của phiếu thu đã tạo.')
+            continue
+
+        if _normalize_optional_int(new_value) != old_value:
+            raise ValueError(
+                f'Không được đổi {label.lower()} của phiếu thu đã tạo. '
+                'Nếu thu nhầm đơn, hãy chuyển phiếu này sang trạng thái Hủy và tạo phiếu thu mới.'
+            )
+
+
 def _apply_payment_method_defaults(finance_document):
     """Áp cấu hình mặc định từ phương thức thanh toán lên phiếu thu/phiếu chi.
 
@@ -423,6 +449,8 @@ def api_get_receipts(request):
         'customer_id': r.customer_id,
         'order': r.order.code if r.order else '',
         'order_id': r.order_id,
+        'order_final_amount': float(r.order.final_amount) if r.order else 0,
+        'order_paid_amount': float(r.order.paid_amount) if r.order else 0,
         'order_remaining': float(r.order.final_amount - r.order.paid_amount) if r.order else 0,
         'amount': float(r.amount),
         'description': r.description or '',
@@ -516,24 +544,44 @@ def api_save_receipt(request):
             r = _get_receipt_for_user(request, rid)
             if not r:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu thu'})
+            _validate_receipt_immutable_fields(r, data)
             old_effect = capture_receipt_effect(r)
         else:
             r = Receipt()
             r.created_by = request.user
 
         # 1. Gán dữ liệu cơ bản từ payload.
-        r.code = data.get('code', '')
-        r.category_id = data.get('category_id') or None
-        r.cash_book_id = data.get('cash_book_id') or None
-        r.customer_id = data.get('customer_id') or None
-        r.order_id = data.get('order_id') or None
-        r.amount = data.get('amount', 0) or 0
-        r.description = data.get('description', '')
-        r.receipt_date = data.get('receipt_date')
-        r.status = data.get('status', 0)
-        r.payment_method = data.get('payment_method', 2)
-        r.payment_method_option_id = data.get('payment_method_option_id') or None
-        r.note = data.get('note', '')
+        if not rid:
+            r.code = data.get('code', '')
+            r.category_id = data.get('category_id') or None
+            r.customer_id = data.get('customer_id') or None
+            r.order_id = data.get('order_id') or None
+        if rid:
+            if 'cash_book_id' in data:
+                r.cash_book_id = data.get('cash_book_id') or None
+            if 'amount' in data:
+                r.amount = data.get('amount', 0) or 0
+            if 'description' in data:
+                r.description = data.get('description', '')
+            if 'receipt_date' in data:
+                r.receipt_date = data.get('receipt_date') or r.receipt_date
+            if 'status' in data:
+                r.status = data.get('status', 0)
+            if 'payment_method' in data:
+                r.payment_method = data.get('payment_method', 2)
+            if 'payment_method_option_id' in data:
+                r.payment_method_option_id = data.get('payment_method_option_id') or None
+            if 'note' in data:
+                r.note = data.get('note', '')
+        else:
+            r.cash_book_id = data.get('cash_book_id') or None
+            r.amount = data.get('amount', 0) or 0
+            r.description = data.get('description', '')
+            r.receipt_date = data.get('receipt_date')
+            r.status = data.get('status', 0)
+            r.payment_method = data.get('payment_method', 2)
+            r.payment_method_option_id = data.get('payment_method_option_id') or None
+            r.note = data.get('note', '')
 
         # 2. Đồng bộ store/customer theo đơn hàng, hoặc fallback về store mặc định của user.
         _resolve_receipt_scope(request, r)
@@ -555,17 +603,10 @@ def api_save_receipt(request):
 def api_delete_receipt(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    try:
-        data = json.loads(request.body)
-        receipt = _get_receipt_for_user(request, data.get('id'))
-        if not receipt:
-            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu thu'})
-        # Xóa phiếu thu phải đi qua service để hoàn quỹ và đồng bộ trạng thái thanh toán của đơn.
-        delete_receipt_with_effect(receipt)
-
-        return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Phiếu thu đã tạo không được xóa. Vui lòng sửa trạng thái phiếu thu sang Hủy nếu cần bỏ phiếu.'
+    })
 
 
 # ============ API: PAYMENT ============
@@ -797,8 +838,30 @@ def api_save_payment_method(request):
         method.is_active = bool(data.get('is_active', True))
         if not method.code or not method.name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập mã và tên phương thức'})
+        duplicate = PaymentMethodOption.objects.filter(code__iexact=method.code)
+        if mid:
+            duplicate = duplicate.exclude(id=mid)
+        if duplicate.exists():
+            return JsonResponse({'status': 'error', 'message': f'Mã phương thức "{method.code}" đã tồn tại'})
         method.save()
-        return JsonResponse({'status': 'ok', 'message': 'Lưu phương thức thành công'})
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Lưu phương thức thành công',
+            'method': {
+                'id': method.id,
+                'code': method.code,
+                'name': method.name,
+                'description': method.description or '',
+                'legacy_type': method.legacy_type,
+                'legacy_type_display': method.get_legacy_type_display(),
+                'default_cash_book_id': method.default_cash_book_id,
+                'default_cash_book': method.default_cash_book.name if method.default_cash_book else '',
+                'sort_order': method.sort_order,
+                'is_active': method.is_active,
+            }
+        })
+    except IntegrityError:
+        return JsonResponse({'status': 'error', 'message': 'Mã phương thức đã tồn tại'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

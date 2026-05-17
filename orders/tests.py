@@ -8,7 +8,7 @@ from django.urls import reverse
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from orders.models import Order, OrderItem, OrderReturn, Quotation
-from products.models import Product, ProductStock, Warehouse
+from products.models import Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
 
@@ -164,6 +164,80 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 1)
         self.assertEqual(order.final_amount, 100)
 
+    def test_products_select_keeps_negative_stock_values(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse,
+            quantity=-3,
+        )
+
+        response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        warehouse_key = str(self.warehouse.id)
+        self.assertEqual(row['stocks'][warehouse_key], -3.0)
+        self.assertEqual(row['sellable_stocks'][warehouse_key], -3.0)
+        self.assertEqual(row['total_stock'], -3.0)
+        self.assertEqual(row['total_sellable_stock'], -3.0)
+
+    def test_next_order_code_skips_soft_deleted_order(self):
+        order = self._create_order(code='DH-016', status=0)
+        order.delete()
+
+        response = self.client.get(reverse('api_next_order_code'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], 'DH-017')
+
+    def test_save_order_auto_advances_when_requested_code_belongs_to_deleted_order(self):
+        order = self._create_order(code='DH-016', status=0)
+        order.delete()
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-016',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 0,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['order_code'], 'DH-017')
+
+    def test_products_select_exposes_product_retail_price_as_default_price(self):
+        self.product.selling_price = 12000000
+        self.product.save(update_fields=['selling_price'])
+        ProductVariant.objects.create(
+            product=self.product,
+            size_name='Legacy',
+            sku='SP-ORDER-001-LEGACY',
+            selling_price=10990000,
+        )
+
+        response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['retail_price'], 12000000.0)
+        self.assertEqual(row['price'], 12000000.0)
+        self.assertEqual(row['variants'][0]['selling_price'], 10990000.0)
+        self.assertEqual(row['variants'][0]['retail_price'], 12000000.0)
+
     def test_save_order_allows_financial_edit_before_completion_when_receipt_exists(self):
         order = self._create_order(code='DH-PAID-EDIT-001', status=0)
         OrderItem.objects.create(
@@ -311,7 +385,12 @@ class OrderRiskFlowTests(TestCase):
                 'tags': '',
                 'pay_mode': 'full',
                 'payment_amount': 100,
-                'payment_lines': [{'amount': 100, 'payment_method': 2}],
+                'payment_lines': [{
+                    'amount': 100,
+                    'payment_method': 1,
+                    'payment_method_option_id': self.payment_method.id,
+                    'cash_book_id': self.cashbook.id,
+                }],
                 'items': [{
                     'product_id': self.product.id,
                     'variant_id': None,
@@ -332,6 +411,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 5)
         self.assertEqual(order.payment_status, 2)
         self.assertEqual(float(stock.quantity), 4.0)
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 1000100.0)
 
     def test_new_order_cannot_start_completed_even_when_fully_paid(self):
         response = self.client.post(

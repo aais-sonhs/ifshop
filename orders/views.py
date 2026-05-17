@@ -2956,13 +2956,14 @@ def api_pos_checkout(request):
             final_amount = _calculate_final_amount(subtotal, discount_amount, 0)
             requested_paid_amount = _non_negative_decimal(data.get('paid_amount', final_amount), default=str(final_amount))
             paid_amount = min(requested_paid_amount, final_amount)
+            initial_status = 5 if paid_amount >= final_amount else 4
 
             order = Order(
                 code=code,
                 store=store,
                 warehouse=warehouse,
                 customer=customer,
-                status=5,  # Hoàn thành
+                status=initial_status,
                 payment_status=0,
                 total_amount=subtotal,
                 discount_amount=discount_amount,

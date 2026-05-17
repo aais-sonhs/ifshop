@@ -58,6 +58,9 @@ def update_order_payment_status(order):
     if order.status == 0 and total_paid > 0:
         order.status = 1
         update_fields.append('status')
+    if order.status == 5 and order.payment_status != 2 and target_total > 0:
+        order.status = 4
+        update_fields.append('status')
     if (
         order.status == 4
         and order.payment_status == 2

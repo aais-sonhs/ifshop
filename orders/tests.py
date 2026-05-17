@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
+from finance.services import update_order_payment_status
 from orders.models import Order, OrderItem, OrderReturn, Quotation
 from products.models import Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, Store, UserProfile
@@ -806,6 +807,34 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('Tồn kho không đủ', payload['message'])
         self.assertFalse(Order.objects.filter(code__startswith='POS-').exists())
 
+    def test_pos_checkout_without_payment_stays_exported(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=1)
+
+        response = self.client.post(
+            reverse('api_pos_checkout'),
+            data=json.dumps({
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+                'discount_amount': 0,
+                'paid_amount': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order = Order.objects.get(id=payload['order_id'])
+        self.assertEqual(order.status, 4)
+        self.assertEqual(order.payment_status, 0)
+        self.assertEqual(float(order.paid_amount), 0.0)
+        self.assertEqual(order.receipts.count(), 0)
+
     def test_quotation_detail_blocks_foreign_quotation(self):
         quotation = self._create_quotation(
             code='BG-FOREIGN-DETAIL',
@@ -1056,7 +1085,17 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(order.final_amount), 0.0)
         self.assertEqual(float(order.paid_amount), 0.0)
         self.assertEqual(order.payment_status, 2)
+        self.assertEqual(order.status, 5)
         self.assertEqual(order.receipts.count(), 0)
+
+    def test_payment_sync_demotes_completed_order_when_unpaid(self):
+        order = self._create_order(code='DH-COMPLETE-UNPAID', status=5)
+
+        update_order_payment_status(order)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 4)
+        self.assertEqual(order.payment_status, 0)
 
     def test_print_warranty_uses_custom_selected_items(self):
         order = self._create_order(code='DH-WARRANTY-CUSTOM', status=5)

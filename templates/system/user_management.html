@@ -75,13 +75,13 @@
                 </div>
                 <div class="form-group">
                     <label>Chức vụ</label>
-                    <input type="text" class="form-control form-control-sm" id="inp_position" list="position_suggestions" placeholder="Ví dụ: Giám đốc, Kế toán, Nhân viên bán hàng">
-                    <datalist id="position_suggestions">
-                        <option value="Giám đốc">
-                        <option value="Kế toán">
-                        <option value="Quản lý cửa hàng">
-                        <option value="Nhân viên bán hàng">
-                    </datalist>
+                    <select class="form-control form-control-sm" id="inp_position">
+                        <option value="">-- Chưa gán --</option>
+                        <option value="Giám đốc">Giám đốc</option>
+                        <option value="Kế toán">Kế toán</option>
+                        <option value="Quản lý cửa hàng">Quản lý cửa hàng</option>
+                        <option value="Nhân viên bán hàng">Nhân viên bán hàng</option>
+                    </select>
                 </div>
                 {% if not request.user.is_superuser %}
                 <div class="form-group">

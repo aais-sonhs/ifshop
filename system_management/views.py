@@ -3,10 +3,13 @@ import logging
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.db import models as db_models
 from django.contrib import messages
-from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, PrintTemplate, BusinessConfig, Brand, Store
+from .models import (
+    UserProfile, RoleGroup, ModulePermission, ServicePrice, PrinterSetting, PrintTemplate,
+    BusinessConfig, Brand, Store,
+)
 from .product_docs import (
     COMMON_DAILY_FLOW,
     COMMON_MODULES,
@@ -25,6 +28,96 @@ from .product_docs import (
 from core.store_utils import can_manage_users, get_managed_store_ids
 
 logger = logging.getLogger(__name__)
+
+POSITION_CHOICES = {
+    '',
+    'Giám đốc',
+    'Kế toán',
+    'Quản lý cửa hàng',
+    'Nhân viên bán hàng',
+}
+
+DEFAULT_ROLE_GROUPS = {
+    'Giám đốc': {
+        'description': 'Toàn quyền nghiệp vụ trong phạm vi cửa hàng/thương hiệu được gán.',
+        'permissions': 'all',
+    },
+    'Kế toán': {
+        'description': 'Theo dõi thu chi, phiếu thu và báo cáo.',
+        'permissions': {
+            'finance': ('view', 'add', 'edit', 'export'),
+            'reports': ('view', 'export'),
+            'orders': ('view', 'export'),
+            'customers': ('view', 'export'),
+            'products': ('view', 'export'),
+        },
+    },
+    'Quản lý cửa hàng': {
+        'description': 'Quản lý vận hành bán hàng, khách hàng, sản phẩm và tồn kho.',
+        'permissions': {
+            'orders': ('view', 'add', 'edit', 'delete', 'export', 'approve'),
+            'products': ('view', 'add', 'edit', 'export'),
+            'customers': ('view', 'add', 'edit', 'export'),
+            'finance': ('view',),
+            'reports': ('view', 'export'),
+        },
+    },
+    'Nhân viên bán hàng': {
+        'description': 'Tạo đơn, cập nhật khách hàng và xem sản phẩm.',
+        'permissions': {
+            'orders': ('view', 'add', 'edit'),
+            'products': ('view',),
+            'customers': ('view', 'add', 'edit'),
+        },
+    },
+}
+
+
+def _ensure_default_role_groups():
+    module_values = [choice[0] for choice in ModulePermission.MODULE_CHOICES]
+    action_values = [choice[0] for choice in ModulePermission.ACTION_CHOICES]
+    for name, config in DEFAULT_ROLE_GROUPS.items():
+        group, _ = Group.objects.get_or_create(name=name)
+        role_group, created = RoleGroup.objects.get_or_create(
+            name=name,
+            defaults={
+                'description': config['description'],
+                'group': group,
+                'is_active': True,
+            },
+        )
+        changed = False
+        if role_group.group_id != group.id:
+            role_group.group = group
+            changed = True
+        if not role_group.description:
+            role_group.description = config['description']
+            changed = True
+        if created or not role_group.is_active:
+            role_group.is_active = True
+            changed = True
+        if changed:
+            role_group.save()
+
+        permissions = config['permissions']
+        if permissions == 'all':
+            allowed_pairs = [(module, action) for module in module_values for action in action_values]
+        else:
+            allowed_pairs = [
+                (module, action)
+                for module, actions in permissions.items()
+                for action in actions
+            ]
+        for module, action in allowed_pairs:
+            permission, _ = ModulePermission.objects.get_or_create(
+                role_group=role_group,
+                module=module,
+                action=action,
+                defaults={'is_allowed': True},
+            )
+            if not permission.is_allowed:
+                permission.is_allowed = True
+                permission.save(update_fields=['is_allowed'])
 
 
 def _forbid_json(message='Bạn không có quyền quản lý hệ thống'):
@@ -247,6 +340,7 @@ def service_price_tbl(request):
 def api_get_role_groups(request):
     if not can_manage_users(request.user):
         return _forbid_json('Bạn không có quyền xem nhóm vai trò')
+    _ensure_default_role_groups()
     role_groups = RoleGroup.objects.select_related('group').all()
     if not request.user.is_superuser:
         role_groups = role_groups.filter(is_active=True)
@@ -621,6 +715,9 @@ def api_save_user(request):
         uid = data.get('id')
         username = data.get('username', '').strip()
         store_id = data.get('store_id')
+        position = data.get('position') or ''
+        if position not in POSITION_CHOICES:
+            return JsonResponse({'status': 'error', 'message': 'Chức vụ không hợp lệ'})
 
         # Kiểm tra store gán cho user có thuộc phạm vi mà người thao tác được quản lý hay không.
         if store_id and not request.user.is_superuser:
@@ -673,7 +770,7 @@ def api_save_user(request):
         if not uid or 'store_id' in data:
             profile.store_id = store_id or None
         if 'position' in data:
-            profile.position = data.get('position') or ''
+            profile.position = position
         if not uid or 'store_id' in data or 'position' in data:
             profile.save()
 

@@ -2,7 +2,7 @@ import importlib
 import json
 import sys
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -211,6 +211,58 @@ class SystemManagementScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(RoleGroup.objects.filter(name='Owner Global Role').exists())
+
+    def test_brand_owner_can_assign_role_group_when_saving_managed_user(self):
+        auth_group = Group.objects.create(name='Kế toán')
+        role_group = RoleGroup.objects.create(name='Kế toán', group=auth_group, is_active=True)
+
+        groups_response = self.client.get(reverse('api_get_role_groups'))
+        self.assertEqual(groups_response.status_code, 200)
+        self.assertIn(role_group.id, {row['id'] for row in groups_response.json()['data']})
+
+        response = self.client.post(
+            reverse('api_save_user'),
+            data=json.dumps({
+                'id': self.staff_a.id,
+                'first_name': 'Staff',
+                'last_name': 'A',
+                'email': 'staff-a@example.com',
+                'store_id': self.store.id,
+                'is_active': True,
+                'group_ids': [role_group.id],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(self.staff_a.groups.filter(id=auth_group.id).exists())
+
+        list_response = self.client.get(reverse('api_get_users'))
+        row = next(item for item in list_response.json()['data'] if item['id'] == self.staff_a.id)
+        self.assertEqual(row['group_ids'], [role_group.id])
+
+    def test_password_only_update_preserves_user_profile_and_groups(self):
+        auth_group = Group.objects.create(name='Bán hàng')
+        RoleGroup.objects.create(name='Bán hàng', group=auth_group, is_active=True)
+        self.staff_a.groups.add(auth_group)
+
+        response = self.client.post(
+            reverse('api_save_user'),
+            data=json.dumps({
+                'id': self.staff_a.id,
+                'password': 'newpass123',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.staff_a.refresh_from_db()
+        self.staff_a.profile.refresh_from_db()
+        self.assertEqual(self.staff_a.profile.store_id, self.store.id)
+        self.assertTrue(self.staff_a.groups.filter(id=auth_group.id).exists())
+        self.assertTrue(self.staff_a.check_password('newpass123'))
 
     def test_regular_staff_can_read_active_printers_for_print_preview(self):
         PrinterSetting.objects.create(name='LAN Printer', printer_type='lan', ip_address='192.168.1.10')

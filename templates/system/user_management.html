@@ -73,6 +73,13 @@
                     <label>Cửa hàng</label>
                     <select class="form-control form-control-sm" id="inp_store_id"><option value="">-- Chưa gán --</option></select>
                 </div>
+                {% if not request.user.is_superuser %}
+                <div class="form-group">
+                    <label>Nhóm phân quyền</label>
+                    <select class="form-control form-control-sm" id="inp_role_group_ids" multiple></select>
+                    <small class="text-muted">Giữ Ctrl/Cmd để chọn nhiều nhóm, bỏ chọn hết nếu chưa phân quyền.</small>
+                </div>
+                {% endif %}
                 <div class="custom-control custom-switch">
                     <input type="checkbox" class="custom-control-input" id="inp_is_active" checked>
                     <label class="custom-control-label" for="inp_is_active">Đang hoạt động</label>
@@ -116,6 +123,7 @@
 var allUsers = [];
 var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
 var allStores = [];
+var allRoleGroups = [];
 
 $(document).ready(function(){
     loadData();
@@ -127,6 +135,7 @@ $(document).ready(function(){
         $('#inp_first_name,#inp_last_name,#inp_email,#inp_password').val('');
         $('#inp_is_active').prop('checked', true);
         $('#inp_store_id').val('');
+        $('#inp_role_group_ids').val([]);
         $('#lbl_pw_required').show(); $('#lbl_pw_hint').hide();
         $('#modal_user_title').text('Thêm tài khoản');
         $('#modal_user').modal('show');
@@ -139,20 +148,24 @@ $(document).ready(function(){
         var password = $('#inp_password').val();
         if(!uid && !username){alert('Nhập tên đăng nhập');return;}
         if(!uid && !password){alert('Nhập mật khẩu');return;}
+        var payload = {
+            id: uid || null,
+            username: username,
+            first_name: $('#inp_first_name').val(),
+            last_name: $('#inp_last_name').val(),
+            email: $('#inp_email').val(),
+            password: password,
+            store_id: $('#inp_store_id').val() || null,
+            is_active: $('#inp_is_active').prop('checked')
+        };
+        if($('#inp_role_group_ids').length){
+            payload.group_ids = $('#inp_role_group_ids').val() || [];
+        }
         $.ajax({
             url: '/api/users/save/', type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
-            data: JSON.stringify({
-                id: uid || null,
-                username: username,
-                first_name: $('#inp_first_name').val(),
-                last_name: $('#inp_last_name').val(),
-                email: $('#inp_email').val(),
-                password: password,
-                store_id: $('#inp_store_id').val() || null,
-                is_active: $('#inp_is_active').prop('checked'),
-            }),
+            data: JSON.stringify(payload),
             success: function(r){
                 alert(r.message);
                 if(r.status === 'ok'){$('#modal_user').modal('hide'); loadData();}
@@ -178,47 +191,58 @@ $(document).ready(function(){
 });
 
 function loadData(){
-    $.when($.get('/api/users/'), $.get('/api/stores-for-user/')).done(function(r1, r2){
+    $.when($.get('/api/users/'), $.get('/api/stores-for-user/'), $.get('/api/role-groups/')).done(function(r1, r2, r3){
         allUsers = r1[0].data;
         allStores = r2[0].data;
+        allRoleGroups = r3[0].data || [];
 
         // Populate store dropdown
         var sOpts = '<option value="">-- Chưa gán --</option>';
         allStores.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.name+' ('+s.code+')</option>';});
         $('#inp_store_id').html(sOpts);
 
+        var rgOpts = '';
+        allRoleGroups.forEach(function(rg){
+            rgOpts += '<option value="'+rg.id+'">'+escapeHtml(rg.name)+'</option>';
+        });
+        $('#inp_role_group_ids').html(rgOpts);
+
         renderTable();
     });
+}
+
+function escapeHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
 }
 
 function renderTable(){
     var h = '';
     if(!allUsers.length){
-        h = '<tr><td colspan="8" class="text-center text-muted py-4">Chưa có người dùng nào</td></tr>';
+        h = '<tr><td colspan="'+(isSuperAdmin?7:8)+'" class="text-center text-muted py-4">Chưa có người dùng nào</td></tr>';
     }
     allUsers.forEach(function(u, i){
         var statusBadge = u.is_active ? '<span class="badge badge-success">HĐ</span>' : '<span class="badge badge-secondary">Khóa</span>';
         var roleBadge = '';
         if(u.is_superuser) roleBadge = '<span class="badge badge-danger">Admin</span> ';
-        if(u.groups) roleBadge += '<span class="badge badge-info">'+u.groups+'</span>';
+        if(u.groups) roleBadge += '<span class="badge badge-info">'+escapeHtml(u.groups)+'</span>';
         if(!u.is_superuser && !u.groups) roleBadge = '<span class="badge badge-light">Chưa phân quyền</span>';
 
         h += '<tr>';
         h += '<td class="text-center">'+(i+1)+'</td>';
-        h += '<td><b>'+u.username+'</b></td>';
-        h += '<td>'+u.full_name+'</td>';
-        h += '<td>'+u.email+'</td>';
+        h += '<td><b>'+escapeHtml(u.username)+'</b></td>';
+        h += '<td>'+escapeHtml(u.full_name)+'</td>';
+        h += '<td>'+escapeHtml(u.email)+'</td>';
         if(isSuperAdmin){
-            h += '<td>'+(u.brand_name||'<span class="text-muted">-</span>')+'</td>';
+            h += '<td>'+(u.brand_name?escapeHtml(u.brand_name):'<span class="text-muted">-</span>')+'</td>';
         } else {
-            h += '<td>'+(u.store_name||'<span class="text-muted">-</span>')+'</td>';
+            h += '<td>'+(u.store_name?escapeHtml(u.store_name):'<span class="text-muted">-</span>')+'</td>';
             h += '<td>'+roleBadge+'</td>';
         }
         h += '<td class="text-center">'+statusBadge+'</td>';
         h += '<td class="text-center">';
         if(!u.is_superuser){
             h += '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'>Sửa</button>';
-            h += '<button class="btn btn-xs btn-warning" onclick="resetPw('+u.id+',\''+u.username+'\')">Mật khẩu</button>';
+            h += '<button class="btn btn-xs btn-warning" onclick=\'resetPw('+u.id+','+JSON.stringify(u.username)+')\'>Mật khẩu</button>';
             h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteUser('+u.id+')">Xóa</button></div>';
         } else {
             h += '<span class="text-muted"><small>Admin</small></span>';
@@ -237,6 +261,7 @@ function editUser(u){
     $('#inp_email').val(u.email);
     $('#inp_password').val('');
     $('#inp_store_id').val(u.store_id);
+    $('#inp_role_group_ids').val((u.group_ids||[]).map(function(id){return String(id);}));
     $('#inp_is_active').prop('checked', u.is_active);
     $('#lbl_pw_required').hide(); $('#lbl_pw_hint').show();
     $('#modal_user_title').text('Sửa tài khoản: ' + u.username);

@@ -245,12 +245,20 @@ def service_price_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_role_groups(request):
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền xem nhóm vai trò')
     role_groups = RoleGroup.objects.select_related('group').all()
+    if not request.user.is_superuser:
+        role_groups = role_groups.filter(is_active=True)
     data = []
+    manageable_users = None if request.user.is_superuser else _get_manageable_users_queryset(request)
     for rg in role_groups:
-        user_count = rg.group.user_set.count() if rg.group else 0
+        if not rg.group:
+            user_count = 0
+        elif request.user.is_superuser:
+            user_count = rg.group.user_set.count()
+        else:
+            user_count = manageable_users.filter(groups=rg.group).count()
         data.append({
             'id': rg.id, 'name': rg.name,
             'description': rg.description or '',
@@ -327,14 +335,20 @@ def api_assign_role_group(request):
     """Gán/bỏ user vào nhóm vai trò"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin được gán nhóm vai trò toàn hệ thống')
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền gán nhóm vai trò')
     try:
         data = json.loads(request.body)
-        rg = RoleGroup.objects.get(id=data.get('role_group_id'))
         user = _get_editable_user(request, data.get('user_id'))
         if not user:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy người dùng trong phạm vi quản lý'}, status=404)
+        if user.is_superuser:
+            return JsonResponse({'status': 'error', 'message': 'Không thể gán nhóm vai trò cho Super Admin'})
+
+        role_group_qs = RoleGroup.objects.select_related('group')
+        if not request.user.is_superuser:
+            role_group_qs = role_group_qs.filter(is_active=True)
+        rg = role_group_qs.get(id=data.get('role_group_id'))
         action = data.get('action', 'add')  # 'add' or 'remove'
 
         if action == 'add':
@@ -557,6 +571,12 @@ def api_get_users(request):
         store_name = ''
         store_id = None
         brand_name = ''
+        user_groups = list(u.groups.all())
+        role_group_ids = []
+        for group in user_groups:
+            role_group = getattr(group, 'role_group', None)
+            if role_group:
+                role_group_ids.append(role_group.id)
         try:
             if hasattr(u, 'profile') and u.profile.store:
                 store_name = u.profile.store.name
@@ -575,7 +595,8 @@ def api_get_users(request):
             'email': u.email or '',
             'is_active': u.is_active,
             'is_superuser': u.is_superuser,
-            'groups': ', '.join([g.name for g in u.groups.all()]),
+            'groups': ', '.join([g.name for g in user_groups]),
+            'group_ids': role_group_ids,
             'store_name': store_name,
             'store_id': store_id,
             'brand_name': brand_name,
@@ -608,10 +629,10 @@ def api_save_user(request):
             user = _get_editable_user(request, uid)
             if not user:
                 return JsonResponse({'status': 'error', 'message': 'Bạn không có quyền chỉnh sửa người dùng này'})
-            user.first_name = data.get('first_name', '')
-            user.last_name = data.get('last_name', '')
-            user.email = data.get('email', '')
-            user.is_active = data.get('is_active', True)
+            user.first_name = data.get('first_name', user.first_name)
+            user.last_name = data.get('last_name', user.last_name)
+            user.email = data.get('email', user.email)
+            user.is_active = data.get('is_active', user.is_active)
             # Only superadmin can change password of other superadmins
             password = data.get('password', '')
             if password:
@@ -645,8 +666,28 @@ def api_save_user(request):
 
         # Update profile store
         profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.store_id = store_id or None
-        profile.save()
+        if not uid or 'store_id' in data:
+            profile.store_id = store_id or None
+            profile.save()
+
+        if 'group_ids' in data:
+            if user.is_superuser:
+                return JsonResponse({'status': 'error', 'message': 'Không thể phân quyền nhóm cho Super Admin'})
+            raw_group_ids = data.get('group_ids') or []
+            if not isinstance(raw_group_ids, list):
+                raw_group_ids = [raw_group_ids]
+            try:
+                group_ids = [int(group_id) for group_id in raw_group_ids if str(group_id).strip()]
+            except (TypeError, ValueError):
+                return JsonResponse({'status': 'error', 'message': 'Nhóm phân quyền không hợp lệ'})
+
+            role_group_qs = RoleGroup.objects.select_related('group').filter(id__in=group_ids)
+            if not request.user.is_superuser:
+                role_group_qs = role_group_qs.filter(is_active=True)
+            role_groups = list(role_group_qs)
+            if len(role_groups) != len(set(group_ids)):
+                return JsonResponse({'status': 'error', 'message': 'Nhóm phân quyền không hợp lệ hoặc đã ngừng hoạt động'})
+            user.groups.set([role_group.group for role_group in role_groups])
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu người dùng thành công'})
     except User.DoesNotExist:

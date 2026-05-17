@@ -1959,6 +1959,11 @@ def api_save_order(request):
             if _order_exports_stock_status(o.status) and o.warehouse_id:
                 _apply_order_stock_adjustment(o, direction=-1)
 
+            # 9b. Tự động chuyển Hoàn thành nếu đủ điều kiện (xuất kho + thanh toán đủ + duyệt).
+            if o.status == 4 and _order_can_complete(o):
+                o.status = 5
+                o.save(update_fields=['status'])
+
             # 10. Đồng bộ trạng thái báo giá sau khi trạng thái đơn đã ổn định.
             _sync_order_quotation_status(o, old_quotation_id=old_quotation_id)
 

@@ -3,9 +3,12 @@ Management command: Đồng bộ trạng thái đơn hàng theo quy trình thố
 
 Quy tắc:
   - Đơn ở "Báo giá" (status=0) mà đã có thanh toán + không cần duyệt (hoặc đã duyệt)
-    → tự promote sang "Đơn hàng" (status=1).
+    → tự promote sang "Đơn hàng" (status=1). Không trừ tồn.
   - Đơn ở "Đã xuất kho" (status=4) mà đã thanh toán đủ + (đã duyệt nếu cần)
-    → tự promote sang "Hoàn thành" (status=5).
+    → tự promote sang "Hoàn thành" (status=5). Tồn đã trừ trước đó.
+
+Lưu ý: Lệnh này KHÔNG tự đẩy đơn từ Báo giá thẳng lên Hoàn thành (cần qua các bước
+nghiệp vụ trung gian: Đơn hàng → Xử lý → Đóng gói → Xuất kho mới được Hoàn thành).
 
 Sử dụng:
     python manage.py complete_eligible_orders          # dry-run (chỉ liệt kê)
@@ -46,6 +49,8 @@ class Command(BaseCommand):
                 orders_to_promote.append(order)
 
         # ========== PHASE 2: Xuất kho (4) → Hoàn thành (5) ==========
+        # Quan trọng: chỉ duyệt đơn đã thực sự ở status=4. Tồn kho đã được trừ
+        # ở bước chuyển sang status=4 trước đó. Phase này chỉ đổi nhãn 4→5.
         complete_qs = Order.objects.filter(
             status=4,
             payment_status=2,

@@ -13,11 +13,11 @@
         <div class="mb-3" style="border-bottom:2px solid #e9ecef;">
             <div class="d-flex flex-wrap" id="status_tabs" style="gap:0;">
                 <button class="btn btn-link rounded-0 px-3 py-2 text-dark font-weight-bold filter-tab active" data-status="" style="border-bottom:3px solid #4a90d9; margin-bottom:-2px;">Tất cả <span class="badge badge-secondary ml-1" id="tab_count_all">0</span></button>
-                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="0">Nháp <span class="badge badge-light border ml-1" id="tab_count_0">0</span></button>
-                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="1">Xác nhận <span class="badge badge-light border ml-1" id="tab_count_1">0</span></button>
+                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="0">Báo giá <span class="badge badge-light border ml-1" id="tab_count_0">0</span></button>
+                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="1">Đơn hàng <span class="badge badge-light border ml-1" id="tab_count_1">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="2">Đang xử lý <span class="badge badge-light border ml-1" id="tab_count_2">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="3">Đang đóng gói <span class="badge badge-light border ml-1" id="tab_count_3">0</span></button>
-                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="4">Đã giao <span class="badge badge-light border ml-1" id="tab_count_4">0</span></button>
+                <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="4">Đã xuất kho <span class="badge badge-light border ml-1" id="tab_count_4">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="5">Hoàn thành <span class="badge badge-light border ml-1" id="tab_count_5">0</span></button>
                 <button class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="6">Đã hủy <span class="badge badge-light border ml-1" id="tab_count_6">0</span></button>
             </div>
@@ -135,12 +135,12 @@
                     <div class="d-flex align-items-center justify-content-between status-timeline">
                         <div class="st-step" data-step="0">
                             <div class="st-dot"><i class="fas fa-file-alt"></i></div>
-                            <div class="st-label">Nháp</div>
+                            <div class="st-label">Báo giá</div>
                         </div>
                         <div class="st-connector"></div>
                         <div class="st-step" data-step="1">
                             <div class="st-dot"><i class="fas fa-check"></i></div>
-                            <div class="st-label">Xác nhận</div>
+                            <div class="st-label">Đơn hàng</div>
                         </div>
                         <div class="st-connector"></div>
                         <div class="st-step" data-step="2">
@@ -155,7 +155,7 @@
                         <div class="st-connector"></div>
                         <div class="st-step" data-step="4">
                             <div class="st-dot"><i class="fas fa-truck"></i></div>
-                            <div class="st-label">Đã giao</div>
+                            <div class="st-label">Xuất kho</div>
                         </div>
                         <div class="st-connector"></div>
                         <div class="st-step" data-step="5">
@@ -194,7 +194,7 @@
                     <div class="col-md-3"><div class="form-group"><label>Kho xuất</label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
                     <div class="col-md-3"><div class="form-group"><label id="lbl_order_date">Ngày đặt <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_order_date"></div></div>
                     <!-- Hidden select for form value -->
-                    <select class="d-none" id="inp_status"><option value="0">Nháp</option><option value="1">Xác nhận</option><option value="2">Đang xử lý</option><option value="3">Đang đóng gói</option><option value="4">Đã giao</option><option value="5">Hoàn thành</option><option value="6">Hủy</option></select>
+                    <select class="d-none" id="inp_status"><option value="0">Báo giá</option><option value="1">Đơn hàng</option><option value="2">Đang xử lý</option><option value="3">Đang đóng gói</option><option value="4">Đã xuất kho</option><option value="5">Hoàn thành</option><option value="6">Hủy</option></select>
                 </div>
                 <div class="row mt-1" id="quotation_fields" style="display:none;">
                     <div class="col-md-3">
@@ -219,75 +219,17 @@
                 </div>
                 <div class="row mt-1" id="payment_section">
                     <div class="col-md-12">
-                        <div class="d-flex align-items-center flex-wrap mb-2" style="gap:12px;">
-                            <strong class="mr-1"><i class="fas fa-money-bill-wave text-success mr-1"></i> Thanh toán:</strong>
-                            <div class="custom-control custom-radio custom-control-inline">
-                                <input type="radio" class="custom-control-input" id="pay_full" name="pay_mode" value="full" checked>
-                                <label class="custom-control-label" for="pay_full">Toàn bộ</label>
-                            </div>
-                            <div class="custom-control custom-radio custom-control-inline">
-                                <input type="radio" class="custom-control-input" id="pay_partial" name="pay_mode" value="partial">
-                                <label class="custom-control-label" for="pay_partial">Một phần</label>
-                            </div>
-                            <div class="custom-control custom-radio custom-control-inline">
-                                <input type="radio" class="custom-control-input" id="pay_none" name="pay_mode" value="none">
-                                <label class="custom-control-label" for="pay_none">Chưa thanh toán</label>
-                            </div>
-                            <div id="partial_amount_group" style="display:none;" class="d-flex align-items-center ml-2">
-                                <label class="mb-0 mr-2 text-nowrap">Số tiền:</label>
-                                <input type="text" class="form-control form-control-sm text-right money-format" id="inp_pay_amount" style="width:140px;" value="0">
-                                <small class="text-muted ml-2" id="lbl_remaining_hint"></small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="row" id="payment_method_row">
-                    <div class="col-md-12">
-                        <!-- Multi-payment lines -->
-                        <div id="payment_lines_container">
-                            <div class="d-flex align-items-center mb-1">
-                                <strong class="small text-muted mr-2"><i class="fas fa-wallet mr-1"></i> Chi tiết thanh toán</strong>
-                                <button type="button" class="btn btn-xs btn-outline-primary" id="btn_add_payment_line" title="Thêm dòng thanh toán">
-                                    <i class="fas fa-plus mr-1"></i>Thêm PT
+                        <div class="payment-compact-card">
+                            <div class="d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
+                                <div>
+                                    <strong><i class="fas fa-money-bill-wave text-success mr-1"></i> Thanh toán</strong>
+                                    <span class="badge badge-light border ml-2" id="payment_status_hint">Chưa thu</span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="btn_toggle_payment">
+                                    <i class="fas fa-money-bill-wave mr-1"></i> Thanh toán
                                 </button>
                             </div>
-                            <table class="table table-sm table-bordered mb-0" id="payment_lines_tbl">
-                                <thead class="bg-light">
-                                    <tr>
-                                        <th style="width:30%">Phương thức</th>
-                                        <th style="width:30%">Tài khoản nhận</th>
-                                        <th style="width:25%" class="text-right">Số tiền</th>
-                                        <th style="width:15%"></th>
-                                    </tr>
-                                </thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                        <!-- Payment summary panel -->
-                        <div class="mt-2 p-2 rounded" id="payment_summary_panel" style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border:1px solid #c8e6c9;">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:12px;">
-                                <div>
-                                    <span class="text-muted small">Tổng đơn:</span>
-                                    <strong class="ml-1" id="pay_summary_total">0</strong>
-                                </div>
-                                <div>
-                                    <span class="text-muted small">Đã thu trước:</span>
-                                    <strong class="ml-1 text-info" id="pay_summary_existing">0</strong>
-                                </div>
-                                <div>
-                                    <span class="text-muted small">Đang thanh toán:</span>
-                                    <strong class="ml-1 text-success" id="pay_summary_paying">0</strong>
-                                </div>
-                                <div>
-                                    <span class="small" id="pay_summary_remaining_label">Còn thiếu:</span>
-                                    <strong class="ml-1" id="pay_summary_remaining" style="color:#e53e3e;">0</strong>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4" id="debt_info" style="display:none;">
-                        <div class="mt-3">
-                            <span class="text-danger font-weight-bold"><i class="fas fa-exclamation-triangle"></i> Ghi nợ — Khách chưa thanh toán</span>
+                            <div id="payment_lines_container" class="mt-2" style="display:none;"></div>
                         </div>
                     </div>
                 </div>
@@ -362,6 +304,9 @@
                     <div class="card-header py-1 d-flex align-items-center justify-content-between">
                         <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
                         <div class="card-tools d-flex align-items-center" style="gap:8px;">
+                            <button type="button" class="btn btn-xs btn-outline-secondary" id="btn_toggle_stock_info" title="Ẩn/hiện kiểm tra tồn kho">
+                                <i class="fas fa-eye mr-1"></i> Kiểm tra tồn
+                            </button>
                             <small class="text-muted"><kbd>F2</kbd> Tìm SP</small>
                             <small class="text-muted"><kbd>F3</kbd> Tạo SP mới</small>
                             <small class="text-muted"><kbd>F4</kbd> Tìm KH</small>
@@ -379,6 +324,9 @@
                                     autocomplete="off"
                                     style="font-size:14px; border:2px solid #42a5f5; border-left:none; background:#fff;">
                                 <div class="input-group-append">
+                                    <button class="btn btn-outline-secondary" type="button" tabindex="-1" title="Thêm dòng dịch vụ/thẻ trống" id="btn_add_service_line">
+                                        <i class="fas fa-clipboard-list"></i> <span class="d-none d-md-inline">Dịch vụ</span>
+                                    </button>
                                     <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
                                         <i class="fas fa-plus-circle"></i> <span class="d-none d-md-inline">Tạo SP</span>
                                     </button>
@@ -401,7 +349,7 @@
                                 <th style="width:3%"></th>
                                 <th style="width:25%">Sản phẩm</th>
                                 <th style="width:6%">ĐVT</th>
-                                <th style="width:18%">Tồn theo kho</th>
+                                <th style="width:18%" class="stock-info-col">Tồn theo kho</th>
                                 <th style="width:9%">Số lượng</th>
                                 <th style="width:14%">Đơn giá</th>
                                 <th style="width:8%">CK (%)</th>
@@ -410,12 +358,12 @@
                             </tr></thead>
                             <tbody></tbody>
                             <tfoot>
-                                <tr class="bg-light font-weight-bold"><td colspan="7" class="text-right">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
-                                <tr><td colspan="7" class="text-right">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
-                                <tr><td colspan="7" class="text-right">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
-                                <tr class="font-weight-bold" style="background:linear-gradient(135deg,#1565c0,#0d47a1);"><td colspan="7" class="text-right" style="color:#ffd54f;">Thành tiền:</td><td class="text-right" style="color:#fff;font-size:16px;" id="lbl_final">0</td><td></td></tr>
-                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
-                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center"><span class="badge badge-danger py-1 px-3"><i class="fas fa-exclamation-triangle mr-1"></i> Cảnh báo: Có sản phẩm đang bán dưới giá vốn!</span></td></tr>
+                                <tr class="bg-light font-weight-bold"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
+                                <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
+                                <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
+                                <tr class="font-weight-bold" style="background:linear-gradient(135deg,#1565c0,#0d47a1);"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6" style="color:#ffd54f;">Thành tiền:</td><td class="text-right" style="color:#fff;font-size:16px;" id="lbl_final">0</td><td></td></tr>
+                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
+                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-danger py-1 px-3"><i class="fas fa-exclamation-triangle mr-1"></i> Cảnh báo: Có sản phẩm đang bán dưới giá vốn!</span></td></tr>
                             </tfoot>
                         </table>
                     </div>
@@ -437,6 +385,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-outline-success" id="btn_print_current" style="display:none;"><i class="fas fa-print"></i> In</button>
                 <button type="button" class="btn btn-warning" id="btn_save_note" style="display:none;"><i class="fas fa-sticky-note"></i> Lưu ghi chú</button>
                 <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu đơn hàng</button>
             </div>
@@ -583,20 +532,26 @@
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label>Hình thức thanh toán</label>
-                    <select class="form-control form-control-sm" id="bulk_payment_method">
-                        {% for m in payment_methods %}
-                        <option value="{{ m.legacy_type }}" data-method-option-id="{{ m.id }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="alert alert-light border py-2 px-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
+                        <span><i class="fas fa-clipboard-list text-success mr-1"></i> Đã chọn <strong id="bulk_collect_count">0</strong> đơn</span>
+                        <span class="text-success">Tổng cần thu: <strong id="bulk_collect_total">0</strong>đ</span>
+                    </div>
+                    <small class="text-muted">Tổng này là số tiền còn phải thanh toán của các đơn đang chọn.</small>
+                </div>
+                <div id="bulk_collect_zero_hint" class="alert alert-warning py-2 mb-2" style="display:none;">
+                    Các đơn đã chọn không còn khoản cần thu.
+                </div>
+                <div id="bulk_collect_order_list" class="border rounded mb-2" style="max-height:160px;overflow-y:auto;"></div>
+                <div class="form-group mb-2">
+                    <label>Số tiền thực thu</label>
+                    <input type="text" class="form-control form-control-sm text-right font-weight-bold" id="bulk_collect_actual_amount" value="0" readonly>
                 </div>
                 <div class="form-group mb-0">
-                    <label>Tài khoản nhận tiền</label>
-                    <select class="form-control form-control-sm select2" id="bulk_cash_book_id" style="width:100%;">
-                        <option value="">-- Chọn tài khoản --</option>
-                        {% for c in cashbooks %}
-                        <option value="{{ c.id }}">{{ c.name }}</option>
+                    <label>Phương thức nhận tiền</label>
+                    <select class="form-control form-control-sm" id="bulk_payment_method">
+                        {% for m in payment_methods %}
+                        <option value="{{ m.legacy_type }}" data-method-option-id="{{ m.id }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}{% if m.default_cash_book__name %} — {{ m.default_cash_book__name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -622,6 +577,14 @@
                     <div class="d-inline-flex align-items-center px-3 py-2" style="background:#e8f5e9;border-radius:8px;">
                         <i class="fas fa-check-circle text-success mr-2" style="font-size:20px;"></i>
                         <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong>. Chọn loại phiếu để in:</span>
+                    </div>
+                    <div class="mt-2">
+                        <a href="{% url 'print_template_setting' %}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-edit mr-1"></i> Chỉnh mẫu in
+                        </a>
+                        <a href="{% url 'printer_setting_tbl' %}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-print mr-1"></i> Cài máy in
+                        </a>
                     </div>
                 </div>
                 <div class="row" id="print_options_grid">
@@ -653,6 +616,15 @@
                             </div>
                             <div class="print-label">Báo giá A5</div>
                             <div class="print-desc">Phiếu báo giá</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="quotation_a4" title="In báo giá A4 cho khách">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#f57c00,#e65100);">
+                                <i class="fas fa-file-contract"></i>
+                            </div>
+                            <div class="print-label">Báo giá A4</div>
+                            <div class="print-desc">Phiếu báo giá khổ A4</div>
                         </div>
                     </div>
                     <!-- Warranty -->
@@ -934,6 +906,18 @@
 #quick_search_product:focus:placeholder-shown {
     animation: searchPulse 2s infinite;
 }
+.payment-compact-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: #fff;
+}
+.payment-compact-card .form-group {
+    margin-bottom: 0;
+}
+.payment-compact-card .pay-line {
+    row-gap: 8px;
+}
 #items_tbl .lbl_stock {
     white-space: normal;
     word-break: break-word;
@@ -1063,6 +1047,15 @@
     border-color: #1976d2;
     color: #fff;
 }
+.order-stock-compact #items_tbl .stock-info-col,
+.order-stock-compact #quick_search_results .quick-search-stock-block,
+.order-stock-compact .quick-search-filter-bar {
+    display: none !important;
+}
+.service-line-row .lbl_img span {
+    background: #f3f6f9;
+    color: #607d8b;
+}
 </style>
 <script src="/static/js/column_config.js"></script>
 <script>
@@ -1071,12 +1064,14 @@ var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
 var ORDER_PAYMENT_PREFERENCE_STORAGE_KEY = 'ifshop_order_payment_preferences';
+var ORDER_STOCK_INFO_STORAGE_KEY = 'ifshop_order_stock_info_visible';
 var ORDER_WAREHOUSES = [
 {% for w in warehouses %}
     {id: {{ w.id }}, name: '{{ w.name|escapejs }}'},
 {% endfor %}
 ];
 var currentQuickSearchStockFilter = 'all';
+var currentStockInfoVisible = false;
 var currentCustomerSearchTerm = '';
 var _suppressOrderWarehousePreferencePersist = false;
 window._activeProductSelect2 = null;
@@ -1250,6 +1245,7 @@ function fmtDt(dateStr, createdAt){
     return d;
 }
 function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
+function escapeAttr(text){ return escapeHtml(text).replace(/"/g, '&quot;'); }
 
 function normalizeQuickSearchStockFilter(filterKey){
     var allowed = ['all', 'available', 'negative', 'oversold'];
@@ -1533,6 +1529,9 @@ function renderQuickSearchAlertBadges(product){
 }
 
 function getQuickSearchFilterStatusHtml(){
+    if(!currentStockInfoVisible){
+        return '';
+    }
     if(currentQuickSearchStockFilter === 'all'){
         return '';
     }
@@ -1552,6 +1551,9 @@ function syncQuickSearchStockFilterUI(){
 }
 
 function setQuickSearchStockFilter(filterKey){
+    if(!currentStockInfoVisible && filterKey !== 'all'){
+        setStockInfoVisible(true);
+    }
     currentQuickSearchStockFilter = normalizeQuickSearchStockFilter(filterKey);
     persistQuickSearchStockFilter(currentQuickSearchStockFilter);
     syncQuickSearchStockFilterUI();
@@ -1658,6 +1660,50 @@ function updateQuickSearchFilterLabels(){
     });
 }
 
+function getStoredStockInfoVisible(){
+    try {
+        var stored = localStorage.getItem(ORDER_STOCK_INFO_STORAGE_KEY);
+        return stored === '1';
+    } catch(e){
+        return false;
+    }
+}
+
+function persistStockInfoVisible(visible){
+    try {
+        localStorage.setItem(ORDER_STOCK_INFO_STORAGE_KEY, visible ? '1' : '0');
+    } catch(e){}
+}
+
+function syncStockInfoVisibility(){
+    var visible = !!currentStockInfoVisible;
+    $('body').toggleClass('order-stock-compact', !visible);
+    $('#items_tbl [data-stock-colspan]').each(function(){
+        $(this).attr('colspan', visible ? $(this).data('stock-colspan') : $(this).data('compact-colspan'));
+    });
+    $('#btn_toggle_stock_info')
+        .toggleClass('btn-outline-secondary', !visible)
+        .toggleClass('btn-info', visible)
+        .html('<i class="fas ' + (visible ? 'fa-eye-slash' : 'fa-eye') + ' mr-1"></i>' + (visible ? 'Ẩn tồn' : 'Kiểm tra tồn'));
+    if(!visible && currentQuickSearchStockFilter !== 'all'){
+        currentQuickSearchStockFilter = 'all';
+        persistQuickSearchStockFilter(currentQuickSearchStockFilter);
+        syncQuickSearchStockFilterUI();
+    }
+}
+
+function setStockInfoVisible(visible, persist){
+    currentStockInfoVisible = !!visible;
+    if(persist !== false){
+        persistStockInfoVisible(currentStockInfoVisible);
+    }
+    syncStockInfoVisibility();
+    updateAllStockDisplay();
+    if($('#quick_search_product').val().trim() || $('#quick_search_results').is(':visible')){
+        $('#quick_search_product').trigger('input');
+    }
+}
+
 function getDocumentType(){
     return $('input[name="document_type"]:checked').val() || 'order';
 }
@@ -1702,19 +1748,19 @@ function syncDocumentTypeUI(){
     var isExisting = !!$('#edit_id').val();
     $('#quotation_fields').toggle(isQuotation);
     $('#quotation_section').toggle(!isQuotation && !isExisting);
-    $('#payment_section, #payment_method_row').toggle(!isQuotation);
+    $('#payment_section').toggle(!isQuotation);
     $('#lbl_order_date').html((isQuotation ? 'Ngày báo giá' : 'Ngày đặt') + ' <span class="text-danger">*</span>');
     $('#lbl_code_label').html((isQuotation ? 'Mã báo giá' : 'Mã đơn hàng') + ' <span class="text-danger">*</span>');
     $('#btn_save').html('<i class="fas fa-save"></i> ' + (isQuotation ? 'Lưu báo giá' : 'Lưu đơn hàng'));
     if(isQuotation){
-        $('#status_timeline_container, #payment_history_section, #debt_info').hide();
-        $('#payment_lines_container, #payment_summary_panel, #partial_amount_group').hide();
+        $('#status_timeline_container, #payment_history_section').hide();
+        $('#payment_lines_container').hide();
         $('#inp_quotation_id').val('').trigger('change');
         $('#btn_load_quotation').hide();
         if(!isExisting) $('#modal_title').text('Tạo báo giá');
     } else {
         $('#status_timeline_container').show();
-        $('input[name="pay_mode"]:checked').trigger('change');
+        syncPaymentSummary();
         if(!isExisting) $('#modal_title').text('Tạo đơn hàng');
     }
 }
@@ -1807,17 +1853,30 @@ function syncDuplicateWarnings(){
     return hasDuplicate;
 }
 
-// Status flow: Nháp(0) → Xác nhận(1) → Đang xử lý(2) → Đóng gói(3) → Đã giao(4) → Hoàn thành(5)
+// Status flow: Báo giá(0) → Đơn hàng(1) → Đang xử lý(2) → Đóng gói(3) → Đã xuất kho(4) → Hoàn thành(5)
 // Tại mỗi trạng thái chỉ cho phép: giữ nguyên, tiến 1 bước, hoặc Hủy(6)
 var STATUS_TRANSITIONS = {
-    0: [0,1,6],       // Nháp → Xác nhận hoặc Hủy
-    1: [1,2,6],       // Xác nhận → Đang xử lý hoặc Hủy
+    0: [0,1,6],       // Báo giá → Đơn hàng hoặc Hủy
+    1: [1,2,6],       // Đơn hàng → Đang xử lý hoặc Hủy
     2: [2,3,6],       // Đang xử lý → Đóng gói hoặc Hủy
-    3: [3,4,6],       // Đóng gói → Đã giao hoặc Hủy
-    4: [4,5,6],       // Đã giao → Hoàn thành hoặc Hủy
+    3: [3,4,6],       // Đóng gói → Đã xuất kho hoặc Hủy
+    4: [4,5,6],       // Đã xuất kho → Hoàn thành hoặc Hủy
     5: [5],           // Hoàn thành → không thể đổi (chỉ tạo hoàn trả)
     6: [6],           // Hủy → không thể đổi
 };
+
+function getProjectedPaidAmount(){
+    var totalPaying = 0;
+    $('#payment_lines_container .pay-line').each(function(){
+        totalPaying += getMoneyValue($(this).find('.inp-pay-amount')) || 0;
+    });
+    return (Number(_existingPaidAmount) || 0) + totalPaying;
+}
+
+function isOrderPaidEnoughForCompletion(){
+    var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+    return getProjectedPaidAmount() >= finalAmt;
+}
 
 function syncStatusOptions(currentStatus){
     var current = parseInt(currentStatus, 10) || 0;
@@ -1905,7 +1964,11 @@ $(document).on('click', '.st-step', function(){
         if(!confirm('⚠️ Bạn có chắc chắn muốn HỦY đơn hàng này?')) return;
     }
     // Forward: confirm status advance
-    var STATUS_LABELS = {0:'Nháp', 1:'Xác nhận', 2:'Đang xử lý', 3:'Đóng gói', 4:'Đã giao', 5:'Hoàn thành', 6:'Hủy'};
+    var STATUS_LABELS = {0:'Báo giá', 1:'Đơn hàng', 2:'Đang xử lý', 3:'Đóng gói', 4:'Đã xuất kho', 5:'Hoàn thành', 6:'Hủy'};
+    if(stepVal === 5 && !isOrderPaidEnoughForCompletion()){
+        alert('Chỉ được hoàn thành sau khi đơn đã thanh toán đủ và đã xuất kho.');
+        return;
+    }
     if(stepVal !== 6 && stepVal > current){
         if(!confirm('Chuyển trạng thái sang "' + STATUS_LABELS[stepVal] + '"?')) return;
     }
@@ -1937,31 +2000,14 @@ function getSelectedPaymentMethodMeta(selector){
     };
 }
 
-function syncCashBookFromMethod(methodSelector, cashBookSelector){
-    var meta = getSelectedPaymentMethodMeta(methodSelector);
-    if(meta.defaultCashBookId && !$(cashBookSelector).val()){
-        $(cashBookSelector).val(String(meta.defaultCashBookId)).trigger('change');
-    }
-}
-
-// ===== MULTI-PAYMENT LINES =====
+// ===== PAYMENT ENTRY =====
 var _paymentMethodOptions = [
     {% for m in payment_methods %}
-    {id: {{ m.id }}, name: '{{ m.name|escapejs }}', legacyType: {{ m.legacy_type }}, defaultCashBookId: '{{ m.default_cash_book_id|default:"" }}'},
-    {% endfor %}
-];
-var _cashBookOptions = [
-    {% for c in cashbooks %}
-    {id: {{ c.id }}, name: '{{ c.name|escapejs }}'},
+    {id: {{ m.id }}, name: '{{ m.name|escapejs }}', defaultCashBookName: '{{ m.default_cash_book__name|default:""|escapejs }}', legacyType: {{ m.legacy_type }}, defaultCashBookId: '{{ m.default_cash_book_id|default:"" }}'},
     {% endfor %}
 ];
 var _existingPaidAmount = 0;
 var _suppressOrderPaymentPreferencePersist = false;
-
-function normalizeOrderPaymentMode(mode){
-    var allowed = ['full', 'partial', 'none'];
-    return allowed.indexOf(mode) >= 0 ? mode : 'full';
-}
 
 function getDefaultOrderPaymentMethodOptionId(){
     return _paymentMethodOptions.length ? String(_paymentMethodOptions[0].id) : '';
@@ -1978,29 +2024,14 @@ function normalizeOrderPaymentMethodOptionId(optionId){
     return exists ? normalized : '';
 }
 
-function normalizeOrderCashBookId(cashBookId){
-    var normalized = cashBookId == null ? '' : String(cashBookId);
-    if(!normalized){
-        return '';
-    }
-    var exists = _cashBookOptions.some(function(option){
-        return String(option.id) === normalized;
-    });
-    return exists ? normalized : '';
-}
-
 function getStoredOrderPaymentPreferences(){
     var fallback = {
-        payMode: 'full',
-        paymentMethodOptionId: getDefaultOrderPaymentMethodOptionId(),
-        cashBookId: ''
+        paymentMethodOptionId: getDefaultOrderPaymentMethodOptionId()
     };
     try {
         var raw = JSON.parse(localStorage.getItem(ORDER_PAYMENT_PREFERENCE_STORAGE_KEY) || '{}');
         return {
-            payMode: normalizeOrderPaymentMode(raw.payMode),
-            paymentMethodOptionId: normalizeOrderPaymentMethodOptionId(raw.paymentMethodOptionId) || fallback.paymentMethodOptionId,
-            cashBookId: normalizeOrderCashBookId(raw.cashBookId)
+            paymentMethodOptionId: normalizeOrderPaymentMethodOptionId(raw.paymentMethodOptionId) || fallback.paymentMethodOptionId
         };
     } catch(e){
         return fallback;
@@ -2010,17 +2041,11 @@ function getStoredOrderPaymentPreferences(){
 function persistOrderPaymentPreferences(preferences){
     var current = getStoredOrderPaymentPreferences();
     var next = {
-        payMode: normalizeOrderPaymentMode(preferences && preferences.payMode ? preferences.payMode : current.payMode),
         paymentMethodOptionId: normalizeOrderPaymentMethodOptionId(
             preferences && Object.prototype.hasOwnProperty.call(preferences, 'paymentMethodOptionId')
                 ? preferences.paymentMethodOptionId
                 : current.paymentMethodOptionId
-        ) || getDefaultOrderPaymentMethodOptionId(),
-        cashBookId: normalizeOrderCashBookId(
-            preferences && Object.prototype.hasOwnProperty.call(preferences, 'cashBookId')
-                ? preferences.cashBookId
-                : current.cashBookId
-        )
+        ) || getDefaultOrderPaymentMethodOptionId()
     };
     try {
         localStorage.setItem(ORDER_PAYMENT_PREFERENCE_STORAGE_KEY, JSON.stringify(next));
@@ -2041,114 +2066,112 @@ function persistCurrentOrderPaymentPreferences(){
     if(_suppressOrderPaymentPreferencePersist || getDocumentType() === 'quotation'){
         return;
     }
-    var primaryMethodId = $('#payment_lines_tbl tbody tr.pay-line:first .sel-pay-method').val() || getDefaultOrderPaymentMethodOptionId();
-    var primaryCashBookId = $('#payment_lines_tbl tbody tr.pay-line:first .sel-pay-cashbook').val() || '';
+    var primaryMethodId = $('#payment_lines_container .pay-line:first .sel-pay-method').val() || getDefaultOrderPaymentMethodOptionId();
     persistOrderPaymentPreferences({
-        payMode: $('input[name="pay_mode"]:checked').val() || 'full',
-        paymentMethodOptionId: primaryMethodId,
-        cashBookId: primaryCashBookId
+        paymentMethodOptionId: primaryMethodId
     });
 }
 
 function applyStoredOrderPaymentPreferencesToNewForm(){
-    var prefs = getStoredOrderPaymentPreferences();
     runWithoutPersistingOrderPaymentPreferences(function(){
         clearPaymentLines();
-        addPaymentLine(prefs.paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId(), prefs.cashBookId || null, 0);
-        $('#pay_' + prefs.payMode).prop('checked', true).trigger('change');
+        _existingPaidAmount = 0;
+        syncPaymentSummary();
     });
 }
 
-function addPaymentLine(methodId, cashBookId, amount){
+function addPaymentLine(methodId, amount){
     var preferredMethodId = normalizeOrderPaymentMethodOptionId(methodId) || getStoredOrderPaymentPreferences().paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId();
-    var preferredCashBookId = normalizeOrderCashBookId(cashBookId);
     var methodOpts = '';
-    _paymentMethodOptions.forEach(function(m){
-        var sel = (preferredMethodId && String(m.id) === String(preferredMethodId)) ? ' selected' : '';
-        methodOpts += '<option value="'+m.id+'" data-legacy="'+m.legacyType+'" data-default-cb="'+m.defaultCashBookId+'"'+sel+'>'+m.name+'</option>';
-    });
-    var cbOpts = '<option value="">-- Tài khoản --</option>';
-    _cashBookOptions.forEach(function(c){
-        var sel = (preferredCashBookId && String(c.id) === String(preferredCashBookId)) ? ' selected' : '';
-        cbOpts += '<option value="'+c.id+'"'+sel+'>'+c.name+'</option>';
-    });
-    var html = '<tr class="pay-line">' +
-        '<td><select class="form-control form-control-sm sel-pay-method">'+methodOpts+'</select></td>' +
-        '<td><select class="form-control form-control-sm sel-pay-cashbook">'+cbOpts+'</select></td>' +
-        '<td><input type="text" class="form-control form-control-sm text-right money-format inp-pay-amount" value="'+fmt(amount || 0)+'"></td>' +
-        '<td class="text-center"><button type="button" class="btn btn-xs btn-outline-danger btn-remove-pay-line" title="Xóa"><i class="fas fa-times"></i></button>' +
-        ' <button type="button" class="btn btn-xs btn-outline-success btn-fill-remaining" title="Điền hết"><i class="fas fa-fill-drip"></i></button></td>' +
-        '</tr>';
-    $('#payment_lines_tbl tbody').append(html);
-    var $row = $('#payment_lines_tbl tbody tr:last');
-    $row.find('.sel-pay-method').on('change', function(){
-        var defaultCb = $(this).find('option:selected').data('default-cb');
-        if(defaultCb && !$row.find('.sel-pay-cashbook').val()){
-            $row.find('.sel-pay-cashbook').val(String(defaultCb));
-        }
-        if($row.is(':first-child')){
-            persistCurrentOrderPaymentPreferences();
-        }
-    });
-    if(!preferredCashBookId){
-        var defaultCb = $row.find('.sel-pay-method option:selected').data('default-cb');
-        if(defaultCb) $row.find('.sel-pay-cashbook').val(String(defaultCb));
-    }
-    $row.find('.sel-pay-cashbook').on('change', function(){
-        if($row.is(':first-child')){
-            persistCurrentOrderPaymentPreferences();
-        }
-    });
-    $row.find('.inp-pay-amount').on('input', function(){ syncPaymentSummary(); });
-    $row.find('.btn-remove-pay-line').on('click', function(){
-        $row.remove();
-        syncPaymentSummary();
-        persistCurrentOrderPaymentPreferences();
-    });
-    $row.find('.btn-fill-remaining').on('click', function(){
-        var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
-        var otherPaying = 0;
-        $('#payment_lines_tbl tbody tr.pay-line').each(function(){
-            if(!$(this).is($row)) otherPaying += getMoneyValue($(this).find('.inp-pay-amount')) || 0;
+    if(_paymentMethodOptions.length){
+        _paymentMethodOptions.forEach(function(m){
+            var sel = (preferredMethodId && String(m.id) === String(preferredMethodId)) ? ' selected' : '';
+            var label = m.name + (m.defaultCashBookName ? ' — ' + m.defaultCashBookName : '');
+            methodOpts += '<option value="'+m.id+'" data-legacy="'+m.legacyType+'"'+sel+'>'+label+'</option>';
         });
-        var remaining = finalAmt - _existingPaidAmount - otherPaying;
-        if(remaining > 0){ setMoneyValue($row.find('.inp-pay-amount'), remaining); syncPaymentSummary(); }
+    } else {
+        methodOpts = '<option value="" data-legacy="2">Chưa có phương thức</option>';
+    }
+    var html = '<div class="pay-line form-row align-items-end">' +
+        '<div class="form-group col-md-7"><label class="small text-muted mb-1">Phương thức nhận tiền</label><select class="form-control form-control-sm sel-pay-method">'+methodOpts+'</select></div>' +
+        '<div class="form-group col-md-5"><label class="small text-muted mb-1">Số tiền</label><input type="text" class="form-control form-control-sm text-right money-format inp-pay-amount" value="'+fmt(amount || 0)+'"></div>' +
+        '</div>';
+    $('#payment_lines_container').html(html);
+    var $row = $('#payment_lines_container .pay-line:last');
+    $row.find('.sel-pay-method').on('change', function(){
+        if($row.is(':first-child')){
+            persistCurrentOrderPaymentPreferences();
+        }
+    });
+    $row.find('.inp-pay-amount').data('manual', false).on('input', function(){
+        $(this).data('manual', true);
+        syncPaymentSummary();
     });
     syncPaymentSummary();
 }
 
+function isPaymentEntryActive(){
+    return $('#payment_lines_container').is(':visible') && $('#payment_lines_container .pay-line').length > 0;
+}
+
+function getRemainingForNewPayment(){
+    var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+    return Math.max(finalAmt - _existingPaidAmount, 0);
+}
+
+function enablePaymentEntry(amount){
+    var prefs = getStoredOrderPaymentPreferences();
+    var value = amount;
+    if(value === undefined || value === null){
+        value = getRemainingForNewPayment();
+    }
+    addPaymentLine(prefs.paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId(), value);
+    $('#payment_lines_container').show();
+    syncPaymentSummary();
+    persistCurrentOrderPaymentPreferences();
+}
+
+function disablePaymentEntry(){
+    $('#payment_lines_container').html('').hide();
+    syncPaymentSummary();
+    persistCurrentOrderPaymentPreferences();
+}
+
 function syncPaymentSummary(){
     var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+    if(isPaymentEntryActive()){
+        var $amount = $('#payment_lines_container .pay-line:first .inp-pay-amount');
+        if($amount.length && !$amount.data('manual')){
+            setMoneyValue($amount, getRemainingForNewPayment());
+        }
+    }
     var totalPaying = 0;
-    $('#payment_lines_tbl tbody tr.pay-line').each(function(){
+    $('#payment_lines_container .pay-line').each(function(){
         totalPaying += getMoneyValue($(this).find('.inp-pay-amount')) || 0;
     });
-    var remaining = finalAmt - _existingPaidAmount - totalPaying;
-    $('#pay_summary_total').text(fmt(finalAmt));
-    $('#pay_summary_existing').text(fmt(_existingPaidAmount));
-    $('#pay_summary_paying').text(fmt(totalPaying));
-    if(remaining > 0){
-        $('#pay_summary_remaining_label').text('Còn thiếu:');
-        $('#pay_summary_remaining').text(fmt(remaining)).css('color','#e53e3e');
-    } else if(remaining < 0){
-        $('#pay_summary_remaining_label').text('Tiền thừa:');
-        $('#pay_summary_remaining').text(fmt(Math.abs(remaining))).css('color','#38a169');
+    if(isPaymentEntryActive()){
+        $('#btn_toggle_payment').removeClass('btn-outline-success').addClass('btn-outline-secondary').html('<i class="fas fa-times mr-1"></i> Hủy');
+        $('#payment_status_hint').removeClass('badge-light badge-info').addClass('badge-success').text(totalPaying > 0 ? 'Thu ' + fmt(totalPaying) + 'đ' : 'Nhập số tiền');
+    } else if(_existingPaidAmount > 0){
+        $('#btn_toggle_payment').removeClass('btn-outline-secondary').addClass('btn-outline-success').html('<i class="fas fa-plus-circle mr-1"></i> Thu thêm');
+        $('#payment_status_hint').removeClass('badge-light badge-success').addClass('badge-info').text('Đã thu ' + fmt(_existingPaidAmount) + 'đ');
     } else {
-        $('#pay_summary_remaining_label').text('Còn thiếu:');
-        $('#pay_summary_remaining').text('0').css('color','#718096');
+        $('#btn_toggle_payment').removeClass('btn-outline-secondary').addClass('btn-outline-success').html('<i class="fas fa-money-bill-wave mr-1"></i> Thanh toán');
+        $('#payment_status_hint').removeClass('badge-success badge-info').addClass('badge-light').text('Chưa thu');
     }
 }
 
 function getPaymentLines(){
+    if(!isPaymentEntryActive()) return [];
     var lines = [];
-    $('#payment_lines_tbl tbody tr.pay-line').each(function(){
+    $('#payment_lines_container .pay-line').each(function(){
         var amt = getMoneyValue($(this).find('.inp-pay-amount')) || 0;
         if(amt <= 0) return;
         var $m = $(this).find('.sel-pay-method option:selected');
         lines.push({
             payment_method_option_id: parseInt($m.val()) || null,
             payment_method: parseInt($m.data('legacy')) || 2,
-            cash_book_id: $(this).find('.sel-pay-cashbook').val() || null,
+            cash_book_id: null,
             amount: amt
         });
     });
@@ -2156,7 +2179,7 @@ function getPaymentLines(){
 }
 
 function clearPaymentLines(){
-    $('#payment_lines_tbl tbody').html('');
+    $('#payment_lines_container').html('').hide();
     _existingPaidAmount = 0;
     syncPaymentSummary();
 }
@@ -2165,11 +2188,73 @@ function getSelectedOrderIds(){
     return $('.order-row-check:checked').map(function(){ return parseInt($(this).val(), 10); }).get();
 }
 
+function getSelectedOrderSummaries(){
+    return $('.order-row-check:checked').map(function(){
+        var $check = $(this);
+        var status = Number($check.data('status'));
+        var remaining = status === 6 ? 0 : (Number($check.data('remaining')) || 0);
+        return {
+            id: parseInt($check.val(), 10),
+            code: $check.data('code') || '',
+            customer: $check.data('customer') || '',
+            customerId: String($check.data('customer-id') || ''),
+            status: status,
+            remaining: Math.max(remaining, 0)
+        };
+    }).get();
+}
+
+function renderBulkCollectSummary(){
+    var selectedOrders = getSelectedOrderSummaries();
+    var totalRemaining = selectedOrders.reduce(function(total, order){
+        return total + order.remaining;
+    }, 0);
+    var payableOrders = selectedOrders.filter(function(order){ return order.remaining > 0; });
+    var customerKeys = {};
+    payableOrders.forEach(function(order){
+        customerKeys[order.customerId || order.customer || ''] = true;
+    });
+    var hasMixedCustomers = Object.keys(customerKeys).length > 1;
+
+    $('#bulk_collect_count').text(selectedOrders.length);
+    $('#bulk_collect_total').text(fmt(totalRemaining));
+    $('#bulk_collect_actual_amount').val(fmt(totalRemaining));
+    $('#bulk_collect_zero_hint').toggle(selectedOrders.length > 0 && totalRemaining <= 0);
+    $('#btn_confirm_bulk_collect').prop('disabled', selectedOrders.length === 0 || totalRemaining <= 0 || hasMixedCustomers);
+
+    var html = '';
+    selectedOrders.slice(0, 8).forEach(function(order){
+        html += '<div class="d-flex justify-content-between align-items-start px-2 py-1 border-bottom">' +
+            '<div><strong>' + escapeHtml(order.code) + '</strong><br><small class="text-muted">' + escapeHtml(order.customer) + '</small></div>' +
+            '<div class="text-right ' + (order.remaining > 0 ? 'text-success' : 'text-muted') + '">' +
+            '<strong>' + fmt(order.remaining) + 'đ</strong>' +
+            '<br><small>' + (order.status === 6 ? 'bỏ qua' : (order.remaining > 0 ? 'cần thu' : 'đã đủ')) + '</small>' +
+            '</div>' +
+            '</div>';
+    });
+    if(selectedOrders.length > 8){
+        html += '<div class="px-2 py-1 text-muted text-center small">+' + (selectedOrders.length - 8) + ' đơn khác</div>';
+    }
+    if(!selectedOrders.length){
+        html = '<div class="px-2 py-2 text-muted text-center small">Chưa chọn đơn hàng nào</div>';
+    } else if(!payableOrders.length){
+        html += '<div class="px-2 py-1 text-warning text-center small">Không có đơn nào còn tiền cần thu.</div>';
+    } else if(hasMixedCustomers){
+        html += '<div class="px-2 py-1 text-danger text-center small">Chỉ thanh toán nhanh nhiều đơn của cùng một khách hàng.</div>';
+    }
+    $('#bulk_collect_order_list').html(html);
+}
+
 function refreshBulkToolbar(){
-    var count = getSelectedOrderIds().length;
+    var selectedOrders = getSelectedOrderSummaries();
+    var count = selectedOrders.length;
+    var totalRemaining = selectedOrders.reduce(function(total, order){
+        return total + order.remaining;
+    }, 0);
     $('#bulk_action_bar, #bulk_selected_label').toggle(count > 0);
-    $('#bulk_selected_label').text('Đã chọn ' + count + ' đơn');
+    $('#bulk_selected_label').html('Đã chọn ' + count + ' đơn · Cần thu: <strong class="text-success">' + fmt(totalRemaining) + 'đ</strong>');
     $('#check_all_orders').prop('checked', count > 0 && count === $('.order-row-check').length && $('.order-row-check').length > 0);
+    renderBulkCollectSummary();
 }
 
 function loadPaymentHistory(orderId, paidAmount, finalAmount){
@@ -2440,14 +2525,22 @@ function initCustomerPicker(){
 
 $(document).ready(function(){
     currentQuickSearchStockFilter = getStoredQuickSearchStockFilter();
+    currentStockInfoVisible = getStoredStockInfoVisible();
     syncQuickSearchStockFilterUI();
+    syncStockInfoVisibility();
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
     $.get('/api/products-select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
     initCustomerPicker();
-    $('#bulk_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_bulk_collect'), placeholder:'-- Chọn tài khoản --', allowClear:true});
-    $('#bulk_payment_method').on('change', function(){ syncCashBookFromMethod('#bulk_payment_method', '#bulk_cash_book_id'); });
-    // Multi-payment "Add" button
-    $('#btn_add_payment_line').on('click', function(){ addPaymentLine(null, null, 0); });
+    $('#btn_toggle_payment').on('click', function(){
+        if(isPaymentEntryActive()){
+            disablePaymentEntry();
+        } else {
+            enablePaymentEntry();
+        }
+    });
+    $('#btn_toggle_stock_info').on('click', function(){
+        setStockInfoVisible(!currentStockInfoVisible);
+    });
     loadData();
 
     // Khi thay đổi kho → cập nhật tồn kho hiển thị
@@ -2477,6 +2570,8 @@ $(document).ready(function(){
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
         $('#btn_save').show();
         $('#btn_save_note').hide();
+        $('#btn_print_current').hide();
+        $('#btn_toggle_payment').prop('disabled', false);
         $('#quick_search_product').closest('.bg-light').show();
         $('#lock_warning').remove();
         _timelineReadonly = false;
@@ -2505,8 +2600,15 @@ $(document).ready(function(){
         if(!$('#edit_id').val()) fetchNextDocumentCode(getDocumentType());
     });
 
-    var createMode = new URLSearchParams(window.location.search).get('create');
-    if(createMode === 'quotation'){
+    var pageParams = new URLSearchParams(window.location.search);
+    var editQuotationId = pageParams.get('edit_quotation');
+    var copyQuotationId = pageParams.get('copy_quotation');
+    var createMode = pageParams.get('create');
+    if(editQuotationId){
+        openQuotationDocument(editQuotationId, false);
+    } else if(copyQuotationId){
+        openQuotationDocument(copyQuotationId, true);
+    } else if(createMode === 'quotation'){
         $('#btn_add').trigger('click');
         setTimeout(function(){
             setDocumentType('quotation');
@@ -2823,29 +2925,14 @@ $(document).ready(function(){
         });
     });
 
-    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
-    $('input[name="pay_mode"]').change(function(){
-        if(getDocumentType() === 'quotation'){
-            $('#debt_info, #payment_lines_container, #payment_summary_panel, #partial_amount_group').hide();
-            return;
-        }
-        var mode = $(this).val();
-        var showPayment = (mode !== 'none');
-        $('#debt_info').toggle(mode === 'none');
-        $('#payment_lines_container').toggle(showPayment);
-        $('#payment_summary_panel').toggle(showPayment);
-        $('#partial_amount_group').toggle(mode === 'partial');
-        if(mode === 'partial'){
-            // Pre-fill remaining amount
-            var finalAmount = getMoneyValue('#lbl_final') || parseInt($('#lbl_final').text().replace(/[^\d]/g,'')) || 0;
-            var existingPaid = parseFloat($('#payment_history_section').data('paid-total')) || 0;
-            var remaining = finalAmount - existingPaid;
-            if(remaining < 0) remaining = 0;
-            setMoneyValue('#inp_pay_amount', remaining);
-            $('#lbl_remaining_hint').text('(Còn lại: ' + fmt(remaining) + ')');
-        }
-        persistCurrentOrderPaymentPreferences();
+    $('#btn_print_current').click(function(){
+        var id = $('#edit_id').val();
+        if(!id) return;
+        var source = getDocumentType() === 'quotation' ? 'quotation' : 'order';
+        openPrintConfig(source, id, $('#inp_code').val());
     });
+
+    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
 
     $('#btn_save').click(function(){
         var $saveBtn = $(this);
@@ -2858,10 +2945,26 @@ $(document).ready(function(){
         var whId = $('#inp_warehouse_id').val();
 
         $('#items_tbl tbody tr').each(function(){
+            var isServiceLine = $(this).data('service-line') == 1;
             var pid=$(this).find('.sel_product').val();
             var qty=parseFloat($(this).find('.inp_qty').val())||0;
             var price=getMoneyValue($(this).find('.inp_price'))||0;
             var disc=parseFloat($(this).find('.inp_disc').val())||0;
+            if(isServiceLine){
+                var serviceName = ($(this).find('.inp_service_name').val() || '').trim();
+                if(!serviceName){hasError=true;return;}
+                items.push({
+                    product_id: null,
+                    item_type: 'service',
+                    is_service_line: true,
+                    item_name: serviceName,
+                    unit: ($(this).find('.inp_service_unit').val() || '').trim(),
+                    quantity: qty,
+                    unit_price: price,
+                    discount_percent: disc
+                });
+                return;
+            }
             if(!pid){hasError=true;return;}
 
             // Check stock (skip service products)
@@ -2876,7 +2979,7 @@ $(document).ready(function(){
             var variantId = $(this).find('.sel_product option:selected').data('variant-id') || null;
             items.push({product_id:pid,variant_id:variantId,quantity:qty,unit_price:price,discount_percent:disc});
         });
-        if(hasError){alert('Vui lòng chọn SP cho tất cả dòng');return;}
+        if(hasError){alert('Vui lòng chọn SP hoặc nhập tên dịch vụ cho tất cả dòng');return;}
         if(items.length===0){alert('Vui lòng thêm ít nhất 1 SP');return;}
         if(syncDuplicateWarnings()){
             alert((isQuotation ? 'Báo giá' : 'Đơn hàng') + ' đang có sản phẩm trùng nhau. Vui lòng gộp lại trước khi lưu.');
@@ -3028,7 +3131,23 @@ function addItemFromProduct(product){
     calcTotal();
 }
 
+function addServiceLine(item){
+    addItemRow($.extend({
+        is_service_line: true,
+        item_name: '',
+        unit: 'Lần',
+        quantity: 1,
+        unit_price: 0,
+        discount_percent: 0
+    }, item || {}));
+}
+
+$(document).on('click', '#btn_add_service_line', function(){
+    addServiceLine();
+});
+
 function addItemRow(item){
+    var isServiceLine = item && item.is_service_line && !item.product_id;
     var opts='<option value="">-- Chọn SP --</option>';
     var hasItemOption = false;
     allProducts.forEach(function(p){
@@ -3059,6 +3178,28 @@ function addItemRow(item){
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
     var unit=item?item.unit:'',lineTotal=qty*price*(1-disc/100);
 
+    if(isServiceLine){
+        var serviceName = item && item.item_name ? item.item_name : '';
+        var htmlService = '<tr class="service-line-row" data-service-line="1">' +
+            '<td class="text-center lbl_img"><span class="d-inline-flex align-items-center justify-content-center" style="width:32px;height:32px;border-radius:4px;"><i class="fas fa-clipboard-list"></i></span></td>' +
+            '<td><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
+            '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
+            '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
+            '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
+            '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
+            '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
+            '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'</td>' +
+            '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td>' +
+            '</tr>';
+        $('#items_tbl tbody').append(htmlService);
+        var $serviceRow = $('#items_tbl tbody tr:last');
+        $serviceRow.find('.inp_qty,.inp_price,.inp_disc').on('input', function(){ calcLine($serviceRow); });
+        $serviceRow.find('.btn_remove_item').click(function(){ $serviceRow.remove(); calcTotal(); syncDuplicateWarnings(); });
+        syncStockInfoVisibility();
+        calcLine($serviceRow);
+        return;
+    }
+
     // Get image
     var imgHtml = '<span class="d-inline-block" style="width:32px;height:32px;background:#f5f5f5;border-radius:4px;"></span>';
     if(item && item.product_id){
@@ -3068,7 +3209,7 @@ function addItemRow(item){
 
     var html='<tr><td class="text-center lbl_img">'+imgHtml+'</td><td><select class="form-control form-control-sm sel_product">'+opts+'</select></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
-        '<td class="lbl_stock align-middle">-</td>'+
+        '<td class="lbl_stock stock-info-col align-middle">-</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
@@ -3337,9 +3478,10 @@ function loadData(){
                 actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')">Xem</button>' +
                            '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')">Sao chép</button>';
             } else if(d.status === 5){
-                // Đơn Hoàn thành — Xem, In, Sao chép (không cho Sửa/Hủy)
+                // Đơn Hoàn thành — Xem, In, Hoàn hàng, Sao chép (không cho Sửa/Hủy)
                 actions += '<button class="btn btn-xs btn-outline-secondary" onclick="viewItem('+d.id+')">Xem</button>' +
                            '<button class="btn btn-xs btn-outline-success" onclick="printOrder('+d.id+')">In</button>' +
+                           '<button class="btn btn-xs btn-outline-warning" onclick="createReturn('+d.id+')">Hoàn hàng</button>' +
                            '<button class="btn btn-xs btn-outline-primary" onclick="copyOrder('+d.id+')">Sao chép</button>';
             } else {
                 // Đơn chưa hoàn thành — Sửa, In, Hủy
@@ -3381,7 +3523,7 @@ function loadData(){
             } else if(d.approval_status === 3){
                 statusHtml += ' <span class="badge badge-danger" title="Từ chối duyệt"><i class="fas fa-times-circle"></i> Từ chối</span>';
             }
-            h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'"></td>'+
+            h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'" data-code="'+escapeHtml(d.code)+'" data-customer="'+escapeHtml(d.customer)+'" data-customer-id="'+(d.customer_id || '')+'" data-status="'+d.status+'" data-remaining="'+(Number(d.remaining_amount) || 0)+'"></td>'+
                 orderColConfig.td('stt', (i+1))+
                 orderColConfig.td('code', d.code)+
                 orderColConfig.td('customer', customerHtml)+
@@ -3499,6 +3641,7 @@ $('#btn_bulk_collect').click(function(){
         alert('Vui lòng chọn đơn hàng cần thanh toán nhanh.');
         return;
     }
+    renderBulkCollectSummary();
     $('#modal_bulk_collect').modal('show');
 });
 
@@ -3517,7 +3660,7 @@ $('#btn_confirm_bulk_collect').click(function(){
             ids: ids,
             payment_method: getSelectedPaymentMethodMeta('#bulk_payment_method').legacyType,
             payment_method_option_id: getSelectedPaymentMethodMeta('#bulk_payment_method').optionId,
-            cash_book_id: $('#bulk_cash_book_id').val() || null
+            cash_book_id: null
         }),
         success:function(r){
             if(r.status === 'ok'){
@@ -3551,7 +3694,7 @@ $('#btn_bulk_cancel').click(function(){
 });
 
 function approveOrder(id, code){
-    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Đang xử lý.')) return;
+    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nBáo giá/đơn sẽ chuyển sang trạng thái Đơn hàng.')) return;
     var note = prompt('Ghi chú khi duyệt (có thể bỏ trống):', '');
     $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
@@ -3575,6 +3718,60 @@ function rejectOrder(id, code){
             loadData();
             alert(r.message);
         }
+    });
+}
+
+function openQuotationDocument(id, copyMode){
+    $.get('/api/quotations/detail/?id=' + id, function(res){
+        if(res.status !== 'ok'){ alert(res.message); return; }
+        var q = res.quotation;
+        fetchProductsForOrderForm(null, function(){
+            $('#edit_id').val(copyMode ? '' : q.id);
+            if(q.customer_id){
+                var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
+                if(cust) selectCustomer(cust.id, cust.name, cust.phone);
+                else { $('#inp_customer_id').val(q.customer_id); $('#inp_customer_search').val(q.customer_label || ''); }
+            } else {
+                clearCustomer();
+            }
+            setOrderWarehouseValue(getStoredOrderWarehouseId());
+            setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
+            setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
+            $('#inp_quotation_status').val(copyMode ? '0' : String(q.status || 0));
+            $('#inp_valid_until').val(copyMode ? '' : (q.valid_until || ''));
+            $('#inp_tags').val(q.tags || '');
+            $('#inp_note').val(copyMode ? ('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : '')) : (q.note || ''));
+            if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson || '').trigger('change');
+            $('#items_tbl tbody').html('');
+            $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+            $('#btn_save').show();
+            $('#btn_save_note').hide();
+            $('#btn_print_current').toggle(!copyMode);
+            $('#payment_history_section, #order_history_card').hide();
+            $('#lock_warning').remove();
+            $('#document_type_section').toggle(!!copyMode);
+            setDocumentType('quotation');
+            $('#quotation_section').hide();
+            _timelineReadonly = false;
+            clearPaymentLines();
+            _existingPaidAmount = 0;
+
+            if(copyMode){
+                fetchNextDocumentCode('quotation');
+                $('#inp_order_date').val(new Date().toISOString().split('T')[0]);
+            } else {
+                $('#inp_code').val(q.code);
+                $('#inp_order_date').val(q.quotation_date);
+            }
+
+            $('#modal_title').text(copyMode ? 'Sao chép báo giá (từ ' + q.code + ')' : 'Sửa báo giá');
+            $('#modal_form').modal('show');
+            $('#modal_form').one('shown.bs.modal', function(){
+                res.items.forEach(function(it){ addItemRow(it); });
+                calcTotal();
+                setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
+            });
+        });
     });
 }
 
@@ -3604,10 +3801,10 @@ function editItem(id){
         }
         if($('#inp_approver_id').length) $('#inp_approver_id').val(o.approver_id||'');
         if($('#inp_bonus_amount').length) setMoneyValue('#inp_bonus_amount', o.bonus_amount||0);
-        // Setup multi-payment: show existing paid + empty line for new payments
+        // Setup payment: keep form closed until the user chooses to collect money.
         clearPaymentLines();
         _existingPaidAmount = parseFloat(o.paid_amount) || 0;
-        addPaymentLine(null, null, 0);
+        syncPaymentSummary();
         // Load payment history (receipts for this order)
         loadPaymentHistory(o.id, o.paid_amount, o.final_amount);
         $('#items_tbl tbody').html('');
@@ -3615,6 +3812,8 @@ function editItem(id){
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
         $('#btn_save').show();
         $('#btn_save_note').hide();
+        $('#btn_print_current').show();
+        $('#btn_toggle_payment').prop('disabled', false);
         $('#quick_search_product').closest('.bg-light').show();
         $('#lock_warning').remove();
         $('#document_type_section').hide();
@@ -3654,10 +3853,11 @@ function viewItem(id){
         _existingPaidAmount = parseFloat(o.paid_amount) || 0;
         syncPaymentSummary();
         $('#payment_lines_container').hide();
-        $('#payment_summary_panel').show();
         // KHÓA: Disable tất cả
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
         $('#btn_save').hide();
+        $('#btn_print_current').show();
+        $('#btn_toggle_payment').prop('disabled', true);
         $('#quick_search_product').closest('.bg-light').hide();
         $('.btn_remove_item').hide();
         $('#document_type_section').hide();
@@ -3667,24 +3867,13 @@ function viewItem(id){
         $('#quotation_section').hide();
         _timelineReadonly = true;
         syncStatusOptions(o.status);
-        // CHO PHÉP SỬA GHI CHÚ (yêu cầu khách hàng mục 8)
-        $('#inp_note').prop('disabled', false);
-        $('#btn_save_note').show().off('click').on('click', function(){
-            var noteData = {id: o.id, note: $('#inp_note').val()};
-            $.ajax({url:'/api/orders/update-note/',type:'POST',contentType:'application/json',
-                headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(noteData),
-                success:function(r){
-                    if(r.status==='ok'){ toastr ? toastr.success('Lưu ghi chú thành công') : alert('Lưu ghi chú thành công'); loadData(); loadOrderHistory(o.id); }
-                    else { alert(r.message); }
-                }
-            });
-        });
+        $('#btn_save_note').hide().off('click');
         // Thêm cảnh báo
         $('#lock_warning').remove();
         var statusText = o.status === 5 ? 'Hoàn thành' : 'Hủy';
         var warning = '<div id="lock_warning" class="alert alert-warning mb-2 py-2">' +
             '<i class="fas fa-lock mr-1"></i> <strong>ĐƠN HÀNG ĐÃ ' + statusText.toUpperCase() + '</strong> — ' +
-            'Không thể sửa sản phẩm/giá. Bạn vẫn có thể sửa ghi chú bên dưới.</div>';
+            'Không thể chỉnh sửa. Với đơn hoàn thành, hãy dùng chức năng hoàn hàng/hoàn tiền nếu cần xử lý sau bán.</div>';
         $('#modal_form .modal-body').prepend(warning);
         loadOrderHistory(o.id);
         loadPaymentHistory(o.id, o.paid_amount, o.final_amount);
@@ -3696,9 +3885,8 @@ function viewItem(id){
             $('#modal_form').one('shown.bs.modal', function(){
                 res.items.forEach(function(it){addItemRow(it);});
                 calcTotal();
-                // Re-disable after items loaded (except note)
+                // Re-disable after items loaded
                 $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
-                $('#inp_note').prop('disabled', false);
                 $('.btn_remove_item').hide();
             });
         });
@@ -3706,7 +3894,7 @@ function viewItem(id){
 }
 
 function cancelOrder(id, code){
-    var reason = prompt('Nhập lý do hủy đơn hàng ' + code + ':\n(Tồn kho sẽ được hoàn lại nếu đơn đã hoàn thành)', '');
+    var reason = prompt('Nhập lý do hủy đơn hàng ' + code + ':\n(Tồn kho sẽ được hoàn lại nếu đơn đã xuất kho)', '');
     if(reason === null) return;  // Bấm Cancel
     if(!reason.trim()){
         alert('Vui lòng nhập lý do hủy đơn.'); return;
@@ -3725,7 +3913,7 @@ function cancelOrder(id, code){
 }
 
 function deleteItem(id){
-    if(!confirm('Bạn có chắc muốn xóa đơn hàng này?\n(Chỉ xóa được đơn ở trạng thái Nháp/Xác nhận)'))return;
+    if(!confirm('Bạn có chắc muốn xóa đơn hàng này?\n(Chỉ xóa được chứng từ chưa hoàn thành và chưa phát sinh phiếu thu)'))return;
     $.ajax({url:'/api/orders/delete/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
         success:function(r){loadData();alert(r.message);}
@@ -3737,6 +3925,10 @@ function printOrder(id){
         if(res.status!=='ok'){alert(res.message);return;}
         openPrintConfig('order', id, res.order.code);
     });
+}
+
+function createReturn(id){
+    window.location.href = '/order-return-tbl/?order_id=' + encodeURIComponent(id);
 }
 
 function downloadOrderPDF(id){
@@ -3796,13 +3988,14 @@ function copyOrder(id){
         setOrderWarehouseValue(o.warehouse_id);
         setMoneyValue('#inp_discount_amount', o.discount_amount);
         setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);
-        $('#inp_status').val('0'); // Nháp
+        $('#inp_status').val('0'); // Báo giá
         $('#inp_tags').val(o.tags || '');
         $('#inp_note').val('Sao chép từ ' + o.code + (o.note ? '\n' + o.note : ''));
         runWithoutPersistingOrderPaymentPreferences(function(){
-            $('#pay_none').prop('checked', true).trigger('change');
+            clearPaymentLines();
+            _existingPaidAmount = 0;
+            syncPaymentSummary();
         });
-        $('#debt_info').show();
         $('#document_type_section').hide();
         runWithoutPersistingOrderPaymentPreferences(function(){
             setDocumentType('order');
@@ -3820,6 +4013,8 @@ function copyOrder(id){
         // Bật chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
         $('#btn_save, #btn_add_item').show();
+        $('#btn_print_current').hide();
+        $('#btn_toggle_payment').prop('disabled', false);
         $('#lock_warning').remove();
         $('#items_tbl tbody').html('');
         $('#modal_title').text('Sao chép đơn hàng (từ ' + o.code + ')');

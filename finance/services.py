@@ -53,7 +53,19 @@ def update_order_payment_status(order):
         order.payment_status = 1
     else:
         order.payment_status = 0
-    order.save(update_fields=['paid_amount', 'payment_status'])
+
+    update_fields = ['paid_amount', 'payment_status']
+    if order.status == 0 and total_paid > 0:
+        order.status = 1
+        update_fields.append('status')
+    if (
+        order.status == 4
+        and order.payment_status == 2
+        and (not getattr(order, 'approver_id', None) or order.approval_status == 2)
+    ):
+        order.status = 5
+        update_fields.append('status')
+    order.save(update_fields=update_fields)
 
 
 def save_receipt_with_effect(receipt, old_effect=None):

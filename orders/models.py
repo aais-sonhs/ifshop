@@ -47,10 +47,13 @@ class QuotationItem(models.Model):
     """Chi tiết báo giá"""
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name='items',
                                   verbose_name='Báo giá')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='quotation_items',
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, related_name='quotation_items',
                                 verbose_name='Sản phẩm')
     variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
                                 related_name='quotation_items', verbose_name='Biến thể')
+    item_name = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tên dòng')
+    unit = models.CharField(max_length=50, blank=True, null=True, verbose_name='Đơn vị tính')
+    is_service_line = models.BooleanField(default=False, verbose_name='Dòng dịch vụ/thẻ trống')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
@@ -62,15 +65,27 @@ class QuotationItem(models.Model):
         verbose_name = 'Chi tiết báo giá'
         verbose_name_plural = 'Chi tiết báo giá'
 
+    @property
+    def display_code(self):
+        return self.product.code if self.product else 'DV'
+
+    @property
+    def display_name(self):
+        return self.product.name if self.product else (self.item_name or 'Dịch vụ')
+
+    @property
+    def display_unit(self):
+        return self.product.unit if self.product else (self.unit or '')
+
 
 class Order(SoftDeleteModel):
     """Đơn hàng"""
     STATUS_CHOICES = [
-        (0, 'Nháp'),
-        (1, 'Xác nhận'),
+        (0, 'Báo giá'),
+        (1, 'Đơn hàng'),
         (2, 'Đang xử lý'),
         (3, 'Đang đóng gói'),
-        (4, 'Đã giao'),
+        (4, 'Đã xuất kho'),
         (5, 'Hoàn thành'),
         (6, 'Hủy'),
     ]
@@ -140,10 +155,13 @@ class Order(SoftDeleteModel):
 class OrderItem(models.Model):
     """Chi tiết đơn hàng"""
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items', verbose_name='Đơn hàng')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='order_items',
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, related_name='order_items',
                                 verbose_name='Sản phẩm')
     variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
                                 related_name='order_items', verbose_name='Biến thể')
+    item_name = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tên dòng')
+    unit = models.CharField(max_length=50, blank=True, null=True, verbose_name='Đơn vị tính')
+    is_service_line = models.BooleanField(default=False, verbose_name='Dòng dịch vụ/thẻ trống')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')
@@ -156,6 +174,18 @@ class OrderItem(models.Model):
         verbose_name = 'Chi tiết đơn hàng'
         verbose_name_plural = 'Chi tiết đơn hàng'
 
+    @property
+    def display_code(self):
+        return self.product.code if self.product else 'DV'
+
+    @property
+    def display_name(self):
+        return self.product.name if self.product else (self.item_name or 'Dịch vụ')
+
+    @property
+    def display_unit(self):
+        return self.product.unit if self.product else (self.unit or '')
+
 
 class OrderEditHistory(models.Model):
     """Lịch sử thao tác trên đơn hàng"""
@@ -166,6 +196,7 @@ class OrderEditHistory(models.Model):
         ('cancel', 'Hủy đơn'),
         ('approve', 'Duyệt đơn'),
         ('reject', 'Từ chối duyệt'),
+        ('status', 'Đổi trạng thái'),
         ('bulk_collect', 'Thanh toán nhanh'),
         ('bulk_cancel', 'Hủy nhanh'),
     ]

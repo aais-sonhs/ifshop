@@ -68,21 +68,27 @@
             <tr>
                 <th style="width:5%">STT</th>
                 <th style="width:15%">Mã SP</th>
-                <th style="width:35%">Tên sản phẩm</th>
+                <th style="width:32%">Tên sản phẩm</th>
                 <th style="width:10%">SL</th>
                 <th style="width:15%">Serial / Lô</th>
-                <th style="width:20%">Thời hạn BH</th>
+                <th style="width:18%">Thời hạn BH</th>
+                <th style="width:15%">Ghi chú</th>
             </tr>
         </thead>
         <tbody>
-        {% for item in items %}
+        {% for item in warranty_items %}
             <tr>
                 <td>{{ forloop.counter }}</td>
-                <td>{{ item.product.code }}</td>
-                <td><strong>{{ item.product.name }}</strong></td>
+                <td>{{ item.code|default:"—" }}</td>
+                <td><strong>{{ item.name }}</strong>{% if item.unit %}<div style="font-size:11px;color:#777;">ĐVT: {{ item.unit }}</div>{% endif %}</td>
                 <td>{{ item.quantity|qty_vn }}</td>
-                <td>—</td>
-                <td>—</td>
+                <td>{{ item.serial|default:"—" }}</td>
+                <td>{{ item.warranty_term|default:"—" }}</td>
+                <td>{{ item.note|default:"" }}</td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="7" style="text-align:center;color:#777;">Chưa chọn sản phẩm bảo hành.</td>
             </tr>
         {% endfor %}
         </tbody>

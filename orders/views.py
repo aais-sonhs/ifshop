@@ -387,6 +387,53 @@ def _item_display_unit(item):
     return item.product.unit if item.product else (item.unit or '')
 
 
+def _build_default_warranty_items(items):
+    """Chuẩn hóa dòng in bảo hành từ item gốc; frontend có thể gửi bản chỉnh sửa riêng."""
+    warranty_items = []
+    for item in items:
+        if not item.product_id or getattr(item, 'is_service_line', False):
+            continue
+        warranty_items.append({
+            'code': _item_display_code(item),
+            'name': _item_display_name(item),
+            'unit': _item_display_unit(item),
+            'quantity': item.quantity,
+            'serial': '',
+            'warranty_term': '',
+            'note': '',
+        })
+    return warranty_items
+
+
+def _parse_warranty_items_payload(raw_payload):
+    if not raw_payload:
+        return None
+    try:
+        payload = json.loads(raw_payload)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, list):
+        return None
+
+    warranty_items = []
+    for row in payload[:100]:
+        if not isinstance(row, dict):
+            continue
+        name = (row.get('name') or row.get('product_name') or '').strip()
+        if not name:
+            continue
+        warranty_items.append({
+            'code': (row.get('code') or row.get('product_code') or '').strip()[:80],
+            'name': name[:255],
+            'unit': (row.get('unit') or '').strip()[:50],
+            'quantity': _non_negative_decimal(row.get('quantity', 1)),
+            'serial': (row.get('serial') or '').strip()[:255],
+            'warranty_term': (row.get('warranty_term') or '').strip()[:120],
+            'note': (row.get('note') or '').strip()[:255],
+        })
+    return warranty_items
+
+
 def _get_reserved_stock_maps(request, exclude_order_id=None):
     reserved_by_product = defaultdict(lambda: defaultdict(float))
     pending_by_product = defaultdict(lambda: defaultdict(float))
@@ -704,10 +751,11 @@ def _order_exports_stock_status(status):
     return int(status or 0) in ORDER_STOCK_EXPORTED_STATUSES
 
 
-def _order_can_complete(order, payment_status=None):
+def _order_can_complete(order, payment_status=None, exported_status=None):
     payment_status = order.payment_status if payment_status is None else payment_status
+    exported_status = order.status if exported_status is None else exported_status
     approved = not order.approver_id or order.approval_status == 2
-    return int(payment_status or 0) == 2 and approved
+    return int(exported_status or 0) == 4 and int(payment_status or 0) == 2 and approved
 
 
 def _project_payment_status(order, paid_amount):
@@ -720,8 +768,11 @@ def _project_payment_status(order, paid_amount):
     return 0
 
 
-def _completion_block_message(order, payment_status=None):
+def _completion_block_message(order, payment_status=None, exported_status=None):
     missing = []
+    exported_status = order.status if exported_status is None else exported_status
+    if int(exported_status or 0) != 4:
+        missing.append('xuất kho')
     if int(payment_status if payment_status is not None else order.payment_status) != 2:
         missing.append('thanh toán đủ')
     if order.approver_id and order.approval_status != 2:
@@ -918,10 +969,10 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         })
     if new_status == 5:
         _refresh_order_payment(order)
-        if not _order_can_complete(order):
+        if not _order_can_complete(order, exported_status=old_status):
             return JsonResponse({
                 'status': 'error',
-                'message': _completion_block_message(order)
+                'message': _completion_block_message(order, exported_status=old_status)
             })
 
     blocking_changes = _get_receipted_order_blocking_changes(order, data)
@@ -981,6 +1032,11 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         'message': message,
         'order_id': order.id,
         'order_code': order.code,
+        'order_status': order.status,
+        'order_status_display': order.get_status_display(),
+        'payment_status': order.payment_status,
+        'payment_status_display': order.get_payment_status_display(),
+        'paid_amount': float(order.paid_amount or 0),
     })
 
 
@@ -1808,10 +1864,19 @@ def api_save_order(request):
                 Decimal('0'),
             )
             projected_payment_status = _project_payment_status(o, projected_paid)
-            if new_status == 5 and not _order_can_complete(o, payment_status=projected_payment_status):
+            completion_base_status = old_status if oid else None
+            if new_status == 5 and not _order_can_complete(
+                o,
+                payment_status=projected_payment_status,
+                exported_status=completion_base_status,
+            ):
                 return JsonResponse({
                     'status': 'error',
-                    'message': _completion_block_message(o, payment_status=projected_payment_status)
+                    'message': _completion_block_message(
+                        o,
+                        payment_status=projected_payment_status,
+                        exported_status=completion_base_status,
+                    )
                 })
 
             try:
@@ -1922,14 +1987,24 @@ def api_save_order(request):
             msg += f'. ⏳ Đơn hàng cần được {approver_name} duyệt trước khi hoàn thành.'
         if loss_warnings:
             msg += '. Cảnh báo bán dưới giá vốn: ' + '; '.join(loss_warnings[:5])
-        return JsonResponse({'status': 'ok', 'message': msg, 'order_id': o.id, 'order_code': o.code})
+        return JsonResponse({
+            'status': 'ok',
+            'message': msg,
+            'order_id': o.id,
+            'order_code': o.code,
+            'order_status': o.status,
+            'order_status_display': o.get_status_display(),
+            'payment_status': o.payment_status,
+            'payment_status_display': o.get_payment_status_display(),
+            'paid_amount': float(o.paid_amount or 0),
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
 @login_required(login_url="/login/")
 def api_update_order_note(request):
-    """Cập nhật ghi chú cho đơn chưa ở trạng thái cuối."""
+    """Cập nhật ghi chú cho đơn chưa hủy; đơn hoàn thành vẫn được bổ sung ghi chú."""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
@@ -1937,10 +2012,10 @@ def api_update_order_note(request):
         order = _get_order_for_user(request, data.get('id'))
         if not order:
             raise Order.DoesNotExist
-        if order.status in (5, 6):
+        if order.status == 6:
             return JsonResponse({
                 'status': 'error',
-                'message': 'Đơn hàng đã Hoàn thành/Hủy nên không thể chỉnh sửa ghi chú.'
+                'message': 'Đơn hàng đã Hủy nên không thể chỉnh sửa ghi chú.'
             })
         old_note = order.note or ''
         order.note = data.get('note', '')
@@ -3191,10 +3266,16 @@ def api_print_order(request):
 
     template_type = print_type if print_type in dict(PrintTemplate.TEMPLATE_TYPE_CHOICES) else 'a4'
     print_template = _get_print_template(template_type, brand)
+    warranty_items = None
+    if print_type == 'warranty':
+        warranty_items = _parse_warranty_items_payload(request.GET.get('warranty_items'))
+        if warranty_items is None:
+            warranty_items = _build_default_warranty_items(items)
 
     context = {
         'order': order,
         'items': items,
+        'warranty_items': warranty_items,
         'brand': brand,
         'remaining': remaining,
         'valid_until': valid_until,

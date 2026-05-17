@@ -157,6 +157,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['order_status'], 1)
+        self.assertEqual(payload['payment_status'], 2)
 
         order.refresh_from_db()
         self.assertEqual(order.status, 1)
@@ -330,6 +332,168 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 5)
         self.assertEqual(order.payment_status, 2)
         self.assertEqual(float(stock.quantity), 4.0)
+
+    def test_new_order_cannot_start_completed_even_when_fully_paid(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-COMPLETE-WITHOUT-EXPORT',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 5,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'full',
+                'payment_amount': 100,
+                'payment_lines': [{'amount': 100, 'payment_method': 2}],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('xuất kho', payload['message'])
+        self.assertFalse(Order.objects.filter(code='DH-COMPLETE-WITHOUT-EXPORT').exists())
+
+    def test_exported_order_cannot_complete_until_fully_paid(self):
+        order = self._create_order(code='DH-EXPORT-PARTIAL', status=4)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        Receipt.objects.create(
+            code='PT-EXPORT-PARTIAL',
+            store=self.store,
+            customer=self.customer,
+            order=order,
+            amount=40,
+            receipt_date=date.today(),
+            status=1,
+            description='Thu một phần',
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 5,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('thanh toán đủ', payload['message'])
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 4)
+
+    def test_save_order_allows_below_cost_with_warning(self):
+        self.product.cost_price = 150
+        self.product.import_price = 150
+        self.product.save(update_fields=['cost_price', 'import_price'])
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-BELOW-COST-WARN',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertIn('Cảnh báo', payload['message'])
+
+        order = Order.objects.get(code='DH-BELOW-COST-WARN')
+        self.assertTrue(order.below_listed_price_warning)
+        self.assertTrue(order.items.first().is_below_listed)
+
+    def test_completed_order_note_can_be_updated(self):
+        order = self._create_order(code='DH-COMPLETE-NOTE', status=5)
+
+        response = self.client.post(
+            reverse('api_update_order_note'),
+            data=json.dumps({'id': order.id, 'note': 'Ghi chú sau hoàn thành'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order.refresh_from_db()
+        self.assertEqual(order.note, 'Ghi chú sau hoàn thành')
+
+    def test_canceled_order_note_remains_locked(self):
+        order = self._create_order(code='DH-CANCEL-NOTE', status=6)
+
+        response = self.client.post(
+            reverse('api_update_order_note'),
+            data=json.dumps({'id': order.id, 'note': 'Không được sửa'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Hủy', payload['message'])
+
+        order.refresh_from_db()
+        self.assertNotEqual(order.note, 'Không được sửa')
 
     def test_cancel_order_reopens_linked_quotation(self):
         quotation = self._create_quotation(code='BG-CANCEL-001')
@@ -812,3 +976,63 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(order.paid_amount), 0.0)
         self.assertEqual(order.payment_status, 2)
         self.assertEqual(order.receipts.count(), 0)
+
+    def test_print_warranty_uses_custom_selected_items(self):
+        order = self._create_order(code='DH-WARRANTY-CUSTOM', status=5)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=10,
+            unit_price=100,
+            total_price=1000,
+        )
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {
+                'id': order.id,
+                'type': 'warranty',
+                'source': 'order',
+                'warranty_items': json.dumps([{
+                    'code': 'MAY-BH',
+                    'name': 'Máy cần bảo hành',
+                    'unit': 'Cái',
+                    'quantity': 1,
+                    'serial': 'SN001',
+                    'warranty_term': '12 tháng',
+                    'note': 'Chỉ bảo hành máy',
+                }]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('Máy cần bảo hành', content)
+        self.assertIn('SN001', content)
+        self.assertIn('12 tháng', content)
+        self.assertNotIn('Sản phẩm test đơn hàng', content)
+
+    def test_print_warranty_empty_custom_items_does_not_fallback_to_all_products(self):
+        order = self._create_order(code='DH-WARRANTY-EMPTY', status=5)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {
+                'id': order.id,
+                'type': 'warranty',
+                'source': 'order',
+                'warranty_items': json.dumps([]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('Chưa chọn sản phẩm bảo hành', content)
+        self.assertNotIn('Sản phẩm test đơn hàng', content)

@@ -1964,6 +1964,13 @@ def api_save_order(request):
                 o.status = 5
                 o.save(update_fields=['status'])
 
+            # 9c. Tự promote Báo giá → Đơn hàng khi đã có thanh toán và không cần duyệt.
+            #     Nếu cần duyệt thì giữ nguyên Báo giá để chờ người duyệt xác nhận.
+            elif o.status == 0 and float(o.paid_amount or 0) > 0:
+                if not o.approver_id or o.approval_status == 2:
+                    o.status = 1
+                    o.save(update_fields=['status'])
+
             # 10. Đồng bộ trạng thái báo giá sau khi trạng thái đơn đã ổn định.
             _sync_order_quotation_status(o, old_quotation_id=old_quotation_id)
 

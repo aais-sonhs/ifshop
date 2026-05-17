@@ -1,7 +1,11 @@
 """
-Management command: Quét tất cả đơn hàng đang ở trạng thái "Đã xuất kho" (status=4)
-mà đã thanh toán đủ (payment_status=2) và đã được duyệt (nếu cần) → tự động chuyển
-sang "Hoàn thành" (status=5).
+Management command: Đồng bộ trạng thái đơn hàng theo quy trình thống nhất.
+
+Quy tắc:
+  - Đơn ở "Báo giá" (status=0) mà đã có thanh toán + không cần duyệt (hoặc đã duyệt)
+    → tự promote sang "Đơn hàng" (status=1).
+  - Đơn ở "Đã xuất kho" (status=4) mà đã thanh toán đủ + (đã duyệt nếu cần)
+    → tự promote sang "Hoàn thành" (status=5).
 
 Sử dụng:
     python manage.py complete_eligible_orders          # dry-run (chỉ liệt kê)
@@ -14,7 +18,7 @@ from orders.models import Order
 
 
 class Command(BaseCommand):
-    help = 'Tự động chuyển đơn hàng đủ điều kiện (xuất kho + thanh toán đủ + duyệt) sang Hoàn thành.'
+    help = 'Đồng bộ trạng thái đơn hàng: Báo giá→Đơn hàng khi có thanh toán, Xuất kho→Hoàn thành khi đủ điều kiện.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -27,47 +31,66 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         apply = options['apply']
 
-        # Điều kiện: status=4 (Đã xuất kho), payment_status=2 (Đã thanh toán đủ)
-        eligible_qs = Order.objects.filter(
+        # ========== PHASE 1: Báo giá (0) → Đơn hàng (1) khi đã có thanh toán ==========
+        promote_to_order_qs = Order.objects.filter(
+            status=0,
+            paid_amount__gt=0,
+        ).select_related('approver')
+
+        orders_to_promote = []
+        orders_pending_approval = []
+        for order in promote_to_order_qs:
+            if order.approver_id and order.approval_status != 2:
+                orders_pending_approval.append(order)
+            else:
+                orders_to_promote.append(order)
+
+        # ========== PHASE 2: Xuất kho (4) → Hoàn thành (5) ==========
+        complete_qs = Order.objects.filter(
             status=4,
             payment_status=2,
-        )
+        ).select_related('approver')
 
-        # Loại bỏ đơn cần duyệt mà chưa được duyệt
         orders_to_complete = []
-        orders_blocked = []
-
-        for order in eligible_qs.select_related('approver'):
+        orders_blocked_by_approval = []
+        for order in complete_qs:
             if order.approver_id and order.approval_status != 2:
-                orders_blocked.append(order)
+                orders_blocked_by_approval.append(order)
             else:
                 orders_to_complete.append(order)
 
-        self.stdout.write(self.style.WARNING(
-            f'\n=== KẾT QUẢ QUÉT ĐƠN HÀNG ==='
-        ))
-        self.stdout.write(f'Tổng đơn ở trạng thái "Đã xuất kho" + "Đã thanh toán đủ": {eligible_qs.count()}')
-        self.stdout.write(f'  ✅ Đủ điều kiện hoàn thành: {len(orders_to_complete)}')
-        self.stdout.write(f'  ⏳ Chờ duyệt (chưa thể hoàn thành): {len(orders_blocked)}')
+        # ========== Báo cáo ==========
+        self.stdout.write(self.style.WARNING('\n=== KẾT QUẢ QUÉT ĐƠN HÀNG ==='))
+        self.stdout.write(f'\n[1] Báo giá → Đơn hàng (đã có thanh toán):')
+        self.stdout.write(f'    ✅ Đủ điều kiện: {len(orders_to_promote)}')
+        self.stdout.write(f'    ⏳ Chờ duyệt: {len(orders_pending_approval)}')
+
+        self.stdout.write(f'\n[2] Đã xuất kho → Hoàn thành (đã thanh toán đủ):')
+        self.stdout.write(f'    ✅ Đủ điều kiện: {len(orders_to_complete)}')
+        self.stdout.write(f'    ⏳ Chờ duyệt: {len(orders_blocked_by_approval)}')
+
+        if orders_to_promote:
+            self.stdout.write(self.style.SUCCESS('\n--- Đơn promote Báo giá → Đơn hàng ---'))
+            for o in orders_to_promote:
+                self.stdout.write(
+                    f'  [{o.code}] {o.customer} | '
+                    f'Tổng: {int(o.final_amount):,}đ | Đã thu: {int(o.paid_amount):,}đ'
+                )
 
         if orders_to_complete:
-            self.stdout.write(self.style.SUCCESS('\n--- Đơn đủ điều kiện hoàn thành ---'))
+            self.stdout.write(self.style.SUCCESS('\n--- Đơn promote Xuất kho → Hoàn thành ---'))
             for o in orders_to_complete:
                 self.stdout.write(
-                    f'  [{o.code}] Khách: {o.customer} | '
-                    f'Tổng: {int(o.final_amount):,}đ | '
-                    f'Đã thu: {int(o.paid_amount):,}đ | '
-                    f'Ngày: {o.order_date}'
+                    f'  [{o.code}] {o.customer} | '
+                    f'Tổng: {int(o.final_amount):,}đ | Đã thu: {int(o.paid_amount):,}đ'
                 )
 
-        if orders_blocked:
-            self.stdout.write(self.style.WARNING('\n--- Đơn chờ duyệt (không chuyển) ---'))
-            for o in orders_blocked:
+        all_blocked = orders_pending_approval + orders_blocked_by_approval
+        if all_blocked:
+            self.stdout.write(self.style.WARNING('\n--- Đơn chờ duyệt (không tự chuyển) ---'))
+            for o in all_blocked:
                 approver_name = o.approver.get_full_name() if o.approver else '?'
-                self.stdout.write(
-                    f'  [{o.code}] Chờ duyệt bởi: {approver_name} | '
-                    f'approval_status={o.approval_status}'
-                )
+                self.stdout.write(f'  [{o.code}] Chờ duyệt: {approver_name}')
 
         if not apply:
             self.stdout.write(self.style.NOTICE(
@@ -75,15 +98,23 @@ class Command(BaseCommand):
             ))
             return
 
-        # Thực thi chuyển trạng thái
-        if not orders_to_complete:
+        if not orders_to_promote and not orders_to_complete:
             self.stdout.write('\nKhông có đơn nào cần chuyển.')
             return
 
         with transaction.atomic():
-            ids = [o.id for o in orders_to_complete]
-            updated = Order.objects.filter(id__in=ids).update(status=5)
+            promoted = 0
+            completed = 0
+            if orders_to_promote:
+                ids = [o.id for o in orders_to_promote]
+                promoted = Order.objects.filter(id__in=ids).update(status=1)
+            if orders_to_complete:
+                ids = [o.id for o in orders_to_complete]
+                completed = Order.objects.filter(id__in=ids).update(status=5)
 
         self.stdout.write(self.style.SUCCESS(
-            f'\n✅ Đã chuyển {updated} đơn hàng sang trạng thái "Hoàn thành".'
+            f'\n✅ Đã promote {promoted} đơn từ Báo giá → Đơn hàng.'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            f'✅ Đã chuyển {completed} đơn từ Đã xuất kho → Hoàn thành.'
         ))

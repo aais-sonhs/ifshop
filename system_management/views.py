@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.contrib.auth.models import User
 from django.db import models as db_models
 from django.contrib import messages
-from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, BusinessConfig, Brand, Store
+from .models import UserProfile, RoleGroup, ServicePrice, PrinterSetting, PrintTemplate, BusinessConfig, Brand, Store
 from .product_docs import (
     COMMON_DAILY_FLOW,
     COMMON_MODULES,
@@ -118,6 +118,55 @@ def _get_request_brand(request):
     if not brand:
         brand = Brand.objects.filter(owner=request.user).first()
     return brand
+
+
+PRINT_TEMPLATE_DEFAULTS = {
+    'k80': {
+        'title': 'HÓA ĐƠN BÁN HÀNG',
+        'footer_note': 'Cảm ơn quý khách!\nHẹn gặp lại!',
+    },
+    'a4': {
+        'title': 'HÓA ĐƠN BÁN HÀNG',
+        'footer_note': 'Cảm ơn quý khách đã mua hàng.',
+    },
+    'quotation': {
+        'title': 'BÁO GIÁ',
+        'terms': 'Báo giá có hiệu lực theo ngày hiệu lực trên phiếu.\nGiá trên chưa bao gồm VAT nếu chưa ghi rõ.\nThanh toán theo thỏa thuận hai bên.',
+        'footer_note': 'Cảm ơn Quý khách đã quan tâm.',
+    },
+    'quotation_a4': {
+        'title': 'BÁO GIÁ',
+        'terms': 'Báo giá có hiệu lực theo ngày hiệu lực trên phiếu.\nGiá trên chưa bao gồm VAT nếu chưa ghi rõ.\nThanh toán theo thỏa thuận hai bên.',
+        'footer_note': 'Cảm ơn Quý khách đã quan tâm.',
+    },
+    'warranty': {
+        'title': 'PHIẾU BẢO HÀNH',
+        'terms': 'Sản phẩm được bảo hành theo chính sách của nhà sản xuất / cửa hàng.\nKhông bảo hành nếu sản phẩm bị hư hỏng do tác động bên ngoài, sử dụng sai cách.\nKhách hàng xuất trình phiếu bảo hành này khi yêu cầu bảo hành.\nPhiếu bảo hành chỉ có giá trị khi có đầy đủ thông tin và dấu xác nhận.',
+    },
+    'export': {
+        'title': 'PHIẾU XUẤT KHO',
+        'footer_note': 'Ngày in được ghi tự động trên phiếu.',
+    },
+}
+
+
+def _get_or_create_print_template(brand, template_type):
+    defaults = PRINT_TEMPLATE_DEFAULTS.get(template_type, {})
+    title = defaults.get('title') or dict(PrintTemplate.TEMPLATE_TYPE_CHOICES).get(template_type, 'Mẫu in')
+    template, _ = PrintTemplate.objects.get_or_create(
+        brand=brand,
+        template_type=template_type,
+        defaults={
+            'title': title,
+            'header_note': defaults.get('header_note', ''),
+            'terms': defaults.get('terms', ''),
+            'footer_note': defaults.get('footer_note', ''),
+        },
+    )
+    if not template.title:
+        template.title = title
+        template.save(update_fields=['title'])
+    return template
 
 
 @login_required(login_url="/login/")
@@ -650,6 +699,81 @@ def printer_setting_tbl(request):
         return _redirect_no_system_access(request)
     context = {'active_tab': 'printer_setting_tbl'}
     return render(request, "system/printer_setting.html", context)
+
+
+@login_required(login_url="/login/")
+def print_template_setting(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
+    context = {
+        'active_tab': 'print_template_setting',
+        'template_types': PrintTemplate.TEMPLATE_TYPE_CHOICES,
+    }
+    return render(request, "system/print_template_setting.html", context)
+
+
+def _serialize_print_template(template):
+    return {
+        'id': template.id,
+        'template_type': template.template_type,
+        'template_type_display': template.get_template_type_display(),
+        'title': template.title or '',
+        'header_note': template.header_note or '',
+        'terms': template.terms or '',
+        'footer_note': template.footer_note or '',
+        'show_brand_info': template.show_brand_info,
+        'show_customer_info': template.show_customer_info,
+        'show_signatures': template.show_signatures,
+        'updated_at': template.updated_at.strftime('%d/%m/%Y %H:%M') if template.updated_at else '',
+    }
+
+
+@login_required(login_url="/login/")
+def api_get_print_templates(request):
+    if not can_manage_users(request.user):
+        return _forbid_json()
+    brand = _get_request_brand(request)
+    templates = [
+        _serialize_print_template(_get_or_create_print_template(brand, template_type))
+        for template_type, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES
+    ]
+    return JsonResponse({'data': templates})
+
+
+@login_required(login_url="/login/")
+def api_save_print_template(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
+    try:
+        data = json.loads(request.body)
+        template_type = data.get('template_type')
+        valid_types = [value for value, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES]
+        if template_type not in valid_types:
+            return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})
+
+        brand = _get_request_brand(request)
+        template = _get_or_create_print_template(brand, template_type)
+        title = (data.get('title') or '').strip()
+        if not title:
+            return JsonResponse({'status': 'error', 'message': 'Tiêu đề mẫu in không được để trống'})
+
+        template.title = title
+        template.header_note = (data.get('header_note') or '').strip()
+        template.terms = (data.get('terms') or '').strip()
+        template.footer_note = (data.get('footer_note') or '').strip()
+        template.show_brand_info = bool(data.get('show_brand_info', True))
+        template.show_customer_info = bool(data.get('show_customer_info', True))
+        template.show_signatures = bool(data.get('show_signatures', True))
+        template.save()
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã lưu mẫu in',
+            'template': _serialize_print_template(template),
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
 
 
 @login_required(login_url="/login/")

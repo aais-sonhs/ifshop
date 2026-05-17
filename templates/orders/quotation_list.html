@@ -35,6 +35,20 @@
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_quote_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
         </div>
+        <div class="row mb-2" style="gap:6px 0;">
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_creator">
+                    <option value="">-- Người tạo --</option>
+                    {% for u in system_users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_product" list="quotation_product_suggestions" placeholder="Tìm sản phẩm trong báo giá...">
+                <datalist id="quotation_product_suggestions"></datalist>
+            </div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày"></div>
+        </div>
         <div class="mb-2" id="active_quote_filter_summary"></div>
         <div class="row mb-2">
             <div class="col-md-12 d-flex align-items-center" style="gap:6px;">
@@ -50,7 +64,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã BG</th><th data-col="customer">Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th data-col="salesperson">Người BG</th>{% endif %}<th data-col="date">Ngày BG</th><th data-col="items">Số SP</th><th data-col="total">Tổng tiền</th><th data-col="valid">Hiệu lực</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã BG</th><th data-col="customer">Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th data-col="salesperson">Người BG</th>{% endif %}<th data-col="date">Ngày BG</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="items">Số SP</th><th data-col="total">Tổng tiền</th><th data-col="valid">Hiệu lực</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -379,6 +393,14 @@
                         <i class="fas fa-check-circle text-success mr-2" style="font-size:20px;"></i>
                         <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong>. Chọn loại phiếu để in:</span>
                     </div>
+                    <div class="mt-2">
+                        <a href="{% url 'print_template_setting' %}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-edit mr-1"></i> Chỉnh mẫu in
+                        </a>
+                        <a href="{% url 'printer_setting_tbl' %}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-print mr-1"></i> Cài máy in
+                        </a>
+                    </div>
                 </div>
                 <div class="row" id="print_options_grid">
                     <div class="col-6 col-md-4 mb-3">
@@ -400,6 +422,13 @@
                             <div class="print-icon" style="background:linear-gradient(135deg,#e65100,#bf360c);"><i class="fas fa-file-alt"></i></div>
                             <div class="print-label">Báo giá A5</div>
                             <div class="print-desc">Phiếu báo giá</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 mb-3">
+                        <div class="print-option-card" data-print-type="quotation_a4">
+                            <div class="print-icon" style="background:linear-gradient(135deg,#f57c00,#e65100);"><i class="fas fa-file-contract"></i></div>
+                            <div class="print-label">Báo giá A4</div>
+                            <div class="print-desc">Phiếu báo giá khổ A4</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-4 mb-3">
@@ -797,6 +826,7 @@ function fmtDt(dateStr, createdAt){
     return d;
 }
 function escapeHtml(text){ return $('<div>').text(text == null ? '' : String(text)).html(); }
+function escapeAttr(text){ return escapeHtml(text).replace(/"/g, '&quot;'); }
 
 function normalizeQuickSearchStockFilter(filterKey){
     var allowed = ['all', 'available', 'negative', 'oversold'];
@@ -1146,6 +1176,9 @@ var quotationColConfig = new ColumnConfig({
         {key: 'customer',    label: 'Khách hàng',     default: true},
         {key: 'salesperson', label: 'Người BG',       default: true},
         {key: 'date',        label: 'Ngày BG',         default: true},
+        {key: 'created_at',  label: 'Ngày tạo',        default: false},
+        {key: 'creator',     label: 'Người tạo',       default: false},
+        {key: 'products',    label: 'Sản phẩm',        default: false},
         {key: 'items',       label: 'Số SP',          default: true},
         {key: 'total',       label: 'Tổng tiền',      default: true},
         {key: 'valid',       label: 'Hiệu lực',       default: true},
@@ -1926,6 +1959,19 @@ function renderQuoteFilterSummary(totalCount, filteredCount){
             value:($('#filter_from_date').val() || '...') + ' - ' + ($('#filter_to_date').val() || '...')
         });
     }
+    if($('#filter_creator').val()){
+        chips.push({key:'creator', label:'Người tạo', value:$('#filter_creator option:selected').text()});
+    }
+    if($('#filter_product').val().trim()){
+        chips.push({key:'product', label:'Sản phẩm', value:$('#filter_product').val().trim()});
+    }
+    if($('#filter_created_from').val() || $('#filter_created_to').val()){
+        chips.push({
+            key:'created_date',
+            label:'Ngày tạo',
+            value:($('#filter_created_from').val() || '...') + ' - ' + ($('#filter_created_to').val() || '...')
+        });
+    }
     if($('#filter_text').val().trim()){
         chips.push({key:'text', label:'Từ khóa', value:$('#filter_text').val().trim()});
     }
@@ -1950,6 +1996,19 @@ function renderQuoteFilterSummary(totalCount, filteredCount){
     $('#active_quote_filter_summary').html(html);
 }
 
+function populateQuotationProductSuggestions(quotes){
+    var seen = {};
+    var options = [];
+    (quotes || []).forEach(function(q){
+        (q.product_names || []).forEach(function(label){
+            if(!label || seen[label]) return;
+            seen[label] = true;
+            options.push('<option value="'+escapeAttr(label)+'"></option>');
+        });
+    });
+    $('#quotation_product_suggestions').html(options.join(''));
+}
+
 function loadData(){
     $.get('/api/quotations/', function(res){
         var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
@@ -1957,14 +2016,23 @@ function loadData(){
         var filterGroup = $('#filter_customer_group').val();
         var filterFrom = $('#filter_from_date').val();
         var filterTo = $('#filter_to_date').val();
+        var filterCreator = $('#filter_creator').val();
+        var filterProduct = ($('#filter_product').val() || '').trim().toLowerCase();
+        var filterCreatedFrom = $('#filter_created_from').val();
+        var filterCreatedTo = $('#filter_created_to').val();
         var h = '';
+        populateQuotationProductSuggestions(res.data || []);
         var filtered = res.data.filter(function(d){
             if(filterStatus !== '' && String(d.status) !== filterStatus) return false;
             if(filterGroup && String(d.customer_group_id || '') !== filterGroup) return false;
             if(filterFrom && d.quotation_date < filterFrom) return false;
             if(filterTo && d.quotation_date > filterTo) return false;
+            if(filterCreator && String(d.creator_id || '') !== filterCreator) return false;
+            if(filterCreatedFrom && (!d.created_date || d.created_date < filterCreatedFrom)) return false;
+            if(filterCreatedTo && (!d.created_date || d.created_date > filterCreatedTo)) return false;
+            if(filterProduct && String(d.product_search || '').toLowerCase().indexOf(filterProduct) < 0) return false;
             if(filterText){
-                var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + (d.tags || '') + ' ' + (d.customer_group || '')).toLowerCase();
+                var searchable = (d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' + (d.tags || '') + ' ' + (d.customer_group || '') + ' ' + (d.product_search || '') + ' ' + (d.creator_name || '')).toLowerCase();
                 if(searchable.indexOf(filterText) < 0) return false;
             }
             return true;
@@ -1992,6 +2060,9 @@ function loadData(){
                 quotationColConfig.td('customer', customerHtml)+
                 sp+
                 quotationColConfig.td('date', fmtDt(d.quotation_date, d.created_at))+
+                quotationColConfig.td('created_at', escapeHtml(d.created_at || ''), 'class="text-nowrap"')+
+                quotationColConfig.td('creator', escapeHtml(d.creator_name || ''), 'class="text-nowrap"')+
+                quotationColConfig.td('products', escapeHtml(d.product_display || ''), 'style="min-width:180px;white-space:normal;"')+
                 quotationColConfig.td('items', d.item_count, 'class="text-center"')+
                 quotationColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
                 quotationColConfig.td('valid', d.valid_until)+
@@ -1999,17 +2070,18 @@ function loadData(){
                 quotationColConfig.td('actions', actionsHtml)+
                 '</tr>';
         });
-        var cols = {% if biz.opt_quotation_salesperson %}10{% else %}9{% endif %};
+        var cols = {% if biz.opt_quotation_salesperson %}13{% else %}12{% endif %};
         $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
 }
 
 $('#btn_search_quote').click(function(){ loadData(); });
-$('#filter_status, #filter_customer_group, #filter_from_date, #filter_to_date').on('change', function(){ loadData(); });
+$('#filter_status, #filter_customer_group, #filter_from_date, #filter_to_date, #filter_creator, #filter_created_from, #filter_created_to').on('change', function(){ loadData(); });
+$('#filter_product').on('input', function(){ loadData(); });
 $('#btn_clear_quote_filter').click(function(){
     $('#filter_text').val('');
-    $('#filter_status, #filter_customer_group').val('');
-    $('#filter_from_date, #filter_to_date').val('');
+    $('#filter_status, #filter_customer_group, #filter_creator').val('');
+    $('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to, #filter_product').val('');
     loadData();
 });
 
@@ -2025,6 +2097,12 @@ $(document).on('click', '.quote-filter-chip-remove', function(){
         $('#filter_customer_group').val('');
     } else if(key === 'date'){
         $('#filter_from_date, #filter_to_date').val('');
+    } else if(key === 'creator'){
+        $('#filter_creator').val('');
+    } else if(key === 'product'){
+        $('#filter_product').val('');
+    } else if(key === 'created_date'){
+        $('#filter_created_from, #filter_created_to').val('');
     } else if(key === 'text'){
         $('#filter_text').val('');
     }
@@ -2049,6 +2127,9 @@ function renderQuoteSavedFiltersMenu(){
         if(f.status !== undefined && f.status !== '') desc.push($('#filter_status option[value="'+f.status+'"]').text() || 'Trạng thái');
         if(f.customer_group_text) desc.push(f.customer_group_text);
         if(f.from_date || f.to_date) desc.push((f.from_date || '...') + ' - ' + (f.to_date || '...'));
+        if(f.creator_text) desc.push('Người tạo: ' + f.creator_text);
+        if(f.product) desc.push('Sản phẩm: ' + f.product);
+        if(f.created_from || f.created_to) desc.push('Tạo: ' + (f.created_from || '...') + ' - ' + (f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">' + desc.join(' · ') + '</small>' : '';
         $menu.append(
             '<div class="dropdown-item d-flex justify-content-between align-items-center" style="cursor:pointer;">' +
@@ -2068,7 +2149,12 @@ $('#btn_save_quote_filter').click(function(){
         customer_group: $('#filter_customer_group').val() || '',
         customer_group_text: $('#filter_customer_group').val() ? ($('#filter_customer_group option:selected').text() || '') : '',
         from_date: $('#filter_from_date').val() || '',
-        to_date: $('#filter_to_date').val() || ''
+        to_date: $('#filter_to_date').val() || '',
+        creator: $('#filter_creator').val() || '',
+        creator_text: $('#filter_creator').val() ? ($('#filter_creator option:selected').text() || '') : '',
+        product: $('#filter_product').val() || '',
+        created_from: $('#filter_created_from').val() || '',
+        created_to: $('#filter_created_to').val() || ''
     };
     var filters = getQuoteSavedFilters();
     filters.push(preset);
@@ -2085,6 +2171,10 @@ $(document).on('click', '.quote-filter-load-btn', function(){
     $('#filter_customer_group').val(f.customer_group || '');
     $('#filter_from_date').val(f.from_date || '');
     $('#filter_to_date').val(f.to_date || '');
+    $('#filter_creator').val(f.creator || '');
+    $('#filter_product').val(f.product || '');
+    $('#filter_created_from').val(f.created_from || '');
+    $('#filter_created_to').val(f.created_to || '');
     loadData();
     if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
 });
@@ -2098,37 +2188,7 @@ $(document).on('click', '.quote-filter-del-btn', function(e){
 renderQuoteSavedFiltersMenu();
 
 function editItem(id){
-    $.get('/api/quotations/detail/?id=' + id, function(res){
-        if(res.status !== 'ok'){ alert(res.message); return; }
-        var q = res.quotation;
-        $('#edit_id').val(q.id);
-        $('#inp_code').val(q.code);
-        if(q.customer_id){
-            var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
-            if(cust) selectCustomer(cust.id, cust.name, cust.phone);
-        } else { clearCustomer(); }
-        $('#inp_quotation_date').val(q.quotation_date);
-        $('#inp_valid_until').val(q.valid_until);
-        setMoneyValue('#inp_discount_amount', q.discount_amount);
-        setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
-        $('#inp_status').val(q.status);
-        $('#inp_tags').val(q.tags || '');
-        $('#inp_note').val(q.note);
-        syncStatusOptions(q.status);
-        if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
-
-        $('#items_tbl tbody').html('');
-
-        $('#modal_title').text('Sửa báo giá');
-        $('#modal_form').modal('show');
-
-        // Load items AFTER modal is fully shown so Select2 renders correctly
-        $('#modal_form').one('shown.bs.modal', function(){
-            res.items.forEach(function(it){ addItemRow(it); });
-            calcTotal();
-            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-        });
-    });
+    window.location.href = '/order-tbl/?edit_quotation=' + encodeURIComponent(id);
 }
 
 function deleteItem(id){
@@ -2211,38 +2271,7 @@ function downloadQuotationPDF(id){
 }
 
 function copyQuotation(id){
-    $.get('/api/quotations/detail/?id=' + id, function(res){
-        if(res.status !== 'ok'){ alert(res.message); return; }
-        var q = res.quotation;
-        // Reset form cho tạo mới
-        $('#edit_id').val('');
-        if(q.customer_id){
-            var cust2 = allCustomers.find(function(c){ return c.id == q.customer_id; });
-            if(cust2) selectCustomer(cust2.id, cust2.name, cust2.phone);
-        } else { clearCustomer(); }
-        setMoneyValue('#inp_discount_amount', q.discount_amount);
-        setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
-        $('#inp_status').val('0'); // Nháp
-        $('#inp_tags').val(q.tags || '');
-        $('#inp_note').val('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : ''));
-        if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson||'').trigger('change');
-        // Auto-fill mã mới + ngày hôm nay
-        $.get('/api/quotations/next-code/', function(cRes){
-            $('#inp_code').val(cRes.code);
-        });
-        var today = new Date().toISOString().split('T')[0];
-        $('#inp_quotation_date').val(today);
-        $('#inp_valid_until').val('');
-        $('#items_tbl tbody').html('');
-        $('#modal_title').text('Sao chép báo giá (từ ' + q.code + ')');
-        $('#modal_form').modal('show');
-        // Load items sau khi modal hiện
-        $('#modal_form').one('shown.bs.modal', function(){
-            res.items.forEach(function(it){ addItemRow(it); });
-            calcTotal();
-            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-        });
-    });
+    window.location.href = '/order-tbl/?copy_quotation=' + encodeURIComponent(id);
 }
 
 // === PRINT CONFIG MODAL ===

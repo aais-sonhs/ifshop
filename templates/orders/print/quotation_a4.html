@@ -1,24 +1,29 @@
 {% extends "orders/print/invoice_a4.html" %}
+{% load order_format %}
 {% block title %}Báo giá — {{ order.code }}{% endblock %}
 {% block toolbar_title %}📋 Báo giá — {{ order.code }}{% endblock %}
 {% block content %}
 <div class="invoice">
     <div class="inv-header">
-        {% if brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        {% if print_template.show_brand_info and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="company">
             <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
+            {% if print_template.show_brand_info %}
             {% if brand.address %}<p>📍 {{ brand.address }}</p>{% endif %}
             {% if brand.phone %}<p>📞 {{ brand.phone }}</p>{% endif %}
             {% if brand.email %}<p>✉️ {{ brand.email }}</p>{% endif %}
             {% if brand.tax_code %}<p>MST: {{ brand.tax_code }}</p>{% endif %}
+            {% endif %}
         </div>
     </div>
 
     <div class="inv-title">
-        <h1 style="color:#e65100;">BÁO GIÁ</h1>
+        <h1 style="color:#e65100;">{{ print_template.title|default:"BÁO GIÁ" }}</h1>
         <div class="code">Số: {{ order.code }} — Ngày: {{ order.order_date|date:"d/m/Y" }}</div>
+        {% if print_template.header_note %}<div class="code">{{ print_template.header_note|linebreaksbr }}</div>{% endif %}
     </div>
 
+    {% if print_template.show_customer_info %}
     <div class="inv-meta">
         <div class="col">
             <div class="label">Khách hàng</div>
@@ -37,6 +42,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <table class="inv-table">
         <thead>
@@ -56,31 +62,39 @@
                 <td class="text-center">{{ forloop.counter }}</td>
                 <td><strong>{{ item.product.code }}</strong> — {{ item.product.name }}</td>
                 <td class="text-center">{{ item.product.unit }}</td>
-                <td class="text-right">{{ item.quantity|floatformat:0 }}</td>
-                <td class="text-right">{{ item.unit_price|floatformat:0 }}</td>
+                <td class="text-right">{{ item.quantity|qty_vn }}</td>
+                <td class="text-right">{{ item.unit_price|money_vnd }}</td>
                 <td class="text-center">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}{% endif %}</td>
-                <td class="text-right"><strong>{{ item.total_price|floatformat:0 }}</strong></td>
+                <td class="text-right"><strong>{{ item.total_price|money_vnd }}</strong></td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
 
     <div class="inv-totals">
-        <div class="row"><span>Tổng cộng:</span><span>{{ order.total_amount|floatformat:0 }}đ</span></div>
-        {% if order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|floatformat:0 }}đ</span></div>{% endif %}
-        {% if order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|floatformat:0 }}đ</span></div>{% endif %}
-        <div class="row grand" style="color:#e65100;border-color:#e65100;"><span>TỔNG BÁO GIÁ:</span><span>{{ order.final_amount|floatformat:0 }}đ</span></div>
+        <div class="row"><span>Tổng cộng:</span><span>{{ order.total_amount|money_vnd }}đ</span></div>
+        {% if order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
+        {% if order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        <div class="row grand" style="color:#e65100;border-color:#e65100;"><span>TỔNG BÁO GIÁ:</span><span>{{ order.final_amount|money_vnd }}đ</span></div>
     </div>
 
     {% if order.note %}<div class="inv-note"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
 
+    {% if print_template.terms %}
+    <div class="inv-note" style="margin-top:16px; background:#fff3e0;">
+        <strong>Điều khoản:</strong><br>
+        {{ print_template.terms|linebreaksbr }}
+    </div>
+    {% else %}
     <div class="inv-note" style="margin-top:16px; background:#fff3e0;">
         <strong>Điều khoản:</strong><br>
         • Báo giá có hiệu lực {% if valid_until %}đến {{ valid_until|date:"d/m/Y" }}{% else %}30 ngày kể từ ngày lập{% endif %}.<br>
         • Giá trên chưa bao gồm VAT (nếu có).<br>
         • Thanh toán: theo thỏa thuận hai bên.
     </div>
+    {% endif %}
 
+    {% if print_template.show_signatures %}
     <div class="inv-footer">
         <div class="sig-block">
             <div class="sig-label">Khách hàng</div>
@@ -91,5 +105,7 @@
             <div class="sig-name">{{ order.salesperson|default:order.created_by.get_full_name }}</div>
         </div>
     </div>
+    {% endif %}
+    {% if print_template.footer_note %}<div class="inv-note" style="text-align:center;">{{ print_template.footer_note|linebreaksbr }}</div>{% endif %}
 </div>
 {% endblock %}

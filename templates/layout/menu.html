@@ -667,8 +667,8 @@ $(document).ready(function(){
                         <p>Danh mục</p>
                     </a>
                 </li>
-                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}menu-open{% endif %}">
-                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' %}active{% endif %}">
+                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'print_template_setting' %}menu-open{% endif %}">
+                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'print_template_setting' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -689,6 +689,12 @@ $(document).ready(function(){
                             <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phương thức TT</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'print_template_setting' %}" class="nav-link {% if active_tab == 'print_template_setting' %}active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Mẫu in</p>
                             </a>
                         </li>
                     </ul>
@@ -739,6 +745,12 @@ $(document).ready(function(){
                     <a href="{% url 'printer_setting_tbl' %}" class="nav-link {% if active_tab == 'printer_setting_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-print"></i>
                         <p>Cài đặt máy in</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'print_template_setting' %}" class="nav-link {% if active_tab == 'print_template_setting' %} active{% endif %}">
+                        <i class="nav-icon fas fa-file-alt"></i>
+                        <p>Mẫu in</p>
                     </a>
                 </li>
                 {% endif %}

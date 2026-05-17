@@ -184,6 +184,42 @@ class PrinterSetting(models.Model):
         return f"{self.name} ({self.ip_address}:{self.port})"
 
 
+class PrintTemplate(models.Model):
+    """Nội dung tùy chỉnh cho các mẫu in chứng từ."""
+    TEMPLATE_TYPE_CHOICES = [
+        ('k80', 'Hóa đơn K80'),
+        ('a4', 'Hóa đơn A4'),
+        ('quotation', 'Báo giá A5'),
+        ('quotation_a4', 'Báo giá A4'),
+        ('warranty', 'Phiếu bảo hành'),
+        ('export', 'Phiếu xuất kho'),
+    ]
+
+    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, null=True, blank=True,
+                              related_name='print_templates', verbose_name='Thương hiệu')
+    template_type = models.CharField(max_length=30, choices=TEMPLATE_TYPE_CHOICES,
+                                     verbose_name='Loại mẫu')
+    title = models.CharField(max_length=255, verbose_name='Tiêu đề mẫu in')
+    header_note = models.TextField(blank=True, null=True, verbose_name='Ghi chú đầu phiếu')
+    terms = models.TextField(blank=True, null=True, verbose_name='Điều khoản / nội dung cuối phiếu')
+    footer_note = models.TextField(blank=True, null=True, verbose_name='Lời cảm ơn / chân phiếu')
+    show_brand_info = models.BooleanField(default=True, verbose_name='Hiện thông tin thương hiệu')
+    show_customer_info = models.BooleanField(default=True, verbose_name='Hiện thông tin khách hàng')
+    show_signatures = models.BooleanField(default=True, verbose_name='Hiện khu vực ký tên')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'print_templates'
+        verbose_name = 'Mẫu in'
+        verbose_name_plural = 'Mẫu in'
+        unique_together = ['brand', 'template_type']
+        ordering = ['template_type']
+
+    def __str__(self):
+        brand_name = self.brand.name if self.brand else 'Mặc định'
+        return f"{brand_name} - {self.get_template_type_display()}"
+
+
 class BusinessConfig(models.Model):
     """Cấu hình mô hình kinh doanh — per-brand (mỗi thương hiệu có config riêng)"""
     BUSINESS_TYPE_CHOICES = [

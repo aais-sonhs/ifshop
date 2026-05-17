@@ -1,4 +1,5 @@
 {% extends "orders/print/base_print.html" %}
+{% load order_format %}
 {% block title %}Phiếu bảo hành — {{ order.code }}{% endblock %}
 {% block toolbar_title %}🛡️ Phiếu bảo hành — {{ order.code }}{% endblock %}
 {% block page_margin %}15mm{% endblock %}
@@ -30,19 +31,23 @@
 {% block content %}
 <div class="warranty">
     <div class="w-header">
-        {% if brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        {% if print_template.show_brand_info and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="company">
             <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
+            {% if print_template.show_brand_info %}
             {% if brand.address %}<p>📍 {{ brand.address }}</p>{% endif %}
             {% if brand.phone %}<p>📞 {{ brand.phone }}{% if brand.email %} · ✉️ {{ brand.email }}{% endif %}</p>{% endif %}
+            {% endif %}
         </div>
     </div>
 
     <div class="w-title">
-        <h1>PHIẾU BẢO HÀNH</h1>
+        <h1>{{ print_template.title|default:"PHIẾU BẢO HÀNH" }}</h1>
         <div class="subtitle">Warranty Certificate</div>
+        {% if print_template.header_note %}<div class="subtitle">{{ print_template.header_note|linebreaksbr }}</div>{% endif %}
     </div>
 
+    {% if print_template.show_customer_info %}
     <div class="w-info">
         <div class="col">
             <div class="label">Khách hàng</div>
@@ -56,6 +61,7 @@
             <div>Ngày mua: <strong>{{ order.order_date|date:"d/m/Y" }}</strong></div>
         </div>
     </div>
+    {% endif %}
 
     <table class="w-table">
         <thead>
@@ -74,7 +80,7 @@
                 <td>{{ forloop.counter }}</td>
                 <td>{{ item.product.code }}</td>
                 <td><strong>{{ item.product.name }}</strong></td>
-                <td>{{ item.quantity|floatformat:0 }}</td>
+                <td>{{ item.quantity|qty_vn }}</td>
                 <td>—</td>
                 <td>—</td>
             </tr>
@@ -84,14 +90,19 @@
 
     <div class="w-terms">
         <h3>🛡️ Điều kiện bảo hành</h3>
+        {% if print_template.terms %}
+        <div style="font-size:12px;line-height:1.5;">{{ print_template.terms|linebreaksbr }}</div>
+        {% else %}
         <ol>
             <li>Sản phẩm được bảo hành theo chính sách của nhà sản xuất / cửa hàng.</li>
             <li>Không bảo hành nếu sản phẩm bị hư hỏng do tác động bên ngoài, sử dụng sai cách.</li>
             <li>Khách hàng xuất trình phiếu bảo hành này khi yêu cầu bảo hành.</li>
             <li>Phiếu bảo hành chỉ có giá trị khi có đầy đủ thông tin và dấu xác nhận.</li>
         </ol>
+        {% endif %}
     </div>
 
+    {% if print_template.show_signatures %}
     <div class="w-footer">
         <div class="sig-block">
             <div class="sig-label">Khách hàng</div>
@@ -102,7 +113,8 @@
             <div class="sig-name">(Ký, đóng dấu)</div>
         </div>
     </div>
+    {% endif %}
 
-    <div class="w-stamp">Ngày in: {% now "d/m/Y H:i" %}</div>
+    <div class="w-stamp">{% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}<br>{% endif %}Ngày in: {% now "d/m/Y H:i" %}</div>
 </div>
 {% endblock %}

@@ -22,11 +22,14 @@ urlpatterns = [
     path('api/role-groups/assign/', views.api_assign_role_group, name='api_assign_role_group'),
     # Printer settings
     path('printer-setting-tbl/', views.printer_setting_tbl, name='printer_setting_tbl'),
+    path('print-template-setting/', views.print_template_setting, name='print_template_setting'),
     path('api/printers/', views.api_get_printers, name='api_get_printers'),
     path('api/printers/save/', views.api_save_printer, name='api_save_printer'),
     path('api/printers/delete/', views.api_delete_printer, name='api_delete_printer'),
     path('api/printers/test/', views.api_test_printer, name='api_test_printer'),
     path('api/printers/direct-print/', views.api_direct_print, name='api_direct_print'),
+    path('api/print-templates/', views.api_get_print_templates, name='api_get_print_templates'),
+    path('api/print-templates/save/', views.api_save_print_template, name='api_save_print_template'),
     # Business Config
     path('business-config/', views.business_config_tbl, name='business_config_tbl'),
     path('setting/quotation/', views.setting_quotation, name='setting_quotation'),

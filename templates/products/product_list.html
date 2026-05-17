@@ -71,10 +71,15 @@
                 </select>
             </div>
             <div class="col-md-2 mb-1">
-                <input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày">
+                <select class="form-control form-control-sm" id="filter_creator">
+                    <option value="">-- Người tạo --</option>
+                </select>
             </div>
-            <div class="col-md-2 mb-1">
-                <input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày">
+            <div class="col-md-4 mb-1">
+                <div class="input-group input-group-sm">
+                    <input type="date" class="form-control" id="filter_created_from" title="Tạo từ ngày">
+                    <input type="date" class="form-control" id="filter_created_to" title="Tạo đến ngày">
+                </div>
             </div>
         </div>
         <div class="row mb-2">
@@ -111,7 +116,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="product_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá nhập tại thời điểm gần nhất, lấy theo phiếu nhập mới nhất" style="cursor:help;">Giá nhập</th><th data-col="purchase_history">LS nhập/giá</th><th data-col="cost_price" title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng số lượng tồn hiện tại" style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock">Tồn kho</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá nhập tại thời điểm gần nhất, lấy theo phiếu nhập mới nhất" style="cursor:help;">Giá nhập</th><th data-col="purchase_history">LS nhập/giá</th><th data-col="cost_price" title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng số lượng tồn hiện tại" style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock">Tồn kho</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -405,6 +410,8 @@ var productColConfig = new ColumnConfig({
         {key: 'ws_no_warranty',   label: 'Giá sỉ KBH',      default: true},
         {key: 'ws_warranty',      label: 'Giá sỉ BH',       default: true},
         {key: 'stock',            label: 'Tồn kho',         default: true},
+        {key: 'created_at',       label: 'Ngày tạo',        default: false},
+        {key: 'creator',          label: 'Người tạo',       default: false},
         {key: 'actions',          label: 'Thao tác',        default: true},
     ]
 });
@@ -418,6 +425,7 @@ function getCurrentProductFilters(){
         location: $('#filter_location').val(),
         type: $('#filter_type').val(),
         status: $('#filter_status').val(),
+        creator: $('#filter_creator').val(),
         created_from: $('#filter_created_from').val(),
         created_to: $('#filter_created_to').val(),
         import_history: $('#filter_import_history').val(),
@@ -480,6 +488,7 @@ function filterProducts(products, filters){
         if(filters.type === 'weight' && !d.is_weight_based) return false;
         if(filters.status === 'active' && !d.is_active) return false;
         if(filters.status === 'inactive' && d.is_active) return false;
+        if(filters.creator && String(d.creator_id || '') !== filters.creator) return false;
         if(filters.created_from && (!d.created_at || d.created_at < filters.created_from)) return false;
         if(filters.created_to && (!d.created_at || d.created_at > filters.created_to)) return false;
         if(filters.import_history === 'has_import' && !d.latest_purchase) return false;
@@ -506,6 +515,7 @@ function renderProductFilterSummary(filteredCount, totalCount){
     if(filters.location) chips.push('Vị trí: ' + ($('#filter_location option:selected').text() || ''));
     if(filters.type) chips.push(filters.type === 'normal' ? 'Sản phẩm thường' : filters.type === 'combo' ? 'Combo' : filters.type === 'service' ? 'Dịch vụ' : 'Cân/đong');
     if(filters.status) chips.push(filters.status === 'active' ? 'Đang hoạt động' : 'Ngừng hoạt động');
+    if(filters.creator) chips.push('Người tạo: ' + ($('#filter_creator option:selected').text() || ''));
     if(filters.created_from || filters.created_to) chips.push('Ngày tạo: ' + (filters.created_from || '...') + ' - ' + (filters.created_to || '...'));
     if(filters.import_history){
         chips.push(filters.import_history === 'has_import' ? 'Đã từng nhập' : filters.import_history === 'no_import' ? 'Chưa nhập hàng' : 'Giá nhập biến động');
@@ -621,6 +631,19 @@ function submitProductSearch(){
             toastr.info('Tìm thấy ' + filtered.length + ' sản phẩm');
         }
     });
+}
+
+function populateProductCreatorFilter(products){
+    var currentValue = $('#filter_creator').val() || '';
+    var seen = {};
+    var options = ['<option value="">-- Người tạo --</option>'];
+    (products || []).forEach(function(p){
+        if(!p.creator_id || seen[p.creator_id]) return;
+        seen[p.creator_id] = true;
+        options.push('<option value="'+escapeAttr(String(p.creator_id))+'">'+escapeHtml(p.creator_name || 'Không xác định')+'</option>');
+    });
+    $('#filter_creator').html(options.join(''));
+    $('#filter_creator').val(currentValue);
 }
 
 $(document).ready(function(){
@@ -775,6 +798,7 @@ function loadData(done){
         PRODUCT_ALL_DATA.forEach(function(d){
             PRODUCT_DATA_MAP[d.id] = d;
         });
+        populateProductCreatorFilter(PRODUCT_ALL_DATA);
 
         var filtered = filterProducts(PRODUCT_ALL_DATA, getCurrentProductFilters());
         PRODUCT_LAST_FILTERED = filtered;
@@ -875,6 +899,8 @@ function loadData(done){
                 productColConfig.td('ws_no_warranty', wsNoWDisplay, 'class="text-right"')+
                 productColConfig.td('ws_warranty', wsWDisplay, 'class="text-right"')+
                 productColConfig.td('stock', stockHtml, 'style="white-space:normal;min-width:200px;"')+
+                productColConfig.td('created_at', escapeHtml(d.created_at_display || d.created_at || ''), 'class="text-nowrap"')+
+                productColConfig.td('creator', escapeHtml(d.creator_name || ''), 'class="text-nowrap"')+
                 productColConfig.td('actions', actionsHtml, 'class="text-center text-nowrap"')+
                 '</tr>';
         });
@@ -883,7 +909,7 @@ function loadData(done){
             var createHtml = searchTerm
                 ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="btn_create_product_from_search"><i class="fas fa-plus"></i> Thêm sản phẩm từ thông tin đang tìm</button></div>'
                 : '';
-            h = '<tr><td colspan="15" class="text-center text-muted py-3">Không tìm thấy sản phẩm phù hợp' + createHtml + '</td></tr>';
+            h = '<tr><td colspan="17" class="text-center text-muted py-3">Không tìm thấy sản phẩm phù hợp' + createHtml + '</td></tr>';
         }
         $('#data_tbl tbody').html(h);
         productColConfig.apply();
@@ -903,10 +929,10 @@ $(document).on('click', '#btn_create_product_from_search', function(){
     openProductCreateFromSearch($('#filter_text').val());
 });
 $('#filter_price_from, #filter_price_to').on('input', function(){ loadData(); });
-$('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status, #filter_created_from, #filter_created_to, #filter_import_history, #filter_price_basis, #filter_import_from, #filter_import_to').change(function(){ loadData(); });
+$('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_import_history, #filter_price_basis, #filter_import_from, #filter_import_to').change(function(){ loadData(); });
 $('#btn_clear_product_filters').click(function(){
     $('#filter_text').val('');
-    $('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status').val('');
+    $('#filter_category, #filter_stock, #filter_supplier, #filter_location, #filter_type, #filter_status, #filter_creator').val('');
     $('#filter_created_from, #filter_created_to').val('');
     $('#filter_import_history').val('');
     $('#filter_price_basis').val('import_price');
@@ -1481,6 +1507,7 @@ function renderProductSavedFilters(){
         if(f.location && f.location_text) desc.push(f.location_text);
         if(f.type) desc.push(f.type === 'normal' ? 'SP thường' : f.type === 'combo' ? 'Combo' : f.type === 'service' ? 'Dịch vụ' : 'Cân/đong');
         if(f.status) desc.push(f.status === 'active' ? 'Đang hoạt động' : 'Ngừng hoạt động');
+        if(f.creator_text) desc.push('Người tạo: ' + f.creator_text);
         if(f.created_from || f.created_to) desc.push((f.created_from || '...') + ' - ' + (f.created_to || '...'));
         if(f.import_history) desc.push(f.import_history === 'has_import' ? 'Đã từng nhập' : f.import_history === 'no_import' ? 'Chưa nhập' : 'Giá nhập biến động');
         if(f.price_from || f.price_to) desc.push(getProductPriceBasisLabel(f.price_basis) + ': ' + (f.price_from || '0') + ' - ' + (f.price_to || '∞'));
@@ -1508,6 +1535,8 @@ $('#btn_save_product_filter').click(function(){
         location_text: $('#filter_location').val() ? ($('#filter_location option:selected').text() || '') : '',
         type: $('#filter_type').val() || '',
         status: $('#filter_status').val() || '',
+        creator: $('#filter_creator').val() || '',
+        creator_text: $('#filter_creator').val() ? ($('#filter_creator option:selected').text() || '') : '',
         created_from: $('#filter_created_from').val() || '',
         created_to: $('#filter_created_to').val() || '',
         import_history: $('#filter_import_history').val() || '',
@@ -1535,6 +1564,7 @@ $(document).on('click', '.pf-load-btn', function(){
     $('#filter_location').val(f.location || '');
     $('#filter_type').val(f.type || '');
     $('#filter_status').val(f.status || '');
+    $('#filter_creator').val(f.creator || '');
     $('#filter_created_from').val(f.created_from || '');
     $('#filter_created_to').val(f.created_to || '');
     $('#filter_import_history').val(f.import_history || '');

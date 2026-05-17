@@ -16,36 +16,150 @@
             position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
             background: linear-gradient(135deg, #1976d2, #1565c0);
             color: #fff; padding: 10px 20px;
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
+        .no-print .toolbar-title { min-width: 180px; }
+        .no-print .toolbar-actions {
+            display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+            flex-wrap: wrap;
+        }
+        .no-print select {
+            min-width: 220px; max-width: 320px; height: 34px; border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.5); padding: 0 8px;
+            background: #fff; color: #333; font-size: 13px;
+        }
+        .no-print .printer-status { font-size: 12px; color: rgba(255,255,255,0.9); }
+        .no-print .printer-status a { color: #fff; text-decoration: underline; }
         .no-print button {
-            padding: 8px 24px; border: none; border-radius: 6px; font-size: 14px;
+            padding: 8px 14px; border: none; border-radius: 6px; font-size: 14px;
             cursor: pointer; font-weight: 600; transition: all 0.2s;
         }
         .no-print .btn-print {
             background: #fff; color: #1976d2;
         }
         .no-print .btn-print:hover { background: #e3f2fd; }
+        .no-print .btn-direct-print {
+            background: #e8f5e9; color: #1b5e20;
+        }
+        .no-print .btn-direct-print:hover { background: #c8e6c9; }
         .no-print .btn-close-print {
             background: rgba(255,255,255,0.2); color: #fff; margin-left: 8px;
         }
         .no-print .btn-close-print:hover { background: rgba(255,255,255,0.3); }
+        @media (max-width: 767.98px) {
+            .no-print { align-items: stretch; flex-direction: column; padding: 8px 10px; }
+            .no-print .toolbar-title { min-width: 0; }
+            .no-print .toolbar-actions { justify-content: flex-start; }
+            .no-print select { flex: 1 1 100%; min-width: 0; max-width: none; }
+        }
         {% block extra_style %}{% endblock %}
     </style>
 </head>
 <body>
     <div class="no-print">
-        <div>
+        <div class="toolbar-title">
             <strong>{% block toolbar_title %}Xem trước phiếu in{% endblock %}</strong>
         </div>
-        <div>
-            <button class="btn-print" onclick="window.print()">🖨️ In ngay</button>
+        <div class="toolbar-actions">
+            <select id="print_printer_select" aria-label="Chọn máy in LAN">
+                <option value="">Đang tải máy in...</option>
+            </select>
+            <button class="btn-direct-print" id="btn_direct_print" type="button">In qua máy LAN</button>
+            <span class="printer-status" id="printer_status"></span>
+            <button class="btn-print" onclick="window.print()">In ngay</button>
             <button class="btn-close-print" onclick="window.close()">✕ Đóng</button>
         </div>
     </div>
-    <div style="{% block body_padding %}padding-top: 56px;{% endblock %}">
+    <div id="print_document_content" style="{% block body_padding %}padding-top: 56px;{% endblock %}">
         {% block content %}{% endblock %}
     </div>
+    <script>
+        (function(){
+            var printerList = [];
+            var select = document.getElementById('print_printer_select');
+            var status = document.getElementById('printer_status');
+            var directButton = document.getElementById('btn_direct_print');
+
+            function setStatus(html){
+                status.innerHTML = html || '';
+            }
+
+            function renderPrinters(data){
+                printerList = (data || []).filter(function(printer){
+                    return printer.printer_type === 'lan';
+                });
+                select.innerHTML = '';
+                if(!printerList.length){
+                    var option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Chưa có máy in LAN';
+                    select.appendChild(option);
+                    directButton.disabled = true;
+                    setStatus('<a href="/printer-setting-tbl/" target="_blank">Cài đặt máy in</a>');
+                    return;
+                }
+                printerList.forEach(function(printer){
+                    var option = document.createElement('option');
+                    option.value = printer.id;
+                    option.textContent = printer.name + ' - ' + (printer.paper_size_display || printer.paper_size || '');
+                    if(printer.is_default) option.selected = true;
+                    select.appendChild(option);
+                });
+                directButton.disabled = false;
+                setStatus('Sẵn sàng');
+            }
+
+            function loadPrinters(){
+                fetch('/api/printers/', {credentials: 'same-origin'})
+                    .then(function(response){ return response.json(); })
+                    .then(function(payload){ renderPrinters(payload.data || []); })
+                    .catch(function(){
+                        select.innerHTML = '<option value="">Không tải được máy in</option>';
+                        directButton.disabled = true;
+                        setStatus('Lỗi tải máy in');
+                    });
+            }
+
+            directButton.addEventListener('click', function(){
+                var printerId = select.value;
+                if(!printerId){
+                    alert('Vui lòng chọn máy in LAN');
+                    return;
+                }
+                var content = document.getElementById('print_document_content').innerHTML;
+                directButton.disabled = true;
+                directButton.textContent = 'Đang gửi...';
+                setStatus('');
+                fetch('/api/printers/direct-print/', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({
+                        printer_id: parseInt(printerId, 10),
+                        html_content: content
+                    })
+                })
+                .then(function(response){ return response.json(); })
+                .then(function(payload){
+                    setStatus(payload.message || '');
+                    if(payload.status !== 'ok') alert(payload.message || 'Không in được');
+                })
+                .catch(function(){
+                    alert('Không gửi được lệnh in');
+                    setStatus('Lỗi gửi lệnh in');
+                })
+                .finally(function(){
+                    directButton.disabled = !printerList.length;
+                    directButton.textContent = 'In qua máy LAN';
+                });
+            });
+
+            loadPrinters();
+        })();
+    </script>
 </body>
 </html>

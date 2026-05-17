@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-file-alt mr-2"></i>Mẫu in</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="list-group" id="template_list"></div>
+            </div>
+            <div class="col-md-8">
+                <form id="template_form">
+                    <input type="hidden" id="inp_template_type">
+                    <div class="form-group">
+                        <label>Tiêu đề phiếu in <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="inp_title">
+                    </div>
+                    <div class="form-group">
+                        <label>Ghi chú đầu phiếu</label>
+                        <textarea class="form-control" id="inp_header_note" rows="3" placeholder="Nội dung hiển thị dưới tiêu đề phiếu"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Điều khoản / nội dung cuối phiếu</label>
+                        <textarea class="form-control" id="inp_terms" rows="5"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Lời cảm ơn / chân phiếu</label>
+                        <textarea class="form-control" id="inp_footer_note" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="custom-control custom-switch mb-2">
+                                <input type="checkbox" class="custom-control-input" id="inp_show_brand_info">
+                                <label class="custom-control-label" for="inp_show_brand_info">Thông tin thương hiệu</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="custom-control custom-switch mb-2">
+                                <input type="checkbox" class="custom-control-input" id="inp_show_customer_info">
+                                <label class="custom-control-label" for="inp_show_customer_info">Thông tin khách hàng</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="custom-control custom-switch mb-2">
+                                <input type="checkbox" class="custom-control-input" id="inp_show_signatures">
+                                <label class="custom-control-label" for="inp_show_signatures">Khu vực ký tên</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <small class="text-muted" id="template_updated_at"></small>
+                        <button type="button" class="btn btn-primary" id="btn_save_template">
+                            <i class="fas fa-save mr-1"></i> Lưu mẫu in
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var printTemplates = [];
+var currentTemplateType = '';
+
+function escapeHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
+function loadTemplates(selectType){
+    $.get('/api/print-templates/', function(res){
+        printTemplates = res.data || [];
+        renderTemplateList();
+        var firstType = selectType || currentTemplateType || (printTemplates[0] ? printTemplates[0].template_type : '');
+        if(firstType) selectTemplate(firstType);
+    });
+}
+
+function renderTemplateList(){
+    var html = '';
+    printTemplates.forEach(function(t){
+        html += '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-template-type="' + t.template_type + '">' +
+            '<span><strong>' + escapeHtml(t.template_type_display) + '</strong><br><small class="text-muted">' + escapeHtml(t.title) + '</small></span>' +
+            '<i class="fas fa-chevron-right text-muted"></i>' +
+            '</button>';
+    });
+    $('#template_list').html(html || '<div class="text-muted">Chưa có mẫu in</div>');
+}
+
+function selectTemplate(templateType){
+    var t = printTemplates.find(function(item){ return item.template_type === templateType; });
+    if(!t) return;
+    currentTemplateType = templateType;
+    $('#template_list .list-group-item').removeClass('active');
+    $('#template_list .list-group-item[data-template-type="' + templateType + '"]').addClass('active');
+    $('#inp_template_type').val(t.template_type);
+    $('#inp_title').val(t.title || '');
+    $('#inp_header_note').val(t.header_note || '');
+    $('#inp_terms').val(t.terms || '');
+    $('#inp_footer_note').val(t.footer_note || '');
+    $('#inp_show_brand_info').prop('checked', !!t.show_brand_info);
+    $('#inp_show_customer_info').prop('checked', !!t.show_customer_info);
+    $('#inp_show_signatures').prop('checked', !!t.show_signatures);
+    $('#template_updated_at').text(t.updated_at ? 'Cập nhật: ' + t.updated_at : '');
+}
+
+$(document).ready(function(){
+    loadTemplates();
+
+    $(document).on('click', '#template_list .list-group-item', function(){
+        selectTemplate($(this).data('template-type'));
+    });
+
+    $('#btn_save_template').click(function(){
+        var data = {
+            template_type: $('#inp_template_type').val(),
+            title: $('#inp_title').val(),
+            header_note: $('#inp_header_note').val(),
+            terms: $('#inp_terms').val(),
+            footer_note: $('#inp_footer_note').val(),
+            show_brand_info: $('#inp_show_brand_info').is(':checked'),
+            show_customer_info: $('#inp_show_customer_info').is(':checked'),
+            show_signatures: $('#inp_show_signatures').is(':checked')
+        };
+        if(!data.template_type){ alert('Vui lòng chọn mẫu in'); return; }
+        if(!data.title.trim()){ alert('Vui lòng nhập tiêu đề phiếu in'); return; }
+        var $btn = $(this);
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
+        $.ajax({
+            url: '/api/print-templates/save/',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){
+                    if(typeof toastr !== 'undefined') toastr.success(r.message); else alert(r.message);
+                    loadTemplates(data.template_type);
+                } else {
+                    alert(r.message);
+                }
+            },
+            complete: function(){
+                $btn.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Lưu mẫu in');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

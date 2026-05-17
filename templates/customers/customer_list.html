@@ -56,7 +56,24 @@
                     <option value="no_debt">Không công nợ</option>
                 </select>
             </div>
-            <div class="col-md-10 d-flex align-items-center flex-wrap" style="gap:6px;">
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_creator">
+                    <option value="">-- Người tạo --</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" id="filter_product" list="customer_product_suggestions" placeholder="Sản phẩm đã mua...">
+                <datalist id="customer_product_suggestions"></datalist>
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày">
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày">
+            </div>
+        </div>
+        <div class="row mb-2" style="row-gap:6px;">
+            <div class="col-md-12 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <button class="btn btn-sm btn-info" id="btn_search_customer"><i class="fas fa-search"></i> Tìm</button>
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_customer_filters"><i class="fas fa-eraser"></i> Xóa lọc</button>
                 <button class="btn btn-sm btn-outline-primary" id="btn_save_customer_filter" title="Lưu bộ lọc hiện tại"><i class="fas fa-save"></i> Lưu</button>
@@ -71,7 +88,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="customer_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="code">Mã KH</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="code">Mã KH</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -396,6 +413,10 @@ function getCurrentCustomerFilters(){
         membership: $('#filter_membership').val() || '',
         debt: $('#filter_debt').val() || '',
         status: $('#filter_status').val() || '',
+        creator: $('#filter_creator').val() || '',
+        product: ($('#filter_product').val() || '').trim(),
+        created_from: $('#filter_created_from').val() || '',
+        created_to: $('#filter_created_to').val() || '',
     };
 }
 
@@ -421,6 +442,15 @@ function renderCustomerFilterSummary(filteredCount, totalCount){
     if(filters.status){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_status'))+'</span>');
     }
+    if(filters.creator){
+        chips.push('<span class="badge badge-light border px-2 py-1">Người tạo: '+escapeHtml(getSelectedText('#filter_creator'))+'</span>');
+    }
+    if(filters.product){
+        chips.push('<span class="badge badge-light border px-2 py-1">Sản phẩm: '+escapeHtml(filters.product)+'</span>');
+    }
+    if(filters.created_from || filters.created_to){
+        chips.push('<span class="badge badge-light border px-2 py-1">Ngày tạo: '+escapeHtml(filters.created_from || '...')+' - '+escapeHtml(filters.created_to || '...')+'</span>');
+    }
 
     if(!chips.length){
         chips.push('<span class="text-muted small">Đang hiển thị toàn bộ khách hàng</span>');
@@ -435,6 +465,7 @@ function filterCustomers(list){
     var rawKeyword = filters.search;
     var keyword = normalizeCustomerText(rawKeyword);
     var keywordDigits = onlyDigits(rawKeyword);
+    var productKeyword = normalizeCustomerText(filters.product);
 
     return list.filter(function(d){
         if(keyword){
@@ -450,6 +481,10 @@ function filterCustomers(list){
         if(filters.membership && String(d.membership_level || 0) !== filters.membership) return false;
         if(filters.status === 'active' && !d.is_active) return false;
         if(filters.status === 'inactive' && d.is_active) return false;
+        if(filters.creator && String(d.creator_id || '') !== filters.creator) return false;
+        if(filters.created_from && (!d.created_at || d.created_at < filters.created_from)) return false;
+        if(filters.created_to && (!d.created_at || d.created_at > filters.created_to)) return false;
+        if(productKeyword && normalizeCustomerText(d.purchased_product_search || '').indexOf(productKeyword) < 0) return false;
         if(filters.debt === 'has_purchase' && Number(d.total_purchased || 0) <= 0) return false;
         if(filters.debt === 'no_purchase' && Number(d.total_purchased || 0) > 0) return false;
         if(filters.debt === 'has_debt' && Number(d.total_debt || 0) <= 0) return false;
@@ -558,6 +593,9 @@ function renderCustomerSavedFilters(){
         if(f.membership_text) desc.push(escapeHtml(f.membership_text));
         if(f.debt_text) desc.push(escapeHtml(f.debt_text));
         if(f.status_text) desc.push(escapeHtml(f.status_text));
+        if(f.creator_text) desc.push('Người tạo: ' + escapeHtml(f.creator_text));
+        if(f.product) desc.push('Sản phẩm: ' + escapeHtml(f.product));
+        if(f.created_from || f.created_to) desc.push('Tạo: ' + escapeHtml(f.created_from || '...') + ' - ' + escapeHtml(f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">'+desc.join(' · ')+'</small>' : '';
         $menu.append(
             '<div class="dropdown-item d-flex justify-content-between align-items-center px-3 py-2" style="cursor:pointer;border-bottom:1px solid #f0f0f0;">' +
@@ -566,6 +604,32 @@ function renderCustomerSavedFilters(){
             '</div>'
         );
     });
+}
+
+function populateCustomerCreatorFilter(customers){
+    var currentValue = $('#filter_creator').val() || '';
+    var seen = {};
+    var options = ['<option value="">-- Người tạo --</option>'];
+    (customers || []).forEach(function(c){
+        if(!c.creator_id || seen[c.creator_id]) return;
+        seen[c.creator_id] = true;
+        options.push('<option value="'+escapeAttr(String(c.creator_id))+'">'+escapeHtml(c.creator_name || 'Không xác định')+'</option>');
+    });
+    $('#filter_creator').html(options.join(''));
+    $('#filter_creator').val(currentValue);
+}
+
+function populateCustomerProductSuggestions(customers){
+    var seen = {};
+    var options = [];
+    (customers || []).forEach(function(c){
+        (c.purchased_product_names || []).forEach(function(label){
+            if(!label || seen[label]) return;
+            seen[label] = true;
+            options.push('<option value="'+escapeAttr(label)+'"></option>');
+        });
+    });
+    $('#customer_product_suggestions').html(options.join(''));
 }
 
 // Column Config
@@ -586,6 +650,8 @@ var customerColConfig = new ColumnConfig({
         {key: 'points',           label: 'Điểm',            default: false},
         {key: 'total_purchased',  label: 'Tổng mua',        default: true},
         {key: 'debt',             label: 'Công nợ',         default: true},
+        {key: 'created_at',       label: 'Ngày tạo',        default: false},
+        {key: 'creator',          label: 'Người tạo',       default: false},
         {key: 'status',           label: 'Trạng thái',      default: true},
         {key: 'actions',          label: 'Thao tác',        default: true},
     ]
@@ -600,11 +666,13 @@ $(document).ready(function(){
         e.preventDefault();
         submitCustomerSearch();
     });
-    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status').on('change', function(){ renderTable(); });
+    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to').on('change', function(){ renderTable(); });
+    $('#filter_product').on('input', function(){ renderTable(); });
     $('#btn_search_customer').click(function(){ submitCustomerSearch(); });
     $('#btn_clear_customer_filters').click(function(){
         $('#filter_search').val('');
-        $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status').val('');
+        $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator').val('');
+        $('#filter_product, #filter_created_from, #filter_created_to').val('');
         renderTable();
     });
     $('#btn_save_customer_filter').click(function(){
@@ -624,6 +692,11 @@ $(document).ready(function(){
             debt_text: getSelectedText('#filter_debt'),
             status: $('#filter_status').val() || '',
             status_text: getSelectedText('#filter_status'),
+            creator: $('#filter_creator').val() || '',
+            creator_text: getSelectedText('#filter_creator'),
+            product: $('#filter_product').val() || '',
+            created_from: $('#filter_created_from').val() || '',
+            created_to: $('#filter_created_to').val() || '',
         });
         localStorage.setItem(CUSTOMER_FILTER_KEY, JSON.stringify(filters));
         renderCustomerSavedFilters();
@@ -641,6 +714,10 @@ $(document).ready(function(){
         $('#filter_membership').val(f.membership || '');
         $('#filter_debt').val(f.debt || '');
         $('#filter_status').val(f.status || '');
+        $('#filter_creator').val(f.creator || '');
+        $('#filter_product').val(f.product || '');
+        $('#filter_created_from').val(f.created_from || '');
+        $('#filter_created_to').val(f.created_to || '');
         renderTable();
         if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
         else alert('Đã tải bộ lọc: ' + f.name);
@@ -908,6 +985,8 @@ function loadData(){
     $.get('/api/customers/',function(res){
         _customerOrderPreviewCache = {};
         allCustomers = res.data;
+        populateCustomerCreatorFilter(allCustomers);
+        populateCustomerProductSuggestions(allCustomers);
         renderTable();
     });
 }
@@ -942,6 +1021,8 @@ function renderTable(){
             customerColConfig.td('points', fmt(d.points || 0), 'class="text-right"')+
             customerColConfig.td('total_purchased', fmt(d.total_purchased) + 'đ', 'class="text-right"')+
             customerColConfig.td('debt', fmt(d.total_debt) + 'đ', 'class="text-right" style="'+debtStyle+'"')+
+            customerColConfig.td('created_at', escapeHtml(d.created_at_display || d.created_at || ''), 'class="text-nowrap"')+
+            customerColConfig.td('creator', escapeHtml(d.creator_name || ''), 'class="text-nowrap"')+
             customerColConfig.td('status', getStatusBadge(d.is_active), 'class="text-center"')+
             customerColConfig.td('actions', actionsHtml, 'class="text-center text-nowrap"')+
             '</tr>';
@@ -951,7 +1032,7 @@ function renderTable(){
         var createHtml = searchTerm
             ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="btn_create_customer_from_search"><i class="fas fa-plus"></i> Thêm khách từ thông tin đang tìm</button></div>'
             : '';
-        h = '<tr><td colspan="14" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp' + createHtml + '</td></tr>';
+        h = '<tr><td colspan="16" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp' + createHtml + '</td></tr>';
     }
     $('#data_tbl tbody').html(h);
     customerColConfig.apply();

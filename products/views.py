@@ -591,7 +591,7 @@ def cost_adjustment_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_products(request):
-    products = Product.objects.select_related('category', 'supplier', 'location').prefetch_related(
+    products = Product.objects.select_related('category', 'supplier', 'location', 'created_by').prefetch_related(
         'variants', 'stocks__warehouse', 'combo_items__product__stocks__warehouse',
         'receipt_items__goods_receipt',
     ).all()
@@ -701,6 +701,9 @@ def api_get_products(request):
             'location': p.location.name if p.location else '',
             'specification': p.specification or '',
             'created_at': p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
+            'created_at_display': p.created_at.strftime('%d/%m/%Y %H:%M') if p.created_at else '',
+            'creator_id': p.created_by_id,
+            'creator_name': (p.created_by.get_full_name() or p.created_by.username) if p.created_by else '',
             'latest_purchase': latest_purchase,
             'recent_import_prices': recent_import_prices,
             'purchase_receipt_count': purchase_receipt_count,

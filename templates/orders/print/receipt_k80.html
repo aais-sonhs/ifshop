@@ -1,4 +1,5 @@
 {% extends "orders/print/base_print.html" %}
+{% load order_format %}
 {% block title %}Hóa đơn K80 — {{ order.code }}{% endblock %}
 {% block toolbar_title %}🧾 Hóa đơn K80 — {{ order.code }}{% endblock %}
 {% block page_margin %}2mm{% endblock %}
@@ -31,15 +32,20 @@
 <div class="receipt">
     <div class="header">
         <div class="brand-name">{{ brand.name|default:"CỬA HÀNG" }}</div>
+        {% if print_template.show_brand_info %}
         {% if brand.address %}<div class="brand-info">{{ brand.address }}</div>{% endif %}
         {% if brand.phone %}<div class="brand-info">ĐT: {{ brand.phone }}</div>{% endif %}
+        {% endif %}
     </div>
     <div class="divider"></div>
-    <div class="title">HÓA ĐƠN BÁN HÀNG</div>
+    <div class="title">{{ print_template.title|default:"HÓA ĐƠN BÁN HÀNG" }}</div>
+    {% if print_template.header_note %}<div class="footer" style="margin-top:0;">{{ print_template.header_note|linebreaksbr }}</div>{% endif %}
     <div class="info-row"><span class="label">Số:</span><span>{{ order.code }}</span></div>
     <div class="info-row"><span class="label">Ngày:</span><span>{{ order.order_date|date:"d/m/Y" }}</span></div>
+    {% if print_template.show_customer_info %}
     <div class="info-row"><span class="label">KH:</span><span>{{ order.customer.name|default:"Khách lẻ" }}</span></div>
     {% if order.customer.phone %}<div class="info-row"><span class="label">SĐT:</span><span>{{ order.customer.phone }}</span></div>{% endif %}
+    {% endif %}
     {% if order.salesperson %}<div class="info-row"><span class="label">NV:</span><span>{{ order.salesperson }}</span></div>{% endif %}
     <div class="divider"></div>
     <table>
@@ -47,26 +53,26 @@
         <tbody>
         {% for item in items %}
         <tr>
-            <td>{{ item.product.name }}<br><small style="color:#888">{{ item.unit_price|floatformat:0 }}đ{% if item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}</small></td>
-            <td class="text-right">{{ item.quantity|floatformat:0 }}</td>
-            <td class="text-right">{{ item.total_price|floatformat:0 }}đ</td>
+            <td>{{ item.product.name }}<br><small style="color:#888">{{ item.unit_price|money_vnd }}đ{% if item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}</small></td>
+            <td class="text-right">{{ item.quantity|qty_vn }}</td>
+            <td class="text-right">{{ item.total_price|money_vnd }}đ</td>
         </tr>
         {% endfor %}
         </tbody>
     </table>
     <div class="divider"></div>
     <div class="total-section">
-        <div class="total-row"><span>Tổng cộng ({{ items|length }} SP):</span><span>{{ order.total_amount|floatformat:0 }}đ</span></div>
-        {% if order.discount_amount %}<div class="total-row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|floatformat:0 }}đ</span></div>{% endif %}
-        {% if order.shipping_fee %}<div class="total-row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|floatformat:0 }}đ</span></div>{% endif %}
-        <div class="total-row grand-total"><span>THANH TOÁN:</span><span>{{ order.final_amount|floatformat:0 }}đ</span></div>
-        {% if order.paid_amount %}<div class="total-row"><span>Đã thanh toán:</span><span>{{ order.paid_amount|floatformat:0 }}đ</span></div>{% endif %}
-        {% if remaining > 0 %}<div class="total-row" style="color:#d32f2f;font-weight:600;"><span>Còn nợ:</span><span>{{ remaining|floatformat:0 }}đ</span></div>{% endif %}
+        <div class="total-row"><span>Tổng cộng ({{ items|length }} SP):</span><span>{{ order.total_amount|money_vnd }}đ</span></div>
+        {% if order.discount_amount %}<div class="total-row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
+        {% if order.shipping_fee %}<div class="total-row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        <div class="total-row grand-total"><span>THANH TOÁN:</span><span>{{ order.final_amount|money_vnd }}đ</span></div>
+        {% if order.paid_amount %}<div class="total-row"><span>Đã thanh toán:</span><span>{{ order.paid_amount|money_vnd }}đ</span></div>{% endif %}
+        {% if remaining > 0 %}<div class="total-row" style="color:#d32f2f;font-weight:600;"><span>Còn nợ:</span><span>{{ remaining|money_vnd }}đ</span></div>{% endif %}
     </div>
+    {% if print_template.terms %}<div class="divider"></div><div class="footer">{{ print_template.terms|linebreaksbr }}</div>{% endif %}
     <div class="divider"></div>
     <div class="footer">
-        Cảm ơn quý khách!<br>
-        Hẹn gặp lại!<br>
+        {% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}<br>{% else %}Cảm ơn quý khách!<br>Hẹn gặp lại!<br>{% endif %}
         <small>Ngày in: {% now "d/m/Y H:i" %}</small>
     </div>
 </div>

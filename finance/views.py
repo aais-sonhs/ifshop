@@ -96,6 +96,7 @@ def _apply_receipt_filters(queryset, request):
     date_to = request.GET.get('date_to')
     cash_book_id = request.GET.get('cash_book_id')
     payment_method_option_id = request.GET.get('payment_method_option_id') or request.GET.get('method_id')
+    payment_type = request.GET.get('payment_type')
     category_id = request.GET.get('category_id')
     status = request.GET.get('status')
     has_order = request.GET.get('has_order')
@@ -116,6 +117,12 @@ def _apply_receipt_filters(queryset, request):
 
     if payment_method_option_id:
         queryset = queryset.filter(payment_method_option_id=payment_method_option_id)
+
+    if payment_type:
+        queryset = queryset.filter(
+            Q(payment_method_option__legacy_type=payment_type) |
+            Q(payment_method_option__isnull=True, payment_method=payment_type)
+        )
 
     if category_id:
         queryset = queryset.filter(category_id=category_id)
@@ -423,6 +430,7 @@ def api_get_receipts(request):
         'created_at': r.created_at.strftime('%d/%m/%Y %H:%M:%S') if r.created_at else '',
         'status': r.status, 'status_display': r.get_status_display(),
         'payment_method': r.payment_method,
+        'payment_method_legacy_type': r.payment_method_option.legacy_type if r.payment_method_option else r.payment_method,
         'payment_method_option_id': r.payment_method_option_id,
         'payment_method_display': r.get_payment_method_label(),
         'note': r.note or '',
@@ -440,37 +448,55 @@ def api_get_receipts(request):
 @login_required(login_url="/login/")
 def api_receipt_summary(request):
     """Tổng hợp nhanh phiếu thu hoàn thành theo quỹ và phương thức thanh toán."""
-    receipts = Receipt.objects.select_related('cash_book').filter(status=1)
+    receipts = Receipt.objects.select_related('cash_book', 'payment_method_option').filter(status=1)
     receipts = _filter_receipts_for_user(receipts, request)
     receipts = _apply_receipt_filters(receipts, request)
 
     by_cashbook = {}
     by_method = {}
     total_amount = 0
+    receipt_count = 0
 
     for receipt in receipts:
         amount = float(receipt.amount or 0)
         total_amount += amount
+        receipt_count += 1
 
         cashbook_name = receipt.cash_book.name if receipt.cash_book else 'Chưa gán tài khoản'
-        by_cashbook[cashbook_name] = by_cashbook.get(cashbook_name, 0) + amount
+        if cashbook_name not in by_cashbook:
+            by_cashbook[cashbook_name] = {'amount': 0, 'count': 0}
+        by_cashbook[cashbook_name]['amount'] += amount
+        by_cashbook[cashbook_name]['count'] += 1
 
         method_name = receipt.get_payment_method_label()
-        by_method[method_name] = by_method.get(method_name, 0) + amount
+        if method_name not in by_method:
+            by_method[method_name] = {'amount': 0, 'count': 0}
+        by_method[method_name]['amount'] += amount
+        by_method[method_name]['count'] += 1
 
     cashbook_rows = [
-        {'name': name, 'amount': amount}
-        for name, amount in sorted(by_cashbook.items(), key=lambda item: item[1], reverse=True)
+        {
+            'name': name,
+            'amount': values['amount'],
+            'count': values['count'],
+            'percent': round(values['amount'] / total_amount * 100, 2) if total_amount else 0,
+        }
+        for name, values in sorted(by_cashbook.items(), key=lambda item: item[1]['amount'], reverse=True)
     ]
     method_rows = [
-        {'name': name, 'amount': amount}
-        for name, amount in sorted(by_method.items(), key=lambda item: item[1], reverse=True)
+        {
+            'name': name,
+            'amount': values['amount'],
+            'count': values['count'],
+            'percent': round(values['amount'] / total_amount * 100, 2) if total_amount else 0,
+        }
+        for name, values in sorted(by_method.items(), key=lambda item: item[1]['amount'], reverse=True)
     ]
     return JsonResponse({
         'status': 'ok',
         'summary': {
             'total_amount': total_amount,
-            'receipt_count': receipts.count(),
+            'receipt_count': receipt_count,
             'by_cashbook': cashbook_rows,
             'by_method': method_rows,
         }

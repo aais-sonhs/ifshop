@@ -102,6 +102,40 @@ def _build_customer_order_metrics_map(request, customers):
     return metrics
 
 
+def _build_customer_product_history_map(request, customers):
+    """Tập hợp hàng hóa đã mua để lọc khách hàng theo sản phẩm."""
+    customer_ids = list(customers.values_list('id', flat=True))
+    if not customer_ids:
+        return {}
+
+    orders = Order.objects.filter(customer_id__in=customer_ids).exclude(status=6).prefetch_related('items__product')
+    orders = filter_by_store(orders, request)
+    product_map = {}
+    for order in orders:
+        bucket = product_map.setdefault(order.customer_id, {'labels': set(), 'search_parts': set()})
+        for item in order.items.all():
+            product = item.product
+            if not product:
+                continue
+            label = ' - '.join(part for part in [product.code, product.name] if part)
+            if label:
+                bucket['labels'].add(label)
+            bucket['search_parts'].update([
+                str(product.id),
+                product.code or '',
+                product.name or '',
+                getattr(product, 'barcode', '') or '',
+            ])
+
+    return {
+        customer_id: {
+            'names': sorted(data['labels']),
+            'search': ' '.join(sorted(part for part in data['search_parts'] if part)),
+        }
+        for customer_id, data in product_map.items()
+    }
+
+
 @login_required(login_url="/login/")
 @brand_owner_required
 def customer_tbl(request):
@@ -121,9 +155,10 @@ def customer_group_tbl(request):
 @login_required(login_url="/login/")
 def api_get_customers(request):
     """Trả về danh sách khách hàng trong phạm vi store mà user được phép xem."""
-    customers = Customer.objects.select_related('group').all()
+    customers = Customer.objects.select_related('group', 'created_by').all()
     customers = filter_by_store(customers, request)
     metrics_map = _build_customer_order_metrics_map(request, customers)
+    product_history_map = _build_customer_product_history_map(request, customers)
     data = [{
         'id': c.id, 'code': c.code, 'name': c.name,
         'avatar_url': c.avatar.url if c.avatar else '',
@@ -143,6 +178,12 @@ def api_get_customers(request):
         'membership_display': c.get_membership_level_display(),
         'gender': c.gender, 'gender_display': c.get_gender_display(),
         'date_of_birth': c.date_of_birth.strftime('%d/%m/%Y') if c.date_of_birth else '',
+        'created_at': c.created_at.strftime('%Y-%m-%d') if c.created_at else '',
+        'created_at_display': c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
+        'creator_id': c.created_by_id,
+        'creator_name': (c.created_by.get_full_name() or c.created_by.username) if c.created_by else '',
+        'purchased_product_names': product_history_map.get(c.id, {}).get('names', []),
+        'purchased_product_search': product_history_map.get(c.id, {}).get('search', ''),
         'note': c.note or '', 'is_active': c.is_active,
     } for c in customers]
     return JsonResponse({'data': data})

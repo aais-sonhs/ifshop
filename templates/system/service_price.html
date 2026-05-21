@@ -42,6 +42,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function fmtD(n){return fmt(n) + 'đ';}
 $(document).ready(function(){
     loadData();
     $('#btn_add').click(function(){
@@ -61,7 +62,7 @@ $(document).ready(function(){
 function loadData(){
     $.get('/api/service-prices/',function(res){
         var h='';res.data.forEach(function(d,i){
-            h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td class="text-right">'+fmt(d.price)+'</td><td>'+d.unit+'</td>'+
+            h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td class="text-right">'+fmtD(d.price)+'</td><td>'+d.unit+'</td>'+
                 '<td>'+d.description+'</td>'+
                 '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+

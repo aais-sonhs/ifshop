@@ -81,6 +81,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function fmtD(n){return fmt(n) + 'đ';}
 
 // Product data from API (loaded with variants)
 var PRODUCTS = [];
@@ -205,7 +206,7 @@ function addItemRow(data){
         '<td class="text-center item-unit">' + unit + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-qty" value="' + qty + '" min="0.01" step="1"></td>' +
         '<td><input type="number" class="form-control form-control-sm item-unit-price" value="' + unitPrice + '" min="0"></td>' +
-        '<td class="text-right item-total-price">' + fmt(totalPrice) + '</td>' +
+        '<td class="text-right item-total-price">' + fmtD(totalPrice) + '</td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
     $('#items_body').append(html);
@@ -239,7 +240,7 @@ function calcRowTotal(row){
     var qty = parseInt(row.find('.item-qty').val()) || 0;
     var price = parseFloat(row.find('.item-unit-price').val()) || 0;
     var total = qty * price;
-    row.find('.item-total-price').text(fmt(total));
+    row.find('.item-total-price').text(fmtD(total));
     updateTotal();
 }
 
@@ -250,7 +251,7 @@ function updateTotal(){
         var price = parseFloat($(this).find('.item-unit-price').val()) || 0;
         total += qty * price;
     });
-    $('#total_display').text(fmt(total));
+    $('#total_display').text(fmtD(total));
 }
 
 function reindexRows(){
@@ -303,7 +304,7 @@ function loadData(){
 
             h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
                 '<td>'+fmtDt(d.order_date, d.created_at)+'</td><td>'+fmtDt(d.expected_date)+'</td><td class="text-center">'+d.items.length+'</td>'+
-                '<td class="text-right">'+fmt(d.total_amount)+'</td>'+
+                '<td class="text-right">'+fmtD(d.total_amount)+'</td>'+
                 '<td class="text-center">'+statusBadge+'</td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';

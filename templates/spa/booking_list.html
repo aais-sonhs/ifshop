@@ -81,6 +81,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function fmtD(n){return fmt(n) + 'đ';}
 var allServices=[],allStaff=[],allRooms=[],allCustomers=[];
 
 $(document).ready(function(){
@@ -162,7 +163,7 @@ function addItemRow(data){
         '<td><select class="form-control form-control-sm sel-item-staff">'+staffOpts+'</select></td>'+
         '<td><input type="number" class="form-control form-control-sm item-qty" value="'+qty+'" min="1" style="width:60px;"></td>'+
         '<td><input type="number" class="form-control form-control-sm item-price" value="'+price+'"></td>'+
-        '<td class="text-right item-total">'+fmt(qty*price)+'</td>'+
+        '<td class="text-right item-total">'+fmtD(qty*price)+'</td>'+
         '<td><button type="button" class="btn btn-xs btn-danger btn-remove"><i class="fas fa-times"></i></button></td>'+
         '</tr>';
     $('#items_body').append(html);
@@ -175,12 +176,12 @@ function updateTotals(){
         var q=parseInt($(this).find('.item-qty').val())||0;
         var p=parseFloat($(this).find('.item-price').val())||0;
         var t=q*p;
-        $(this).find('.item-total').text(fmt(t));
+        $(this).find('.item-total').text(fmtD(t));
         total+=t;
     });
     var disc=parseFloat($('#inp_discount').val())||0;
-    $('#lbl_total').html('<b>'+fmt(total)+'</b>');
-    $('#lbl_final').html('<b>'+fmt(total-disc)+'</b>');
+    $('#lbl_total').html('<b>'+fmtD(total)+'</b>');
+    $('#lbl_final').html('<b>'+fmtD(total-disc)+'</b>');
     // Estimate commission
     var comm=0;
     $('#items_body tr').each(function(){
@@ -195,7 +196,7 @@ function updateTotals(){
         var p=parseFloat($(this).find('.item-price').val())||0;
         comm+=q*p*rate/100;
     });
-    $('#lbl_commission').text(fmt(Math.round(comm)));
+    $('#lbl_commission').text(fmtD(Math.round(comm)));
 }
 
 $(document).on('click','.btn-remove',function(){$(this).closest('tr').remove();updateTotals();});
@@ -248,7 +249,7 @@ function loadData(){
             h+='<tr><td>'+(i+1)+'</td><td><b>'+d.code+'</b></td><td>'+d.booking_date_display+'</td>'+
                 '<td>'+d.start_time+(d.end_time?' - '+d.end_time:'')+'</td>'+
                 '<td>'+d.customer_name+'</td><td>'+d.staff_name+'</td><td>'+d.room_name+'</td>'+
-                '<td><small>'+svcNames+'</small></td><td class="text-right">'+fmt(d.final_amount)+'</td>'+
+                '<td><small>'+svcNames+'</small></td><td class="text-right">'+fmtD(d.final_amount)+'</td>'+
                 '<td class="text-center"><span class="badge badge-'+statusColors[d.status]+'">'+d.status_display+'</span></td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editBooking('+JSON.stringify(d).replace(/'/g,"\\'")+')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteBooking('+d.id+')">Xóa</button></div></td></tr>';

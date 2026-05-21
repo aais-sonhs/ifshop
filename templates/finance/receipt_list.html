@@ -396,6 +396,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmtD(n){ return fmt(n) + 'đ'; }
 function escapeHtml(value){ return $('<div>').text(value || '').html(); }
 function fmtDt(dateStr, createdAt){
     if(!dateStr) return '';
@@ -827,13 +828,13 @@ function renderLockedReceiptOrder(receipt){
         return;
     }
     var label = (receipt.order || 'Đơn hàng') + ' | ' + (receipt.customer || '') +
-        ' | Tổng: ' + fmt(receipt.order_final_amount || 0) +
-        ' | Còn nợ: ' + fmt(receipt.order_remaining || 0);
+        ' | Tổng: ' + fmt(receipt.order_final_amount || 0) + 'đ' +
+        ' | Còn nợ: ' + fmt(receipt.order_remaining || 0) + 'đ';
     $('#order_section').show();
     $('#inp_order_id').html('<option value="'+receipt.order_id+'" selected>'+escapeHtml(label)+'</option>').val(receipt.order_id);
-    $('#lbl_order_total').text(fmt(receipt.order_final_amount || 0));
-    $('#lbl_order_paid').text(fmt(receipt.order_paid_amount || 0));
-    $('#lbl_order_remaining').text(fmt(receipt.order_remaining || 0));
+    $('#lbl_order_total').text(fmt(receipt.order_final_amount || 0) + 'đ');
+    $('#lbl_order_paid').text(fmt(receipt.order_paid_amount || 0) + 'đ');
+    $('#lbl_order_remaining').text(fmt(receipt.order_remaining || 0) + 'đ');
     $('#order_info').show();
     $('#order_lock_note').show();
     $('#btn_fill_remaining').hide();
@@ -933,7 +934,7 @@ function loadSummary(filteredRows){
     }
 
     $('#lbl_summary_period').text(periodLabel + ' · ' + scopeLabel);
-    $('#receipt_summary_total').text(fmt(analytics.totalAmount));
+    $('#receipt_summary_total').text(fmtD(analytics.totalAmount));
 
     var cashbookHtml = '';
     analytics.byCashbook.forEach(function(row){
@@ -944,7 +945,7 @@ function loadSummary(filteredRows){
                 '<div class="progress mt-1" style="height:4px;"><div class="progress-bar bg-info" style="width:'+pct+'%"></div></div>' +
                 '<small class="text-muted">'+row.count+' phiếu</small>' +
             '</div>' +
-            '<div class="text-right" style="min-width:110px;"><strong>'+fmt(row.amount)+'</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
+            '<div class="text-right" style="min-width:110px;"><strong>'+fmtD(row.amount)+'</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
             '</div>';
     });
     if(!cashbookHtml) cashbookHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
@@ -955,7 +956,7 @@ function loadSummary(filteredRows){
         var pct = analytics.totalAmount ? Math.round(row.amount / analytics.totalAmount * 100) : 0;
         methodHtml += '<div class="d-flex justify-content-between align-items-center small py-1 border-bottom">' +
             '<span class="text-truncate pr-2">'+escapeHtml(row.name)+'</span>' +
-            '<div class="text-right"><strong>'+fmt(row.amount)+'</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
+            '<div class="text-right"><strong>'+fmtD(row.amount)+'</strong> <span class="badge badge-light">'+pct+'%</span></div>' +
             '</div>';
     });
     if(!methodHtml) methodHtml = '<span class="text-muted small">Chưa có dữ liệu.</span>';
@@ -983,10 +984,10 @@ function renderAnalysis(filteredRows){
     }
 
     $('#analysis_period_label').text(periodText + ' · ' + scopeText);
-    $('#analysis_total_amount').text(fmt(analytics.totalAmount));
+    $('#analysis_total_amount').text(fmtD(analytics.totalAmount));
     $('#analysis_receipt_count').text(fmt(analytics.receiptCount));
     $('#analysis_cashbook_count').text(fmt(analytics.cashbookCount));
-    $('#analysis_avg_amount').text(fmt(analytics.avgAmount));
+    $('#analysis_avg_amount').text(fmtD(analytics.avgAmount));
 
     var cashbookHtml = '';
     analytics.byCashbook.forEach(function(row, idx){
@@ -1217,9 +1218,9 @@ $(document).ready(function(){
         if(!orderId){ $('#order_info').hide(); return; }
         var order = allOrders.find(function(item){ return item.id == orderId; });
         if(order){
-            $('#lbl_order_total').text(fmt(order.final_amount));
-            $('#lbl_order_paid').text(fmt(order.paid_amount));
-            $('#lbl_order_remaining').text(fmt(order.remaining));
+            $('#lbl_order_total').text(fmt(order.final_amount) + 'đ');
+            $('#lbl_order_paid').text(fmt(order.paid_amount) + 'đ');
+            $('#lbl_order_remaining').text(fmt(order.remaining) + 'đ');
             $('#order_info').show();
             if(!$('#inp_customer_id').val() && order.customer_id){
                 $('#inp_customer_id').val(order.customer_id);

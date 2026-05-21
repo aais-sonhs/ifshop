@@ -1217,14 +1217,14 @@ function loadData(done){
                 ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" class="img-thumbnail product-zoom-img" onclick="openImageZoom(this.src)" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'" title="Click để phóng to">'
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
-            var costDisplay = fmt(d.cost_price);
+            var costDisplay = fmt(d.cost_price) + 'đ';
             var costTooltip = 'Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại.\nVí dụ tồn 300 = 150c giá A + 50c giá B + 100c giá C rồi chia 300.';
             if(d.cost_price_stored && d.cost_price !== d.cost_price_stored){
-                costTooltip += '\n(Giá vốn DB dự phòng: ' + fmt(d.cost_price_stored) + ')';
+                costTooltip += '\n(Giá vốn DB dự phòng: ' + fmt(d.cost_price_stored) + 'đ)';
             }
-            var importDisplay = '<div class="font-weight-bold">'+fmt(d.import_price)+'</div>';
-            var wsNoWDisplay = fmt(d.wholesale_price_no_warranty);
-            var wsWDisplay = fmt(d.wholesale_price_warranty);
+            var importDisplay = '<div class="font-weight-bold">'+fmt(d.import_price)+'đ</div>';
+            var wsNoWDisplay = fmt(d.wholesale_price_no_warranty) + 'đ';
+            var wsWDisplay = fmt(d.wholesale_price_warranty) + 'đ';
             if(d.variants && d.variants.length > 0){
                 var imports = d.variants.map(function(v){return v.import_price;});
                 var wsNoWs = d.variants.map(function(v){return v.wholesale_price_no_warranty || 0;});
@@ -1232,10 +1232,10 @@ function loadData(done){
                 var minImport = Math.min.apply(null, imports), maxImport = Math.max.apply(null, imports);
                 var minWsNoW = Math.min.apply(null, wsNoWs), maxWsNoW = Math.max.apply(null, wsNoWs);
                 var minWsW = Math.min.apply(null, wsWs), maxWsW = Math.max.apply(null, wsWs);
-                importDisplay = minImport === maxImport ? fmt(minImport) : fmt(minImport) + ' ~ ' + fmt(maxImport);
-                wsNoWDisplay = minWsNoW === maxWsNoW ? fmt(minWsNoW) : fmt(minWsNoW) + ' ~ ' + fmt(maxWsNoW);
-                wsWDisplay = minWsW === maxWsW ? fmt(minWsW) : fmt(minWsW) + ' ~ ' + fmt(maxWsW);
-                costDisplay = fmt(d.cost_price);
+                importDisplay = minImport === maxImport ? fmt(minImport) + 'đ' : fmt(minImport) + 'đ ~ ' + fmt(maxImport) + 'đ';
+                wsNoWDisplay = minWsNoW === maxWsNoW ? fmt(minWsNoW) + 'đ' : fmt(minWsNoW) + 'đ ~ ' + fmt(maxWsNoW) + 'đ';
+                wsWDisplay = minWsW === maxWsW ? fmt(minWsW) + 'đ' : fmt(minWsW) + 'đ ~ ' + fmt(maxWsW) + 'đ';
+                costDisplay = fmt(d.cost_price) + 'đ';
             }
             if(d.latest_purchase && d.latest_purchase.receipt_date){
                 importDisplay += '<small class="text-muted d-block">Cập nhật: '+escapeHtml(d.latest_purchase.receipt_date)+'</small>';
@@ -1835,12 +1835,12 @@ function viewCombo(d){
                 '<td>'+ci.product_code+' - '+ci.product_name+'</td>'+
                 '<td class="text-center">'+typeB+'</td>'+
                 '<td class="text-center">'+ci.quantity+'</td>'+
-                '<td class="text-right">'+fmt(ci.selling_price)+'</td>'+
-                '<td class="text-right">'+fmt(lt)+'</td>'+
+                '<td class="text-right">'+fmt(ci.selling_price)+'đ</td>'+
+                '<td class="text-right">'+fmt(lt)+'đ</td>'+
                 '<td></td></tr>'
             );
         });
-        $('#combo_total_retail').text(fmt(total));
+        $('#combo_total_retail').text(fmt(total) + 'đ');
         var savings = total - d.selling_price;
         $('#combo_savings').text(savings > 0 ? fmt(savings) + 'đ' : '0');
     }
@@ -1891,8 +1891,8 @@ function addComboItemRow(data){
         '<td><select class="form-control form-control-sm combo-product">'+opts+'</select></td>' +
         '<td class="combo-type text-center">'+typeLabel+'</td>' +
         '<td><input type="number" class="form-control form-control-sm combo-qty" value="'+qty+'" min="0.01" step="1"></td>' +
-        '<td class="text-right combo-price">'+fmt(price)+'</td>' +
-        '<td class="text-right combo-line-total">'+fmt(lineTotal)+'</td>' +
+        '<td class="text-right combo-price">'+fmt(price)+'đ</td>' +
+        '<td class="text-right combo-line-total">'+fmt(lineTotal)+'đ</td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-combo"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
     $('#combo_body').append(html);
@@ -1901,7 +1901,7 @@ function addComboItemRow(data){
         var $opt = $(this).find('option:selected');
         var price = parseFloat($opt.data('price')) || 0;
         var isService = $opt.data('service') == 1;
-        $row.find('.combo-price').text(fmt(price));
+        $row.find('.combo-price').text(fmt(price) + 'đ');
         $row.find('.combo-type').html(isService ? '<span class="badge badge-secondary">Dịch vụ</span>' : '<span class="badge badge-primary">Vật lý</span>');
         calcComboLineTotal($row);
     });
@@ -1917,7 +1917,7 @@ function addComboItemRow(data){
 function calcComboLineTotal($row){
     var qty = parseFloat($row.find('.combo-qty').val()) || 0;
     var price = parseFloat($row.find('.combo-product option:selected').data('price')) || 0;
-    $row.find('.combo-line-total').text(fmt(qty * price));
+    $row.find('.combo-line-total').text(fmt(qty * price) + 'đ');
     calcComboTotal();
 }
 
@@ -1928,7 +1928,7 @@ function calcComboTotal(){
         var price = parseFloat($(this).find('.combo-product option:selected').data('price')) || 0;
         total += qty * price;
     });
-    $('#combo_total_retail').text(fmt(total));
+    $('#combo_total_retail').text(fmt(total) + 'đ');
     var comboPrice = parseFloat($('#inp_selling_price').val()) || 0;
     var savings = total - comboPrice;
     $('#combo_savings').text(savings > 0 ? fmt(savings) + 'đ' : '0');

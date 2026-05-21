@@ -172,8 +172,9 @@ function renderTable(){
         tOrders += d.order_count;
         tRevenue += d.total_purchased;
         tDebt += d.total_debt;
-        var debtStyle = d.total_debt > 0 ? 'color:#dc3545;font-weight:bold;' : '';
-        var rowStyle = d.total_debt > 0 ? ' style="background:#fff3e0;"' : '';
+        var debtValue = Number(d.total_debt || 0);
+        var debtStyle = debtValue > 0 ? 'color:#dc3545;font-weight:bold;' : (debtValue < 0 ? 'color:#28a745;font-weight:bold;' : '');
+        var rowStyle = debtValue > 0 ? ' style="background:#fff3e0;"' : '';
         h += '<tr'+rowStyle+'>';
         h += '<td>'+(i+1)+'</td>';
         h += '<td>'+d.code+'</td>';
@@ -186,7 +187,7 @@ function renderTable(){
         h += '<td>'+d.group+'</td>';
         h += '<td class="text-center">'+d.order_count+'</td>';
         h += '<td class="text-right"><strong>'+fmtD(d.total_purchased)+'</strong></td>';
-        h += '<td class="text-right" style="'+debtStyle+'">'+(d.total_debt > 0 ? fmtD(d.total_debt) : '<span class="text-muted">0</span>')+'</td>';
+        h += '<td class="text-right" style="'+debtStyle+'">'+(debtValue !== 0 ? fmtD(debtValue) : '<span class="text-muted">0đ</span>')+'</td>';
         h += '<td>'+d.last_order_date+'</td>';
         h += '</tr>';
     });

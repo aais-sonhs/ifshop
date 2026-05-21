@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load order_format %}
 {% block content %}
 <div class="card">
     <div class="card-header">
@@ -32,7 +33,7 @@
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div></div>
-                    <div class="col-md-6"><div class="form-group"><label>Phiếu nhập hàng</label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Không liên kết --</option>{% for g in goods_receipts %}<option value="{{ g.id }}" data-amount="{{ g.total_amount }}">{{ g.code }} - {{ g.supplier__name|default:"" }} ({{ g.total_amount|floatformat:0 }}đ)</option>{% endfor %}</select></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Phiếu nhập hàng</label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Không liên kết --</option>{% for g in goods_receipts %}<option value="{{ g.id }}" data-amount="{{ g.total_amount }}">{{ g.code }} - {{ g.supplier__name|default:"" }} ({{ g.total_amount|money_vnd }}đ)</option>{% endfor %}</select></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Quỹ</label><select class="form-control form-control-sm" id="inp_cash_book_id"><option value="">-- Chọn --</option>{% for c in cashbooks %}<option value="{{ c.id }}" data-balance="{{ c.balance }}">{{ c.name }}</option>{% endfor %}</select><small class="text-muted" id="lbl_balance"></small></div></div>
@@ -57,6 +58,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function fmtD(n){return fmt(n) + 'đ';}
 $(document).ready(function(){
     loadData();
 
@@ -134,7 +136,7 @@ function loadData(){
             var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
             h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
-                '<td class="text-right">'+fmt(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
+                '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
                 '<td>'+d.status_display+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';

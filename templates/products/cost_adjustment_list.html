@@ -12,7 +12,8 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function fmtD(n){return fmt(n) + 'đ';}
 $(document).ready(function(){loadData();});
-function loadData(){$.get('/api/cost-adjustments/',function(res){var h='';res.data.forEach(function(d,i){h+='<tr><td>'+(i+1)+'</td><td>'+d.product+'</td><td>'+d.product_code+'</td><td class="text-right">'+fmt(d.old_cost)+'</td><td class="text-right">'+fmt(d.new_cost)+'</td><td>'+d.reason+'</td><td>'+d.adjusted_by+'</td><td>'+d.adjusted_at+'</td></tr>';});$('#data_tbl tbody').html(h);});}
+function loadData(){$.get('/api/cost-adjustments/',function(res){var h='';res.data.forEach(function(d,i){h+='<tr><td>'+(i+1)+'</td><td>'+d.product+'</td><td>'+d.product_code+'</td><td class="text-right">'+fmtD(d.old_cost)+'</td><td class="text-right">'+fmtD(d.new_cost)+'</td><td>'+d.reason+'</td><td>'+d.adjusted_by+'</td><td>'+d.adjusted_at+'</td></tr>';});$('#data_tbl tbody').html(h);});}
 </script>
 {% endblock %}

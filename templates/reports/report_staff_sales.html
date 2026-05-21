@@ -396,7 +396,7 @@ function loadReport(){
             html += '<td class="text-right">'+(d.returns_amount > 0 ? '<span class="text-danger">'+fmtD(d.returns_amount)+'</span>' : '-')+'</td>';
             html += '<td class="text-right"><strong>'+fmtD(d.net_revenue)+'</strong></td>';
             html += '<td class="text-right">'+(d.bonus > 0 ? '<span class="text-info">'+fmtD(d.bonus)+'</span>' : '-')+'</td>';
-            html += '<td class="text-right">'+(d.debt > 0 ? '<span class="text-danger">'+fmtD(d.debt)+'</span>' : '<span class="text-success">0đ</span>')+'</td>';
+            html += '<td class="text-right">'+(d.debt !== 0 ? '<span class="'+(d.debt > 0 ? 'text-danger' : 'text-success')+'">'+fmtD(d.debt)+'</span>' : '<span class="text-muted">0đ</span>')+'</td>';
             html += '<td class="text-right">'+fmtD(d.paid)+'</td>';
             // Contribution bar
             html += '<td class="text-center">';

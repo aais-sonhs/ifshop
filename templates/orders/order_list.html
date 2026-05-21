@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load order_format %}
 {% block content %}
 <div class="card">
     <div class="card-header">
@@ -120,7 +121,7 @@
                                 <select class="form-control form-control-sm select2" id="inp_quotation_id" style="width:60%">
                                     <option value="">-- Không sử dụng báo giá --</option>
                                     {% for q in quotations %}
-                                    <option value="{{ q.id }}">{{ q.code }} — {{ q.customer__name|default:'Chưa có KH' }} — {{ q.final_amount|floatformat:0 }}đ</option>
+                                    <option value="{{ q.id }}">{{ q.code }} — {{ q.customer__name|default:'Chưa có KH' }} — {{ q.final_amount|money_vnd }}đ</option>
                                     {% endfor %}
                                 </select>
                                 <button type="button" class="btn btn-sm btn-outline-primary ml-2" id="btn_load_quotation" style="display:none;">
@@ -2547,13 +2548,13 @@ function loadPaymentHistory(orderId, paidAmount, finalAmount){
             if(r.status === 1) totalPaid += r.amount;
             h += '<tr><td><small>'+r.code+'</small></td><td><small>'+r.receipt_date+'</small></td>' +
                 '<td><small>'+r.payment_method_display+'</small></td>' +
-                '<td class="text-right"><small><strong>'+fmt(r.amount)+'</strong></small></td>' +
+                '<td class="text-right"><small><strong>'+fmt(r.amount)+'đ</strong></small></td>' +
                 '<td>'+statusBadge+'</td></tr>';
         });
         $('#payment_history_tbl tbody').html(h);
         $('#payment_history_section').data('paid-total', totalPaid);
         var remaining = (finalAmount || 0) - totalPaid;
-        $('#lbl_paid_total').html('Đã thu: ' + fmt(totalPaid) + (remaining > 0 ? ' · <span class="text-warning">Còn: '+fmt(remaining)+'</span>' : ''));
+        $('#lbl_paid_total').html('Đã thu: ' + fmt(totalPaid) + 'đ' + (remaining > 0 ? ' · <span class="text-warning">Còn: '+fmt(remaining)+'đ</span>' : ''));
         $('#payment_history_section').show();
     });
 }
@@ -3472,7 +3473,7 @@ function addItemRow(item){
             '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
             '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
-            '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'</td>' +
+            '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>' +
             '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td>' +
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
@@ -3497,7 +3498,7 @@ function addItemRow(item){
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
-        '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'</td>'+
+        '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
         '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
     $('#items_tbl tbody').append(html);
     var $row=$('#items_tbl tbody tr:last');
@@ -3589,7 +3590,7 @@ function calcLine($row){
     var qty=parseFloat($row.find('.inp_qty').val())||0;
     var price=getMoneyValue($row.find('.inp_price'))||0;
     var disc=parseFloat($row.find('.inp_disc').val())||0;
-    $row.find('.lbl_line_total').text(fmt(qty*price*(1-disc/100)));
+    $row.find('.lbl_line_total').text(fmt(qty*price*(1-disc/100)) + 'đ');
     calcTotal();
 }
 
@@ -3614,8 +3615,8 @@ function calcTotal(){
     var discount=getMoneyValue('#inp_discount_amount');
     var shippingFee=getMoneyValue('#inp_shipping_fee');
     var finalAmount = Math.max(total-discount+shippingFee, 0);
-    $('#lbl_total').text(fmt(total));
-    $('#lbl_final').text(fmt(finalAmount));
+    $('#lbl_total').text(fmt(total) + 'đ');
+    $('#lbl_final').text(fmt(finalAmount) + 'đ');
     // Show/hide cost warning
     if(hasLossItem){ $('#cost_warning_row').show(); } else { $('#cost_warning_row').hide(); }
     syncDuplicateWarnings();
@@ -3820,7 +3821,7 @@ function loadData(){
                 orderColConfig.td('created_at', escapeHtml(d.created_at || ''))+
                 orderColConfig.td('creator', escapeHtml(d.creator_name || ''))+
                 orderColConfig.td('products', escapeHtml(d.product_display || ''))+
-                orderColConfig.td('total', fmt(d.final_amount), 'class="text-right"')+
+                orderColConfig.td('total', fmt(d.final_amount) + 'đ', 'class="text-right"')+
                 orderColConfig.td('payment', paymentHtml)+
                 orderColConfig.td('payment_method', escapeHtml(d.payment_method_display || ''))+
                 orderColConfig.td('status', statusHtml)+

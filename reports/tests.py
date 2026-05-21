@@ -45,15 +45,15 @@ class SalesReportTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['status'], 'error')
 
-    def test_api_report_sales_rejects_brand_owner_without_sales_report_role(self):
-        owner = User.objects.create_user(username='owner_without_sales_report_role', password='pass123')
-        Brand.objects.create(name='Owner Without Sales Report Role', owner=owner)
+    def test_api_report_sales_allows_brand_owner(self):
+        owner = User.objects.create_user(username='owner_sales_report', password='pass123')
+        Brand.objects.create(name='Owner Sales Report Role', owner=owner)
         self.client.force_login(owner)
 
         response = self.client.get(reverse('api_report_sales'))
 
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['status'], 'error')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
 
     def test_api_report_sales_allows_director_position(self):
         director = User.objects.create_user(username='director_report', password='pass123')

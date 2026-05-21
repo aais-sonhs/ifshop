@@ -147,13 +147,13 @@ def _normalize_role_text(value):
 
 def can_view_sales_report(user):
     """
-    Báo cáo bán hàng chỉ dành cho tài khoản Giám đốc / Kế toán.
-
-    Brand owner vẫn có quyền quản trị nghiệp vụ chung, nhưng riêng báo cáo bán
-    hàng là dữ liệu nhạy cảm nên phải được gán rõ chức vụ/nhóm phù hợp.
+    Báo cáo bán hàng dành cho chủ thương hiệu hoặc tài khoản Giám đốc / Kế toán.
     """
     if not user or not user.is_authenticated or user.is_superuser:
         return False
+
+    if is_brand_owner(user):
+        return True
 
     labels = list(user.groups.values_list('name', flat=True))
     try:

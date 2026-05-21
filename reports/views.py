@@ -127,12 +127,12 @@ def _get_product_category_direct_q(category_id, prefix):
 
 
 def sales_report_privileged_required(view_func):
-    """Báo cáo bán hàng chỉ cho Giám đốc / Kế toán."""
+    """Báo cáo bán hàng chỉ cho Chủ thương hiệu / Giám đốc / Kế toán."""
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         if can_view_sales_report(request.user):
             return view_func(request, *args, **kwargs)
-        message = 'Chỉ tài khoản Giám đốc hoặc Kế toán mới được xem báo cáo bán hàng.'
+        message = 'Chỉ tài khoản Chủ thương hiệu, Giám đốc hoặc Kế toán mới được xem báo cáo bán hàng.'
         if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'status': 'error', 'message': message}, status=403)
         messages.error(request, message)

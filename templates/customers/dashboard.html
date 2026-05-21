@@ -14,6 +14,50 @@
 </div>
 <section class="content">
 <div class="container-fluid">
+    <style>
+        #kpi_cards .small-box {
+            min-height: 112px;
+            overflow: hidden;
+        }
+        #kpi_cards .small-box .inner {
+            position: relative;
+            z-index: 2;
+            padding-right: 56px;
+        }
+        #kpi_cards .small-box .inner h3 {
+            display: block;
+            max-width: 100%;
+            margin-bottom: 6px;
+            font-size: clamp(24px, 2.1vw, 32px);
+            line-height: 1.08;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 0;
+        }
+        #kpi_cards .small-box .inner p {
+            margin-bottom: 0;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        #kpi_cards .small-box .icon {
+            right: 8px;
+            top: 10px;
+            opacity: .28;
+            z-index: 1;
+        }
+        #kpi_cards .small-box .icon i {
+            font-size: 52px;
+        }
+        @media (max-width: 575.98px) {
+            #kpi_cards .small-box .inner {
+                padding-right: 48px;
+            }
+            #kpi_cards .small-box .inner h3 {
+                font-size: 28px;
+            }
+        }
+    </style>
 
     <!-- KPI Cards -->
     <div class="row" id="kpi_cards">
@@ -126,15 +170,30 @@ function fmtShort(n){
     if(abs >= 1e3) return sign + fmt(abs / 1e3) + 'k';
     return sign + fmt(abs);
 }
+function fmtCompactMoney(n){
+    n = Number(n || 0);
+    var sign = n < 0 ? '-' : '';
+    var abs = Math.abs(n);
+    function compact(value){
+        var rounded = Math.round(value * 10) / 10;
+        return rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1);
+    }
+    if(abs >= 1e9) return sign + compact(abs / 1e9) + 'tỷ';
+    if(abs >= 1e6) return sign + compact(abs / 1e6) + 'tr';
+    return fmtD(n);
+}
+function setKpiMoney(selector, value){
+    $(selector).text(fmtCompactMoney(value)).attr('title', fmtD(value));
+}
 function loadDashboard(){
     $.get('/api/dashboard/', function(res){
         if(res.status!=='ok') return;
         var k = res.kpi;
-        $('#kpi_revenue').text(fmtD(k.revenue));
-        $('#kpi_profit').text(fmtD(k.profit));
+        setKpiMoney('#kpi_revenue', k.revenue);
+        setKpiMoney('#kpi_profit', k.profit);
         $('#kpi_orders').text(fmt(k.orders));
-        $('#kpi_debt').text(fmtD(k.debt));
-        $('#kpi_paid').text(fmtD(k.paid));
+        setKpiMoney('#kpi_debt', k.debt);
+        setKpiMoney('#kpi_paid', k.paid);
         $('#kpi_customers').text(fmt(k.new_customers));
 
         // Chart

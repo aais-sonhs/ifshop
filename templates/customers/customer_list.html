@@ -52,6 +52,7 @@
                     <option value="">-- Hành vi mua hàng --</option>
                     <option value="has_purchase">Đã mua hàng</option>
                     <option value="no_purchase">Chưa mua hàng</option>
+                    <option value="unpaid">Có đơn chưa thanh toán</option>
                     <option value="has_debt">Có công nợ</option>
                     <option value="no_debt">Không công nợ</option>
                 </select>
@@ -266,6 +267,7 @@
                                     <button class="btn btn-outline-primary active" data-status="">Tất cả</button>
                                     <button class="btn btn-outline-primary" data-status="active">Đang xử lý</button>
                                     <button class="btn btn-outline-primary" data-status="5">Hoàn thành</button>
+                                    <button class="btn btn-outline-primary" data-status="unpaid">Chưa thanh toán</button>
                                     <button class="btn btn-outline-primary" data-status="6">Đã hủy</button>
                                     <button class="btn btn-outline-primary" data-status="debt">Còn nợ</button>
                                 </div>
@@ -317,6 +319,8 @@
 .customer-order-items{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
 .customer-order-items .badge{font-weight:normal;}
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
+.customer-product-match-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.customer-product-match{display:block;border:1px solid #bee5eb;background:#f0fbff;border-radius:4px;padding:4px 6px;font-size:12px;line-height:1.35;}
 </style>
 {% endblock %}
 
@@ -431,6 +435,38 @@ function customerMatchesPurchaseFilters(customer, filters, productKeyword){
     return items.some(function(item){
         return isCustomerPurchaseMatch(item, productKeyword, priceFrom, priceTo, priceBasis);
     });
+}
+
+function getCustomerMatchingPurchaseItems(customer, filters, productKeyword){
+    var priceBasis = filters.purchase_price_basis || 'unit_price';
+    var priceFrom = parseFloat(filters.purchase_price_from) || 0;
+    var priceTo = filters.purchase_price_to ? parseFloat(filters.purchase_price_to) : Infinity;
+    var hasPriceFilter = priceFrom > 0 || priceTo < Infinity;
+    if(!productKeyword && !hasPriceFilter) return [];
+    return (customer.purchase_filter_items || []).filter(function(item){
+        return isCustomerPurchaseMatch(item, productKeyword, priceFrom, priceTo, priceBasis);
+    });
+}
+
+function buildCustomerPurchaseMatchHtml(customer, filters, productKeyword){
+    var matches = getCustomerMatchingPurchaseItems(customer, filters, productKeyword);
+    if(!matches.length) return '';
+    var priceBasis = filters.purchase_price_basis || 'unit_price';
+    var html = '<div class="customer-product-match-list">';
+    matches.slice(0, 3).forEach(function(item){
+        var priceValue = getPurchaseFilterPriceValue(item, priceBasis);
+        html += '<span class="customer-product-match">' +
+            '<strong>' + escapeHtml(item.product_code || 'DV') + '</strong> — ' + escapeHtml(item.product_name || 'Hàng hóa') +
+            '<br><span class="text-muted">SL ' + fmt(item.quantity || 0) + ' ' + escapeHtml(item.unit || '') +
+            ' · ' + escapeHtml(getHistoryPriceBasisLabel(priceBasis)) + ': ' + fmt(priceValue) + 'đ' +
+            ' · Đơn ' + escapeHtml(item.order_code || '') + (item.order_date ? ' ngày ' + escapeHtml(item.order_date) : '') +
+            '</span></span>';
+    });
+    if(matches.length > 3){
+        html += '<small class="text-info">+' + (matches.length - 3) + ' dòng mua khớp bộ lọc</small>';
+    }
+    html += '</div>';
+    return html;
 }
 
 function isHistoryItemMatch(it, product, priceFrom, priceTo, priceBasis){
@@ -557,6 +593,7 @@ function filterCustomers(list){
         if(!customerMatchesPurchaseFilters(d, filters, productKeyword)) return false;
         if(filters.debt === 'has_purchase' && Number(d.total_purchased || 0) <= 0) return false;
         if(filters.debt === 'no_purchase' && Number(d.total_purchased || 0) > 0) return false;
+        if(filters.debt === 'unpaid' && Number(d.unpaid_order_count || 0) <= 0) return false;
         if(filters.debt === 'has_debt' && Number(d.total_debt || 0) <= 0) return false;
         if(filters.debt === 'no_debt' && Number(d.total_debt || 0) > 0) return false;
         return true;
@@ -1094,6 +1131,8 @@ function loadData(){
 }
 
 function renderTable(){
+    var filters = getCurrentCustomerFilters();
+    var productKeyword = normalizeCustomerText(filters.product);
     var filtered = filterCustomers(allCustomers);
     var h = '';
     filtered.forEach(function(d, i){
@@ -1105,6 +1144,7 @@ function renderTable(){
         if(d.company){
             nameHtml += '<small class="text-muted">'+escapeHtml(d.company)+'</small>';
         }
+        nameHtml += buildCustomerPurchaseMatchHtml(d, filters, productKeyword);
         var groupHtml = d.group ? '<span class="badge badge-light border">'+escapeHtml(d.group)+'</span>' : '<span class="text-muted">--</span>';
         var actionsHtml = '<div class="btn-action-group"><button class="btn btn-xs btn-outline-primary btn-toggle-orders" onclick="toggleCustomerOrders('+d.id+', this)" title="Xem nhanh đơn gần đây">Xem nhanh</button> '+
             '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng">Lịch sử</button> '+
@@ -1222,8 +1262,9 @@ function renderHistoryTable(){
         // Status filter
         if(statusTab === 'active' && (o.status === 5 || o.status === 6)) return false;
         if(statusTab === '5' && o.status !== 5) return false;
+        if(statusTab === 'unpaid' && (o.status === 6 || o.payment_status !== 0)) return false;
         if(statusTab === '6' && o.status !== 6) return false;
-        if(statusTab === 'debt' && o.debt <= 0) return false;
+        if(statusTab === 'debt' && (o.status === 6 || o.debt <= 0)) return false;
 
         // Date filter
         if(dateFrom && o.order_date_raw < dateFrom) return false;

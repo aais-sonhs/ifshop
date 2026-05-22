@@ -715,9 +715,14 @@ def api_get_products(request):
                 'product_id': ci.product_id,
                 'product_code': ci.product.code if ci.product else '',
                 'product_name': ci.product.name if ci.product else '',
+                'product_image': ci.product.image.url if ci.product and ci.product.image else '',
+                'unit': ci.product.unit if ci.product else '',
                 'is_service': ci.product.is_service if ci.product else False,
                 'quantity': float(ci.quantity),
+                'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())) if ci.product else 0,
+                'cost_price': float(ci.product.cost_price) if ci.product else 0,
                 'selling_price': float(ci.product.selling_price) if ci.product else 0,
+                'line_total': float(ci.quantity * ci.product.selling_price) if ci.product else 0,
             } for ci in p.combo_items.select_related('product').all()]
 
         combo_parents = []

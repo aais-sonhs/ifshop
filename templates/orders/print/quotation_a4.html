@@ -5,7 +5,7 @@
 {% block content %}
 <div class="invoice">
     <div class="inv-header">
-        {% if print_template.show_brand_info and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        {% if print_template.show_brand_logo and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="company">
             <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
             {% if print_template.show_brand_info %}
@@ -48,11 +48,12 @@
         <thead>
             <tr style="background:#e65100;">
                 <th style="width:5%">STT</th>
-                <th style="width:40%">Sản phẩm</th>
+                {% if print_template.show_product_images %}<th style="width:8%" class="text-center">Ảnh</th>{% endif %}
+                <th>Sản phẩm</th>
                 <th style="width:10%" class="text-center">ĐVT</th>
                 <th style="width:10%" class="text-right">SL</th>
-                <th style="width:15%" class="text-right">Đơn giá</th>
-                <th style="width:5%" class="text-center">CK%</th>
+                {% if print_template.show_unit_price %}<th style="width:15%" class="text-right">Đơn giá</th>{% endif %}
+                {% if print_template.show_discount %}<th style="width:5%" class="text-center">CK%</th>{% endif %}
                 <th style="width:15%" class="text-right">Thành tiền</th>
             </tr>
         </thead>
@@ -60,11 +61,26 @@
         {% for item in items %}
             <tr>
                 <td class="text-center">{{ forloop.counter }}</td>
-                <td><strong>{{ item.product.code }}</strong> — {{ item.product.name }}</td>
-                <td class="text-center">{{ item.product.unit }}</td>
+                {% if print_template.show_product_images %}
+                <td class="text-center">
+                    {% if item.product and item.product.image %}
+                    <img class="product-thumb" src="{{ item.product.image.url }}" alt="">
+                    {% else %}
+                    <span class="product-thumb-placeholder">Không ảnh</span>
+                    {% endif %}
+                </td>
+                {% endif %}
+                <td>
+                    {% if print_template.show_product_code %}<strong>{{ item.display_code }}</strong> — {% endif %}{{ item.display_name }}
+                    {% if print_template.show_item_note %}
+                        {% if item.note %}<div class="item-note">{{ item.note }}</div>
+                        {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right">{{ item.quantity|qty_vn }}</td>
-                <td class="text-right">{{ item.unit_price|money_vnd }}</td>
-                <td class="text-center">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}{% endif %}</td>
+                {% if print_template.show_unit_price %}<td class="text-right">{{ item.unit_price|money_vnd }}</td>{% endif %}
+                {% if print_template.show_discount %}<td class="text-center">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}{% endif %}</td>{% endif %}
                 <td class="text-right"><strong>{{ item.total_price|money_vnd }}</strong></td>
             </tr>
         {% endfor %}
@@ -73,19 +89,20 @@
 
     <div class="inv-totals">
         <div class="row"><span>Tổng cộng:</span><span>{{ order.total_amount|money_vnd }}đ</span></div>
-        {% if order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
-        {% if order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_discount and order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_shipping_fee and order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_tax and order.tax_amount %}<div class="row"><span>Thuế:</span><span>{{ order.tax_amount|money_vnd }}đ</span></div>{% endif %}
         <div class="row grand" style="color:#e65100;border-color:#e65100;"><span>TỔNG BÁO GIÁ:</span><span>{{ order.final_amount|money_vnd }}đ</span></div>
     </div>
 
-    {% if order.note %}<div class="inv-note"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
+    {% if print_template.show_order_note and order.note %}<div class="inv-note"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
 
-    {% if print_template.terms %}
+    {% if print_template.show_terms and print_template.terms %}
     <div class="inv-note" style="margin-top:16px; background:#fff3e0;">
         <strong>Điều khoản:</strong><br>
         {{ print_template.terms|linebreaksbr }}
     </div>
-    {% else %}
+    {% elif print_template.show_terms %}
     <div class="inv-note" style="margin-top:16px; background:#fff3e0;">
         <strong>Điều khoản:</strong><br>
         • Báo giá có hiệu lực {% if valid_until %}đến {{ valid_until|date:"d/m/Y" }}{% else %}30 ngày kể từ ngày lập{% endif %}.<br>

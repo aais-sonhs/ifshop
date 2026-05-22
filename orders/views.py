@@ -11,7 +11,7 @@ from django.db import transaction, IntegrityError
 from django.db.models import Prefetch, Q
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
-    Packaging, OrderEditHistory,
+    OrderReturnItem, Packaging, OrderEditHistory,
 )
 from customers.models import Customer
 from products.models import Product, Warehouse, ProductStock, ProductVariant
@@ -610,6 +610,21 @@ def _next_payment_code(base_code, exclude_id=None):
     return payment_code
 
 
+def _auto_next_order_return_code():
+    prefix = 'TH-'
+    max_num = 0
+    for code in OrderReturn.all_objects.filter(code__istartswith='TH').values_list('code', flat=True):
+        match = re.match(r'^TH-?(\d+)$', (code or '').strip(), re.IGNORECASE)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    next_num = max_num + 1
+    while True:
+        candidate = f'{prefix}{next_num:03d}'
+        if not OrderReturn.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
+
+
 def _adjust_refund_cashbook(cash_book_id, amount_delta, validate_non_negative=False):
     if not cash_book_id:
         return None
@@ -628,7 +643,7 @@ def _adjust_refund_cashbook(cash_book_id, amount_delta, validate_non_negative=Fa
 
 def _create_completed_receipt_for_order(order, actor, amount, payment_method=2,
                                         payment_method_option_id=None, cash_book_id=None,
-                                        base_code=None, description_suffix='tự động'):
+                                        base_code=None, description_suffix='tự động', receipt_date=None):
     """Tạo phiếu thu hoàn thành cho đơn hàng và áp hiệu ứng sổ quỹ ngay lập tức."""
     amount = Decimal(str(amount or 0))
     if amount <= 0:
@@ -656,7 +671,7 @@ def _create_completed_receipt_for_order(order, actor, amount, payment_method=2,
         order=order,
         amount=amount,
         description=f'Thu tiền đơn hàng {order.code} ({description_suffix})',
-        receipt_date=order.order_date or date.today(),
+        receipt_date=receipt_date or order.order_date or date.today(),
         status=1,
         payment_method=payment_method,
         payment_method_option=selected_method,
@@ -780,6 +795,21 @@ def _completion_block_message(order, payment_status=None, exported_status=None):
     if missing:
         return 'Chỉ được hoàn thành đơn hàng sau khi đã ' + ' và '.join(missing) + '.'
     return ''
+
+
+def _order_workflow_payload(order):
+    remaining = max(_to_decimal(order.final_amount) - _to_decimal(order.paid_amount), Decimal('0'))
+    return {
+        'order_id': order.id,
+        'order_code': order.code,
+        'order_status': order.status,
+        'order_status_display': order.get_status_display(),
+        'payment_status': order.payment_status,
+        'payment_status_display': order.get_payment_status_display(),
+        'paid_amount': float(order.paid_amount or 0),
+        'final_amount': float(order.final_amount or 0),
+        'remaining_amount': float(remaining),
+    }
 
 
 def _calculate_line_total(quantity, unit_price, discount_percent):
@@ -1084,6 +1114,42 @@ def _apply_order_stock_adjustment(order, direction, warehouse_id=None):
             product_id=product.id,
             warehouse_id=warehouse_id,
         )
+        _adjust_locked_stock(stock, quantity_delta, allow_negative=allow_negative)
+
+
+def _apply_order_return_stock_adjustment(order_return, direction, warehouse_id=None):
+    """Áp tồn kho cho phiếu hoàn hàng đã có dòng sản phẩm."""
+    warehouse_id = warehouse_id or order_return.warehouse_id
+    if not warehouse_id:
+        return
+
+    from products.models import ComboItem
+    allow_negative = True
+    if _to_decimal(direction) < 0 and order_return.order:
+        allow_negative = _allow_negative_stock_for_store(order_return.order.store)
+
+    for item in order_return.items.select_related('product').all():
+        product = item.product
+        if not product or product.is_service:
+            continue
+        quantity_delta = _to_decimal(item.quantity) * _to_decimal(direction)
+
+        if product.is_combo:
+            for combo_item in ComboItem.objects.filter(combo_id=product.id).select_related('product'):
+                if combo_item.product.is_service:
+                    continue
+                stock = _get_locked_stock(
+                    product_id=combo_item.product_id,
+                    warehouse_id=warehouse_id,
+                )
+                _adjust_locked_stock(
+                    stock,
+                    quantity_delta * _to_decimal(combo_item.quantity),
+                    allow_negative=allow_negative,
+                )
+            continue
+
+        stock = _get_locked_stock(product_id=product.id, warehouse_id=warehouse_id)
         _adjust_locked_stock(stock, quantity_delta, allow_negative=allow_negative)
 
 
@@ -1654,9 +1720,12 @@ def api_get_order_detail(request):
                 'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
                 'final_amount': float(o.final_amount),
                 'status': o.status, 'note': o.note or '',
+                'status_display': o.get_status_display(),
                 'tags': o.tags or '',
                 'payment_status': o.payment_status,
+                'payment_status_display': o.get_payment_status_display(),
                 'paid_amount': float(o.paid_amount),
+                'remaining_amount': float(max(_to_decimal(o.final_amount) - _to_decimal(o.paid_amount), Decimal('0'))),
                 'creator_name': o.creator_name or '',
                 'salesperson': o.salesperson or '',
                 'server_staff': o.server_staff or '',
@@ -2326,11 +2395,12 @@ def api_bulk_collect_orders(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        ids = data.get('ids') or []
+        ids = [int(order_id) for order_id in (data.get('ids') or []) if str(order_id).isdigit()]
+        payment_entries = data.get('payments') or []
         payment_method = int(data.get('payment_method', 2) or 2)
         payment_method_option_id = data.get('payment_method_option_id') or None
         cash_book_id = data.get('cash_book_id') or None
-        if not ids:
+        if not ids and not payment_entries:
             return JsonResponse({'status': 'error', 'message': 'Chưa chọn đơn hàng'})
 
         selected_method = None
@@ -2345,26 +2415,61 @@ def api_bulk_collect_orders(request):
 
         collected = []
         skipped = []
+        details = []
         total_collected = Decimal('0')
         with transaction.atomic():
+            entry_order_ids = [
+                int(entry.get('order_id') or entry.get('id'))
+                for entry in payment_entries
+                if str(entry.get('order_id') or entry.get('id') or '').isdigit()
+            ]
+            requested_ids = list(dict.fromkeys(ids + entry_order_ids))
             orders = list(filter_by_store(
-                Order.objects.filter(id__in=ids).prefetch_related('receipts'),
+                Order.objects.select_for_update().filter(id__in=requested_ids).prefetch_related('receipts'),
                 request
             ))
-            payable_customer_ids = {
-                order.customer_id
-                for order in orders
-                if order.status != 6 and (_to_decimal(order.final_amount) - sum(
-                    (_to_decimal(rec.amount) for rec in Receipt.objects.filter(order=order, status=1)),
-                    Decimal('0')
-                )) > 0
-            }
-            if len(payable_customer_ids) > 1:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'Chỉ thanh toán nhanh nhiều đơn của cùng một khách hàng.'
-                })
-            for order in orders:
+            order_map = {order.id: order for order in orders}
+
+            if payment_entries:
+                payment_plan = []
+                for entry in payment_entries:
+                    order_id = entry.get('order_id') or entry.get('id')
+                    if not str(order_id or '').isdigit():
+                        continue
+                    amount = _non_negative_decimal(entry.get('amount', 0))
+                    if amount <= 0:
+                        continue
+                    payment_plan.append((int(order_id), amount))
+            else:
+                remaining_amount = _non_negative_decimal(data.get('actual_amount'), default='0')
+                if remaining_amount <= 0:
+                    remaining_amount = None
+                payment_plan = []
+                for order_id in ids:
+                    order = order_map.get(order_id)
+                    if not order:
+                        continue
+                    paid_total = sum(
+                        (_to_decimal(rec.amount) for rec in Receipt.objects.filter(order=order, status=1)),
+                        Decimal('0')
+                    )
+                    order_remaining = max(_to_decimal(order.final_amount) - paid_total, Decimal('0'))
+                    if order_remaining <= 0:
+                        continue
+                    if remaining_amount is None:
+                        amount = order_remaining
+                    else:
+                        if remaining_amount <= 0:
+                            break
+                        amount = min(order_remaining, remaining_amount)
+                        remaining_amount -= amount
+                    payment_plan.append((order_id, amount))
+
+            for order_id, requested_amount in payment_plan:
+                order = order_map.get(order_id)
+                if not order:
+                    skipped.append(f'#{order_id} (không tìm thấy hoặc ngoài phạm vi)')
+                    continue
                 if order.status == 6:
                     skipped.append(f'{order.code} (đã hủy)')
                     continue
@@ -2372,21 +2477,27 @@ def api_bulk_collect_orders(request):
                     (_to_decimal(rec.amount) for rec in Receipt.objects.filter(order=order, status=1)),
                     Decimal('0')
                 )
-                remaining = _to_decimal(order.final_amount) - paid_total
+                remaining = max(_to_decimal(order.final_amount) - paid_total, Decimal('0'))
                 if remaining <= 0:
                     skipped.append(f'{order.code} (đã thanh toán đủ)')
+                    continue
+                if requested_amount > remaining:
+                    skipped.append(
+                        f'{order.code} (nhập vượt còn thu {int(remaining):,}đ)'
+                    )
                     continue
 
                 old_status = order.status
                 _create_completed_receipt_for_order(
                     order=order,
                     actor=request.user,
-                    amount=remaining,
+                    amount=requested_amount,
                     payment_method=payment_method,
                     payment_method_option_id=payment_method_option_id,
                     cash_book_id=cash_book.id if cash_book else None,
                     base_code=f'PT-{order.code}-BULK',
-                    description_suffix='thanh toán nhanh',
+                    description_suffix='module thanh toán nhiều đơn',
+                    receipt_date=date.today(),
                 )
 
                 _refresh_order_payment(order)
@@ -2394,25 +2505,260 @@ def api_bulk_collect_orders(request):
                     order=order,
                     actor=request.user,
                     action='bulk_collect',
-                    summary=f'Thanh toán nhanh {int(remaining):,}đ qua {cash_book.name if cash_book else "tài khoản mặc định"}',
+                    summary=f'Thanh toán nhiều đơn {int(requested_amount):,}đ qua {cash_book.name if cash_book else "tài khoản mặc định"}',
                     status_before=old_status,
                     status_after=order.status,
                 )
-                total_collected += remaining
+                total_collected += requested_amount
                 collected.append(order.code)
+                details.append({
+                    'order_id': order.id,
+                    'code': order.code,
+                    'amount': float(requested_amount),
+                    'remaining_before': float(remaining),
+                    'remaining_after': float(max(remaining - requested_amount, Decimal('0'))),
+                })
 
-        message = f'Đã thanh toán nhanh {len(collected)} đơn.'
+        message = f'Đã thanh toán {len(collected)} đơn.'
         if total_collected:
             message += f' Tổng đã thu: {int(total_collected):,}đ.'
         if skipped:
             message += ' Bỏ qua: ' + ', '.join(skipped[:8])
+        status = 'ok' if collected else 'error'
         return JsonResponse({
-            'status': 'ok',
+            'status': status,
             'message': message,
             'collected_count': len(collected),
             'total_collected': float(total_collected),
             'skipped_count': len(skipped),
+            'details': details,
         })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_collect_order_payment(request):
+    """Thu tiền riêng cho một đơn, không cần lưu lại toàn bộ đơn hàng."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id') or data.get('id')
+        raw_lines = data.get('payment_lines') or data.get('payments') or []
+        if not isinstance(raw_lines, list):
+            raw_lines = []
+
+        payment_lines = []
+        for line in raw_lines:
+            amount = _non_negative_decimal(line.get('amount', 0))
+            if amount <= 0:
+                continue
+            try:
+                payment_method = int(line.get('payment_method', data.get('payment_method', 2)) or 2)
+            except (TypeError, ValueError):
+                payment_method = 2
+            payment_lines.append({
+                'amount': amount,
+                'payment_method': payment_method,
+                'payment_method_option_id': line.get('payment_method_option_id') or data.get('payment_method_option_id') or None,
+                'cash_book_id': line.get('cash_book_id') or data.get('cash_book_id') or None,
+            })
+
+        if not payment_lines:
+            amount = _non_negative_decimal(data.get('amount', 0))
+            if amount > 0:
+                try:
+                    payment_method = int(data.get('payment_method', 2) or 2)
+                except (TypeError, ValueError):
+                    payment_method = 2
+                payment_lines.append({
+                    'amount': amount,
+                    'payment_method': payment_method,
+                    'payment_method_option_id': data.get('payment_method_option_id') or None,
+                    'cash_book_id': data.get('cash_book_id') or None,
+                })
+
+        if not payment_lines:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập số tiền cần thu.'})
+
+        with transaction.atomic():
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_for_update().prefetch_related('receipts'),
+            )
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
+            if order.status == 6:
+                return JsonResponse({'status': 'error', 'message': 'Đơn hàng đã Hủy nên không thể thu tiền.'})
+
+            _refresh_order_payment(order)
+            remaining = max(_to_decimal(order.final_amount) - _to_decimal(order.paid_amount), Decimal('0'))
+            total_collect = sum((line['amount'] for line in payment_lines), Decimal('0'))
+            if remaining <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Đơn hàng đã thanh toán đủ.'})
+            if total_collect > remaining:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Số tiền thu vượt còn phải thu {int(remaining):,}đ.'
+                })
+
+            old_status = order.status
+            receipt_codes = []
+            for idx, line in enumerate(payment_lines):
+                base_code = f'PT-{order.code}' if idx == 0 else f'PT-{order.code}-{idx + 1}'
+                receipt = _create_completed_receipt_for_order(
+                    order=order,
+                    actor=request.user,
+                    amount=line['amount'],
+                    payment_method=line['payment_method'],
+                    payment_method_option_id=line.get('payment_method_option_id'),
+                    cash_book_id=line.get('cash_book_id'),
+                    base_code=base_code,
+                    description_suffix='thu tiền riêng tại đơn hàng',
+                    receipt_date=date.today(),
+                )
+                if receipt:
+                    receipt_codes.append(receipt.code)
+
+            _refresh_order_payment(order)
+            _log_order_history(
+                order=order,
+                actor=request.user,
+                action='payment',
+                summary=f'Thu tiền riêng {int(total_collect):,}đ' + (f' ({", ".join(receipt_codes)})' if receipt_codes else ''),
+                status_before=old_status,
+                status_after=order.status,
+            )
+
+        payload = {
+            'status': 'ok',
+            'message': f'Đã thu {int(total_collect):,}đ cho đơn {order.code}.',
+            'receipt_codes': receipt_codes,
+        }
+        payload.update(_order_workflow_payload(order))
+        return JsonResponse(payload)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_export_order_stock(request):
+    """Xuất kho riêng cho đơn hàng, độc lập với trạng thái thanh toán."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id') or data.get('id')
+        with transaction.atomic():
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_for_update().prefetch_related('items__product'),
+            )
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
+            if order.status == 6:
+                return JsonResponse({'status': 'error', 'message': 'Đơn hàng đã Hủy nên không thể xuất kho.'})
+            if _order_exports_stock_status(order.status):
+                payload = {
+                    'status': 'ok',
+                    'message': f'Đơn {order.code} đã xuất kho trước đó.',
+                }
+                payload.update(_order_workflow_payload(order))
+                return JsonResponse(payload)
+            if not order.warehouse_id:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn kho xuất cho đơn hàng trước khi xuất kho.'})
+            if not order.items.exists():
+                return JsonResponse({'status': 'error', 'message': 'Đơn hàng chưa có sản phẩm để xuất kho.'})
+
+            old_status = order.status
+            _apply_order_stock_adjustment(order, direction=-1)
+            order.status = 4
+            order.save(update_fields=['status'])
+            _refresh_order_payment(order)
+            _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
+            _log_order_history(
+                order=order,
+                actor=request.user,
+                action='stock_export',
+                summary='Xuất kho riêng tại đơn hàng. Thanh toán được xử lý độc lập.',
+                status_before=old_status,
+                status_after=order.status,
+            )
+
+        message = f'Đã xuất kho đơn {order.code}.'
+        if order.status == 5:
+            message += ' Đơn đã đủ điều kiện và được chuyển Hoàn thành.'
+        payload = {'status': 'ok', 'message': message}
+        payload.update(_order_workflow_payload(order))
+        return JsonResponse(payload)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_update_order_status(request):
+    """Cập nhật nhanh một bước trạng thái mà không lưu lại toàn bộ đơn."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id') or data.get('id')
+        target_status = _normalize_optional_int(data.get('status'))
+        if target_status is None:
+            return JsonResponse({'status': 'error', 'message': 'Trạng thái không hợp lệ.'})
+
+        with transaction.atomic():
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_for_update(),
+            )
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
+            old_status = order.status
+            if old_status == target_status:
+                payload = {'status': 'ok', 'message': 'Trạng thái không thay đổi.'}
+                payload.update(_order_workflow_payload(order))
+                return JsonResponse(payload)
+            if old_status in (5, 6):
+                return JsonResponse({'status': 'error', 'message': 'Đơn hàng đã Hoàn thành/Hủy nên không thể đổi trạng thái.'})
+            if target_status == 6:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng dùng nút Hủy đơn để xử lý tồn kho và phiếu thu đúng quy trình.'})
+            if target_status == 4:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng dùng nút Xuất kho để trừ tồn và chuyển trạng thái.'})
+
+            allowed = ORDER_STATUS_TRANSITIONS.get(old_status, {old_status})
+            if target_status not in allowed:
+                status_labels = dict(Order.STATUS_CHOICES)
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Không được chuyển trạng thái từ "{status_labels.get(old_status, old_status)}" sang "{status_labels.get(target_status, target_status)}".'
+                })
+
+            if target_status == 5:
+                _refresh_order_payment(order)
+                if not _order_can_complete(order):
+                    return JsonResponse({'status': 'error', 'message': _completion_block_message(order)})
+
+            order.status = target_status
+            order.save(update_fields=['status'])
+            _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
+            _refresh_order_payment(order)
+            _log_order_history(
+                order=order,
+                actor=request.user,
+                action='status',
+                summary=f'Cập nhật nhanh trạng thái sang {order.get_status_display()}.',
+                status_before=old_status,
+                status_after=order.status,
+            )
+
+        payload = {'status': 'ok', 'message': f'Đã chuyển trạng thái sang {order.get_status_display()}.'}
+        payload.update(_order_workflow_payload(order))
+        return JsonResponse(payload)
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -2743,14 +3089,18 @@ def api_save_order_return(request):
 
         with transaction.atomic():
             rid = data.get('id')
+            old_status = None
+            old_warehouse_id = None
             if rid:
                 current_return = _filter_order_returns_by_scope(
-                    OrderReturn.objects.filter(id=rid),
+                    OrderReturn.objects.prefetch_related('items__product').filter(id=rid),
                     request,
                 ).first()
                 if not current_return:
                     return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng'})
-                r = OrderReturn.objects.select_for_update().get(id=current_return.id)
+                r = OrderReturn.objects.select_for_update().prefetch_related('items__product').get(id=current_return.id)
+                old_status = r.status
+                old_warehouse_id = r.warehouse_id
             else:
                 r = OrderReturn()
                 r.created_by = request.user
@@ -2767,8 +3117,8 @@ def api_save_order_return(request):
                     return JsonResponse({'status': 'error', 'message': 'Đơn gốc không tồn tại hoặc không thuộc cửa hàng của bạn.'})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn đơn hàng gốc cho phiếu trả.'})
-            if order.status != 5:
-                return JsonResponse({'status': 'error', 'message': 'Chỉ tạo phiếu hoàn hàng/hoàn tiền cho đơn hàng đã Hoàn thành.'})
+            if order.status not in (4, 5):
+                return JsonResponse({'status': 'error', 'message': 'Chỉ tạo phiếu hoàn hàng/hoàn tiền cho đơn hàng đã Xuất kho hoặc Hoàn thành.'})
 
             status = _normalize_optional_int(data.get('status'))
             valid_statuses = {choice[0] for choice in OrderReturn.STATUS_CHOICES}
@@ -2779,15 +3129,106 @@ def api_save_order_return(request):
 
             r.code = (data.get('code', '') or '').strip()
             if not r.code:
-                return JsonResponse({'status': 'error', 'message': 'Mã phiếu không được để trống.'})
+                r.code = _auto_next_order_return_code()
+            duplicate = OrderReturn.all_objects.filter(code=r.code)
+            if r.id:
+                duplicate = duplicate.exclude(id=r.id)
+            if duplicate.exists():
+                return JsonResponse({'status': 'error', 'message': f'Mã phiếu "{r.code}" đã tồn tại.'})
+
+            items_payload = data.get('items')
+            has_item_payload = isinstance(items_payload, list)
+            normalized_return_items = []
+            if has_item_payload:
+                sold_quantities = defaultdict(Decimal)
+                for order_item in order.items.select_related('product').all():
+                    if not order_item.product_id:
+                        continue
+                    product = order_item.product
+                    if product and product.is_service:
+                        continue
+                    sold_quantities[order_item.product_id] += _to_decimal(order_item.quantity)
+
+                existing_returned = defaultdict(Decimal)
+                completed_return_items = OrderReturnItem.objects.filter(
+                    order_return__order=order,
+                    order_return__status=2,
+                )
+                if r.id:
+                    completed_return_items = completed_return_items.exclude(order_return_id=r.id)
+                for return_item in completed_return_items:
+                    existing_returned[return_item.product_id] += _to_decimal(return_item.quantity)
+
+                requested_by_product = defaultdict(Decimal)
+                for raw_item in items_payload:
+                    if raw_item.get('include') is False:
+                        continue
+                    product_id = _normalize_optional_int(raw_item.get('product_id'))
+                    if not product_id:
+                        continue
+                    product = _get_product_for_user(request, product_id)
+                    if not product or product_id not in sold_quantities:
+                        return JsonResponse({'status': 'error', 'message': 'Sản phẩm hoàn không thuộc đơn hàng gốc hoặc ngoài phạm vi cửa hàng.'})
+                    quantity = _non_negative_decimal(raw_item.get('quantity', 0))
+                    if quantity <= 0:
+                        continue
+                    if quantity != quantity.to_integral_value():
+                        return JsonResponse({'status': 'error', 'message': 'Số lượng hoàn hàng phải là số nguyên.'})
+                    unit_price = _non_negative_decimal(raw_item.get('unit_price', 0))
+                    requested_by_product[product_id] += quantity
+                    remaining_qty = sold_quantities[product_id] - existing_returned[product_id]
+                    if requested_by_product[product_id] > remaining_qty:
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': f'Số lượng hoàn của "{product.name}" vượt số lượng còn có thể hoàn ({int(remaining_qty)}).'
+                        })
+                    normalized_return_items.append({
+                        'product': product,
+                        'quantity': int(quantity),
+                        'unit_price': unit_price,
+                        'total_price': quantity * unit_price,
+                        'reason': raw_item.get('reason', '') or '',
+                    })
+
+                if status != 3 and not normalized_return_items:
+                    return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một sản phẩm để hoàn.'})
+
+            should_reverse_old_return_stock = (
+                old_status == 2
+                and r.items.exists()
+                and (has_item_payload or status != 2 or old_warehouse_id != order.warehouse_id)
+            )
+            if should_reverse_old_return_stock:
+                _apply_order_return_stock_adjustment(r, direction=-1, warehouse_id=old_warehouse_id)
+
             r.order = order
             r.customer = order.customer
             r.warehouse = order.warehouse
-            r.return_date = data.get('return_date')
-            r.total_refund = data.get('total_refund', 0) or 0
+            r.return_date = data.get('return_date') or date.today().isoformat()
+            if has_item_payload:
+                r.total_refund = sum((item['total_price'] for item in normalized_return_items), Decimal('0'))
+            else:
+                r.total_refund = data.get('total_refund', 0) or 0
             r.reason = data.get('reason', '')
             r.status = status
             r.save()
+
+            if has_item_payload:
+                r.items.all().delete()
+                for item in normalized_return_items:
+                    OrderReturnItem.objects.create(
+                        order_return=r,
+                        product=item['product'],
+                        quantity=item['quantity'],
+                        unit_price=item['unit_price'],
+                        total_price=item['total_price'],
+                        reason=item['reason'],
+                    )
+
+            if r.status == 2 and has_item_payload and normalized_return_items:
+                _apply_order_return_stock_adjustment(r, direction=1)
+            elif r.status == 2 and old_status != 2 and r.items.exists():
+                _apply_order_return_stock_adjustment(r, direction=1)
 
             refund_payment = _sync_refund_payment_for_return(
                 r,
@@ -2796,9 +3237,23 @@ def api_save_order_return(request):
                 payment_method=refund_payment_method,
                 cash_book_id=cash_book_id,
             )
+            _log_order_history(
+                order=order,
+                actor=request.user,
+                action='return',
+                summary=f'Hoàn hàng {r.code}, tổng hoàn {int(_to_decimal(r.total_refund)):,}đ.',
+                status_before=order.status,
+                status_after=order.status,
+            )
 
         message = 'Lưu thành công'
-        response_data = {'status': 'ok', 'message': message}
+        response_data = {
+            'status': 'ok',
+            'message': message,
+            'return_id': r.id,
+            'return_code': r.code,
+            'total_refund': float(r.total_refund or 0),
+        }
         if r.status == 2 and _to_decimal(r.total_refund) > 0 and refund_payment:
             response_data.update({
                 'message': f'Lưu thành công. Đã ghi phiếu chi hoàn tiền {refund_payment.code}.',
@@ -3247,6 +3702,7 @@ def api_print_order(request):
                 self.total_amount = q.total_amount
                 self.discount_amount = q.discount_amount
                 self.shipping_fee = q.shipping_fee
+                self.tax_amount = Decimal('0')
                 self.final_amount = q.final_amount
                 self.paid_amount = Decimal('0')
                 self.note = q.note

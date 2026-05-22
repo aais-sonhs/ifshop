@@ -197,6 +197,9 @@ class OrderEditHistory(models.Model):
         ('approve', 'Duyệt đơn'),
         ('reject', 'Từ chối duyệt'),
         ('status', 'Đổi trạng thái'),
+        ('payment', 'Thu tiền'),
+        ('stock_export', 'Xuất kho'),
+        ('return', 'Hoàn hàng'),
         ('bulk_collect', 'Thanh toán nhanh'),
         ('bulk_cancel', 'Hủy nhanh'),
     ]

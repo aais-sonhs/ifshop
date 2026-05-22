@@ -22,6 +22,9 @@
 .ex-table tr:nth-child(even) td { background: #fafafa; }
 .ex-table .text-right { text-align: right; }
 .ex-table .text-center { text-align: center; }
+.ex-table .product-thumb { width: 42px; height: 42px; object-fit: contain; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; }
+.ex-table .product-thumb-placeholder { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border:1px dashed #ccc; border-radius:4px; color:#999; font-size:10px; text-align:center; }
+.ex-table .item-note { color:#777; font-size:11px; margin-top:3px; }
 .ex-total { text-align: right; font-size: 14px; font-weight: 700; margin: 8px 0; color: #5d4037; }
 .ex-footer { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
 .ex-footer .sig-block { width: 180px; }
@@ -32,7 +35,7 @@
 {% block content %}
 <div class="export-slip">
     <div class="ex-header">
-        {% if print_template.show_brand_info and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        {% if print_template.show_brand_logo and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="company">
             <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
             {% if print_template.show_brand_info %}
@@ -68,8 +71,9 @@
         <thead>
             <tr>
                 <th style="width:5%">STT</th>
-                <th style="width:15%">Mã SP</th>
-                <th style="width:35%">Tên sản phẩm</th>
+                {% if print_template.show_product_images %}<th style="width:8%" class="text-center">Ảnh</th>{% endif %}
+                {% if print_template.show_product_code %}<th style="width:15%">Mã SP</th>{% endif %}
+                <th>Tên sản phẩm</th>
                 <th style="width:10%" class="text-center">ĐVT</th>
                 <th style="width:15%" class="text-right">Số lượng</th>
                 <th style="width:20%">Ghi chú</th>
@@ -79,9 +83,24 @@
         {% for item in items %}
             <tr>
                 <td class="text-center">{{ forloop.counter }}</td>
-                <td>{{ item.product.code }}</td>
-                <td><strong>{{ item.product.name }}</strong></td>
-                <td class="text-center">{{ item.product.unit }}</td>
+                {% if print_template.show_product_images %}
+                <td class="text-center">
+                    {% if item.product and item.product.image %}
+                    <img class="product-thumb" src="{{ item.product.image.url }}" alt="">
+                    {% else %}
+                    <span class="product-thumb-placeholder">Không ảnh</span>
+                    {% endif %}
+                </td>
+                {% endif %}
+                {% if print_template.show_product_code %}<td>{{ item.display_code }}</td>{% endif %}
+                <td>
+                    <strong>{{ item.display_name }}</strong>
+                    {% if print_template.show_item_note %}
+                        {% if item.note %}<div class="item-note">{{ item.note }}</div>
+                        {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right"><strong>{{ item.quantity|qty_vn }}</strong></td>
                 <td></td>
             </tr>
@@ -91,8 +110,8 @@
 
     <div class="ex-total">Tổng: {{ items|length }} sản phẩm</div>
 
-    {% if order.note %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
-    {% if print_template.terms %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Nội dung:</strong> {{ print_template.terms|linebreaksbr }}</div>{% endif %}
+    {% if print_template.show_order_note and order.note %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
+    {% if print_template.show_terms and print_template.terms %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Nội dung:</strong> {{ print_template.terms|linebreaksbr }}</div>{% endif %}
 
     {% if print_template.show_signatures %}
     <div class="ex-footer">

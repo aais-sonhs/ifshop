@@ -30,6 +30,9 @@ urlpatterns = [
     path('api/printers/direct-print/', views.api_direct_print, name='api_direct_print'),
     path('api/print-templates/', views.api_get_print_templates, name='api_get_print_templates'),
     path('api/print-templates/save/', views.api_save_print_template, name='api_save_print_template'),
+    path('api/print-templates/histories/', views.api_get_print_template_histories, name='api_get_print_template_histories'),
+    path('api/print-templates/restore/', views.api_restore_print_template_history, name='api_restore_print_template_history'),
+    path('api/print-templates/preview/', views.api_preview_print_template, name='api_preview_print_template'),
     # Business Config
     path('business-config/', views.business_config_tbl, name='business_config_tbl'),
     path('setting/quotation/', views.setting_quotation, name='setting_quotation'),

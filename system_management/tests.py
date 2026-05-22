@@ -7,7 +7,10 @@ from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from system_management.models import Brand, BusinessConfig, PrinterSetting, RoleGroup, Store, UserProfile
+from system_management.models import (
+    Brand, BusinessConfig, PrinterSetting, PrintTemplate, PrintTemplateHistory,
+    RoleGroup, Store, UserProfile,
+)
 
 
 class StaticFileRoutingTests(SimpleTestCase):
@@ -277,6 +280,94 @@ class SystemManagementScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data'][0]['name'], 'LAN Printer')
+
+    def test_save_print_template_creates_history_and_restores_snapshot(self):
+        payload = {
+            'template_type': 'a4',
+            'title': 'Hóa đơn tùy chỉnh',
+            'header_note': 'Ghi chú đầu',
+            'terms': 'Điều khoản',
+            'footer_note': 'Cảm ơn',
+            'show_brand_logo': True,
+            'show_brand_info': True,
+            'show_customer_info': True,
+            'show_signatures': True,
+            'show_product_images': True,
+            'show_product_code': True,
+            'show_unit_price': True,
+            'show_discount': False,
+            'show_tax': True,
+            'show_shipping_fee': True,
+            'show_payment_info': True,
+            'show_order_note': True,
+            'show_item_note': True,
+            'show_terms': True,
+        }
+
+        response = self.client.post(
+            reverse('api_save_print_template'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        template = PrintTemplate.objects.get(brand=self.brand, template_type='a4')
+        self.assertFalse(template.show_discount)
+        history = PrintTemplateHistory.objects.get(template=template)
+        self.assertTrue(history.snapshot['show_product_images'])
+
+        template.show_discount = True
+        template.show_product_images = False
+        template.save()
+        restore = self.client.post(
+            reverse('api_restore_print_template_history'),
+            data=json.dumps({'history_id': history.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(restore.status_code, 200)
+        self.assertEqual(restore.json()['status'], 'ok', msg=restore.content.decode())
+        template.refresh_from_db()
+        self.assertFalse(template.show_discount)
+        self.assertTrue(template.show_product_images)
+        self.assertEqual(template.histories.count(), 2)
+
+    def test_preview_print_template_uses_unsaved_options(self):
+        payload = {
+            'template_type': 'a4',
+            'title': 'Hóa đơn preview',
+            'header_note': '',
+            'terms': '',
+            'footer_note': '',
+            'show_brand_logo': True,
+            'show_brand_info': True,
+            'show_customer_info': True,
+            'show_signatures': False,
+            'show_product_images': True,
+            'show_product_code': True,
+            'show_unit_price': True,
+            'show_discount': False,
+            'show_tax': True,
+            'show_shipping_fee': True,
+            'show_payment_info': True,
+            'show_order_note': True,
+            'show_item_note': True,
+            'show_terms': True,
+        }
+
+        response = self.client.post(
+            reverse('api_preview_print_template'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'ok', msg=response.content.decode())
+        self.assertIn('Hóa đơn preview', body['html'])
+        self.assertIn('Không ảnh', body['html'])
+        self.assertNotIn('CK%', body['html'])
 
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)

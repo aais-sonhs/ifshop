@@ -57,6 +57,7 @@
     </style>
 </head>
 <body>
+    {% if not preview_mode %}
     <div class="no-print">
         <div class="toolbar-title">
             <strong>{% block toolbar_title %}Xem trước phiếu in{% endblock %}</strong>
@@ -71,9 +72,11 @@
             <button class="btn-close-print" onclick="window.close()">✕ Đóng</button>
         </div>
     </div>
-    <div id="print_document_content" style="{% block body_padding %}padding-top: 56px;{% endblock %}">
+    {% endif %}
+    <div id="print_document_content" style="{% if preview_mode %}padding-top:0;{% else %}{% block body_padding %}padding-top: 56px;{% endblock %}{% endif %}">
         {% block content %}{% endblock %}
     </div>
+    {% if not preview_mode %}
     <script>
         (function(){
             var printerList = [];
@@ -161,5 +164,6 @@
             loadPrinters();
         })();
     </script>
+    {% endif %}
 </body>
 </html>

@@ -203,9 +203,20 @@ class PrintTemplate(models.Model):
     header_note = models.TextField(blank=True, null=True, verbose_name='Ghi chú đầu phiếu')
     terms = models.TextField(blank=True, null=True, verbose_name='Điều khoản / nội dung cuối phiếu')
     footer_note = models.TextField(blank=True, null=True, verbose_name='Lời cảm ơn / chân phiếu')
+    show_brand_logo = models.BooleanField(default=True, verbose_name='Hiện logo thương hiệu')
     show_brand_info = models.BooleanField(default=True, verbose_name='Hiện thông tin thương hiệu')
     show_customer_info = models.BooleanField(default=True, verbose_name='Hiện thông tin khách hàng')
     show_signatures = models.BooleanField(default=True, verbose_name='Hiện khu vực ký tên')
+    show_product_images = models.BooleanField(default=False, verbose_name='Hiện ảnh sản phẩm')
+    show_product_code = models.BooleanField(default=True, verbose_name='Hiện mã sản phẩm')
+    show_unit_price = models.BooleanField(default=True, verbose_name='Hiện đơn giá')
+    show_discount = models.BooleanField(default=True, verbose_name='Hiện chiết khấu')
+    show_tax = models.BooleanField(default=True, verbose_name='Hiện thuế')
+    show_shipping_fee = models.BooleanField(default=True, verbose_name='Hiện phí vận chuyển')
+    show_payment_info = models.BooleanField(default=True, verbose_name='Hiện thông tin thanh toán')
+    show_order_note = models.BooleanField(default=True, verbose_name='Hiện ghi chú chứng từ')
+    show_item_note = models.BooleanField(default=False, verbose_name='Hiện ghi chú sản phẩm')
+    show_terms = models.BooleanField(default=True, verbose_name='Hiện điều khoản / nội dung cuối phiếu')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -218,6 +229,30 @@ class PrintTemplate(models.Model):
     def __str__(self):
         brand_name = self.brand.name if self.brand else 'Mặc định'
         return f"{brand_name} - {self.get_template_type_display()}"
+
+
+class PrintTemplateHistory(models.Model):
+    """Snapshot lịch sử mỗi lần lưu hoặc khôi phục mẫu in."""
+    template = models.ForeignKey(PrintTemplate, on_delete=models.CASCADE, related_name='histories',
+                                 verbose_name='Mẫu in')
+    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, null=True, blank=True,
+                              related_name='print_template_histories', verbose_name='Thương hiệu')
+    template_type = models.CharField(max_length=30, choices=PrintTemplate.TEMPLATE_TYPE_CHOICES,
+                                     verbose_name='Loại mẫu')
+    title = models.CharField(max_length=255, verbose_name='Tiêu đề mẫu in')
+    snapshot = models.JSONField(default=dict, verbose_name='Dữ liệu mẫu in')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='print_template_histories', verbose_name='Người lưu')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Thời gian lưu')
+
+    class Meta:
+        db_table = 'print_template_histories'
+        verbose_name = 'Lịch sử mẫu in'
+        verbose_name_plural = 'Lịch sử mẫu in'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.get_template_type_display()} - {self.title}"
 
 
 class BusinessConfig(models.Model):

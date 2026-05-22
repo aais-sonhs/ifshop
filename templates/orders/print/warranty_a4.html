@@ -31,7 +31,7 @@
 {% block content %}
 <div class="warranty">
     <div class="w-header">
-        {% if print_template.show_brand_info and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        {% if print_template.show_brand_logo and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="company">
             <h2>{{ brand.name|default:"CÔNG TY" }}</h2>
             {% if print_template.show_brand_info %}
@@ -94,6 +94,7 @@
         </tbody>
     </table>
 
+    {% if print_template.show_terms %}
     <div class="w-terms">
         <h3>🛡️ Điều kiện bảo hành</h3>
         {% if print_template.terms %}
@@ -107,6 +108,7 @@
         </ol>
         {% endif %}
     </div>
+    {% endif %}
 
     {% if print_template.show_signatures %}
     <div class="w-footer">

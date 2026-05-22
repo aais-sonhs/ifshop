@@ -931,6 +931,7 @@ def export_receipts_excel(request):
         {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
         {'key': 'creator', 'label': 'Người tạo phiếu', 'width': 16},
         {'key': 'description', 'label': 'Diễn giải', 'width': 30},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 30},
     ]
 
     rows = []
@@ -950,6 +951,7 @@ def export_receipts_excel(request):
             'cashbook': r.cash_book.name if r.cash_book else '',
             'creator': _get_user_display_name(r.created_by),
             'description': r.description or '',
+            'note': r.note or '',
         })
 
     period = ''

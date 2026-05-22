@@ -1,14 +1,18 @@
 import json
 import logging
+from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib.auth.models import Group, User
 from django.db import models as db_models
 from django.contrib import messages
+from django.template.loader import render_to_string
 from .models import (
     UserProfile, RoleGroup, ModulePermission, ServicePrice, PrinterSetting, PrintTemplate,
-    BusinessConfig, Brand, Store,
+    PrintTemplateHistory, BusinessConfig, Brand, Store,
 )
 from .product_docs import (
     COMMON_DAILY_FLOW,
@@ -242,6 +246,52 @@ PRINT_TEMPLATE_DEFAULTS = {
     },
 }
 
+PRINT_TEMPLATE_EDITABLE_FIELDS = [
+    'title',
+    'header_note',
+    'terms',
+    'footer_note',
+    'show_brand_logo',
+    'show_brand_info',
+    'show_customer_info',
+    'show_signatures',
+    'show_product_images',
+    'show_product_code',
+    'show_unit_price',
+    'show_discount',
+    'show_tax',
+    'show_shipping_fee',
+    'show_payment_info',
+    'show_order_note',
+    'show_item_note',
+    'show_terms',
+]
+
+PRINT_TEMPLATE_BOOLEAN_FIELDS = [
+    field for field in PRINT_TEMPLATE_EDITABLE_FIELDS if field.startswith('show_')
+]
+
+PRINT_TEMPLATE_FIELD_DEFAULTS = {
+    'title': '',
+    'header_note': '',
+    'terms': '',
+    'footer_note': '',
+    'show_brand_logo': True,
+    'show_brand_info': True,
+    'show_customer_info': True,
+    'show_signatures': True,
+    'show_product_images': False,
+    'show_product_code': True,
+    'show_unit_price': True,
+    'show_discount': True,
+    'show_tax': True,
+    'show_shipping_fee': True,
+    'show_payment_info': True,
+    'show_order_note': True,
+    'show_item_note': False,
+    'show_terms': True,
+}
+
 
 def _get_or_create_print_template(brand, template_type):
     defaults = PRINT_TEMPLATE_DEFAULTS.get(template_type, {})
@@ -259,6 +309,46 @@ def _get_or_create_print_template(brand, template_type):
     if not template.title:
         template.title = title
         template.save(update_fields=['title'])
+    return template
+
+
+def _to_bool(value, default=True):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on', 'y'}
+    return bool(value)
+
+
+def _print_template_snapshot(template):
+    return {
+        field: getattr(template, field, PRINT_TEMPLATE_FIELD_DEFAULTS.get(field))
+        for field in PRINT_TEMPLATE_EDITABLE_FIELDS
+    }
+
+
+def _create_print_template_history(template, user):
+    return PrintTemplateHistory.objects.create(
+        template=template,
+        brand=template.brand,
+        template_type=template.template_type,
+        title=template.title or '',
+        snapshot=_print_template_snapshot(template),
+        created_by=user if user.is_authenticated else None,
+    )
+
+
+def _apply_print_template_data(template, data):
+    template.title = (data.get('title') or '').strip()
+    template.header_note = (data.get('header_note') or '').strip()
+    template.terms = (data.get('terms') or '').strip()
+    template.footer_note = (data.get('footer_note') or '').strip()
+    for field in PRINT_TEMPLATE_BOOLEAN_FIELDS:
+        setattr(template, field, _to_bool(data.get(field), getattr(template, field, True)))
     return template
 
 
@@ -862,14 +952,24 @@ def _serialize_print_template(template):
         'id': template.id,
         'template_type': template.template_type,
         'template_type_display': template.get_template_type_display(),
-        'title': template.title or '',
-        'header_note': template.header_note or '',
-        'terms': template.terms or '',
-        'footer_note': template.footer_note or '',
-        'show_brand_info': template.show_brand_info,
-        'show_customer_info': template.show_customer_info,
-        'show_signatures': template.show_signatures,
+        **_print_template_snapshot(template),
         'updated_at': template.updated_at.strftime('%d/%m/%Y %H:%M') if template.updated_at else '',
+    }
+
+
+def _serialize_print_template_history(history):
+    snapshot = history.snapshot or {}
+    return {
+        'id': history.id,
+        'template_type': history.template_type,
+        'template_type_display': history.get_template_type_display(),
+        'title': history.title or snapshot.get('title', ''),
+        'created_at': history.created_at.strftime('%d/%m/%Y %H:%M') if history.created_at else '',
+        'created_by': history.created_by.get_full_name() or history.created_by.username if history.created_by else '',
+        'snapshot': {
+            field: snapshot.get(field, PRINT_TEMPLATE_FIELD_DEFAULTS.get(field))
+            for field in PRINT_TEMPLATE_EDITABLE_FIELDS
+        },
     }
 
 
@@ -904,19 +1004,196 @@ def api_save_print_template(request):
         if not title:
             return JsonResponse({'status': 'error', 'message': 'Tiêu đề mẫu in không được để trống'})
 
-        template.title = title
-        template.header_note = (data.get('header_note') or '').strip()
-        template.terms = (data.get('terms') or '').strip()
-        template.footer_note = (data.get('footer_note') or '').strip()
-        template.show_brand_info = bool(data.get('show_brand_info', True))
-        template.show_customer_info = bool(data.get('show_customer_info', True))
-        template.show_signatures = bool(data.get('show_signatures', True))
+        _apply_print_template_data(template, data)
         template.save()
+        _create_print_template_history(template, request.user)
         return JsonResponse({
             'status': 'ok',
             'message': 'Đã lưu mẫu in',
             'template': _serialize_print_template(template),
         })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_get_print_template_histories(request):
+    if not can_manage_users(request.user):
+        return _forbid_json()
+    template_type = request.GET.get('template_type')
+    valid_types = [value for value, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES]
+    if template_type not in valid_types:
+        return JsonResponse({'data': []})
+
+    brand = _get_request_brand(request)
+    template = _get_or_create_print_template(brand, template_type)
+    histories = template.histories.select_related('created_by')[:30]
+    return JsonResponse({'data': [_serialize_print_template_history(item) for item in histories]})
+
+
+@login_required(login_url="/login/")
+def api_restore_print_template_history(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
+    try:
+        data = json.loads(request.body)
+        brand = _get_request_brand(request)
+        history = PrintTemplateHistory.objects.select_related('template').get(id=data.get('history_id'))
+        if history.template.brand_id != (brand.id if brand else None):
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy lịch sử mẫu in'}, status=404)
+
+        template = history.template
+        snapshot = history.snapshot or {}
+        _apply_print_template_data(template, snapshot)
+        if not template.title:
+            template.title = history.title or dict(PrintTemplate.TEMPLATE_TYPE_CHOICES).get(template.template_type, 'Mẫu in')
+        template.save()
+        _create_print_template_history(template, request.user)
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã khôi phục mẫu in từ lịch sử',
+            'template': _serialize_print_template(template),
+        })
+    except PrintTemplateHistory.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy lịch sử mẫu in'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+def _make_preview_item(product, quantity, unit_price, discount_percent=0, note=''):
+    qty = Decimal(str(quantity))
+    price = Decimal(str(unit_price))
+    discount = Decimal(str(discount_percent))
+    total_price = qty * price * (Decimal('1') - discount / Decimal('100'))
+    return SimpleNamespace(
+        product=product,
+        variant=None,
+        display_code=product.code,
+        display_name=product.name,
+        display_unit=product.unit,
+        item_name='',
+        unit=product.unit,
+        note=note,
+        quantity=qty,
+        unit_price=price,
+        discount_percent=discount,
+        total_price=total_price,
+    )
+
+
+def _build_print_template_preview_context(request, template_type, print_template):
+    brand = _get_request_brand(request) or SimpleNamespace(
+        name='CỬA HÀNG MẪU',
+        logo=None,
+        address='123 Nguyễn Huệ, Quận 1, TP.HCM',
+        phone='0901 234 567',
+        email='hello@ifshop.vn',
+        tax_code='0312345678',
+    )
+    customer = SimpleNamespace(
+        name='Nguyễn Văn A',
+        phone='0909 000 111',
+        address='45 Lê Lợi, TP.HCM',
+        company='Công ty Minh Anh',
+    )
+    warehouse = SimpleNamespace(name='Kho bán hàng')
+    creator = SimpleNamespace(username='sales.demo', get_full_name=lambda: 'Nhân viên mẫu')
+    products = [
+        SimpleNamespace(code='SP001', name='Áo khoác mẫu', unit='Cái', note='Giao màu xanh, size M', image=None),
+        SimpleNamespace(code='SP002', name='Tai nghe demo', unit='Cái', note='Bảo hành 12 tháng', image=None),
+    ]
+    items = [
+        _make_preview_item(products[0], 2, 350000, 5, 'Khách yêu cầu đóng gói riêng'),
+        _make_preview_item(products[1], 1, 120000, 0, ''),
+    ]
+    total_amount = sum((item.total_price for item in items), Decimal('0'))
+    discount_amount = Decimal('50000')
+    shipping_fee = Decimal('30000')
+    tax_amount = Decimal('0')
+    final_amount = total_amount - discount_amount + shipping_fee + tax_amount
+    order = SimpleNamespace(
+        code='DH-MAU-001' if template_type not in {'quotation', 'quotation_a4'} else 'BG-MAU-001',
+        customer=customer,
+        warehouse=warehouse,
+        order_date=date.today(),
+        total_amount=total_amount,
+        discount_amount=discount_amount,
+        shipping_fee=shipping_fee,
+        tax_amount=tax_amount,
+        final_amount=final_amount,
+        paid_amount=Decimal('300000'),
+        note='Giao trong giờ hành chính. Kiểm tra hàng trước khi nhận.',
+        salesperson='Lan Anh',
+        created_by=creator,
+        shipping_address='45 Lê Lợi, TP.HCM',
+        tags='demo',
+        get_status_display=lambda: 'Đơn hàng',
+    )
+    warranty_items = [
+        {
+            'code': item.display_code,
+            'name': item.display_name,
+            'unit': item.display_unit,
+            'quantity': item.quantity,
+            'serial': 'SN-DEMO',
+            'warranty_term': '12 tháng',
+            'note': item.note,
+        }
+        for item in items
+    ]
+    return {
+        'order': order,
+        'items': items,
+        'warranty_items': warranty_items,
+        'brand': brand,
+        'remaining': max(0, float(order.final_amount) - float(order.paid_amount)),
+        'valid_until': date.today(),
+        'print_type': template_type,
+        'print_template': print_template,
+        'preview_mode': True,
+    }
+
+
+@login_required(login_url="/login/")
+def api_preview_print_template(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json()
+    try:
+        data = json.loads(request.body)
+        template_type = data.get('template_type')
+        templates = {
+            'k80': 'orders/print/receipt_k80.html',
+            'a4': 'orders/print/invoice_a4.html',
+            'quotation': 'orders/print/quotation_a5.html',
+            'quotation_a4': 'orders/print/quotation_a4.html',
+            'warranty': 'orders/print/warranty_a4.html',
+            'export': 'orders/print/export_a4.html',
+        }
+        if template_type not in templates:
+            return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})
+
+        brand = _get_request_brand(request)
+        current = _get_or_create_print_template(brand, template_type)
+        snapshot = _print_template_snapshot(current)
+        for field in PRINT_TEMPLATE_EDITABLE_FIELDS:
+            if field in data:
+                if field in PRINT_TEMPLATE_BOOLEAN_FIELDS:
+                    snapshot[field] = _to_bool(data.get(field), snapshot.get(field, True))
+                else:
+                    snapshot[field] = (data.get(field) or '').strip()
+        if not snapshot.get('title'):
+            snapshot['title'] = current.title or dict(PrintTemplate.TEMPLATE_TYPE_CHOICES).get(template_type, 'Mẫu in')
+        preview_template = SimpleNamespace(**snapshot)
+        html = render_to_string(
+            templates[template_type],
+            _build_print_template_preview_context(request, template_type, preview_template),
+            request=request,
+        )
+        return JsonResponse({'status': 'ok', 'html': html})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

@@ -8,6 +8,7 @@
     width: 72mm; margin: 0 auto; padding: 4mm 2mm; font-size: 12px; line-height: 1.4;
 }
 .receipt .header { text-align: center; margin-bottom: 6px; }
+.receipt .header .logo { width: 42px; max-height: 42px; object-fit: contain; margin-bottom: 3px; }
 .receipt .header .brand-name { font-size: 14px; font-weight: 700; text-transform: uppercase; }
 .receipt .header .brand-info { font-size: 10px; color: #666; }
 .receipt .divider { border-top: 1px dashed #999; margin: 6px 0; }
@@ -18,6 +19,8 @@
 .receipt table th { text-align: left; border-bottom: 1px solid #333; padding: 2px 0; font-size: 10px; }
 .receipt table td { padding: 2px 0; vertical-align: top; }
 .receipt table td.text-right { text-align: right; }
+.receipt .product-thumb { width: 28px; height: 28px; object-fit: contain; border: 1px solid #ddd; border-radius: 3px; margin-right: 4px; vertical-align: top; }
+.receipt .item-note { color:#777; font-size:10px; }
 .receipt .total-section { margin-top: 4px; }
 .receipt .total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 1px 0; }
 .receipt .grand-total { font-size: 16px; font-weight: 700; border-top: 1px solid #333; padding-top: 4px; margin-top: 4px; }
@@ -31,6 +34,7 @@
 {% block content %}
 <div class="receipt">
     <div class="header">
+        {% if print_template.show_brand_logo and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
         <div class="brand-name">{{ brand.name|default:"CỬA HÀNG" }}</div>
         {% if print_template.show_brand_info %}
         {% if brand.address %}<div class="brand-info">{{ brand.address }}</div>{% endif %}
@@ -53,7 +57,20 @@
         <tbody>
         {% for item in items %}
         <tr>
-            <td>{{ item.product.name }}<br><small style="color:#888">{{ item.unit_price|money_vnd }}đ{% if item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}</small></td>
+            <td>
+                {% if print_template.show_product_images and item.product and item.product.image %}<img class="product-thumb" src="{{ item.product.image.url }}" alt="">{% endif %}
+                {% if print_template.show_product_code %}<strong>{{ item.display_code }}</strong> - {% endif %}{{ item.display_name }}
+                {% if print_template.show_unit_price or print_template.show_discount %}
+                <br><small style="color:#888">
+                    {% if print_template.show_unit_price %}{{ item.unit_price|money_vnd }}đ{% endif %}
+                    {% if print_template.show_discount and item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}
+                </small>
+                {% endif %}
+                {% if print_template.show_item_note %}
+                    {% if item.note %}<div class="item-note">{{ item.note }}</div>
+                    {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
+                {% endif %}
+            </td>
             <td class="text-right">{{ item.quantity|qty_vn }}</td>
             <td class="text-right">{{ item.total_price|money_vnd }}đ</td>
         </tr>
@@ -63,13 +80,17 @@
     <div class="divider"></div>
     <div class="total-section">
         <div class="total-row"><span>Tổng cộng ({{ items|length }} SP):</span><span>{{ order.total_amount|money_vnd }}đ</span></div>
-        {% if order.discount_amount %}<div class="total-row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
-        {% if order.shipping_fee %}<div class="total-row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_discount and order.discount_amount %}<div class="total-row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_shipping_fee and order.shipping_fee %}<div class="total-row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        {% if print_template.show_tax and order.tax_amount %}<div class="total-row"><span>Thuế:</span><span>{{ order.tax_amount|money_vnd }}đ</span></div>{% endif %}
         <div class="total-row grand-total"><span>THANH TOÁN:</span><span>{{ order.final_amount|money_vnd }}đ</span></div>
+        {% if print_template.show_payment_info %}
         {% if order.paid_amount %}<div class="total-row"><span>Đã thanh toán:</span><span>{{ order.paid_amount|money_vnd }}đ</span></div>{% endif %}
         {% if remaining > 0 %}<div class="total-row" style="color:#d32f2f;font-weight:600;"><span>Còn nợ:</span><span>{{ remaining|money_vnd }}đ</span></div>{% endif %}
+        {% endif %}
     </div>
-    {% if print_template.terms %}<div class="divider"></div><div class="footer">{{ print_template.terms|linebreaksbr }}</div>{% endif %}
+    {% if print_template.show_order_note and order.note %}<div class="divider"></div><div class="footer"><strong>Ghi chú:</strong><br>{{ order.note }}</div>{% endif %}
+    {% if print_template.show_terms and print_template.terms %}<div class="divider"></div><div class="footer">{{ print_template.terms|linebreaksbr }}</div>{% endif %}
     <div class="divider"></div>
     <div class="footer">
         {% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}<br>{% else %}Cảm ơn quý khách!<br>Hẹn gặp lại!<br>{% endif %}

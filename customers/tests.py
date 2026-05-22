@@ -207,6 +207,52 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(row['total_purchased'], 100.0)
         self.assertEqual(row['total_debt'], 60.0)
 
+    def test_customer_unpaid_metrics_ignore_canceled_orders(self):
+        active_unpaid = Order.objects.create(
+            code='DH-CUST-UNPAID',
+            store=self.store,
+            customer=self.customer,
+            status=1,
+            payment_status=0,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=0,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        canceled_unpaid = Order.objects.create(
+            code='DH-CUST-CANCELED-UNPAID',
+            store=self.store,
+            customer=self.customer,
+            status=6,
+            payment_status=0,
+            total_amount=500,
+            final_amount=500,
+            paid_amount=0,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+
+        customers_response = self.client.get(reverse('api_get_customers'))
+        self.assertEqual(customers_response.status_code, 200)
+        customer_payload = next(
+            item for item in customers_response.json()['data']
+            if item['id'] == self.customer.id
+        )
+        self.assertEqual(customer_payload['total_purchased'], 100.0)
+        self.assertEqual(customer_payload['total_debt'], 100.0)
+        self.assertEqual(customer_payload['unpaid_order_count'], 1)
+
+        orders_response = self.client.get(reverse('api_customer_orders'), {'customer_id': self.customer.id})
+        self.assertEqual(orders_response.status_code, 200)
+        orders_payload = orders_response.json()
+        self.assertEqual(orders_payload['summary']['total_debt'], 100.0)
+        self.assertEqual(orders_payload['summary']['total_cancelled'], 1)
+        active_payload = next(item for item in orders_payload['orders'] if item['id'] == active_unpaid.id)
+        canceled_payload = next(item for item in orders_payload['orders'] if item['id'] == canceled_unpaid.id)
+        self.assertEqual(active_payload['debt'], 100.0)
+        self.assertEqual(canceled_payload['debt'], 0)
+
     def test_customer_order_history_includes_product_price_filters_and_service_lines(self):
         product = Product.objects.create(
             store=self.store,
@@ -268,5 +314,7 @@ class CustomerScopeTests(TestCase):
         self.assertIn('Dịch vụ cài đặt', customer_payload['purchased_product_search'])
         self.assertTrue(any(
             item['net_unit_price'] == 90.0
+            and item['quantity'] == 2.0
+            and item['order_code'] == order.code
             for item in customer_payload['purchase_filter_items']
         ))

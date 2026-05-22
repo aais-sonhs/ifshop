@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import Count, F, Q, Sum
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -92,12 +92,16 @@ def _build_customer_order_metrics_map(request, customers):
     for row in orders.values('customer_id').annotate(
         total_purchased=Sum('final_amount'),
         total_paid=Sum('paid_amount'),
+        unpaid_order_count=Count('id', filter=Q(payment_status=0)),
+        debt_order_count=Count('id', filter=Q(final_amount__gt=F('paid_amount'))),
     ):
         total_purchased = float(row['total_purchased'] or 0)
         total_paid = float(row['total_paid'] or 0)
         metrics[row['customer_id']] = {
             'total_purchased': total_purchased,
             'total_debt': max(total_purchased - total_paid, 0),
+            'unpaid_order_count': row['unpaid_order_count'] or 0,
+            'debt_order_count': row['debt_order_count'] or 0,
         }
     return metrics
 
@@ -175,10 +179,21 @@ def _build_customer_product_history_map(request, customers):
                 bucket['labels'].add(label)
             bucket['search_parts'].add(item_payload['product_search'])
             bucket['filter_items'].append({
+                'order_id': order.id,
+                'order_code': order.code,
+                'order_date': order.order_date.strftime('%d/%m/%Y') if order.order_date else '',
+                'order_status': order.status,
+                'order_status_display': order.get_status_display(),
+                'payment_status': order.payment_status,
+                'payment_status_display': order.get_payment_status_display(),
+                'product_id': item_payload['product_id'],
                 'product_search': item_payload['product_search'],
                 'product_code': item_payload['product_code'],
                 'product_name': item_payload['product_name'],
+                'unit': item_payload['unit'],
+                'quantity': item_payload['quantity'],
                 'unit_price': item_payload['unit_price'],
+                'discount_percent': item_payload['discount_percent'],
                 'net_unit_price': item_payload['net_unit_price'],
                 'line_total': item_payload['total_price'],
                 'order_total': item_payload['order_total'],
@@ -232,6 +247,8 @@ def api_get_customers(request):
         'group': c.group.name if c.group else '', 'group_id': c.group_id,
         'total_purchased': metrics_map.get(c.id, {}).get('total_purchased', 0),
         'total_debt': metrics_map.get(c.id, {}).get('total_debt', 0),
+        'unpaid_order_count': metrics_map.get(c.id, {}).get('unpaid_order_count', 0),
+        'debt_order_count': metrics_map.get(c.id, {}).get('debt_order_count', 0),
         'points': c.points, 'membership_level': c.membership_level,
         'membership_display': c.get_membership_level_display(),
         'gender': c.gender, 'gender_display': c.get_gender_display(),
@@ -423,7 +440,7 @@ def api_customer_orders(request):
         total_amount = 0
         total_debt = 0
         for o in orders:
-            debt = float(o.final_amount) - float(o.paid_amount)
+            debt = 0 if o.status == 6 else float(o.final_amount) - float(o.paid_amount)
             items = [_serialize_order_item_history(it, order=o) for it in o.items.all()]
 
             data.append({

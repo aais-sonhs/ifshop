@@ -233,9 +233,20 @@
                                     <strong><i class="fas fa-money-bill-wave text-success mr-1"></i> Thanh toán</strong>
                                     <span class="badge badge-light border ml-2" id="payment_status_hint">Chưa thu</span>
                                 </div>
-                                <button type="button" class="btn btn-sm btn-outline-success" id="btn_toggle_payment">
-                                    <i class="fas fa-money-bill-wave mr-1"></i> Thanh toán
-                                </button>
+                                <div class="btn-group btn-group-sm flex-wrap" id="payment_action_group" style="gap:4px;">
+                                    <button type="button" class="btn btn-outline-success" id="btn_toggle_payment">
+                                        <i class="fas fa-money-bill-wave mr-1"></i> Thanh toán
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" id="btn_add_payment_line" style="display:none;">
+                                        <i class="fas fa-plus mr-1"></i> Phương thức
+                                    </button>
+                                    <button type="button" class="btn btn-success" id="btn_collect_payment_now" style="display:none;">
+                                        <i class="fas fa-check mr-1"></i> Thu tiền
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="btn_skip_payment_now">
+                                        <i class="fas fa-clock mr-1"></i> Thanh toán sau
+                                    </button>
+                                </div>
                             </div>
                             <div id="payment_lines_container" class="mt-2" style="display:none;"></div>
                             <small class="text-muted d-block mt-1">Phương thức (tiền mặt / chuyển khoản / ...) được tạo trước ở mục <a href="{% url 'setting_payment_methods' %}" target="_blank">Cấu hình phương thức</a>; ở đây chỉ chọn và nhập số tiền.</small>
@@ -317,7 +328,7 @@
                                 <i class="fas fa-eye mr-1"></i> Kiểm tra tồn
                             </button>
                             <small class="text-muted"><kbd>F2</kbd> Tìm SP</small>
-                            <small class="text-muted"><kbd>F3</kbd> Tạo SP mới</small>
+                            <small class="text-muted"><kbd>F3</kbd> Thêm dịch vụ</small>
                             <small class="text-muted"><kbd>F4</kbd> Tìm KH</small>
                         </div>
                     </div>
@@ -336,7 +347,7 @@
                                     <button class="btn btn-outline-secondary" type="button" tabindex="-1" title="Thêm dòng dịch vụ/thẻ trống" id="btn_add_service_line">
                                         <i class="fas fa-clipboard-list"></i> <span class="d-none d-md-inline">Dịch vụ</span>
                                     </button>
-                                    <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
+                                    <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới" id="btn_quick_create_product_hint">
                                         <i class="fas fa-plus-circle"></i> <span class="d-none d-md-inline">Tạo SP</span>
                                     </button>
                                 </div>
@@ -394,6 +405,9 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success order-workflow-btn" id="btn_order_collect_payment" style="display:none;"><i class="fas fa-money-bill-wave"></i> Thu tiền</button>
+                <button type="button" class="btn btn-info order-workflow-btn" id="btn_order_export_stock" style="display:none;"><i class="fas fa-truck"></i> Xuất kho</button>
+                <button type="button" class="btn btn-warning order-workflow-btn" id="btn_order_return" style="display:none;"><i class="fas fa-undo-alt"></i> Hoàn hàng</button>
                 <button type="button" class="btn btn-outline-success" id="btn_print_current" style="display:none;"><i class="fas fa-print"></i> In</button>
                 <button type="button" class="btn btn-warning" id="btn_save_note" style="display:none;"><i class="fas fa-sticky-note"></i> Lưu ghi chú</button>
                 <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu đơn hàng</button>
@@ -474,12 +488,12 @@
     </div>
 </div>
 
-<!-- MODAL TẠO NHANH SẢN PHẨM (F3) -->
+<!-- MODAL TẠO NHANH SẢN PHẨM -->
 <div class="modal fade" id="modal_quick_product" tabindex="-1" data-backdrop="static">
     <div class="modal-dialog modal-md">
         <div class="modal-content">
             <div class="modal-header bg-info text-white py-2">
-                <h5 class="modal-title"><i class="fas fa-box-open mr-1"></i> Tạo nhanh sản phẩm <small class="ml-2"><kbd>F3</kbd></small></h5>
+                <h5 class="modal-title"><i class="fas fa-box-open mr-1"></i> Tạo nhanh sản phẩm</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
@@ -534,10 +548,10 @@
 </div>
 
 <div class="modal fade" id="modal_bulk_collect" tabindex="-1">
-    <div class="modal-dialog modal-md">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header bg-success text-white py-2">
-                <h5 class="modal-title">Thanh toán nhanh nhiều đơn</h5>
+                <h5 class="modal-title">Module thanh toán nhiều đơn</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
@@ -545,19 +559,22 @@
                     <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
                         <span><i class="fas fa-clipboard-list text-success mr-1"></i> Đã chọn <strong id="bulk_collect_count">0</strong> đơn</span>
                         <span class="text-success">Tổng cần thu: <strong id="bulk_collect_total">0</strong>đ</span>
+                        <span class="text-primary">Tổng đang thu: <strong id="bulk_collect_entered_total">0</strong>đ</span>
                     </div>
-                    <small class="text-muted">Tổng này là số tiền còn phải thanh toán của các đơn đang chọn.</small>
+                    <small class="text-muted">Nhập số tiền thu cho từng đơn, sau đó bấm một lần để tạo phiếu thu cho toàn bộ danh sách.</small>
                 </div>
                 <div id="bulk_collect_zero_hint" class="alert alert-warning py-2 mb-2" style="display:none;">
                     Các đơn đã chọn không còn khoản cần thu.
                 </div>
-                <div id="bulk_collect_order_list" class="border rounded mb-2" style="max-height:160px;overflow-y:auto;"></div>
-                <div class="form-group mb-2">
-                    <label class="d-flex justify-content-between align-items-center">
-                        <span>Số tiền thực thu <span class="text-danger">*</span></span>
-                        <button type="button" class="btn btn-xs btn-link p-0" id="bulk_fill_total" title="Lấy đúng số cần thu">Lấy đủ</button>
-                    </label>
-                    <input type="text" class="form-control form-control-sm text-right font-weight-bold money-format" id="bulk_collect_actual_amount" value="0">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="mb-0 font-weight-bold">Danh sách thanh toán</label>
+                    <div>
+                        <button type="button" class="btn btn-xs btn-outline-secondary" id="bulk_clear_amounts">Xóa tiền</button>
+                        <button type="button" class="btn btn-xs btn-outline-success" id="bulk_fill_total" title="Lấy đúng số còn phải thu từng đơn">Thu đủ</button>
+                    </div>
+                </div>
+                <div id="bulk_collect_order_list" class="border rounded mb-2" style="max-height:340px;overflow-y:auto;"></div>
+                <div class="mb-2">
                     <small class="text-muted" id="bulk_collect_diff_hint"></small>
                 </div>
                 <div class="form-group mb-0">
@@ -577,6 +594,76 @@
         </div>
 	    </div>
 	</div>
+
+<div class="modal fade" id="modal_order_return_quick" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning py-2">
+                <h5 class="modal-title"><i class="fas fa-undo-alt mr-1"></i> Hoàn hàng nhanh <span id="quick_return_order_code" class="font-weight-normal"></span></h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="quick_return_order_id">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Mã phiếu</label>
+                            <input type="text" class="form-control form-control-sm" id="quick_return_code" placeholder="Tự sinh nếu bỏ trống">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Ngày trả</label>
+                            <input type="date" class="form-control form-control-sm" id="quick_return_date">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Phương thức hoàn tiền</label>
+                            <select class="form-control form-control-sm" id="quick_return_payment_method">
+                                {% for m in payment_methods %}
+                                <option value="{{ m.id }}" data-legacy-type="{{ m.legacy_type }}" data-default-cash-book-id="{{ m.default_cash_book_id|default:'' }}">{{ m.name }}{% if m.default_cash_book__name %} — {{ m.default_cash_book__name }}{% endif %}</option>
+                                {% empty %}
+                                <option value="">Chưa có phương thức</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Tổng hoàn</label>
+                            <div class="form-control form-control-sm text-right font-weight-bold bg-light" id="quick_return_total">0đ</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height:360px;overflow-y:auto;">
+                    <table class="table table-sm table-bordered mb-0" id="quick_return_items_tbl">
+                        <thead class="bg-light">
+                            <tr>
+                                <th style="width:44px;" class="text-center"><input type="checkbox" id="quick_return_check_all" checked></th>
+                                <th>Sản phẩm</th>
+                                <th style="width:110px;" class="text-right">Đã bán</th>
+                                <th style="width:130px;">SL hoàn</th>
+                                <th style="width:150px;">Giá hoàn</th>
+                                <th style="width:150px;" class="text-right">Thành tiền</th>
+                                <th style="width:180px;">Ghi chú</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="form-group mt-2 mb-0">
+                    <label>Lý do hoàn hàng</label>
+                    <textarea class="form-control form-control-sm" id="quick_return_reason" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-sm btn-warning" id="btn_confirm_quick_return"><i class="fas fa-check mr-1"></i> Hoàn hàng</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 	<div class="modal fade" id="modal_order_quick_view" tabindex="-1">
 	    <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1916,6 +2003,7 @@ function syncDocumentTypeUI(){
         syncPaymentSummary();
         if(!isExisting) $('#modal_title').text('Tạo đơn hàng');
     }
+    syncOrderWorkflowButtons();
 }
 
 function fetchProductsForOrderForm(orderId, callback){
@@ -2153,13 +2241,14 @@ function syncStatusFlowControls(currentStatus){
     if(!_timelineReadonly && completionBlocked){
         hint += ' · Cần thanh toán đủ sau khi xuất kho để hoàn thành';
     } else if(!_timelineReadonly && next !== null){
-        hint += ' · Bấm "' + STATUS_LABELS[next] + '" rồi lưu để chuyển bước';
+        hint += ' · Bấm "' + STATUS_LABELS[next] + '" để chuyển ngay';
     }
     $('#status_flow_hint').text(hint);
     $('#btn_status_next')
         .prop('disabled', _timelineReadonly || next === null || completionBlocked)
         .html('<i class="fas fa-arrow-right mr-1"></i>' + (next === null ? 'Hết bước' : STATUS_LABELS[next]));
-    $('#btn_status_save').prop('disabled', _timelineReadonly);
+    $('#btn_status_save').prop('disabled', _timelineReadonly).html('<i class="fas fa-save mr-1"></i>Cập nhật bước');
+    syncOrderWorkflowButtons();
 }
 
 function selectNextOrderStatus(){
@@ -2194,20 +2283,32 @@ $(document).on('click', '.st-step', function(){
         alert('Chỉ được hoàn thành sau khi đơn đã thanh toán đủ và đã xuất kho.');
         return;
     }
-    if(stepVal !== 6 && stepVal > current){
+    if(stepVal !== 6 && stepVal !== 4 && stepVal > current){
         if(!confirm('Chuyển trạng thái sang "' + STATUS_LABELS[stepVal] + '"?')) return;
     }
 
-    setOrderStatusValue(stepVal, {manual:true});
+    updateCurrentOrderStatus(stepVal);
 })
 
 $('#btn_status_next').on('click', function(){
-    selectNextOrderStatus();
+    var current = parseInt($('#inp_status').val(), 10) || 0;
+    var next = getNextOrderStatus(current);
+    if(next === null) return;
+    if(next === 5 && !isOrderPaidEnoughForCompletion()){
+        alert('Chỉ được hoàn thành sau khi đơn đã thanh toán đủ và đã xuất kho.');
+        return;
+    }
+    updateCurrentOrderStatus(next);
 });
 
 $('#btn_status_save').on('click', function(){
-    window._skipPrintAfterOrderSave = true;
-    $('#btn_save').trigger('click');
+    var current = parseInt($('#inp_status').val(), 10) || 0;
+    if($('#edit_id').val()){
+        updateCurrentOrderStatus(current);
+    } else {
+        window._skipPrintAfterOrderSave = true;
+        $('#btn_save').trigger('click');
+    }
 });
 
 function getStatusBadgeHtml(status, statusDisplay){
@@ -2313,6 +2414,14 @@ function applyStoredOrderPaymentPreferencesToNewForm(){
     });
 }
 
+function getPaymentEntryTotal(){
+    var totalPaying = 0;
+    $('#payment_lines_container .pay-line').each(function(){
+        totalPaying += getMoneyValue($(this).find('.inp-pay-amount')) || 0;
+    });
+    return totalPaying;
+}
+
 function addPaymentLine(methodId, amount){
     var preferredMethodId = normalizeOrderPaymentMethodOptionId(methodId) || getStoredOrderPaymentPreferences().paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId();
     var methodOpts = '';
@@ -2325,11 +2434,16 @@ function addPaymentLine(methodId, amount){
     } else {
         methodOpts = '<option value="" data-legacy="2">Chưa có phương thức</option>';
     }
+    var lineAmount = amount;
+    if(lineAmount === undefined || lineAmount === null){
+        lineAmount = Math.max(getRemainingForNewPayment() - getPaymentEntryTotal(), 0);
+    }
     var html = '<div class="pay-line form-row align-items-end">' +
-        '<div class="form-group col-md-7"><label class="small text-muted mb-1">Phương thức nhận tiền</label><select class="form-control form-control-sm sel-pay-method">'+methodOpts+'</select></div>' +
-        '<div class="form-group col-md-5"><label class="small text-muted mb-1">Số tiền</label><input type="text" class="form-control form-control-sm text-right money-format inp-pay-amount" value="'+fmt(amount || 0)+'"></div>' +
+        '<div class="form-group col-md-6"><label class="small text-muted mb-1">Phương thức nhận tiền</label><select class="form-control form-control-sm sel-pay-method">'+methodOpts+'</select></div>' +
+        '<div class="form-group col-md-5"><label class="small text-muted mb-1">Số tiền</label><input type="text" class="form-control form-control-sm text-right money-format inp-pay-amount" value="'+fmt(lineAmount || 0)+'"></div>' +
+        '<div class="form-group col-md-1 text-right"><button type="button" class="btn btn-sm btn-outline-danger btn-remove-pay-line" title="Xóa dòng"><i class="fas fa-times"></i></button></div>' +
         '</div>';
-    $('#payment_lines_container').html(html);
+    $('#payment_lines_container').append(html);
     var $row = $('#payment_lines_container .pay-line:last');
     $row.find('.sel-pay-method').on('change', function(){
         if($row.is(':first-child')){
@@ -2338,6 +2452,13 @@ function addPaymentLine(methodId, amount){
     });
     $row.find('.inp-pay-amount').data('manual', false).on('input', function(){
         $(this).data('manual', true);
+        syncPaymentSummary();
+    });
+    $row.find('.btn-remove-pay-line').on('click', function(){
+        $row.remove();
+        if(!$('#payment_lines_container .pay-line').length){
+            $('#payment_lines_container').hide();
+        }
         syncPaymentSummary();
     });
     syncPaymentSummary();
@@ -2358,6 +2479,7 @@ function enablePaymentEntry(amount){
     if(value === undefined || value === null){
         value = getRemainingForNewPayment();
     }
+    $('#payment_lines_container').html('');
     addPaymentLine(prefs.paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId(), value);
     $('#payment_lines_container').show();
     syncPaymentSummary();
@@ -2373,27 +2495,30 @@ function disablePaymentEntry(){
 function syncPaymentSummary(){
     var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
     if(isPaymentEntryActive()){
-        var $amount = $('#payment_lines_container .pay-line:first .inp-pay-amount');
-        if($amount.length && !$amount.data('manual')){
+        var $lines = $('#payment_lines_container .pay-line');
+        var $amount = $lines.first().find('.inp-pay-amount');
+        if($lines.length === 1 && $amount.length && !$amount.data('manual')){
             setMoneyValue($amount, getRemainingForNewPayment());
         }
     }
-    var totalPaying = 0;
-    $('#payment_lines_container .pay-line').each(function(){
-        totalPaying += getMoneyValue($(this).find('.inp-pay-amount')) || 0;
-    });
+    var totalPaying = getPaymentEntryTotal();
     syncStatusFromPaymentIntent(totalPaying);
     renderStatusTimeline(parseInt($('#inp_status').val(), 10) || 0);
     if(isPaymentEntryActive()){
         $('#btn_toggle_payment').removeClass('btn-outline-success').addClass('btn-outline-secondary').html('<i class="fas fa-times mr-1"></i> Hủy');
+        $('#btn_add_payment_line').show();
+        $('#btn_collect_payment_now').toggle(Boolean($('#edit_id').val()) && totalPaying > 0);
         $('#payment_status_hint').removeClass('badge-light badge-info').addClass('badge-success').text(totalPaying > 0 ? 'Thu ' + fmt(totalPaying) + 'đ' : 'Nhập số tiền');
     } else if(_existingPaidAmount > 0){
         $('#btn_toggle_payment').removeClass('btn-outline-secondary').addClass('btn-outline-success').html('<i class="fas fa-plus-circle mr-1"></i> Thu thêm');
+        $('#btn_add_payment_line,#btn_collect_payment_now').hide();
         $('#payment_status_hint').removeClass('badge-light badge-success').addClass('badge-info').text('Đã thu ' + fmt(_existingPaidAmount) + 'đ');
     } else {
         $('#btn_toggle_payment').removeClass('btn-outline-secondary').addClass('btn-outline-success').html('<i class="fas fa-money-bill-wave mr-1"></i> Thanh toán');
+        $('#btn_add_payment_line,#btn_collect_payment_now').hide();
         $('#payment_status_hint').removeClass('badge-success badge-info').addClass('badge-light').text('Chưa thu');
     }
+    syncOrderWorkflowButtons();
 }
 
 function getPaymentLines(){
@@ -2419,6 +2544,144 @@ function clearPaymentLines(){
     syncPaymentSummary();
 }
 
+function syncOrderWorkflowButtons(){
+    var orderId = $('#edit_id').val();
+    var status = parseInt($('#inp_status').val(), 10) || 0;
+    var isQuotation = getDocumentType && getDocumentType() === 'quotation';
+    var hasOrder = Boolean(orderId) && !isQuotation;
+    var remaining = getRemainingForNewPayment();
+    $('#btn_order_collect_payment').toggle(hasOrder && status !== 6 && remaining > 0);
+    $('#btn_order_export_stock').toggle(hasOrder && [0,1,2,3].indexOf(status) >= 0);
+    $('#btn_order_return').toggle(hasOrder && [4,5].indexOf(status) >= 0);
+    $('#btn_skip_payment_now').toggle(!isQuotation);
+}
+
+function applyOrderWorkflowResult(r){
+    if(!r || r.status !== 'ok') return;
+    if(typeof r.order_status !== 'undefined'){
+        $('#inp_status').val(String(r.order_status));
+        syncStatusOptions(r.order_status);
+    }
+    if(typeof r.paid_amount !== 'undefined'){
+        _existingPaidAmount = parseFloat(r.paid_amount) || 0;
+    }
+    syncPaymentSummary();
+    if(r.order_id){
+        loadPaymentHistory(r.order_id, r.paid_amount || 0, r.final_amount || 0);
+        loadOrderHistory(r.order_id);
+    }
+    loadData();
+}
+
+function collectCurrentOrderPayment(){
+    var orderId = $('#edit_id').val();
+    if(!orderId){
+        alert('Vui lòng lưu đơn hàng trước khi thu tiền riêng.');
+        return;
+    }
+    if(!isPaymentEntryActive()){
+        enablePaymentEntry();
+        return;
+    }
+    var lines = getPaymentLines();
+    if(!lines.length){
+        alert('Vui lòng nhập số tiền cần thu.');
+        return;
+    }
+    var total = lines.reduce(function(sum, line){ return sum + (Number(line.amount) || 0); }, 0);
+    if(total <= 0){
+        alert('Vui lòng nhập số tiền cần thu.');
+        return;
+    }
+    var $buttons = $('#btn_collect_payment_now,#btn_order_collect_payment');
+    $buttons.prop('disabled', true);
+    $.ajax({
+        url:'/api/orders/collect-payment/',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({order_id: orderId, payment_lines: lines}),
+        success:function(r){
+            if(r.status === 'ok'){
+                disablePaymentEntry();
+                applyOrderWorkflowResult(r);
+                toastr ? toastr.success(r.message) : alert(r.message);
+            } else {
+                alert(r.message);
+            }
+        },
+        complete:function(){
+            $buttons.prop('disabled', false);
+        }
+    });
+}
+
+function exportCurrentOrderStock(){
+    var orderId = $('#edit_id').val();
+    if(!orderId){
+        alert('Vui lòng lưu đơn hàng trước khi xuất kho.');
+        return;
+    }
+    if(!confirm('Xuất kho đơn hàng này? Tồn kho sẽ được trừ ngay, thanh toán vẫn có thể xử lý riêng.')) return;
+    var $btn = $('#btn_order_export_stock,#btn_status_next');
+    $btn.prop('disabled', true);
+    $.ajax({
+        url:'/api/orders/export-stock/',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({order_id: orderId}),
+        success:function(r){
+            if(r.status === 'ok'){
+                applyOrderWorkflowResult(r);
+                toastr ? toastr.success(r.message) : alert(r.message);
+            } else {
+                alert(r.message);
+            }
+        },
+        complete:function(){
+            $btn.prop('disabled', false);
+        }
+    });
+}
+
+function updateCurrentOrderStatus(targetStatus){
+    var orderId = $('#edit_id').val();
+    if(!orderId){
+        setOrderStatusValue(targetStatus, {manual:true});
+        return;
+    }
+    if(targetStatus === 4){
+        exportCurrentOrderStock();
+        return;
+    }
+    if(targetStatus === 6){
+        cancelOrder(orderId, $('#inp_code').val() || '');
+        return;
+    }
+    var $btn = $('#btn_status_next,#btn_status_save');
+    $btn.prop('disabled', true);
+    $.ajax({
+        url:'/api/orders/update-status/',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({order_id: orderId, status: targetStatus}),
+        success:function(r){
+            if(r.status === 'ok'){
+                applyOrderWorkflowResult(r);
+                toastr ? toastr.success(r.message) : alert(r.message);
+            } else {
+                alert(r.message);
+                syncStatusOptions(parseInt($('#inp_status').val(), 10) || 0);
+            }
+        },
+        complete:function(){
+            $btn.prop('disabled', false);
+        }
+    });
+}
+
 function getSelectedOrderIds(){
     return $('.order-row-check:checked').map(function(){ return parseInt($(this).val(), 10); }).get();
 }
@@ -2434,6 +2697,8 @@ function getSelectedOrderSummaries(){
             customer: $check.data('customer') || '',
             customerId: String($check.data('customer-id') || ''),
             status: status,
+            finalAmount: Number($check.data('final')) || 0,
+            paidAmount: Number($check.data('paid')) || 0,
             remaining: Math.max(remaining, 0)
         };
     }).get();
@@ -2444,75 +2709,112 @@ function renderBulkCollectSummary(){
     var totalRemaining = selectedOrders.reduce(function(total, order){
         return total + order.remaining;
     }, 0);
-    var payableOrders = selectedOrders.filter(function(order){ return order.remaining > 0; });
-    var customerKeys = {};
-    payableOrders.forEach(function(order){
-        customerKeys[order.customerId || order.customer || ''] = true;
-    });
-    var hasMixedCustomers = Object.keys(customerKeys).length > 1;
+    var payableOrders = selectedOrders.filter(function(order){ return order.status !== 6 && order.remaining > 0; });
 
     $('#bulk_collect_count').text(selectedOrders.length);
     $('#bulk_collect_total').text(fmt(totalRemaining));
-    $('#bulk_collect_actual_amount').val(fmt(totalRemaining));
-    $('#bulk_collect_actual_amount').data('total-required', totalRemaining);
-    updateBulkCollectDiffHint();
     $('#bulk_collect_zero_hint').toggle(selectedOrders.length > 0 && totalRemaining <= 0);
-    $('#btn_confirm_bulk_collect').prop('disabled', selectedOrders.length === 0 || totalRemaining <= 0 || hasMixedCustomers);
+    $('#btn_confirm_bulk_collect').prop('disabled', selectedOrders.length === 0 || totalRemaining <= 0);
 
     var html = '';
-    selectedOrders.slice(0, 8).forEach(function(order){
-        html += '<div class="d-flex justify-content-between align-items-start px-2 py-1 border-bottom">' +
-            '<div><strong>' + escapeHtml(order.code) + '</strong><br><small class="text-muted">' + escapeHtml(order.customer) + '</small></div>' +
-            '<div class="text-right ' + (order.remaining > 0 ? 'text-success' : 'text-muted') + '">' +
-            '<strong>' + fmt(order.remaining) + 'đ</strong>' +
-            '<br><small>' + (order.status === 6 ? 'bỏ qua' : (order.remaining > 0 ? 'cần thu' : 'đã đủ')) + '</small>' +
-            '</div>' +
-            '</div>';
-    });
-    if(selectedOrders.length > 8){
-        html += '<div class="px-2 py-1 text-muted text-center small">+' + (selectedOrders.length - 8) + ' đơn khác</div>';
-    }
     if(!selectedOrders.length){
         html = '<div class="px-2 py-2 text-muted text-center small">Chưa chọn đơn hàng nào</div>';
-    } else if(!payableOrders.length){
-        html += '<div class="px-2 py-1 text-warning text-center small">Không có đơn nào còn tiền cần thu.</div>';
-    } else if(hasMixedCustomers){
-        html += '<div class="px-2 py-1 text-danger text-center small">Chỉ thanh toán nhanh nhiều đơn của cùng một khách hàng.</div>';
+    } else {
+        html = '<table class="table table-sm mb-0">' +
+            '<thead class="thead-light"><tr>' +
+                '<th style="width:130px;">Mã đơn</th>' +
+                '<th>Khách hàng</th>' +
+                '<th class="text-right" style="width:120px;">Tổng</th>' +
+                '<th class="text-right" style="width:120px;">Đã thu</th>' +
+                '<th class="text-right" style="width:130px;">Còn thu</th>' +
+                '<th style="width:150px;">Số tiền thu</th>' +
+                '<th style="width:48px;"></th>' +
+            '</tr></thead><tbody>';
+        selectedOrders.forEach(function(order){
+            var disabled = order.status === 6 || order.remaining <= 0;
+            html += '<tr class="bulk-pay-row" data-order-id="' + order.id + '">' +
+                '<td><strong>' + escapeHtml(order.code) + '</strong></td>' +
+                '<td><small>' + escapeHtml(order.customer) + '</small></td>' +
+                '<td class="text-right">' + fmt(order.finalAmount) + 'đ</td>' +
+                '<td class="text-right">' + fmt(order.paidAmount) + 'đ</td>' +
+                '<td class="text-right ' + (order.remaining > 0 ? 'text-success font-weight-bold' : 'text-muted') + '">' + fmt(order.remaining) + 'đ</td>' +
+                '<td><input type="text" class="form-control form-control-sm text-right money-format bulk-pay-amount" value="' + fmt(disabled ? 0 : order.remaining) + '" data-order-id="' + order.id + '" data-remaining="' + order.remaining + '" ' + (disabled ? 'disabled' : '') + '></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-xs btn-outline-danger bulk-remove-row" data-order-id="' + order.id + '" title="Bỏ khỏi danh sách"><i class="fas fa-times"></i></button></td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        if(!payableOrders.length){
+            html += '<div class="px-2 py-1 text-warning text-center small">Không có đơn nào còn tiền cần thu.</div>';
+        }
     }
     $('#bulk_collect_order_list').html(html);
+    updateBulkCollectDiffHint();
 }
 
-function getBulkActualAmount(){
-    var raw = ($('#bulk_collect_actual_amount').val() || '').toString().replace(/[^0-9]/g, '');
-    return Number(raw) || 0;
+function getBulkPaymentEntries(){
+    var entries = [];
+    $('#bulk_collect_order_list .bulk-pay-amount').each(function(){
+        var $input = $(this);
+        if($input.prop('disabled')) return;
+        var amount = getMoneyValue($input) || 0;
+        var remaining = Number($input.data('remaining') || 0);
+        if(amount <= 0) return;
+        entries.push({
+            order_id: parseInt($input.data('order-id'), 10),
+            amount: amount,
+            remaining: remaining
+        });
+    });
+    return entries;
 }
 
 function updateBulkCollectDiffHint(){
-    var required = Number($('#bulk_collect_actual_amount').data('total-required') || 0);
-    var actual = getBulkActualAmount();
+    var required = getSelectedOrderSummaries().reduce(function(total, order){
+        return total + (order.status === 6 ? 0 : order.remaining);
+    }, 0);
+    var entries = getBulkPaymentEntries();
+    var actual = entries.reduce(function(total, entry){ return total + entry.amount; }, 0);
     var diff = actual - required;
     var $hint = $('#bulk_collect_diff_hint');
+    $('#bulk_collect_entered_total').text(fmt(actual));
+    var hasOverLine = entries.some(function(entry){ return entry.amount > entry.remaining; });
+    $('#btn_confirm_bulk_collect').prop('disabled', entries.length === 0 || actual <= 0 || hasOverLine);
     if(required <= 0){
         $hint.text('').removeClass('text-danger text-success text-warning');
         return;
     }
+    if(hasOverLine){
+        $hint.removeClass('text-success text-warning').addClass('text-danger')
+            .text('Có dòng thu vượt số tiền còn phải thu. Vui lòng giảm số tiền của dòng đó.');
+        return;
+    }
     if(diff === 0){
         $hint.removeClass('text-danger text-warning').addClass('text-success')
-            .text('✓ Khớp với tổng cần thu');
-    } else if(diff > 0){
-        $hint.removeClass('text-danger text-success').addClass('text-warning')
-            .text('Thực thu nhiều hơn cần thu ' + fmt(diff) + 'đ — phần dư sẽ ghi nhận như công nợ trả trước.');
+            .text('✓ Khớp với tổng cần thu. Một lần bấm sẽ tạo phiếu thu cho các dòng đang nhập tiền.');
     } else {
-        $hint.removeClass('text-success text-warning').addClass('text-danger')
-            .text('Còn thiếu ' + fmt(Math.abs(diff)) + 'đ so với tổng cần thu.');
+        $hint.removeClass('text-danger text-success').addClass('text-warning')
+            .text('Thu một phần: còn lại ' + fmt(Math.abs(diff)) + 'đ sau lần thu này.');
     }
 }
 
-$(document).on('input', '#bulk_collect_actual_amount', updateBulkCollectDiffHint);
+$(document).on('input', '#bulk_collect_order_list .bulk-pay-amount', updateBulkCollectDiffHint);
 $(document).on('click', '#bulk_fill_total', function(){
-    var required = Number($('#bulk_collect_actual_amount').data('total-required') || 0);
-    $('#bulk_collect_actual_amount').val(fmt(required));
+    $('#bulk_collect_order_list .bulk-pay-amount').each(function(){
+        setMoneyValue(this, Number($(this).data('remaining') || 0));
+    });
     updateBulkCollectDiffHint();
+});
+$(document).on('click', '#bulk_clear_amounts', function(){
+    $('#bulk_collect_order_list .bulk-pay-amount').each(function(){
+        setMoneyValue(this, 0);
+    });
+    updateBulkCollectDiffHint();
+});
+$(document).on('click', '.bulk-remove-row', function(){
+    var id = $(this).data('order-id');
+    $('.order-row-check[value="' + id + '"]').prop('checked', false);
+    renderBulkCollectSummary();
+    refreshBulkToolbar();
 });
 
 function refreshBulkToolbar(){
@@ -2807,6 +3109,29 @@ $(document).ready(function(){
         } else {
             enablePaymentEntry();
         }
+    });
+    $('#btn_add_payment_line').on('click', function(){
+        if(!isPaymentEntryActive()){
+            enablePaymentEntry();
+        } else {
+            $('#payment_lines_container .inp-pay-amount').data('manual', true);
+            addPaymentLine(null, null);
+            $('#payment_lines_container').show();
+        }
+    });
+    $('#btn_collect_payment_now,#btn_order_collect_payment').on('click', function(){
+        collectCurrentOrderPayment();
+    });
+    $('#btn_skip_payment_now').on('click', function(){
+        disablePaymentEntry();
+        $('#payment_status_hint').removeClass('badge-success badge-info').addClass('badge-light').text('Thanh toán sau');
+        toastr ? toastr.info('Đã bỏ qua thu tiền. Bạn có thể xuất kho và thu tiền sau.') : alert('Đã bỏ qua thu tiền. Bạn có thể xuất kho và thu tiền sau.');
+    });
+    $('#btn_order_export_stock').on('click', function(){
+        exportCurrentOrderStock();
+    });
+    $('#btn_order_return').on('click', function(){
+        openQuickReturn($('#edit_id').val());
     });
     $('#btn_toggle_stock_info').on('click', function(){
         setStockInfoVisible(!currentStockInfoVisible);
@@ -3132,7 +3457,7 @@ $(document).ready(function(){
         }
     });
 
-    // "Tạo SP" button in search bar → triggers F3 shortcut
+    // "Tạo SP" button in search bar
     $('#btn_quick_create_product_hint').click(function(){
         openQuickProductModalFromSearch($('#quick_search_product').val().trim());
     });
@@ -3151,11 +3476,13 @@ $(document).ready(function(){
         openQuickProductCreateDialog(searchTerm);
     }
 
-    // F3 shortcut - tạo nhanh sản phẩm
+    // F3 shortcut - thêm dòng dịch vụ/thẻ trống
     $(document).on('keydown', function(e){
         if(e.key === 'F3'){
             e.preventDefault();
-            openQuickProductModalFromSearch($('#quick_search_product').val().trim());
+            if(!$('#modal_form').hasClass('show')) return;
+            addServiceLine();
+            $('#items_tbl tbody tr:last .inp_service_name').focus();
         }
     });
 
@@ -3470,7 +3797,7 @@ function addItemRow(item){
             '<td><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
             '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
             '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
-            '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
+            '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
             '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
             '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>' +
@@ -3495,7 +3822,7 @@ function addItemRow(item){
     var html='<tr><td class="text-center lbl_img">'+imgHtml+'</td><td><select class="form-control form-control-sm sel_product">'+opts+'</select></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">-</td>'+
-        '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>'+
+        '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
         '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
@@ -3810,7 +4137,7 @@ function loadData(){
             } else if(d.approval_status === 3){
                 statusHtml += ' <span class="badge badge-danger" title="Từ chối duyệt"><i class="fas fa-times-circle"></i> Từ chối</span>';
             }
-            h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'" data-code="'+escapeHtml(d.code)+'" data-customer="'+escapeHtml(d.customer)+'" data-customer-id="'+(d.customer_id || '')+'" data-status="'+d.status+'" data-remaining="'+(Number(d.remaining_amount) || 0)+'"></td>'+
+            h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'" data-code="'+escapeHtml(d.code)+'" data-customer="'+escapeHtml(d.customer)+'" data-customer-id="'+(d.customer_id || '')+'" data-status="'+d.status+'" data-final="'+(Number(d.final_amount) || 0)+'" data-paid="'+(Number(d.paid_amount) || 0)+'" data-remaining="'+(Number(d.remaining_amount) || 0)+'"></td>'+
                 orderColConfig.td('stt', (i+1))+
                 orderColConfig.td('code', d.code)+
                 orderColConfig.td('customer', customerHtml)+
@@ -3938,6 +4265,16 @@ $('#btn_confirm_bulk_collect').click(function(){
         alert('Vui lòng chọn đơn hàng cần thanh toán nhanh.');
         return;
     }
+    var payments = getBulkPaymentEntries().map(function(entry){
+        return {order_id: entry.order_id, amount: entry.amount};
+    });
+    if(!payments.length){
+        alert('Vui lòng nhập số tiền thu cho ít nhất một đơn.');
+        return;
+    }
+    var methodMeta = getSelectedPaymentMethodMeta('#bulk_payment_method');
+    var $btn = $(this);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang thu...');
     $.ajax({
         url:'/api/orders/bulk-collect/',
         type:'POST',
@@ -3945,9 +4282,10 @@ $('#btn_confirm_bulk_collect').click(function(){
         headers:{'X-CSRFToken':'{{csrf_token}}'},
         data:JSON.stringify({
             ids: ids,
-            payment_method: getSelectedPaymentMethodMeta('#bulk_payment_method').legacyType,
-            payment_method_option_id: getSelectedPaymentMethodMeta('#bulk_payment_method').optionId,
-            cash_book_id: null
+            payments: payments,
+            payment_method: methodMeta.legacyType,
+            payment_method_option_id: methodMeta.optionId,
+            cash_book_id: methodMeta.defaultCashBookId || null
         }),
         success:function(r){
             if(r.status === 'ok'){
@@ -3955,6 +4293,9 @@ $('#btn_confirm_bulk_collect').click(function(){
                 loadData();
             }
             alert(r.message);
+        },
+        complete:function(){
+            $btn.prop('disabled', false).html('Thu tiền');
         }
     });
 });
@@ -4115,7 +4456,7 @@ function rejectOrder(id, code){
 	    var id = $('#modal_order_quick_view').data('order-id');
 	    if(!id) return;
 	    $('#modal_order_quick_view').modal('hide');
-	    viewItem(id);
+	    editItem(id);
 	});
 
 	function editItem(id){
@@ -4214,10 +4555,10 @@ function viewItem(id){
 	        $('#btn_save_note').hide().off('click');
 	        // Thêm cảnh báo
 	        $('#lock_warning').remove();
-	        var statusText = o.status === 5 ? 'Hoàn thành' : 'Hủy';
+	        var statusText = o.status === 5 ? 'Hoàn thành' : (o.status === 6 ? 'Hủy' : (STATUS_LABELS[o.status] || 'Khóa'));
 	        var lockText = o.status === 5
 	            ? 'Đơn đã hoàn thành nên chỉ cho phép sửa ghi chú. Sản phẩm, giá, thanh toán và tồn kho vẫn được khóa.'
-	            : 'Đơn đã hủy nên không thể chỉnh sửa.';
+	            : (o.status === 6 ? 'Đơn đã hủy nên không thể chỉnh sửa.' : 'Đơn đang được mở ở chế độ chỉ đọc.');
 	        var warning = '<div id="lock_warning" class="alert alert-warning mb-2 py-2">' +
 	            '<i class="fas fa-lock mr-1"></i> <strong>ĐƠN HÀNG ĐÃ ' + statusText.toUpperCase() + '</strong> — ' +
 	            lockText + '</div>';
@@ -4298,8 +4639,155 @@ function printOrder(id){
     });
 }
 
+function getQuickReturnPaymentMeta(){
+    var $option = $('#quick_return_payment_method option:selected');
+    return {
+        payment_method_option_id: parseInt($option.val(), 10) || null,
+        payment_method: parseInt($option.data('legacy-type'), 10) || 2,
+        cash_book_id: $option.data('default-cash-book-id') || null
+    };
+}
+
+function calcQuickReturnTotal(){
+    var total = 0;
+    $('#quick_return_items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        var selected = $row.find('.quick-return-check').is(':checked');
+        var qty = selected ? (parseInt($row.find('.quick-return-qty').val(), 10) || 0) : 0;
+        var price = selected ? (getMoneyValue($row.find('.quick-return-price')) || 0) : 0;
+        var lineTotal = qty * price;
+        $row.find('.quick-return-line-total').text(fmt(lineTotal) + 'đ');
+        total += lineTotal;
+    });
+    $('#quick_return_total').text(fmt(total) + 'đ');
+    return total;
+}
+
+function openQuickReturn(orderId){
+    if(!orderId){
+        alert('Không tìm thấy đơn hàng để hoàn.');
+        return;
+    }
+    $.get('/api/orders/detail/?id=' + encodeURIComponent(orderId), function(res){
+        if(res.status !== 'ok'){
+            alert(res.message || 'Không tải được đơn hàng');
+            return;
+        }
+        var order = res.order || {};
+        if([4,5].indexOf(parseInt(order.status, 10)) < 0){
+            alert('Chỉ hoàn hàng cho đơn đã xuất kho hoặc hoàn thành.');
+            return;
+        }
+        $('#quick_return_order_id').val(order.id);
+        $('#quick_return_order_code').text(order.code ? '· ' + order.code : '');
+        $('#quick_return_code').val('');
+        $('#quick_return_reason').val('');
+        $('#quick_return_payment_method').val($('#quick_return_payment_method option:first').val() || '');
+        $('#quick_return_date').val(new Date().toISOString().split('T')[0]);
+        var rows = '';
+        (res.items || []).forEach(function(item, idx){
+            if(item.is_service_line || !item.product_id) return;
+            var soldQty = Math.max(parseInt(item.quantity, 10) || 0, 0);
+            if(soldQty <= 0) return;
+            var refundUnitPrice = item.quantity ? Math.round((Number(item.total_price) || 0) / Number(item.quantity)) : (Number(item.unit_price) || 0);
+            var label = [item.product_code || '', item.product_name || '', item.variant_name || ''].filter(Boolean).join(' - ');
+            rows += '<tr data-product-id="' + item.product_id + '">' +
+                '<td class="text-center"><input type="checkbox" class="quick-return-check" checked></td>' +
+                '<td><strong>' + escapeHtml(item.product_code || '') + '</strong><br><span>' + escapeHtml(label || item.product_name || '') + '</span></td>' +
+                '<td class="text-right">' + fmt(soldQty) + '</td>' +
+                '<td><input type="number" class="form-control form-control-sm quick-return-qty" min="1" step="1" max="' + soldQty + '" value="' + soldQty + '"></td>' +
+                '<td><input type="text" class="form-control form-control-sm text-right money-format quick-return-price" value="' + fmt(refundUnitPrice) + '"></td>' +
+                '<td class="text-right font-weight-bold quick-return-line-total">0đ</td>' +
+                '<td><input type="text" class="form-control form-control-sm quick-return-note" placeholder="Lý do dòng"></td>' +
+                '</tr>';
+        });
+        if(!rows){
+            rows = '<tr><td colspan="7" class="text-center text-muted py-3">Đơn không có sản phẩm vật lý để hoàn.</td></tr>';
+        }
+        $('#quick_return_items_tbl tbody').html(rows);
+        $('#quick_return_check_all').prop('checked', true);
+        calcQuickReturnTotal();
+        $('#modal_order_return_quick').modal('show');
+    });
+}
+
+$(document).on('change input', '.quick-return-check,.quick-return-qty,.quick-return-price', function(){
+    var $row = $(this).closest('tr');
+    if($(this).hasClass('quick-return-qty')){
+        var maxQty = parseInt($(this).attr('max'), 10) || 0;
+        var qty = parseInt($(this).val(), 10) || 0;
+        if(maxQty && qty > maxQty) $(this).val(maxQty);
+        if(qty < 1) $(this).val(1);
+    }
+    if($(this).hasClass('quick-return-qty') || $(this).hasClass('quick-return-price')){
+        $row.find('.quick-return-check').prop('checked', true);
+    }
+    calcQuickReturnTotal();
+});
+
+$('#quick_return_check_all').on('change', function(){
+    $('#quick_return_items_tbl .quick-return-check').prop('checked', $(this).is(':checked'));
+    calcQuickReturnTotal();
+});
+
+$('#btn_confirm_quick_return').on('click', function(){
+    var orderId = $('#quick_return_order_id').val();
+    var items = [];
+    $('#quick_return_items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        if(!$row.find('.quick-return-check').is(':checked')) return;
+        var productId = parseInt($row.data('product-id'), 10) || null;
+        if(!productId) return;
+        items.push({
+            product_id: productId,
+            quantity: parseInt($row.find('.quick-return-qty').val(), 10) || 0,
+            unit_price: getMoneyValue($row.find('.quick-return-price')) || 0,
+            reason: $row.find('.quick-return-note').val() || ''
+        });
+    });
+    if(!items.length){
+        alert('Vui lòng chọn ít nhất một sản phẩm để hoàn.');
+        return;
+    }
+    var paymentMeta = getQuickReturnPaymentMeta();
+    var payload = {
+        code: $('#quick_return_code').val(),
+        order_id: orderId,
+        return_date: $('#quick_return_date').val(),
+        status: 2,
+        reason: $('#quick_return_reason').val(),
+        items: items,
+        total_refund: calcQuickReturnTotal(),
+        payment_method: paymentMeta.payment_method,
+        payment_method_option_id: paymentMeta.payment_method_option_id,
+        cash_book_id: paymentMeta.cash_book_id
+    };
+    var $btn = $('#btn_confirm_quick_return');
+    $btn.prop('disabled', true);
+    $.ajax({
+        url:'/api/order-returns/save/',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify(payload),
+        success:function(r){
+            if(r.status === 'ok'){
+                $('#modal_order_return_quick').modal('hide');
+                loadData();
+                loadOrderHistory(orderId);
+                toastr ? toastr.success(r.message) : alert(r.message);
+            } else {
+                alert(r.message);
+            }
+        },
+        complete:function(){
+            $btn.prop('disabled', false);
+        }
+    });
+});
+
 function createReturn(id){
-    window.location.href = '/order-return-tbl/?order_id=' + encodeURIComponent(id);
+    openQuickReturn(id);
 }
 
 function downloadOrderPDF(id){

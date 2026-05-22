@@ -156,7 +156,7 @@
                         <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
                         <div class="card-tools d-flex align-items-center" style="gap:8px;">
                             <small class="text-muted"><kbd>F2</kbd> Tìm SP</small>
-                            <small class="text-muted"><kbd>F3</kbd> Tạo SP mới</small>
+                            <small class="text-muted"><kbd>F3</kbd> Thêm dịch vụ</small>
                             <small class="text-muted"><kbd>F4</kbd> Tìm KH</small>
                         </div>
                     </div>
@@ -175,7 +175,7 @@
 	                                    <button class="btn btn-outline-secondary" type="button" tabindex="-1" title="Thêm dòng dịch vụ/thẻ trống" id="btn_add_service_line">
 	                                        <i class="fas fa-clipboard-list"></i> <span class="d-none d-md-inline">Dịch vụ</span>
 	                                    </button>
-	                                    <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới (F3)" id="btn_quick_create_product_hint">
+	                                    <button class="btn btn-outline-info" type="button" tabindex="-1" title="Tạo SP mới" id="btn_quick_create_product_hint">
                                         <i class="fas fa-plus-circle"></i> <span class="d-none d-md-inline">Tạo SP</span>
                                     </button>
                                 </div>
@@ -324,12 +324,12 @@
     </div>
 </div>
 
-<!-- MODAL TẠO NHANH SẢN PHẨM (F3) -->
+<!-- MODAL TẠO NHANH SẢN PHẨM -->
 <div class="modal fade" id="modal_quick_product" tabindex="-1" data-backdrop="static">
     <div class="modal-dialog modal-md">
         <div class="modal-content">
             <div class="modal-header bg-info text-white py-2">
-                <h5 class="modal-title"><i class="fas fa-box-open mr-1"></i> Tạo nhanh sản phẩm <small class="ml-2"><kbd>F3</kbd></small></h5>
+                <h5 class="modal-title"><i class="fas fa-box-open mr-1"></i> Tạo nhanh sản phẩm</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
@@ -1693,7 +1693,7 @@ $(document).ready(function(){
         if(!$(e.target).closest('#quick_search_product, #quick_search_results').length) $('#quick_search_results').hide();
     });
 
-    // "Tạo SP" button in search bar → triggers F3 shortcut
+    // "Tạo SP" button in search bar
     $('#btn_quick_create_product_hint').click(function(){
         openQuickProductModalFromSearch($('#quick_search_product').val().trim());
     });
@@ -1712,11 +1712,13 @@ $(document).ready(function(){
         openQuickProductCreateDialog(searchTerm);
     }
 
-    // F3 shortcut - tạo nhanh sản phẩm
+    // F3 shortcut - thêm dòng dịch vụ/thẻ trống
     $(document).on('keydown', function(e){
         if(e.key === 'F3'){
             e.preventDefault();
-            openQuickProductModalFromSearch($('#quick_search_product').val().trim());
+            if(!$('#modal_form').hasClass('show')) return;
+            addItemRow({is_service_line:true, item_name:'', unit:'Lần', quantity:1, unit_price:0, discount_percent:0});
+            $('#items_tbl tbody tr:last .inp_service_name').focus();
         }
     });
 
@@ -1944,7 +1946,7 @@ function addItemFromProduct(product){
 	            '<td><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
 	            '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
 	            '<td class="lbl_stock align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
-	            '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
+	            '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
 	            '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
 	            '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
 	            '<td class="text-right lbl_line_total">' + fmt(lineTotal) + 'đ</td>' +
@@ -1970,7 +1972,7 @@ function addItemFromProduct(product){
 	        '<td><select class="form-control form-control-sm sel_product">' + opts + '</select></td>' +
         '<td class="lbl_unit text-center">' + unit + '</td>' +
         '<td class="lbl_stock align-middle">-</td>' +
-        '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="0.01" step="1"></td>' +
+        '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
         '<td class="text-right lbl_line_total">' + fmt(lineTotal) + 'đ</td>' +

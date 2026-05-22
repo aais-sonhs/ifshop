@@ -463,6 +463,12 @@
 .product-select-with-add select{min-width:0;}
 .product-select-with-add .select2-container{flex:1 1 auto;width:1% !important;min-width:0;}
 .product-select-with-add .btn-quick-master{flex:0 0 auto;white-space:nowrap;padding-left:8px;padding-right:8px;}
+.combo-inline-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.combo-inline-item{display:flex;align-items:center;gap:6px;border:1px solid #ffe8a1;background:#fffaf0;border-radius:4px;padding:4px 6px;font-size:12px;line-height:1.25;}
+.combo-inline-img{width:28px;height:28px;border-radius:4px;object-fit:cover;border:1px solid #f1d48a;background:#fff;}
+.combo-inline-placeholder{width:28px;height:28px;border-radius:4px;border:1px solid #f1d48a;background:#fff3cd;color:#b8860b;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.combo-detail-img{width:40px;height:40px;border-radius:4px;object-fit:cover;border:1px solid #ddd;background:#fff;}
+.combo-detail-placeholder{width:40px;height:40px;border-radius:4px;border:1px solid #ddd;background:#f8f9fa;color:#bbb;display:flex;align-items:center;justify-content:center;}
 </style>
 <script src="/static/js/column_config.js"></script>
 <script>
@@ -572,6 +578,36 @@ function getProductPricePresetLabel(value){
 
 function getProductPriceValue(product, basis){
     return Number(product[basis || 'import_price'] || 0);
+}
+
+function renderProductThumb(src, imgClass, placeholderClass){
+    if(src){
+        return '<img src="' + escapeAttr(src) + '" class="' + imgClass + '" onclick="openImageZoom(this.src)" title="Click để phóng to">';
+    }
+    return '<div class="' + placeholderClass + '"><i class="fas fa-box"></i></div>';
+}
+
+function renderComboInlineItems(product, limit){
+    var items = product && product.combo_items ? product.combo_items : [];
+    if(!items.length) return '';
+    var visible = items.slice(0, limit || 3);
+    var html = '<div class="combo-inline-list">';
+    visible.forEach(function(ci){
+        var lineTotal = Number(ci.line_total || (Number(ci.quantity || 0) * Number(ci.selling_price || 0)));
+        html += '<div class="combo-inline-item" title="' + escapeAttr((ci.product_code || '') + ' - ' + (ci.product_name || '')) + '">' +
+            renderProductThumb(ci.product_image || '', 'combo-inline-img', 'combo-inline-placeholder') +
+            '<div class="flex-grow-1" style="min-width:0;">' +
+                '<div><strong>' + escapeHtml(ci.product_code || '') + '</strong> — ' + escapeHtml(ci.product_name || '') + '</div>' +
+                '<div class="text-muted">SL ' + fmt(ci.quantity || 0) + ' ' + escapeHtml(ci.unit || '') +
+                    ' · Giá ' + fmt(ci.selling_price || 0) + 'đ · ' + fmt(lineTotal) + 'đ</div>' +
+            '</div>' +
+        '</div>';
+    });
+    if(items.length > visible.length){
+        html += '<small class="text-warning">+' + (items.length - visible.length) + ' thành phần khác trong combo</small>';
+    }
+    html += '</div>';
+    return html;
 }
 
 function hasProductImportPriceChanged(product){
@@ -1258,7 +1294,7 @@ function loadData(done){
             var productNameHtml =
                 '<button type="button" class="btn btn-link p-0 text-left product-name-link" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')" title="Xem lịch sử từng phiếu nhập của sản phẩm">' +
                     '<span title="'+escapeAttr(d.name)+'">'+escapeHtml(d.name)+'</span>' +
-                '</button>' + variantBadge;
+                '</button>' + variantBadge + renderComboInlineItems(d, 3);
 
             var stockHtml = renderInlineStockBreakdown(d, productNameJs);
             var sellingDisplay = '<span class="text-success font-weight-bold">'+fmt(d.selling_price)+'đ</span>';
@@ -1790,6 +1826,7 @@ $(document).keydown(function(e) {
 
 // View combo (read-only)
 function viewCombo(d){
+    resetProductForm();
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code).prop('disabled', true);
     $('#inp_name').val(d.name).prop('disabled', true);
@@ -1827,14 +1864,18 @@ function viewCombo(d){
         $('#combo_section').show();
         var total = 0;
         d.combo_items.forEach(function(ci, idx){
-            var lt = ci.quantity * ci.selling_price;
+            var lt = Number(ci.line_total || (Number(ci.quantity || 0) * Number(ci.selling_price || 0)));
             total += lt;
             var typeB = ci.is_service ? '<span class="badge badge-secondary">Dịch vụ</span>' : '<span class="badge badge-primary">Vật lý</span>';
             $('#combo_body').append(
                 '<tr><td class="text-center">'+(idx+1)+'</td>'+
-                '<td>'+ci.product_code+' - '+ci.product_name+'</td>'+
+                '<td><div class="d-flex align-items-center" style="gap:8px;">' +
+                    renderProductThumb(ci.product_image || '', 'combo-detail-img', 'combo-detail-placeholder') +
+                    '<div><strong>'+escapeHtml(ci.product_code || '')+'</strong> — '+escapeHtml(ci.product_name || '')+
+                    '<div class="small text-muted">ĐVT: '+escapeHtml(ci.unit || '')+' · Tồn thành phần: '+fmt(ci.total_stock || 0)+'</div></div>' +
+                '</div></td>'+
                 '<td class="text-center">'+typeB+'</td>'+
-                '<td class="text-center">'+ci.quantity+'</td>'+
+                '<td class="text-center">'+fmt(ci.quantity || 0)+'</td>'+
                 '<td class="text-right">'+fmt(ci.selling_price)+'đ</td>'+
                 '<td class="text-right">'+fmt(lt)+'đ</td>'+
                 '<td></td></tr>'
@@ -1843,6 +1884,11 @@ function viewCombo(d){
         $('#combo_total_retail').text(fmt(total) + 'đ');
         var savings = total - d.selling_price;
         $('#combo_savings').text(savings > 0 ? fmt(savings) + 'đ' : '0');
+    } else {
+        $('#combo_section').show();
+        $('#combo_body').html('<tr><td colspan="7" class="text-center text-muted py-3">Combo này chưa có thành phần.</td></tr>');
+        $('#combo_total_retail').text('0đ');
+        $('#combo_savings').text('0');
     }
     $('#btn_add_combo_item').hide();
     $('#variants_body').html('');

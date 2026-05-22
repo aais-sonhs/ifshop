@@ -1,10 +1,12 @@
 import json
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import load_workbook
 
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
@@ -293,6 +295,29 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(receipt.payment_method, 1)
         self.assertEqual(receipt.description, 'Chỉ sửa diễn giải')
         self.assertEqual(receipt.note, 'Giữ nguyên đơn và hình thức thanh toán')
+
+    def test_export_receipts_excel_includes_note_column(self):
+        Receipt.objects.create(
+            code='PT-EXPORT-NOTE',
+            store=self.store,
+            customer=self.customer,
+            amount=Decimal('125000'),
+            receipt_date=date.today(),
+            status=1,
+            description='Thu tiền đơn test',
+            note='Ghi chú cần xuất Excel',
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('export_receipts_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook.active
+        headers = [cell.value for cell in worksheet[4]]
+        self.assertIn('Ghi chú', headers)
+        note_index = headers.index('Ghi chú') + 1
+        self.assertEqual(worksheet.cell(row=5, column=note_index).value, 'Ghi chú cần xuất Excel')
 
     def test_brand_owner_can_create_payment_method_option(self):
         owner = User.objects.create_user(username='finance_owner', password='pass123')

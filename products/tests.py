@@ -220,6 +220,9 @@ class ProductInventoryFlowTests(TestCase):
         self.assertTrue(combo_row['is_combo'])
         self.assertEqual(combo_row['combo_items'][0]['product_id'], self.product.id)
         self.assertEqual(combo_row['combo_items'][0]['selling_price'], 150.0)
+        self.assertEqual(combo_row['combo_items'][0]['product_code'], self.product.code)
+        self.assertEqual(combo_row['combo_items'][0]['unit'], self.product.unit)
+        self.assertEqual(combo_row['combo_items'][0]['line_total'], 300.0)
         self.assertEqual(component_row['combo_parent_count'], 1)
         self.assertEqual(component_row['combo_parents'][0]['id'], combo.id)
 

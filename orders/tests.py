@@ -8,7 +8,7 @@ from django.urls import reverse
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
-from orders.models import Order, OrderItem, OrderReturn, Quotation
+from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem, Quotation
 from products.models import Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
@@ -673,6 +673,138 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(first_order.payment_status, 2)
         self.assertEqual(second_order.payment_status, 2)
 
+    def test_bulk_collect_accepts_line_amounts_across_customers(self):
+        other_customer_same_store = Customer.objects.create(
+            store=self.store,
+            code='KH003',
+            name='Customer C',
+            created_by=self.user,
+        )
+        first_order = self._create_order(code='DH-BULK-LINE-001', customer=self.customer)
+        second_order = self._create_order(
+            code='DH-BULK-LINE-002',
+            customer=other_customer_same_store,
+        )
+        second_order.final_amount = 200
+        second_order.save(update_fields=['final_amount'])
+
+        response = self.client.post(
+            reverse('api_bulk_collect_orders'),
+            data=json.dumps({
+                'ids': [first_order.id, second_order.id],
+                'payment_method_option_id': self.payment_method.id,
+                'payments': [
+                    {'order_id': first_order.id, 'amount': 40},
+                    {'order_id': second_order.id, 'amount': 200},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['collected_count'], 2)
+        self.assertEqual(payload['total_collected'], 240.0)
+
+        first_order.refresh_from_db()
+        second_order.refresh_from_db()
+        self.assertEqual(float(first_order.paid_amount), 40.0)
+        self.assertEqual(first_order.payment_status, 1)
+        self.assertEqual(float(second_order.paid_amount), 200.0)
+        self.assertEqual(second_order.payment_status, 2)
+
+    def test_collect_order_payment_accepts_multiple_methods_without_saving_order(self):
+        order = self._create_order(code='DH-COLLECT-ONE-001', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'payment_lines': [
+                    {
+                        'amount': 40,
+                        'payment_method': 1,
+                        'payment_method_option_id': self.payment_method.id,
+                        'cash_book_id': self.cashbook.id,
+                    },
+                    {
+                        'amount': 60,
+                        'payment_method': 1,
+                        'payment_method_option_id': self.payment_method.id,
+                        'cash_book_id': self.cashbook.id,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 1)
+        self.assertEqual(order.payment_status, 2)
+        self.assertEqual(float(order.paid_amount), 100.0)
+        self.assertEqual(Receipt.objects.filter(order=order, status=1).count(), 2)
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 1000100.0)
+
+    def test_export_order_stock_is_independent_from_payment(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
+        order = self._create_order(code='DH-EXPORT-NO-PAY-001', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_export_order_stock'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order.refresh_from_db()
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
+        self.assertEqual(order.status, 4)
+        self.assertEqual(order.payment_status, 0)
+        self.assertEqual(float(stock.quantity), 3.0)
+        self.assertFalse(Receipt.objects.filter(order=order).exists())
+
+    def test_update_order_status_api_moves_steps_without_full_order_save(self):
+        order = self._create_order(code='DH-STATUS-FAST-001', status=1)
+
+        first_response = self.client.post(
+            reverse('api_update_order_status'),
+            data=json.dumps({'order_id': order.id, 'status': 2}),
+            content_type='application/json',
+        )
+        second_response = self.client.post(
+            reverse('api_update_order_status'),
+            data=json.dumps({'order_id': order.id, 'status': 3}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(order.status, 3)
+
     def test_store_scope_blocks_foreign_order_detail(self):
         quotation = self._create_quotation(
             code='BG-OTHER-001',
@@ -927,6 +1059,53 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(refund_payment.amount), 50.0)
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 999950.0)
+
+    def test_save_order_return_with_items_restocks_exported_order(self):
+        order = self._create_order(code='DH-RETURN-ITEMS-001', status=4)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=3)
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': '',
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'status': 2,
+                'reason': 'Khách trả một phần',
+                'payment_method_option_id': self.payment_method.id,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 45,
+                    'reason': 'Hàng lỗi',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(payload['return_code'].startswith('TH-'))
+
+        order_return = OrderReturn.objects.get(id=payload['return_id'])
+        return_item = OrderReturnItem.objects.get(order_return=order_return)
+        self.assertEqual(return_item.product_id, self.product.id)
+        self.assertEqual(return_item.quantity, 1)
+        self.assertEqual(float(order_return.total_refund), 45.0)
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
+        self.assertEqual(float(stock.quantity), 4.0)
+        refund_payment = Payment.objects.get(reference=f'ORDER_RETURN:{order_return.id}')
+        self.assertEqual(float(refund_payment.amount), 45.0)
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 999955.0)
 
     def test_order_return_list_keeps_legacy_orphan_in_scope(self):
         orphan_return = OrderReturn.objects.create(

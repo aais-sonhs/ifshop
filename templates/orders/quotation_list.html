@@ -2043,9 +2043,7 @@ function addItemFromProduct(product){
         } else {
             $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-muted');
         }
-        // Set qty step based on weight
-        var product = allProducts.find(function(pp){return pp.id==parseInt(pid);});
-        if(product) $row.find('.inp_qty').attr('step', product.is_weight_based ? '0.01' : '1');
+        $row.find('.inp_qty').attr('step', '1');
         calcLine($row);
     });
 
@@ -2464,7 +2462,7 @@ function appendWarrantyItemRow(item){
         '<td><input type="text" class="form-control form-control-sm warranty-code" value="' + escapeAttr(item.code || '') + '"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-name" value="' + escapeAttr(item.name || '') + '"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-unit" value="' + escapeAttr(item.unit || '') + '"></td>' +
-        '<td><input type="number" class="form-control form-control-sm warranty-qty" value="' + (item.quantity || 1) + '" min="0" step="0.01"></td>' +
+        '<td><input type="number" class="form-control form-control-sm warranty-qty" value="' + (item.quantity || 1) + '" min="0" step="1"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-serial" value="' + escapeAttr(item.serial || '') + '" placeholder="Serial / lô"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-term" value="' + escapeAttr(item.warranty_term || '') + '" placeholder="VD: 12 tháng"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-note" value="' + escapeAttr(item.note || '') + '"></td>' +

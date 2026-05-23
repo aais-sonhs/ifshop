@@ -631,10 +631,40 @@
                     </div>
                     <div class="col-md-3">
                         <div class="form-group">
-                            <label>Tổng hoàn</label>
-                            <div class="form-control form-control-sm text-right font-weight-bold bg-light" id="quick_return_total">0đ</div>
+                            <label>Hoàn/đền bù riêng</label>
+                            <input type="text" class="form-control form-control-sm text-right money-format" id="quick_return_compensation" value="0">
+                            <small class="text-muted">Đền bù/hoàn riêng</small>
                         </div>
                     </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group mb-2">
+                            <label>Hàng trả</label>
+                            <div class="form-control form-control-sm text-right font-weight-bold bg-light" id="quick_return_return_total">0đ</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group mb-2">
+                            <label>Hàng đổi mới</label>
+                            <div class="form-control form-control-sm text-right font-weight-bold bg-light" id="quick_return_exchange_total">0đ</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group mb-2">
+                            <label>Hoàn khách</label>
+                            <div class="form-control form-control-sm text-right font-weight-bold bg-light text-success" id="quick_return_refund_total">0đ</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group mb-2">
+                            <label>Còn thu khách</label>
+                            <div class="form-control form-control-sm text-right font-weight-bold bg-light text-primary" id="quick_return_due_total">0đ</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                    <strong class="small text-muted">Hàng khách trả</strong>
                 </div>
                 <div class="table-responsive" style="max-height:360px;overflow-y:auto;">
                     <table class="table table-sm table-bordered mb-0" id="quick_return_items_tbl">
@@ -652,14 +682,38 @@
                         <tbody></tbody>
                     </table>
                 </div>
+                <div class="d-flex align-items-center justify-content-between mt-3 mb-1">
+                    <strong class="small text-muted">Hàng đổi mới</strong>
+                    <button type="button" class="btn btn-xs btn-outline-primary" id="btn_add_quick_exchange_item"><i class="fas fa-plus mr-1"></i>Thêm hàng đổi</button>
+                </div>
+                <div class="table-responsive" style="max-height:240px;overflow-y:auto;">
+                    <table class="table table-sm table-bordered mb-0" id="quick_exchange_items_tbl">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Sản phẩm</th>
+                                <th style="width:100px;">SL</th>
+                                <th style="width:135px;">Đơn giá</th>
+                                <th style="width:90px;">CK %</th>
+                                <th style="width:140px;" class="text-right">Thành tiền</th>
+                                <th style="width:160px;">Ghi chú</th>
+                                <th style="width:44px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
                 <div class="form-group mt-2 mb-0">
                     <label>Lý do hoàn hàng</label>
                     <textarea class="form-control form-control-sm" id="quick_return_reason" rows="2"></textarea>
                 </div>
+                <div class="form-group mt-2 mb-0">
+                    <label>Ghi chú đổi hàng</label>
+                    <textarea class="form-control form-control-sm" id="quick_return_exchange_note" rows="2"></textarea>
+                </div>
             </div>
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Đóng</button>
-                <button type="button" class="btn btn-sm btn-warning" id="btn_confirm_quick_return"><i class="fas fa-check mr-1"></i> Hoàn hàng</button>
+                <button type="button" class="btn btn-sm btn-warning" id="btn_confirm_quick_return"><i class="fas fa-check mr-1"></i> Lưu phiếu trả/đổi</button>
             </div>
         </div>
     </div>
@@ -900,6 +954,13 @@
 .order-final-total-row .order-final-total-amount {
     font-size: 16px;
     font-weight: 800;
+}
+.order-history-change-list {
+    margin: 4px 0 0;
+    padding-left: 18px;
+}
+.order-history-change-list li + li {
+    margin-top: 2px;
 }
 /* ===== STATUS TIMELINE STEPPER ===== */
 .status-timeline {
@@ -2433,6 +2494,10 @@ function getPaymentEntryTotal(){
     return totalPaying;
 }
 
+function getDisplayedFinalAmount(){
+    return parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+}
+
 function addPaymentLine(methodId, amount){
     var preferredMethodId = normalizeOrderPaymentMethodOptionId(methodId) || getStoredOrderPaymentPreferences().paymentMethodOptionId || getDefaultOrderPaymentMethodOptionId();
     var methodOpts = '';
@@ -2480,8 +2545,39 @@ function isPaymentEntryActive(){
 }
 
 function getRemainingForNewPayment(){
-    var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+    var finalAmt = getDisplayedFinalAmount();
     return Math.max(finalAmt - _existingPaidAmount, 0);
+}
+
+function getWorkflowRemainingAmount(r){
+    var remaining = Number(r && r.remaining_amount);
+    if(!isNaN(remaining)){
+        return Math.max(remaining, 0);
+    }
+    var finalAmt = Number(r && r.final_amount);
+    if(isNaN(finalAmt)){
+        finalAmt = getDisplayedFinalAmount();
+    }
+    var paidAmount = Number(r && r.paid_amount);
+    if(isNaN(paidAmount)){
+        paidAmount = _existingPaidAmount;
+    }
+    return Math.max(finalAmt - paidAmount, 0);
+}
+
+function prepareNextPaymentEntry(remainingAmount){
+    clearPaymentEntryRows();
+    var remaining = Number(remainingAmount);
+    if(isNaN(remaining)){
+        remaining = getRemainingForNewPayment();
+    }
+    if(remaining > 0){
+        enablePaymentEntry(remaining);
+        $('#btn_collect_payment_now,#btn_order_collect_payment').prop('disabled', false).show();
+        setTimeout(function(){
+            $('#payment_lines_container .inp-pay-amount:first').focus().select();
+        }, 80);
+    }
 }
 
 function enablePaymentEntry(amount){
@@ -2508,7 +2604,7 @@ function disablePaymentEntry(){
 }
 
 function syncPaymentSummary(){
-    var finalAmt = parseFloat($('#lbl_final').text().replace(/[.,\s]/g, '')) || 0;
+    var finalAmt = getDisplayedFinalAmount();
     if(isPaymentEntryActive()){
         var $lines = $('#payment_lines_container .pay-line');
         var $amount = $lines.first().find('.inp-pay-amount');
@@ -2577,6 +2673,9 @@ function applyOrderWorkflowResult(r){
         $('#inp_status').val(String(r.order_status));
         syncStatusOptions(r.order_status);
     }
+    if(typeof r.final_amount !== 'undefined'){
+        $('#lbl_final').text(fmt(Number(r.final_amount) || 0) + 'đ');
+    }
     if(typeof r.paid_amount !== 'undefined'){
         _existingPaidAmount = parseFloat(r.paid_amount) || 0;
     }
@@ -2618,14 +2717,9 @@ function collectCurrentOrderPayment(){
         data:JSON.stringify({order_id: orderId, payment_lines: lines}),
         success:function(r){
             if(r.status === 'ok'){
-                clearPaymentEntryRows();
+                var remainingAfterCollect = getWorkflowRemainingAmount(r);
                 applyOrderWorkflowResult(r);
-                if((Number(r.remaining_amount) || 0) > 0){
-                    enablePaymentEntry(Number(r.remaining_amount) || 0);
-                    setTimeout(function(){
-                        $('#payment_lines_container .inp-pay-amount:first').focus().select();
-                    }, 80);
-                }
+                prepareNextPaymentEntry(remainingAfterCollect);
                 toastr ? toastr.success(r.message) : alert(r.message);
             } else {
                 alert(r.message);
@@ -2882,6 +2976,20 @@ function loadPaymentHistory(orderId, paidAmount, finalAmount){
     });
 }
 
+function renderOrderHistorySummary(summary){
+    var text = summary || '';
+    var parts = text.split(/;\s+/).map(function(part){ return part.trim(); }).filter(Boolean);
+    if(parts.length <= 1){
+        return '<div>' + escapeHtml(text) + '</div>';
+    }
+    var html = '<ul class="order-history-change-list">';
+    parts.forEach(function(part){
+        html += '<li>' + escapeHtml(part) + '</li>';
+    });
+    html += '</ul>';
+    return html;
+}
+
 function loadOrderHistory(orderId){
     if(!orderId){
         $('#order_history_card').hide();
@@ -2906,7 +3014,7 @@ function loadOrderHistory(orderId){
                 '<strong>' + escapeHtml(row.action_display || '') + '</strong>' +
                 '<span class="text-muted">' + escapeHtml(row.created_at || '') + '</span>' +
                 '</div>' +
-                '<div>' + escapeHtml(row.summary || '') + '</div>' +
+                renderOrderHistorySummary(row.summary || '') +
                 '<small class="text-muted">' + escapeHtml(row.actor || 'Hệ thống') + '</small>' +
                 '</div>';
         });
@@ -4669,8 +4777,47 @@ function getQuickReturnPaymentMeta(){
     };
 }
 
-function calcQuickReturnTotal(){
-    var total = 0;
+function buildQuickExchangeProductOptions(item){
+    var opts = '<option value="">-- Chọn SP đổi --</option>';
+    allProducts.forEach(function(p){
+        if(p.is_service) return;
+        if(p.variants && p.variants.length > 0){
+            p.variants.forEach(function(v){
+                var selected = item && item.product_id == p.id && item.variant_id == v.id ? ' selected' : '';
+                opts += '<option value="' + p.id + '" data-variant-id="' + v.id + '" data-price="' + (v.retail_price || v.selling_price || p.selling_price || 0) + '"' + selected + '>' +
+                    escapeHtml(p.code + ' - ' + p.name + ' [' + v.size_name + ']') + '</option>';
+            });
+        } else {
+            var selected = item && item.product_id == p.id ? ' selected' : '';
+            opts += '<option value="' + p.id + '" data-variant-id="" data-price="' + (p.retail_price || p.selling_price || 0) + '"' + selected + '>' +
+                escapeHtml(p.code + ' - ' + p.name) + '</option>';
+        }
+    });
+    return opts;
+}
+
+function addQuickExchangeRow(item){
+    item = item || {};
+    var html = '<tr>' +
+        '<td><select class="form-control form-control-sm quick-exchange-product">' + buildQuickExchangeProductOptions(item) + '</select></td>' +
+        '<td><input type="number" class="form-control form-control-sm quick-exchange-qty" min="0" step="1" value="' + (item.quantity || 1) + '"></td>' +
+        '<td><input type="text" class="form-control form-control-sm text-right money-format quick-exchange-price" value="' + fmt(item.unit_price || 0) + '"></td>' +
+        '<td><input type="number" class="form-control form-control-sm quick-exchange-discount" min="0" max="100" step="0.01" value="' + (item.discount_percent || 0) + '"></td>' +
+        '<td class="text-right font-weight-bold quick-exchange-line-total">0đ</td>' +
+        '<td><input type="text" class="form-control form-control-sm quick-exchange-note" value="' + escapeHtml(item.note || '') + '"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-xs btn-outline-danger btn-remove-quick-exchange"><i class="fas fa-times"></i></button></td>' +
+        '</tr>';
+    $('#quick_exchange_items_tbl tbody').append(html);
+    var $row = $('#quick_exchange_items_tbl tbody tr:last');
+    if(!item.unit_price){
+        var price = Number($row.find('.quick-exchange-product option:selected').data('price')) || 0;
+        setMoneyValue($row.find('.quick-exchange-price'), price);
+    }
+    calcQuickReturnTotal();
+}
+
+function calcQuickReturnBalances(){
+    var returnTotal = 0;
     $('#quick_return_items_tbl tbody tr').each(function(){
         var $row = $(this);
         var selected = $row.find('.quick-return-check').is(':checked');
@@ -4678,10 +4825,38 @@ function calcQuickReturnTotal(){
         var price = selected ? (getMoneyValue($row.find('.quick-return-price')) || 0) : 0;
         var lineTotal = qty * price;
         $row.find('.quick-return-line-total').text(fmt(lineTotal) + 'đ');
-        total += lineTotal;
+        returnTotal += lineTotal;
     });
-    $('#quick_return_total').text(fmt(total) + 'đ');
-    return total;
+    var exchangeTotal = 0;
+    $('#quick_exchange_items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        var productId = parseInt($row.find('.quick-exchange-product').val(), 10) || 0;
+        var qty = productId ? (parseFloat($row.find('.quick-exchange-qty').val()) || 0) : 0;
+        var price = productId ? (getMoneyValue($row.find('.quick-exchange-price')) || 0) : 0;
+        var discount = Math.min(Math.max(parseFloat($row.find('.quick-exchange-discount').val()) || 0, 0), 100);
+        var lineTotal = qty * price * (1 - discount / 100);
+        $row.find('.quick-exchange-line-total').text(fmt(lineTotal) + 'đ');
+        exchangeTotal += lineTotal;
+    });
+    var compensation = getMoneyValue('#quick_return_compensation') || 0;
+    var balance = returnTotal + compensation - exchangeTotal;
+    var refundAmount = Math.max(balance, 0);
+    var dueAmount = Math.max(-balance, 0);
+    $('#quick_return_return_total').text(fmt(returnTotal) + 'đ');
+    $('#quick_return_exchange_total').text(fmt(exchangeTotal) + 'đ');
+    $('#quick_return_refund_total').text(fmt(refundAmount) + 'đ');
+    $('#quick_return_due_total').text(fmt(dueAmount) + 'đ');
+    return {
+        returnAmount: returnTotal,
+        exchangeAmount: exchangeTotal,
+        compensationAmount: compensation,
+        refundAmount: refundAmount,
+        dueAmount: dueAmount
+    };
+}
+
+function calcQuickReturnTotal(){
+    return calcQuickReturnBalances().refundAmount;
 }
 
 function openQuickReturn(orderId){
@@ -4702,9 +4877,11 @@ function openQuickReturn(orderId){
         $('#quick_return_order_id').val(order.id);
         $('#quick_return_order_code').text(order.code ? '· ' + order.code : '');
         $('#quick_return_code').val('');
-        $('#quick_return_reason').val('');
+        $('#quick_return_reason,#quick_return_exchange_note').val('');
+        setMoneyValue('#quick_return_compensation', 0);
         $('#quick_return_payment_method').val($('#quick_return_payment_method option:first').val() || '');
         $('#quick_return_date').val(new Date().toISOString().split('T')[0]);
+        $('#quick_exchange_items_tbl tbody').html('');
         var rows = '';
         (res.items || []).forEach(function(item, idx){
             if(item.is_service_line || !item.product_id) return;
@@ -4732,7 +4909,7 @@ function openQuickReturn(orderId){
     });
 }
 
-$(document).on('change input', '.quick-return-check,.quick-return-qty,.quick-return-price', function(){
+$(document).on('change input', '.quick-return-check,.quick-return-qty,.quick-return-price,#quick_return_compensation', function(){
     var $row = $(this).closest('tr');
     if($(this).hasClass('quick-return-qty')){
         var maxQty = parseInt($(this).attr('max'), 10) || 0;
@@ -4744,6 +4921,33 @@ $(document).on('change input', '.quick-return-check,.quick-return-qty,.quick-ret
         $row.find('.quick-return-check').prop('checked', true);
     }
     calcQuickReturnTotal();
+});
+
+$(document).on('change', '.quick-exchange-product', function(){
+    var $row = $(this).closest('tr');
+    var price = Number($(this).find('option:selected').data('price')) || 0;
+    setMoneyValue($row.find('.quick-exchange-price'), price);
+    calcQuickReturnTotal();
+});
+
+$(document).on('input change', '.quick-exchange-qty,.quick-exchange-price,.quick-exchange-discount', function(){
+    calcQuickReturnTotal();
+});
+
+$(document).on('click', '.btn-remove-quick-exchange', function(){
+    $(this).closest('tr').remove();
+    calcQuickReturnTotal();
+});
+
+$('#btn_add_quick_exchange_item').on('click', function(){
+    if(!allProducts.length){
+        $.get('/api/products-select/', function(res){
+            allProducts = res.data || [];
+            addQuickExchangeRow();
+        });
+        return;
+    }
+    addQuickExchangeRow();
 });
 
 $('#quick_return_check_all').on('change', function(){
@@ -4766,8 +4970,24 @@ $('#btn_confirm_quick_return').on('click', function(){
             reason: $row.find('.quick-return-note').val() || ''
         });
     });
-    if(!items.length){
-        alert('Vui lòng chọn ít nhất một sản phẩm để hoàn.');
+    var exchangeItems = [];
+    $('#quick_exchange_items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        var $selected = $row.find('.quick-exchange-product option:selected');
+        var productId = parseInt($row.find('.quick-exchange-product').val(), 10) || null;
+        if(!productId) return;
+        exchangeItems.push({
+            product_id: productId,
+            variant_id: parseInt($selected.data('variant-id'), 10) || null,
+            quantity: parseFloat($row.find('.quick-exchange-qty').val()) || 0,
+            unit_price: getMoneyValue($row.find('.quick-exchange-price')) || 0,
+            discount_percent: parseFloat($row.find('.quick-exchange-discount').val()) || 0,
+            note: $row.find('.quick-exchange-note').val() || ''
+        });
+    });
+    var totals = calcQuickReturnBalances();
+    if(!items.length && !exchangeItems.length && totals.compensationAmount <= 0){
+        alert('Vui lòng chọn hàng hoàn, hàng đổi hoặc nhập tiền đền bù/hoàn riêng.');
         return;
     }
     var paymentMeta = getQuickReturnPaymentMeta();
@@ -4777,8 +4997,11 @@ $('#btn_confirm_quick_return').on('click', function(){
         return_date: $('#quick_return_date').val(),
         status: 2,
         reason: $('#quick_return_reason').val(),
+        exchange_note: $('#quick_return_exchange_note').val(),
         items: items,
-        total_refund: calcQuickReturnTotal(),
+        exchange_items: exchangeItems,
+        compensation_amount: totals.compensationAmount,
+        total_refund: totals.refundAmount,
         payment_method: paymentMeta.payment_method,
         payment_method_option_id: paymentMeta.payment_method_option_id,
         cash_book_id: paymentMeta.cash_book_id

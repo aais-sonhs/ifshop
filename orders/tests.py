@@ -8,7 +8,10 @@ from django.urls import reverse
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
-from orders.models import Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnItem, Quotation
+from orders.models import (
+    Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem,
+    OrderReturnItem, Quotation,
+)
 from products.models import Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
@@ -912,6 +915,77 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('Sửa SP', history.summary)
         self.assertIn('SL 2 → 3', history.summary)
         self.assertIn('Tổng thanh toán: 100đ → 150đ', history.summary)
+        self.assertLess(
+            history.summary.index('Sửa SP'),
+            history.summary.index('Tổng thanh toán'),
+        )
+
+    def test_save_order_history_prioritizes_deleted_item_before_amount_change(self):
+        deleted_product = Product.objects.create(
+            store=self.store,
+            code='SP-ORDER-DELETE',
+            name='Sản phẩm bị xóa khỏi đơn',
+            created_by=self.user,
+        )
+        order = self._create_order(code='DH-HISTORY-DELETE-001', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=deleted_product,
+            quantity=1,
+            unit_price=50,
+            total_price=50,
+        )
+        order.total_amount = 150
+        order.final_amount = 150
+        order.save(update_fields=['total_amount', 'final_amount'])
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        history = OrderEditHistory.objects.filter(order=order, action='update').first()
+        self.assertIsNotNone(history)
+        self.assertIn('Xóa SP "SP-ORDER-DELETE - Sản phẩm bị xóa khỏi đơn"', history.summary)
+        self.assertIn('thành tiền 50đ', history.summary)
+        self.assertIn('Tổng thanh toán: 150đ → 100đ', history.summary)
+        self.assertLess(
+            history.summary.index('Xóa SP'),
+            history.summary.index('Tổng thanh toán'),
+        )
 
     def test_store_scope_blocks_foreign_order_detail(self):
         quotation = self._create_quotation(
@@ -1214,6 +1288,109 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(refund_payment.amount), 45.0)
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 999955.0)
+
+    def test_save_order_return_with_exchange_items_collects_difference_and_moves_stock(self):
+        exchange_product = Product.objects.create(
+            store=self.store,
+            code='SP-EXCHANGE-001',
+            name='Sản phẩm đổi mới',
+            created_by=self.user,
+        )
+        order = self._create_order(code='DH-RETURN-EXCHANGE-001', status=4)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=3)
+        ProductStock.objects.create(product=exchange_product, warehouse=self.warehouse, quantity=5)
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': 'TH-EXCHANGE-001',
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'status': 2,
+                'reason': 'Khách đổi sang mẫu khác',
+                'payment_method_option_id': self.payment_method.id,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 45,
+                    'reason': 'Hàng lỗi',
+                }],
+                'exchange_items': [{
+                    'product_id': exchange_product.id,
+                    'quantity': 1,
+                    'unit_price': 70,
+                    'discount_percent': 0,
+                    'note': 'Đổi mẫu mới',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['total_refund'], 0.0)
+        self.assertEqual(payload['amount_due'], 25.0)
+
+        order_return = OrderReturn.objects.get(code='TH-EXCHANGE-001')
+        self.assertEqual(float(order_return.return_amount), 45.0)
+        self.assertEqual(float(order_return.exchange_amount), 70.0)
+        self.assertEqual(float(order_return.amount_due), 25.0)
+        self.assertEqual(OrderReturnExchangeItem.objects.filter(order_return=order_return).count(), 1)
+        returned_stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
+        exchanged_stock = ProductStock.objects.get(product=exchange_product, warehouse=self.warehouse)
+        self.assertEqual(float(returned_stock.quantity), 4.0)
+        self.assertEqual(float(exchanged_stock.quantity), 4.0)
+
+        due_receipt = Receipt.objects.get(reference=f'ORDER_RETURN_DUE:{order_return.id}')
+        self.assertEqual(float(due_receipt.amount), 25.0)
+        self.assertFalse(Payment.objects.filter(reference=f'ORDER_RETURN:{order_return.id}', status=1).exists())
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 1000025.0)
+        history = OrderEditHistory.objects.filter(order=order, action='return').first()
+        self.assertIn('hàng đổi', history.summary)
+        self.assertIn('khách còn thanh toán 25đ', history.summary)
+
+    def test_save_order_return_allows_standalone_compensation_refund(self):
+        order = self._create_order(code='DH-RETURN-COMPENSATION', status=5)
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': 'TH-COMPENSATION-001',
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'status': 2,
+                'reason': 'Hàng vỡ cần đền bù',
+                'payment_method_option_id': self.payment_method.id,
+                'compensation_amount': 30,
+                'items': [],
+                'exchange_items': [],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['total_refund'], 30.0)
+        self.assertEqual(payload['amount_due'], 0.0)
+
+        order_return = OrderReturn.objects.get(code='TH-COMPENSATION-001')
+        self.assertEqual(float(order_return.compensation_amount), 30.0)
+        self.assertEqual(order_return.items.count(), 0)
+        self.assertEqual(order_return.exchange_items.count(), 0)
+        refund_payment = Payment.objects.get(reference=f'ORDER_RETURN:{order_return.id}')
+        self.assertEqual(float(refund_payment.amount), 30.0)
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 999970.0)
 
     def test_order_return_list_keeps_legacy_orphan_in_scope(self):
         orphan_return = OrderReturn.objects.create(

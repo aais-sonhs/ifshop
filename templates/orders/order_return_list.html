@@ -6,7 +6,7 @@
         <div class="card-tools"><button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu trả</button></div>
     </div>
     <div class="card-body">
-        <div class="table-responsive"><table id="data_tbl" class="table table-bordered table-striped table-sm"><thead><tr><th>STT</th><th>Mã phiếu</th><th>ĐH gốc</th><th>Khách hàng</th><th>Ngày trả</th><th>Tổng hoàn trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-responsive"><table id="data_tbl" class="table table-bordered table-striped table-sm"><thead><tr><th>STT</th><th>Mã phiếu</th><th>ĐH gốc</th><th>Khách hàng</th><th>Ngày trả</th><th class="text-right">Hàng trả</th><th class="text-right">Hàng đổi</th><th class="text-right">Hoàn/Thu</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody></tbody></table></div>
     </div>
 </div>
 <div class="modal fade" id="modal_form" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
@@ -18,10 +18,16 @@
             <select class="form-control" id="inp_order_id">
                 <option value="">Chọn đơn hàng gốc</option>
             </select>
-            <small class="form-text text-muted">Chỉ chọn được đơn đã Hoàn thành để xử lý hoàn hàng/hoàn tiền.</small>
+            <small class="form-text text-muted">Chỉ chọn được đơn đã Xuất kho hoặc Hoàn thành để xử lý trả/đổi hàng.</small>
         </div>
         <div class="form-group"><label>Ngày trả <span class="text-danger">*</span></label><input type="date" class="form-control" id="inp_return_date"></div>
-        <div class="form-group"><label>Tổng hoàn trả</label><input type="number" class="form-control" id="inp_total_refund" value="0"></div>
+        <div class="form-group"><label>Giá trị hàng trả</label><input type="number" class="form-control" id="inp_return_amount" value="0"></div>
+        <div class="form-group"><label>Giá trị hàng đổi mới</label><input type="number" class="form-control" id="inp_exchange_amount" value="0"></div>
+        <div class="form-group"><label>Hoàn/đền bù riêng</label><input type="number" class="form-control" id="inp_compensation_amount" value="0"></div>
+        <div class="alert alert-light border py-2 mb-2">
+            <div>Hoàn khách: <strong class="text-success" id="lbl_manual_refund">0đ</strong></div>
+            <div>Còn thu khách: <strong class="text-primary" id="lbl_manual_due">0đ</strong></div>
+        </div>
         <div class="form-group">
             <label>Phương thức hoàn tiền</label>
             <select class="form-control" id="inp_payment_method">
@@ -45,6 +51,17 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function escapeHtml(value){return $('<div>').text(value || '').html();}
+function calcManualReturnBalance(){
+    var returnAmount = Number($('#inp_return_amount').val()) || 0;
+    var exchangeAmount = Number($('#inp_exchange_amount').val()) || 0;
+    var compensationAmount = Number($('#inp_compensation_amount').val()) || 0;
+    var balance = returnAmount + compensationAmount - exchangeAmount;
+    var refund = Math.max(balance, 0);
+    var due = Math.max(-balance, 0);
+    $('#lbl_manual_refund').text(fmt(refund) + 'đ');
+    $('#lbl_manual_due').text(fmt(due) + 'đ');
+    return {refund: refund, due: due};
+}
 function getSelectedRefundPaymentMeta(){
     var $option = $('#inp_payment_method option:selected');
     return {
@@ -58,7 +75,7 @@ function loadOrderOptions(selectedId){
         var current = selectedId || $('#inp_order_id').val() || '';
         var html = '<option value="">Chọn đơn hàng gốc</option>';
         (res.data || []).forEach(function(order){
-            if(order.status !== 5) return;
+            if([4,5].indexOf(Number(order.status)) < 0) return;
             var label = [order.code || '', order.customer || '', order.order_date || ''].filter(Boolean).join(' - ');
             html += '<option value="' + order.id + '">' + escapeHtml(label) + '</option>';
         });
@@ -69,7 +86,8 @@ function openReturnForm(orderId){
     $('#edit_id').val('');
     $('#inp_code,#inp_reason').val('');
     $('#inp_return_date').val('');
-    $('#inp_total_refund').val(0);
+    $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').val(0);
+    calcManualReturnBalance();
     $('#inp_status').val('0');
     $('#inp_payment_method').val($('#inp_payment_method option:first').val() || '');
     $('#modal_title').text('Tạo phiếu trả');
@@ -78,14 +96,15 @@ function openReturnForm(orderId){
 }
 $(document).ready(function(){loadOrderOptions();loadData();
     $('#btn_add').click(function(){openReturnForm();});
-    $('#btn_save').click(function(){var paymentMeta=getSelectedRefundPaymentMeta();var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),order_id:$('#inp_order_id').val()||null,return_date:$('#inp_return_date').val(),total_refund:$('#inp_total_refund').val(),reason:$('#inp_reason').val(),status:parseInt($('#inp_status').val(),10),payment_method:paymentMeta.payment_method,payment_method_option_id:paymentMeta.payment_method_option_id,cash_book_id:paymentMeta.cash_book_id};if(!data.code||!data.return_date||!data.order_id){alert('Vui lòng nhập mã, chọn đơn gốc và ngày trả');return;}
+    $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').on('input', calcManualReturnBalance);
+    $('#btn_save').click(function(){var paymentMeta=getSelectedRefundPaymentMeta();var balance=calcManualReturnBalance();var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),order_id:$('#inp_order_id').val()||null,return_date:$('#inp_return_date').val(),return_amount:$('#inp_return_amount').val(),exchange_amount:$('#inp_exchange_amount').val(),compensation_amount:$('#inp_compensation_amount').val(),total_refund:balance.refund,reason:$('#inp_reason').val(),status:parseInt($('#inp_status').val(),10),payment_method:paymentMeta.payment_method,payment_method_option_id:paymentMeta.payment_method_option_id,cash_book_id:paymentMeta.cash_book_id};if(!data.code||!data.return_date||!data.order_id){alert('Vui lòng nhập mã, chọn đơn gốc và ngày trả');return;}
         $.ajax({url:'/api/order-returns/save/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}});});
     var params = new URLSearchParams(window.location.search);
     var orderId = params.get('order_id');
     if(orderId) openReturnForm(orderId);
 });
 function fmtDt(dateStr, createdAt){if(!dateStr)return '';var p=dateStr.split('-');var d=p.length===3?p[2]+'/'+p[1]+'/'+p[0]:dateStr;if(createdAt){var t=createdAt.split(' ');if(t.length===2)d+=' '+t[1];}return d;}
-function loadData(){$.get('/api/order-returns/',function(res){var h='';res.data.forEach(function(d,i){h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(d.code)+'</td><td>'+escapeHtml(d.order)+'</td><td>'+escapeHtml(d.customer)+'</td><td>'+fmtDt(d.return_date, d.created_at)+'</td><td class="text-right">'+fmt(d.total_refund)+'đ</td><td>'+escapeHtml(d.status_display)+'</td><td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button></div></td></tr>';});$('#data_tbl tbody').html(h);});}
-function editItem(d){$('#edit_id').val(d.id);$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_total_refund').val(d.total_refund);$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
+function loadData(){$.get('/api/order-returns/',function(res){var h='';res.data.forEach(function(d,i){var balance=d.total_refund>0?'<span class="text-success">Hoàn '+fmt(d.total_refund)+'đ</span>':(d.amount_due>0?'<span class="text-primary">Thu '+fmt(d.amount_due)+'đ</span>':'0đ');h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(d.code)+'</td><td>'+escapeHtml(d.order)+'</td><td>'+escapeHtml(d.customer)+'</td><td>'+fmtDt(d.return_date, d.created_at)+'</td><td class="text-right">'+fmt(d.return_amount)+'đ</td><td class="text-right">'+fmt(d.exchange_amount)+'đ</td><td class="text-right">'+balance+'</td><td>'+escapeHtml(d.status_display)+'</td><td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button></div></td></tr>';});$('#data_tbl tbody').html(h);});}
+function editItem(d){$('#edit_id').val(d.id);$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
 </script>
 {% endblock %}

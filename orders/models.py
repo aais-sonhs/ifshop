@@ -236,8 +236,13 @@ class OrderReturn(SoftDeleteModel):
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='returns',
                                   verbose_name='Kho nhận')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
+    return_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng hàng trả')
+    exchange_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng hàng đổi')
+    compensation_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Hoàn tiền/đền bù riêng')
     total_refund = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng hoàn trả')
+    amount_due = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Còn phải thu')
     reason = models.TextField(blank=True, null=True, verbose_name='Lý do trả hàng')
+    exchange_note = models.TextField(blank=True, null=True, verbose_name='Ghi chú đổi hàng')
     return_date = models.DateField(verbose_name='Ngày trả hàng')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -269,6 +274,26 @@ class OrderReturnItem(models.Model):
         db_table = 'order_return_items'
         verbose_name = 'Chi tiết trả hàng'
         verbose_name_plural = 'Chi tiết trả hàng'
+
+
+class OrderReturnExchangeItem(models.Model):
+    """Chi tiết hàng đổi mới trong phiếu trả/đổi hàng"""
+    order_return = models.ForeignKey(OrderReturn, on_delete=models.CASCADE, related_name='exchange_items',
+                                     verbose_name='Phiếu trả')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='return_exchange_items',
+                                verbose_name='Sản phẩm đổi')
+    variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='return_exchange_items', verbose_name='Biến thể')
+    quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng đổi')
+    unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
+    total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
+    note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
+
+    class Meta:
+        db_table = 'order_return_exchange_items'
+        verbose_name = 'Chi tiết đổi hàng'
+        verbose_name_plural = 'Chi tiết đổi hàng'
 
 
 class Packaging(SoftDeleteModel):

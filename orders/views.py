@@ -11,13 +11,14 @@ from django.db import transaction, IntegrityError
 from django.db.models import Prefetch, Q
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
-    OrderReturnItem, Packaging, OrderEditHistory,
+    OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
 )
 from customers.models import Customer
 from products.models import Product, Warehouse, ProductStock, ProductVariant
 from finance.models import Receipt, FinanceCategory, CashBook, Payment, PaymentMethodOption
 from finance.services import (
     cancel_receipt_with_effect,
+    capture_receipt_effect,
     save_receipt_with_effect,
     update_order_payment_status,
 )
@@ -756,6 +757,75 @@ def _sync_refund_payment_for_return(order_return, actor, payment_method_option_i
     return payment
 
 
+def _sync_exchange_receipt_for_return(order_return, actor, payment_method_option_id=None,
+                                      payment_method=2, cash_book_id=None):
+    """Tạo/cập nhật phiếu thu phần khách còn phải thanh toán khi đổi hàng."""
+    base_code = f'PT-{order_return.code}'
+    reference = f'ORDER_RETURN_DUE:{order_return.id}'
+    receipt_qs = Receipt.all_objects.select_for_update()
+    existing = receipt_qs.filter(reference=reference).first()
+    if not existing:
+        existing = receipt_qs.filter(
+            code=base_code,
+            description__icontains=f'phiếu trả/đổi {order_return.code}',
+        ).first()
+
+    amount_due = _to_decimal(getattr(order_return, 'amount_due', 0))
+    existing_effect = capture_receipt_effect(existing) if existing else None
+    if order_return.status != 2 or amount_due <= 0:
+        if existing and not getattr(existing, 'is_deleted', False) and existing.status == 1:
+            existing.status = 2
+            existing.note = f'[HỦY TỰ ĐỘNG] Phiếu trả/đổi {order_return.code} không còn phát sinh tiền khách phải thanh toán.'
+            save_receipt_with_effect(existing, old_effect=existing_effect)
+        return existing
+
+    selected_method = None
+    if payment_method_option_id:
+        selected_method = PaymentMethodOption.objects.select_related('default_cash_book').filter(
+            id=payment_method_option_id,
+            is_active=True,
+        ).first()
+        if selected_method:
+            payment_method = selected_method.legacy_type if selected_method.legacy_type in (1, 2) else 2
+    elif existing and existing.payment_method_option_id:
+        selected_method = existing.payment_method_option
+    else:
+        selected_method = PaymentMethodOption.objects.select_related('default_cash_book').filter(is_active=True).first()
+        if selected_method:
+            payment_method = selected_method.legacy_type if selected_method.legacy_type in (1, 2) else 2
+
+    cash_book = _get_cashbook_for_payment(payment_method, selected_method, cash_book_id)
+    if not cash_book and existing and existing.cash_book_id:
+        cash_book = existing.cash_book
+
+    receipt = existing or Receipt(created_by=actor)
+    if getattr(receipt, 'is_deleted', False):
+        receipt.is_deleted = False
+        receipt.deleted_at = None
+    if not receipt.code:
+        receipt.code = _next_receipt_code(base_code)
+    sale_cat = FinanceCategory.objects.filter(
+        type=1, name__icontains='bán hàng', is_active=True
+    ).first() or FinanceCategory.objects.filter(type=1, is_active=True).first()
+    receipt.store = order_return.order.store if order_return.order else None
+    receipt.category = sale_cat
+    receipt.cash_book = cash_book
+    receipt.payment_method_option = selected_method
+    receipt.customer = order_return.customer
+    receipt.order = None
+    receipt.amount = amount_due
+    receipt.description = f'Thu chênh lệch đổi hàng phiếu trả/đổi {order_return.code}'
+    receipt.receipt_date = order_return.return_date
+    receipt.reference = reference
+    receipt.status = 1
+    receipt.payment_method = payment_method
+    receipt.note = order_return.exchange_note or order_return.reason or ''
+    if not receipt.created_by_id:
+        receipt.created_by = actor
+    save_receipt_with_effect(receipt, old_effect=existing_effect)
+    return receipt
+
+
 def _refresh_order_payment(order):
     """Đồng bộ `paid_amount` và `payment_status` từ toàn bộ phiếu thu hiện có."""
     update_order_payment_status(order)
@@ -1059,13 +1129,17 @@ def _describe_item_history_changes(before_items, after_items):
     for key in sorted(after_keys - before_keys, key=lambda item_key: after_items[item_key]['label']):
         item = after_items[key]
         parts.append(
-            f'Thêm SP "{item["label"]}" SL { _format_qty_for_history(item["quantity"]) }, '
-            f'đơn giá {_format_money_for_history(item["unit_price"])}'
+            f'Thêm SP "{item["label"]}" SL {_format_qty_for_history(item["quantity"])}, '
+            f'đơn giá {_format_money_for_history(item["unit_price"])}, '
+            f'thành tiền {_format_money_for_history(item["total_price"])}'
         )
 
     for key in sorted(before_keys - after_keys, key=lambda item_key: before_items[item_key]['label']):
         item = before_items[key]
-        parts.append(f'Xóa SP "{item["label"]}" SL {_format_qty_for_history(item["quantity"])}')
+        parts.append(
+            f'Xóa SP "{item["label"]}" SL {_format_qty_for_history(item["quantity"])}, '
+            f'thành tiền {_format_money_for_history(item["total_price"])}'
+        )
 
     for key in sorted(before_keys & after_keys, key=lambda item_key: after_items[item_key]['label']):
         before = before_items[key]
@@ -1103,30 +1177,31 @@ def _describe_order_history_changes(before, order, normalized_items):
             for item_data, product, variant in normalized_items
         ]
     }
-    parts = []
-    _append_history_field_change(parts, before['code'], order.code or '', 'Mã đơn')
+    item_parts = _describe_item_history_changes(before['items'], after_items)
+    field_parts = []
+    money_parts = []
+    _append_history_field_change(field_parts, before['code'], order.code or '', 'Mã đơn')
     if before['customer_id'] != order.customer_id:
         after_customer = order.customer.name if order.customer else GUEST_CUSTOMER_NAME
-        parts.append(f'Khách hàng: {before["customer_label"] or "(trống)"} → {after_customer or "(trống)"}')
+        field_parts.append(f'Khách hàng: {before["customer_label"] or "(trống)"} → {after_customer or "(trống)"}')
     if before['warehouse_id'] != order.warehouse_id:
         after_warehouse = order.warehouse.name if order.warehouse else '(trống)'
-        parts.append(f'Kho xuất: {before["warehouse_label"] or "(trống)"} → {after_warehouse}')
-    _append_history_field_change(parts, before['order_date'], _format_date_value_for_history(order.order_date), 'Ngày đặt')
-    _append_history_field_change(parts, before['status'], order.status, 'Trạng thái',
+        field_parts.append(f'Kho xuất: {before["warehouse_label"] or "(trống)"} → {after_warehouse}')
+    _append_history_field_change(field_parts, before['order_date'], _format_date_value_for_history(order.order_date), 'Ngày đặt')
+    _append_history_field_change(field_parts, before['status'], order.status, 'Trạng thái',
                                  lambda value: status_labels.get(value, value))
-    _append_history_field_change(parts, before['discount_amount'], _to_decimal(order.discount_amount), 'Chiết khấu', _format_money_for_history)
-    _append_history_field_change(parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
-    _append_history_field_change(parts, before['final_amount'], _to_decimal(order.final_amount), 'Tổng thanh toán', _format_money_for_history)
-    _append_history_field_change(parts, before['tags'], order.tags or '', 'Tags')
-    _append_history_field_change(parts, before['note'], order.note or '', 'Ghi chú')
-    _append_history_field_change(parts, before['salesperson'], order.salesperson or '', 'NV bán hàng')
-    _append_history_field_change(parts, before['server_staff'], order.server_staff or '', 'NV phục vụ')
+    _append_history_field_change(money_parts, before['discount_amount'], _to_decimal(order.discount_amount), 'Chiết khấu', _format_money_for_history)
+    _append_history_field_change(money_parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
+    _append_history_field_change(field_parts, before['tags'], order.tags or '', 'Tags')
+    _append_history_field_change(field_parts, before['note'], order.note or '', 'Ghi chú')
+    _append_history_field_change(field_parts, before['salesperson'], order.salesperson or '', 'NV bán hàng')
+    _append_history_field_change(field_parts, before['server_staff'], order.server_staff or '', 'NV phục vụ')
     if before['approver_id'] != order.approver_id:
         after_approver = _user_display_name(order.approver) or '(trống)'
-        parts.append(f'Người duyệt: {before["approver_label"] or "(trống)"} → {after_approver}')
-    _append_history_field_change(parts, before['bonus_amount'], _to_decimal(order.bonus_amount), 'Tiền bonus', _format_money_for_history)
-    parts.extend(_describe_item_history_changes(before['items'], after_items))
-    return parts
+        field_parts.append(f'Người duyệt: {before["approver_label"] or "(trống)"} → {after_approver}')
+    _append_history_field_change(money_parts, before['bonus_amount'], _to_decimal(order.bonus_amount), 'Tiền bonus', _format_money_for_history)
+    _append_history_field_change(money_parts, before['final_amount'], _to_decimal(order.final_amount), 'Tổng thanh toán', _format_money_for_history)
+    return item_parts + field_parts + money_parts
 
 
 def _limit_history_parts(parts, limit=12):
@@ -1361,6 +1436,42 @@ def _apply_order_return_stock_adjustment(order_return, direction, warehouse_id=N
         allow_negative = _allow_negative_stock_for_store(order_return.order.store)
 
     for item in order_return.items.select_related('product').all():
+        product = item.product
+        if not product or product.is_service:
+            continue
+        quantity_delta = _to_decimal(item.quantity) * _to_decimal(direction)
+
+        if product.is_combo:
+            for combo_item in ComboItem.objects.filter(combo_id=product.id).select_related('product'):
+                if combo_item.product.is_service:
+                    continue
+                stock = _get_locked_stock(
+                    product_id=combo_item.product_id,
+                    warehouse_id=warehouse_id,
+                )
+                _adjust_locked_stock(
+                    stock,
+                    quantity_delta * _to_decimal(combo_item.quantity),
+                    allow_negative=allow_negative,
+                )
+            continue
+
+        stock = _get_locked_stock(product_id=product.id, warehouse_id=warehouse_id)
+        _adjust_locked_stock(stock, quantity_delta, allow_negative=allow_negative)
+
+
+def _apply_order_return_exchange_stock_adjustment(order_return, direction, warehouse_id=None):
+    """Áp tồn kho cho hàng đổi mới trong phiếu trả/đổi hàng."""
+    warehouse_id = warehouse_id or order_return.warehouse_id
+    if not warehouse_id:
+        return
+
+    from products.models import ComboItem
+    allow_negative = True
+    if _to_decimal(direction) < 0 and order_return.order:
+        allow_negative = _allow_negative_stock_for_store(order_return.order.store)
+
+    for item in order_return.exchange_items.select_related('product').all():
         product = item.product
         if not product or product.is_service:
             continue
@@ -2560,7 +2671,7 @@ def api_get_order_history(request):
         'status_before': entry.status_before,
         'status_after': entry.status_after,
         'created_at': entry.created_at.strftime('%d/%m/%Y %H:%M:%S') if entry.created_at else '',
-    } for entry in order.history_entries.select_related('actor').all()]
+    } for entry in order.history_entries.select_related('actor').order_by('-created_at', '-id')]
     return JsonResponse({'status': 'ok', 'data': rows})
 
 
@@ -3297,18 +3408,30 @@ def api_delete_quotation(request):
 
 @login_required(login_url="/login/")
 def api_get_order_returns(request):
-    returns = OrderReturn.objects.select_related('order', 'customer', 'warehouse').all()
+    returns = OrderReturn.objects.select_related('order', 'customer', 'warehouse').prefetch_related(
+        'items__product',
+        'exchange_items__product',
+        'exchange_items__variant',
+    ).all()
     returns = list(_filter_order_returns_by_scope(returns, request))
     refund_refs = [f'ORDER_RETURN:{r.id}' for r in returns]
+    due_refs = [f'ORDER_RETURN_DUE:{r.id}' for r in returns]
     refund_payments = {
         payment.reference: payment
         for payment in Payment.all_objects.select_related('payment_method_option', 'cash_book').filter(
             reference__in=refund_refs
         )
     }
+    due_receipts = {
+        receipt.reference: receipt
+        for receipt in Receipt.all_objects.select_related('payment_method_option', 'cash_book').filter(
+            reference__in=due_refs
+        )
+    }
     data = []
     for r in returns:
         refund_payment = refund_payments.get(f'ORDER_RETURN:{r.id}')
+        due_receipt = due_receipts.get(f'ORDER_RETURN_DUE:{r.id}')
         data.append({
             'id': r.id, 'code': r.code,
             'order': r.order.code if r.order else '(Thiếu đơn gốc)',
@@ -3318,14 +3441,42 @@ def api_get_order_returns(request):
             'warehouse_id': r.warehouse_id,
             'return_date': r.return_date.strftime('%Y-%m-%d') if r.return_date else '',
             'created_at': r.created_at.strftime('%d/%m/%Y %H:%M:%S') if r.created_at else '',
+            'return_amount': float(getattr(r, 'return_amount', 0) or 0),
+            'exchange_amount': float(getattr(r, 'exchange_amount', 0) or 0),
+            'compensation_amount': float(getattr(r, 'compensation_amount', 0) or 0),
             'total_refund': float(r.total_refund),
+            'amount_due': float(getattr(r, 'amount_due', 0) or 0),
             'status': r.status, 'status_display': r.get_status_display(),
             'reason': r.reason or '',
+            'exchange_note': getattr(r, 'exchange_note', '') or '',
             'payment_method': refund_payment.payment_method if refund_payment else 2,
             'payment_method_option_id': refund_payment.payment_method_option_id if refund_payment else None,
             'cash_book_id': refund_payment.cash_book_id if refund_payment else None,
             'refund_payment_code': refund_payment.code
             if refund_payment and not refund_payment.is_deleted else '',
+            'due_receipt_code': due_receipt.code
+            if due_receipt and not due_receipt.is_deleted else '',
+            'return_items': [{
+                'product_id': item.product_id,
+                'product_code': item.product.code if item.product else '',
+                'product_name': item.product.name if item.product else '',
+                'quantity': float(item.quantity),
+                'unit_price': float(item.unit_price),
+                'total_price': float(item.total_price),
+                'reason': item.reason or '',
+            } for item in r.items.all()],
+            'exchange_items': [{
+                'product_id': item.product_id,
+                'variant_id': item.variant_id,
+                'product_code': item.product.code if item.product else '',
+                'product_name': item.product.name if item.product else '',
+                'variant_name': item.variant.size_name if item.variant else '',
+                'quantity': float(item.quantity),
+                'unit_price': float(item.unit_price),
+                'discount_percent': float(item.discount_percent),
+                'total_price': float(item.total_price),
+                'note': item.note or '',
+            } for item in r.exchange_items.all()],
         })
     return JsonResponse({'data': data})
 
@@ -3393,7 +3544,10 @@ def api_save_order_return(request):
                 return JsonResponse({'status': 'error', 'message': f'Mã phiếu "{r.code}" đã tồn tại.'})
 
             items_payload = data.get('items')
+            exchange_items_payload = data.get('exchange_items')
             has_item_payload = isinstance(items_payload, list)
+            has_exchange_payload = isinstance(exchange_items_payload, list)
+            compensation_amount = _non_negative_decimal(data.get('compensation_amount', 0))
             normalized_return_items = []
             if has_item_payload:
                 sold_quantities = defaultdict(Decimal)
@@ -3446,26 +3600,92 @@ def api_save_order_return(request):
                         'reason': raw_item.get('reason', '') or '',
                     })
 
-                if status != 3 and not normalized_return_items:
-                    return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một sản phẩm để hoàn.'})
+            normalized_exchange_items = []
+            if has_exchange_payload:
+                for raw_item in exchange_items_payload:
+                    if raw_item.get('include') is False:
+                        continue
+                    product_id = _normalize_optional_int(raw_item.get('product_id'))
+                    if not product_id:
+                        continue
+                    product = _get_product_for_user(request, product_id)
+                    if not product:
+                        return JsonResponse({'status': 'error', 'message': 'Sản phẩm đổi không tồn tại hoặc ngoài phạm vi cửa hàng.'})
+                    quantity = _non_negative_decimal(raw_item.get('quantity', 0))
+                    if quantity <= 0:
+                        continue
+                    variant_id = raw_item.get('variant_id') or None
+                    variant = _get_variant_for_product(product, variant_id) if variant_id else None
+                    if variant_id and not variant:
+                        return JsonResponse({'status': 'error', 'message': f'Biến thể không thuộc sản phẩm "{product.name}".'})
+                    unit_price = _non_negative_decimal(raw_item.get('unit_price', 0))
+                    discount_percent = _normalize_percentage(raw_item.get('discount_percent', 0))
+                    normalized_exchange_items.append({
+                        'product': product,
+                        'variant': variant,
+                        'quantity': quantity,
+                        'unit_price': unit_price,
+                        'discount_percent': discount_percent,
+                        'total_price': _calculate_line_total(quantity, unit_price, discount_percent),
+                        'note': raw_item.get('note', '') or raw_item.get('reason', '') or '',
+                    })
+
+            if (
+                status != 3
+                and (has_item_payload or has_exchange_payload)
+                and not normalized_return_items
+                and not normalized_exchange_items
+                and compensation_amount <= 0
+            ):
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn hàng hoàn, hàng đổi hoặc nhập tiền đền bù/hoàn riêng.'})
 
             should_reverse_old_return_stock = (
                 old_status == 2
                 and r.items.exists()
                 and (has_item_payload or status != 2 or old_warehouse_id != order.warehouse_id)
             )
+            should_reverse_old_exchange_stock = (
+                old_status == 2
+                and r.exchange_items.exists()
+                and (has_exchange_payload or status != 2 or old_warehouse_id != order.warehouse_id)
+            )
             if should_reverse_old_return_stock:
                 _apply_order_return_stock_adjustment(r, direction=-1, warehouse_id=old_warehouse_id)
+            if should_reverse_old_exchange_stock:
+                _apply_order_return_exchange_stock_adjustment(r, direction=1, warehouse_id=old_warehouse_id)
 
             r.order = order
             r.customer = order.customer
             r.warehouse = order.warehouse
             r.return_date = data.get('return_date') or date.today().isoformat()
+            should_calculate_balance = (
+                has_item_payload
+                or has_exchange_payload
+                or 'return_amount' in data
+                or 'exchange_amount' in data
+                or 'compensation_amount' in data
+            )
             if has_item_payload:
-                r.total_refund = sum((item['total_price'] for item in normalized_return_items), Decimal('0'))
+                r.return_amount = sum((item['total_price'] for item in normalized_return_items), Decimal('0'))
             else:
-                r.total_refund = data.get('total_refund', 0) or 0
+                r.return_amount = _non_negative_decimal(data.get('return_amount', data.get('total_refund', 0)))
+            if has_exchange_payload:
+                r.exchange_amount = sum((item['total_price'] for item in normalized_exchange_items), Decimal('0'))
+            else:
+                r.exchange_amount = _non_negative_decimal(data.get('exchange_amount', 0))
+            r.compensation_amount = compensation_amount
+            if should_calculate_balance:
+                balance = _to_decimal(r.return_amount) + _to_decimal(r.compensation_amount) - _to_decimal(r.exchange_amount)
+                r.total_refund = balance if balance > 0 else Decimal('0')
+                r.amount_due = abs(balance) if balance < 0 else Decimal('0')
+            else:
+                r.total_refund = _non_negative_decimal(data.get('total_refund', 0))
+                r.return_amount = r.total_refund
+                r.exchange_amount = Decimal('0')
+                r.compensation_amount = Decimal('0')
+                r.amount_due = Decimal('0')
             r.reason = data.get('reason', '')
+            r.exchange_note = data.get('exchange_note', '') or ''
             r.status = status
             r.save()
 
@@ -3480,13 +3700,37 @@ def api_save_order_return(request):
                         total_price=item['total_price'],
                         reason=item['reason'],
                     )
+            if has_exchange_payload:
+                r.exchange_items.all().delete()
+                for item in normalized_exchange_items:
+                    OrderReturnExchangeItem.objects.create(
+                        order_return=r,
+                        product=item['product'],
+                        variant=item['variant'],
+                        quantity=item['quantity'],
+                        unit_price=item['unit_price'],
+                        discount_percent=item['discount_percent'],
+                        total_price=item['total_price'],
+                        note=item['note'],
+                    )
 
             if r.status == 2 and has_item_payload and normalized_return_items:
                 _apply_order_return_stock_adjustment(r, direction=1)
             elif r.status == 2 and old_status != 2 and r.items.exists():
                 _apply_order_return_stock_adjustment(r, direction=1)
+            if r.status == 2 and has_exchange_payload and normalized_exchange_items:
+                _apply_order_return_exchange_stock_adjustment(r, direction=-1)
+            elif r.status == 2 and old_status != 2 and r.exchange_items.exists():
+                _apply_order_return_exchange_stock_adjustment(r, direction=-1)
 
             refund_payment = _sync_refund_payment_for_return(
+                r,
+                request.user,
+                payment_method_option_id=payment_method_option_id,
+                payment_method=refund_payment_method,
+                cash_book_id=cash_book_id,
+            )
+            due_receipt = _sync_exchange_receipt_for_return(
                 r,
                 request.user,
                 payment_method_option_id=payment_method_option_id,
@@ -3504,13 +3748,41 @@ def api_save_order_return(request):
                 return_item_summary = _summarize_order_items_for_history(
                     r.items.select_related('product').all()
                 )
-            return_summary = f'Hoàn hàng {r.code}, tổng hoàn {_format_money_for_history(r.total_refund)}'
+            if has_exchange_payload:
+                exchange_item_summary = '; '.join(
+                    f'{item["product"].code} - {item["product"].name}'
+                    + (f' - {item["variant"].size_name}' if item["variant"] else '')
+                    + f' x{_format_qty_for_history(item["quantity"])} = {_format_money_for_history(item["total_price"])}'
+                    for item in normalized_exchange_items[:5]
+                )
+                if len(normalized_exchange_items) > 5:
+                    exchange_item_summary += f'; ... và {len(normalized_exchange_items) - 5} dòng khác'
+            else:
+                exchange_item_summary = _summarize_order_items_for_history(
+                    r.exchange_items.select_related('product', 'variant').all()
+                )
+            return_summary = f'Phiếu trả/đổi {r.code}'
             if return_item_summary:
-                return_summary += f': {return_item_summary}'
+                return_summary += f'; hàng trả {_format_money_for_history(r.return_amount)}: {return_item_summary}'
+            if exchange_item_summary:
+                return_summary += f'; hàng đổi {_format_money_for_history(r.exchange_amount)}: {exchange_item_summary}'
+            if _to_decimal(r.compensation_amount) > 0:
+                return_summary += f'; đền bù/hoàn riêng {_format_money_for_history(r.compensation_amount)}'
+            if _to_decimal(r.total_refund) > 0:
+                return_summary += f'; cần hoàn khách {_format_money_for_history(r.total_refund)}'
+            elif _to_decimal(r.amount_due) > 0:
+                return_summary += f'; khách còn thanh toán {_format_money_for_history(r.amount_due)}'
+            else:
+                return_summary += '; không phát sinh chênh lệch tiền'
             if r.status == 2:
-                return_summary += '; đã nhập kho hàng hoàn'
+                if r.items.exists():
+                    return_summary += '; đã nhập kho hàng hoàn'
+                if r.exchange_items.exists():
+                    return_summary += '; đã xuất kho hàng đổi'
                 if refund_payment and not getattr(refund_payment, 'is_deleted', False) and refund_payment.status == 1:
                     return_summary += f'; đã tạo phiếu chi hoàn tiền {refund_payment.code}'
+                if due_receipt and not getattr(due_receipt, 'is_deleted', False) and due_receipt.status == 1:
+                    return_summary += f'; đã tạo phiếu thu chênh lệch {due_receipt.code}'
             _log_order_history(
                 order=order,
                 actor=request.user,
@@ -3526,13 +3798,23 @@ def api_save_order_return(request):
             'message': message,
             'return_id': r.id,
             'return_code': r.code,
+            'return_amount': float(r.return_amount or 0),
+            'exchange_amount': float(r.exchange_amount or 0),
+            'compensation_amount': float(r.compensation_amount or 0),
             'total_refund': float(r.total_refund or 0),
+            'amount_due': float(r.amount_due or 0),
         }
         if r.status == 2 and _to_decimal(r.total_refund) > 0 and refund_payment:
             response_data.update({
                 'message': f'Lưu thành công. Đã ghi phiếu chi hoàn tiền {refund_payment.code}.',
                 'refund_payment_id': refund_payment.id,
                 'refund_payment_code': refund_payment.code,
+            })
+        if r.status == 2 and _to_decimal(r.amount_due) > 0 and due_receipt:
+            response_data.update({
+                'message': f'Lưu thành công. Đã ghi phiếu thu chênh lệch {due_receipt.code}.',
+                'due_receipt_id': due_receipt.id,
+                'due_receipt_code': due_receipt.code,
             })
         elif refund_payment and refund_payment.status == 2:
             response_data.update({

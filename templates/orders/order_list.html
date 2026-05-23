@@ -381,7 +381,7 @@
                                 <tr class="bg-light font-weight-bold"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
                                 <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
                                 <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
-                                <tr class="font-weight-bold" style="background:linear-gradient(135deg,#1565c0,#0d47a1);"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6" style="color:#ffd54f;">Thành tiền:</td><td class="text-right" style="color:#fff;font-size:16px;" id="lbl_final">0</td><td></td></tr>
+                                <tr class="font-weight-bold order-final-total-row"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td><td></td></tr>
                                 <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
 	                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu nhưng cần kiểm tra lại giá bán.</div></td></tr>
                             </tfoot>
@@ -889,6 +889,17 @@
 }
 #items_tbl tbody tr.row-duplicate {
     background: #fff8e1;
+}
+.order-final-total-row {
+    background: linear-gradient(135deg,#1565c0,#0d47a1);
+}
+.order-final-total-row .order-total-label,
+.order-final-total-row .order-final-total-amount {
+    color: #ffd54f;
+}
+.order-final-total-row .order-final-total-amount {
+    font-size: 16px;
+    font-weight: 800;
 }
 /* ===== STATUS TIMELINE STEPPER ===== */
 .status-timeline {
@@ -2486,9 +2497,13 @@ function enablePaymentEntry(amount){
     persistCurrentOrderPaymentPreferences();
 }
 
-function disablePaymentEntry(){
+function clearPaymentEntryRows(){
     $('#payment_lines_container').html('').hide();
     syncPaymentSummary();
+}
+
+function disablePaymentEntry(){
+    clearPaymentEntryRows();
     persistCurrentOrderPaymentPreferences();
 }
 
@@ -2603,8 +2618,14 @@ function collectCurrentOrderPayment(){
         data:JSON.stringify({order_id: orderId, payment_lines: lines}),
         success:function(r){
             if(r.status === 'ok'){
-                disablePaymentEntry();
+                clearPaymentEntryRows();
                 applyOrderWorkflowResult(r);
+                if((Number(r.remaining_amount) || 0) > 0){
+                    enablePaymentEntry(Number(r.remaining_amount) || 0);
+                    setTimeout(function(){
+                        $('#payment_lines_container .inp-pay-amount:first').focus().select();
+                    }, 80);
+                }
                 toastr ? toastr.success(r.message) : alert(r.message);
             } else {
                 alert(r.message);
@@ -2882,11 +2903,11 @@ function loadOrderHistory(orderId){
         res.data.forEach(function(row){
             html += '<div class="list-group-item px-0 py-2">' +
                 '<div class="d-flex justify-content-between align-items-start">' +
-                '<strong>' + row.action_display + '</strong>' +
-                '<span class="text-muted">' + row.created_at + '</span>' +
+                '<strong>' + escapeHtml(row.action_display || '') + '</strong>' +
+                '<span class="text-muted">' + escapeHtml(row.created_at || '') + '</span>' +
                 '</div>' +
-                '<div>' + (row.summary || '') + '</div>' +
-                '<small class="text-muted">' + (row.actor || 'Hệ thống') + '</small>' +
+                '<div>' + escapeHtml(row.summary || '') + '</div>' +
+                '<small class="text-muted">' + escapeHtml(row.actor || 'Hệ thống') + '</small>' +
                 '</div>';
         });
         html += '</div>';

@@ -8,7 +8,7 @@ from django.urls import reverse
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
-from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem, Quotation
+from orders.models import Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnItem, Quotation
 from products.models import Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
@@ -758,6 +758,67 @@ class OrderRiskFlowTests(TestCase):
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 1000100.0)
 
+    def test_collect_order_payment_can_be_called_repeatedly_without_saving_order(self):
+        order = self._create_order(code='DH-COLLECT-REPEAT-001', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        first_response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'payment_lines': [{
+                    'amount': 40,
+                    'payment_method': 1,
+                    'payment_method_option_id': self.payment_method.id,
+                    'cash_book_id': self.cashbook.id,
+                }],
+            }),
+            content_type='application/json',
+        )
+        second_response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'payment_lines': [{
+                    'amount': 60,
+                    'payment_method': 1,
+                    'payment_method_option_id': self.payment_method.id,
+                    'cash_book_id': self.cashbook.id,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.json()
+        self.assertEqual(first_payload['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(first_payload['paid_amount'], 40.0)
+        self.assertEqual(first_payload['remaining_amount'], 60.0)
+        self.assertEqual(first_payload['payment_status'], 1)
+
+        self.assertEqual(second_response.status_code, 200)
+        second_payload = second_response.json()
+        self.assertEqual(second_payload['status'], 'ok', msg=second_response.content.decode())
+        self.assertEqual(second_payload['paid_amount'], 100.0)
+        self.assertEqual(second_payload['remaining_amount'], 0.0)
+        self.assertEqual(second_payload['payment_status'], 2)
+
+        order.refresh_from_db()
+        self.assertEqual(float(order.paid_amount), 100.0)
+        self.assertEqual(order.payment_status, 2)
+        self.assertEqual(Receipt.objects.filter(order=order, status=1).count(), 2)
+        history_summaries = list(
+            OrderEditHistory.objects.filter(order=order, action='payment').values_list('summary', flat=True)
+        )
+        self.assertTrue(any('còn phải thu 60' in summary for summary in history_summaries))
+        self.assertTrue(any('đã thanh toán đủ' in summary for summary in history_summaries))
+
     def test_export_order_stock_is_independent_from_payment(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
         order = self._create_order(code='DH-EXPORT-NO-PAY-001', status=1)
@@ -804,6 +865,53 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
         order.refresh_from_db()
         self.assertEqual(order.status, 3)
+
+    def test_save_order_history_describes_item_quantity_change(self):
+        order = self._create_order(code='DH-HISTORY-ITEM-001', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 3,
+                    'unit_price': 50,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        history = OrderEditHistory.objects.filter(order=order, action='update').first()
+        self.assertIsNotNone(history)
+        self.assertIn('Sửa SP', history.summary)
+        self.assertIn('SL 2 → 3', history.summary)
+        self.assertIn('Tổng thanh toán: 100đ → 150đ', history.summary)
 
     def test_store_scope_blocks_foreign_order_detail(self):
         quotation = self._create_quotation(

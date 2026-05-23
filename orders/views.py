@@ -923,6 +923,232 @@ def _order_items_payload_from_order(order):
     } for item in order.items.all()]
 
 
+def _format_money_for_history(value):
+    return f'{int(_to_decimal(value)):,}đ'
+
+
+def _format_qty_for_history(value):
+    qty = _to_decimal(value)
+    if qty == qty.to_integral_value():
+        return str(int(qty))
+    return format(qty.normalize(), 'f')
+
+
+def _format_percent_for_history(value):
+    percent = _to_decimal(value)
+    if percent == percent.to_integral_value():
+        return f'{int(percent)}%'
+    return f'{format(percent.normalize(), "f")}%'
+
+
+def _format_date_value_for_history(value):
+    if not value:
+        return ''
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return str(value)
+
+
+def _user_display_name(user):
+    return (user.get_full_name() or user.username) if user else ''
+
+
+def _history_item_label(product, item_name='', variant=None):
+    if product:
+        parts = [product.code or '', product.name or '']
+        if variant:
+            parts.append(getattr(variant, 'size_name', '') or '')
+        return ' - '.join(part for part in parts if part)
+    return item_name or 'Dịch vụ/thẻ trống'
+
+
+def _history_item_key(product_id, variant_id, item_name, unit, is_service_line):
+    if product_id:
+        return ('product', product_id, variant_id or None)
+    return ('service', (item_name or '').strip().lower(), (unit or '').strip().lower())
+
+
+def _history_item_from_model(item):
+    product = item.product
+    variant = item.variant
+    item_name = item.item_name or ''
+    unit = item.unit or ''
+    is_service_line = bool(item.is_service_line or not item.product_id)
+    return {
+        'key': _history_item_key(item.product_id, item.variant_id, item_name, unit, is_service_line),
+        'label': _history_item_label(product, item_name, variant),
+        'quantity': _to_decimal(item.quantity),
+        'unit_price': _to_decimal(item.unit_price),
+        'discount_percent': _to_decimal(item.discount_percent),
+        'total_price': _to_decimal(item.total_price),
+    }
+
+
+def _history_item_from_payload(item_data, product, variant):
+    item_name = _payload_service_name(item_data) if not product else ''
+    unit = _payload_service_unit(item_data) if not product else ''
+    qty = _non_negative_decimal(item_data.get('quantity', 0))
+    price = _non_negative_decimal(item_data.get('unit_price', 0))
+    discount = _normalize_percentage(item_data.get('discount_percent', 0))
+    return {
+        'key': _history_item_key(product.id if product else None, variant.id if variant else None, item_name, unit, not bool(product)),
+        'label': _history_item_label(product, item_name, variant),
+        'quantity': qty,
+        'unit_price': price,
+        'discount_percent': discount,
+        'total_price': _calculate_line_total(qty, price, discount),
+    }
+
+
+def _capture_order_history_snapshot(order):
+    return {
+        'code': order.code or '',
+        'customer_id': order.customer_id,
+        'customer_label': order.customer.name if order.customer else GUEST_CUSTOMER_NAME,
+        'warehouse_id': order.warehouse_id,
+        'warehouse_label': order.warehouse.name if order.warehouse else '',
+        'order_date': _format_date_value_for_history(order.order_date),
+        'status': order.status,
+        'discount_amount': _to_decimal(order.discount_amount),
+        'shipping_fee': _to_decimal(order.shipping_fee),
+        'final_amount': _to_decimal(order.final_amount),
+        'tags': order.tags or '',
+        'note': order.note or '',
+        'salesperson': order.salesperson or '',
+        'server_staff': order.server_staff or '',
+        'approver_id': order.approver_id,
+        'approver_label': _user_display_name(order.approver),
+        'bonus_amount': _to_decimal(order.bonus_amount),
+        'items': {
+            row['key']: row
+            for row in [
+                _history_item_from_model(item)
+                for item in order.items.select_related('product', 'variant').all()
+            ]
+        },
+    }
+
+
+def _history_normalized_items_from_order(order):
+    rows = []
+    for item in order.items.select_related('product', 'variant').all():
+        rows.append(({
+            'product_id': item.product_id,
+            'variant_id': item.variant_id,
+            'item_name': item.item_name or '',
+            'unit': item.unit or '',
+            'is_service_line': bool(item.is_service_line or not item.product_id),
+            'quantity': item.quantity,
+            'unit_price': item.unit_price,
+            'discount_percent': item.discount_percent,
+        }, item.product, item.variant))
+    return rows
+
+
+def _append_history_field_change(parts, before, after, label, formatter=None):
+    formatter = formatter or (lambda value: value if value not in (None, '') else '(trống)')
+    if before != after:
+        parts.append(f'{label}: {formatter(before)} → {formatter(after)}')
+
+
+def _describe_item_history_changes(before_items, after_items):
+    parts = []
+    before_keys = set(before_items.keys())
+    after_keys = set(after_items.keys())
+
+    for key in sorted(after_keys - before_keys, key=lambda item_key: after_items[item_key]['label']):
+        item = after_items[key]
+        parts.append(
+            f'Thêm SP "{item["label"]}" SL { _format_qty_for_history(item["quantity"]) }, '
+            f'đơn giá {_format_money_for_history(item["unit_price"])}'
+        )
+
+    for key in sorted(before_keys - after_keys, key=lambda item_key: before_items[item_key]['label']):
+        item = before_items[key]
+        parts.append(f'Xóa SP "{item["label"]}" SL {_format_qty_for_history(item["quantity"])}')
+
+    for key in sorted(before_keys & after_keys, key=lambda item_key: after_items[item_key]['label']):
+        before = before_items[key]
+        after = after_items[key]
+        changes = []
+        if before['quantity'] != after['quantity']:
+            changes.append(f'SL {_format_qty_for_history(before["quantity"])} → {_format_qty_for_history(after["quantity"])}')
+        if before['unit_price'] != after['unit_price']:
+            changes.append(
+                f'đơn giá {_format_money_for_history(before["unit_price"])} → {_format_money_for_history(after["unit_price"])}'
+            )
+        if before['discount_percent'] != after['discount_percent']:
+            changes.append(
+                f'CK {_format_percent_for_history(before["discount_percent"])} → {_format_percent_for_history(after["discount_percent"])}'
+            )
+        if before['total_price'] != after['total_price'] and not changes:
+            changes.append(
+                f'thành tiền {_format_money_for_history(before["total_price"])} → {_format_money_for_history(after["total_price"])}'
+            )
+        if changes:
+            parts.append(f'Sửa SP "{after["label"]}": ' + ', '.join(changes))
+
+    return parts
+
+
+def _describe_order_history_changes(before, order, normalized_items):
+    if not before:
+        return []
+
+    status_labels = dict(Order.STATUS_CHOICES)
+    after_items = {
+        row['key']: row
+        for row in [
+            _history_item_from_payload(item_data, product, variant)
+            for item_data, product, variant in normalized_items
+        ]
+    }
+    parts = []
+    _append_history_field_change(parts, before['code'], order.code or '', 'Mã đơn')
+    if before['customer_id'] != order.customer_id:
+        after_customer = order.customer.name if order.customer else GUEST_CUSTOMER_NAME
+        parts.append(f'Khách hàng: {before["customer_label"] or "(trống)"} → {after_customer or "(trống)"}')
+    if before['warehouse_id'] != order.warehouse_id:
+        after_warehouse = order.warehouse.name if order.warehouse else '(trống)'
+        parts.append(f'Kho xuất: {before["warehouse_label"] or "(trống)"} → {after_warehouse}')
+    _append_history_field_change(parts, before['order_date'], _format_date_value_for_history(order.order_date), 'Ngày đặt')
+    _append_history_field_change(parts, before['status'], order.status, 'Trạng thái',
+                                 lambda value: status_labels.get(value, value))
+    _append_history_field_change(parts, before['discount_amount'], _to_decimal(order.discount_amount), 'Chiết khấu', _format_money_for_history)
+    _append_history_field_change(parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
+    _append_history_field_change(parts, before['final_amount'], _to_decimal(order.final_amount), 'Tổng thanh toán', _format_money_for_history)
+    _append_history_field_change(parts, before['tags'], order.tags or '', 'Tags')
+    _append_history_field_change(parts, before['note'], order.note or '', 'Ghi chú')
+    _append_history_field_change(parts, before['salesperson'], order.salesperson or '', 'NV bán hàng')
+    _append_history_field_change(parts, before['server_staff'], order.server_staff or '', 'NV phục vụ')
+    if before['approver_id'] != order.approver_id:
+        after_approver = _user_display_name(order.approver) or '(trống)'
+        parts.append(f'Người duyệt: {before["approver_label"] or "(trống)"} → {after_approver}')
+    _append_history_field_change(parts, before['bonus_amount'], _to_decimal(order.bonus_amount), 'Tiền bonus', _format_money_for_history)
+    parts.extend(_describe_item_history_changes(before['items'], after_items))
+    return parts
+
+
+def _limit_history_parts(parts, limit=12):
+    if len(parts) <= limit:
+        return parts
+    return parts[:limit] + [f'... và {len(parts) - limit} thay đổi khác']
+
+
+def _summarize_order_items_for_history(items, limit=5):
+    rows = []
+    for item in items:
+        label = _history_item_label(
+            getattr(item, 'product', None),
+            getattr(item, 'item_name', '') or '',
+            getattr(item, 'variant', None),
+        )
+        rows.append(f'{label} x{_format_qty_for_history(getattr(item, "quantity", 0))}')
+    if len(rows) > limit:
+        return '; '.join(rows[:limit]) + f'; ... và {len(rows) - limit} dòng khác'
+    return '; '.join(rows)
+
+
 def _payload_requests_new_receipt(data):
     """Kiểm tra payload có đang yêu cầu tạo thêm phiếu thu hay không."""
     payment_lines = data.get('payment_lines') or []
@@ -983,6 +1209,7 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
             'message': 'Không thể sửa đơn hàng đã Hoàn thành/Hủy. Vui lòng dùng chức năng hoàn hàng/hoàn tiền nếu cần xử lý sau bán.'
         })
 
+    history_before = _capture_order_history_snapshot(order)
     new_status = int(data.get('status', old_status))
     allowed = ORDER_STATUS_TRANSITIONS.get(old_status, {old_status})
     if new_status not in allowed:
@@ -1045,11 +1272,16 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
 
     _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
     _refresh_order_payment(order)
+    history_parts = _limit_history_parts(
+        _describe_order_history_changes(history_before, order, _history_normalized_items_from_order(order))
+    )
+    if not history_parts:
+        history_parts = ['Cập nhật trạng thái/ghi chú đơn đã có phiếu thu; không thay đổi tiền hàng.']
     _log_order_history(
         order=order,
         actor=request.user,
         action='status',
-        summary='Cập nhật trạng thái đơn đã có phiếu thu; không thay đổi tiền hàng.',
+        summary='; '.join(history_parts),
         status_before=old_status,
         status_after=order.status,
     )
@@ -1754,6 +1986,7 @@ def api_save_order(request):
             old_status = None
             old_quotation_id = None
             old_warehouse_id = None
+            history_before = None
             history_action = 'update' if oid else 'create'
             if oid:
                 o = _get_order_for_user(request, oid)
@@ -1762,6 +1995,7 @@ def api_save_order(request):
                 old_status = o.status
                 old_quotation_id = o.quotation_id
                 old_warehouse_id = o.warehouse_id
+                history_before = _capture_order_history_snapshot(o)
                 # KHÓA: Không cho sửa đơn hàng đã Hoàn thành hoặc Hủy
                 if old_status in (5, 6):
                     return JsonResponse({
@@ -2043,9 +2277,12 @@ def api_save_order(request):
             # 10. Đồng bộ trạng thái báo giá sau khi trạng thái đơn đã ổn định.
             _sync_order_quotation_status(o, old_quotation_id=old_quotation_id)
 
-            summary_parts = [
-                f'Tổng thanh toán {int(float(o.final_amount or 0)):,}đ',
+            detail_parts = _describe_order_history_changes(history_before, o, normalized_items) if oid else [
+                f'Tạo đơn với {len(normalized_items)} dòng hàng'
             ]
+            summary_parts = _limit_history_parts(detail_parts)
+            if not any(part.startswith('Tổng thanh toán:') for part in summary_parts):
+                summary_parts.append(f'Tổng thanh toán {int(float(o.final_amount or 0)):,}đ')
             if float(o.discount_amount or 0):
                 summary_parts.append(f'chiết khấu {int(float(o.discount_amount)):,}đ')
             if float(o.shipping_fee or 0):
@@ -2606,6 +2843,7 @@ def api_collect_order_payment(request):
 
             old_status = order.status
             receipt_codes = []
+            receipt_details = []
             for idx, line in enumerate(payment_lines):
                 base_code = f'PT-{order.code}' if idx == 0 else f'PT-{order.code}-{idx + 1}'
                 receipt = _create_completed_receipt_for_order(
@@ -2621,13 +2859,25 @@ def api_collect_order_payment(request):
                 )
                 if receipt:
                     receipt_codes.append(receipt.code)
+                    receipt_details.append(
+                        f'{receipt.get_payment_method_label()}: {_format_money_for_history(receipt.amount)} ({receipt.code})'
+                    )
 
             _refresh_order_payment(order)
+            remaining_after = max(_to_decimal(order.final_amount) - _to_decimal(order.paid_amount), Decimal('0'))
+            payment_summary = f'Thu tiền riêng {_format_money_for_history(total_collect)}'
+            if receipt_details:
+                payment_summary += ': ' + '; '.join(receipt_details)
+            payment_summary += f'; đã thu {_format_money_for_history(order.paid_amount)}'
+            if remaining_after > 0:
+                payment_summary += f'; còn phải thu {_format_money_for_history(remaining_after)}'
+            else:
+                payment_summary += '; đã thanh toán đủ'
             _log_order_history(
                 order=order,
                 actor=request.user,
                 action='payment',
-                summary=f'Thu tiền riêng {int(total_collect):,}đ' + (f' ({", ".join(receipt_codes)})' if receipt_codes else ''),
+                summary=payment_summary,
                 status_before=old_status,
                 status_after=order.status,
             )
@@ -2679,11 +2929,17 @@ def api_export_order_stock(request):
             order.save(update_fields=['status'])
             _refresh_order_payment(order)
             _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
+            exported_items = _summarize_order_items_for_history(
+                order.items.select_related('product', 'variant').all()
+            )
             _log_order_history(
                 order=order,
                 actor=request.user,
                 action='stock_export',
-                summary='Xuất kho riêng tại đơn hàng. Thanh toán được xử lý độc lập.',
+                summary='Xuất kho riêng tại đơn hàng'
+                + (f' từ kho {order.warehouse.name}' if order.warehouse else '')
+                + (f': {exported_items}' if exported_items else '')
+                + '. Thanh toán được xử lý độc lập.',
                 status_before=old_status,
                 status_after=order.status,
             )
@@ -3237,11 +3493,29 @@ def api_save_order_return(request):
                 payment_method=refund_payment_method,
                 cash_book_id=cash_book_id,
             )
+            if has_item_payload:
+                return_item_summary = '; '.join(
+                    f'{item["product"].code} - {item["product"].name} x{_format_qty_for_history(item["quantity"])} = {_format_money_for_history(item["total_price"])}'
+                    for item in normalized_return_items[:5]
+                )
+                if len(normalized_return_items) > 5:
+                    return_item_summary += f'; ... và {len(normalized_return_items) - 5} dòng khác'
+            else:
+                return_item_summary = _summarize_order_items_for_history(
+                    r.items.select_related('product').all()
+                )
+            return_summary = f'Hoàn hàng {r.code}, tổng hoàn {_format_money_for_history(r.total_refund)}'
+            if return_item_summary:
+                return_summary += f': {return_item_summary}'
+            if r.status == 2:
+                return_summary += '; đã nhập kho hàng hoàn'
+                if refund_payment and not getattr(refund_payment, 'is_deleted', False) and refund_payment.status == 1:
+                    return_summary += f'; đã tạo phiếu chi hoàn tiền {refund_payment.code}'
             _log_order_history(
                 order=order,
                 actor=request.user,
                 action='return',
-                summary=f'Hoàn hàng {r.code}, tổng hoàn {int(_to_decimal(r.total_refund)):,}đ.',
+                summary=return_summary,
                 status_before=order.status,
                 status_after=order.status,
             )

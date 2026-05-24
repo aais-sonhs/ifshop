@@ -223,9 +223,9 @@
                                     <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td>
                                     <td></td>
                                 </tr>
-                                <tr class="bg-warning font-weight-bold">
-	                                    <td colspan="7" class="text-right">Thành tiền:</td>
-                                    <td class="text-right" id="lbl_final">0</td>
+                                <tr class="font-weight-bold quotation-final-total-row">
+                                    <td colspan="7" class="text-right quotation-total-label">Thành tiền:</td>
+                                    <td class="text-right quotation-final-total-amount" id="lbl_final">0</td>
                                     <td></td>
                                 </tr>
 	                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng báo giá.</span></td></tr>
@@ -544,6 +544,17 @@
 }
 #items_tbl tbody tr.row-duplicate {
     background: #fff8e1;
+}
+.quotation-final-total-row > td {
+    background: linear-gradient(135deg,#1565c0,#0d47a1) !important;
+}
+.quotation-final-total-row .quotation-total-label,
+.quotation-final-total-row .quotation-final-total-amount {
+    color: #ffd54f !important;
+}
+.quotation-final-total-row .quotation-final-total-amount {
+    font-size: 16px;
+    font-weight: 800;
 }
 #quick_search_results .quick-search-item.qs-active,
 #quick_search_results .quick-search-item:hover {

@@ -6,7 +6,12 @@
     <title>{% block title %}In phiếu{% endblock %}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #333; }
+        body {
+            font-family: Arial, Tahoma, "Liberation Sans", "DejaVu Sans", sans-serif;
+            color: #333;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: geometricPrecision;
+        }
         @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .no-print { display: none !important; }

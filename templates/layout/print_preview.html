@@ -19,7 +19,7 @@
                     </div>
                 </div>
                 <div style="max-height:63vh;overflow-y:auto;padding:20px;">
-                    <div id="print_content" style="background:#fff;max-width:210mm;margin:0 auto;padding:15mm 20mm;box-shadow:0 0 10px rgba(0,0,0,0.15);font-family:'Source Sans Pro',sans-serif;font-size:13px;color:#333;">
+                    <div id="print_content" style="background:#fff;max-width:210mm;margin:0 auto;padding:15mm 20mm;box-shadow:0 0 10px rgba(0,0,0,0.15);font-family:Arial,Tahoma,'Liberation Sans','DejaVu Sans',sans-serif;font-size:13px;color:#333;">
                         <!-- Nội dung in sẽ được inject vào đây -->
                     </div>
                 </div>
@@ -45,7 +45,10 @@
 <style>
 /* ===== PRINT PREVIEW STYLES ===== */
 #print_content {
+    font-family: Arial, Tahoma, "Liberation Sans", "DejaVu Sans", sans-serif;
     line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
 }
 #print_content .print-header {
     text-align: center;

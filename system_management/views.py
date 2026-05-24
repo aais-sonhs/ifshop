@@ -1334,7 +1334,7 @@ def api_direct_print(request):
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
                 f.write(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<style>body{{font-family:Arial,sans-serif;font-size:12px;margin:10mm 15mm;}}
+<style>body{{font-family:Arial,Tahoma,"Liberation Sans","DejaVu Sans",sans-serif;font-size:12px;margin:10mm 15mm;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;}}
 table{{width:100%;border-collapse:collapse;}} th,td{{border:1px solid #999;padding:5px 8px;}}
 th{{background:#f0f0f0;font-weight:bold;text-align:center;}}
 .text-right{{text-align:right;}} .text-center{{text-align:center;}}

@@ -217,6 +217,8 @@ class PrintTemplate(models.Model):
     show_order_note = models.BooleanField(default=True, verbose_name='Hiện ghi chú chứng từ')
     show_item_note = models.BooleanField(default=False, verbose_name='Hiện ghi chú sản phẩm')
     show_terms = models.BooleanField(default=True, verbose_name='Hiện điều khoản / nội dung cuối phiếu')
+    show_print_time = models.BooleanField(default=True, verbose_name='Hiện thời gian in tự động')
+    show_combo_components = models.BooleanField(default=True, verbose_name='Hiện thành phần combo')
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

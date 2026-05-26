@@ -26,6 +26,8 @@
 .inv-table .product-thumb { width: 46px; height: 46px; object-fit: contain; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
 .inv-table .product-thumb-placeholder { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border: 1px dashed #ccc; border-radius: 4px; color: #999; font-size: 10px; line-height: 1.1; text-align: center; }
 .inv-table .item-note { color:#777; font-size:11px; margin-top:3px; }
+.inv-table .combo-components { margin-top:4px; color:#555; font-size:11px; line-height:1.35; }
+.inv-table .combo-component { padding-left:8px; }
 .inv-totals { margin-left: auto; width: 300px; margin-top: 12px; }
 .inv-totals .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
 .inv-totals .grand { font-size: 16px; font-weight: 700; color: #1565c0; border-top: 2px solid #1565c0; padding-top: 8px; margin-top: 4px; }
@@ -104,6 +106,7 @@
                         {% if item.note %}<div class="item-note">{{ item.note }}</div>
                         {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
                     {% endif %}
+                    {% include "orders/print/_combo_components.html" %}
                 </td>
                 <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right">{{ item.quantity|qty_vn }}</td>

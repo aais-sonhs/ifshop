@@ -90,6 +90,24 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+function moneyDigits(value){
+    if(typeof value === 'number'){
+        return String(Math.round(value));
+    }
+    var raw = String(value == null ? '' : value).trim();
+    if(/^\d+\.\d+$/.test(raw) && !/^\d{1,3}(\.\d{3})+$/.test(raw)){
+        return String(Math.round(Number(raw)));
+    }
+    return raw.replace(/[^\d]/g, '');
+}
+function fmtMoneyInput(value){
+    var digits = moneyDigits(value);
+    return digits ? Number(digits).toLocaleString('vi-VN') : '';
+}
+function parseMoneyInput(value){
+    var digits = moneyDigits(value);
+    return digits ? parseFloat(digits) : 0;
+}
 function localDateInputValue(date){
     var d = date || new Date();
     var month = String(d.getMonth() + 1).padStart(2, '0');
@@ -177,7 +195,7 @@ $(document).ready(function(){
         if(product){
             row.find('.item-unit').text(product.unit);
             var cost = $opt.data('cost') || product.cost_price;
-            row.find('.item-unit-price').val(cost);
+            row.find('.item-unit-price').val(fmtMoneyInput(cost));
             // Set qty step
             row.find('.item-qty').attr('step', product.is_weight_based ? '0.01' : '1');
             calcRowTotal(row);
@@ -185,6 +203,9 @@ $(document).ready(function(){
     });
 
     $(document).on('input change', '.item-qty, .item-unit-price', function(){
+        if($(this).hasClass('item-unit-price')){
+            $(this).val(fmtMoneyInput($(this).val()));
+        }
         calcRowTotal($(this).closest('tr'));
     });
 
@@ -227,7 +248,7 @@ function addItemRow(data){
         '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
         '<td class="text-center item-unit">' + unit + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-qty" value="' + qty + '" min="0.01" step="1"></td>' +
-        '<td><input type="number" class="form-control form-control-sm item-unit-price" value="' + unitPrice + '" min="0"></td>' +
+        '<td><input type="text" inputmode="numeric" autocomplete="off" class="form-control form-control-sm item-unit-price text-right" value="' + fmtMoneyInput(unitPrice) + '"></td>' +
         '<td class="text-right item-total-price">' + fmtD(totalPrice) + '</td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
@@ -271,7 +292,7 @@ function ensureProductsLoaded(callback){
 
 function calcRowTotal(row){
     var qty = parseFloat(row.find('.item-qty').val()) || 0;
-    var price = parseFloat(row.find('.item-unit-price').val()) || 0;
+    var price = parseMoneyInput(row.find('.item-unit-price').val());
     var total = qty * price;
     row.find('.item-total-price').text(fmtD(total));
     updateTotal();
@@ -281,7 +302,7 @@ function updateTotal(){
     var total = 0;
     $('#items_body tr').each(function(){
         var qty = parseFloat($(this).find('.item-qty').val()) || 0;
-        var price = parseFloat($(this).find('.item-unit-price').val()) || 0;
+        var price = parseMoneyInput($(this).find('.item-unit-price').val());
         total += qty * price;
     });
     $('#total_display').text(fmtD(total));
@@ -299,7 +320,7 @@ function getItemsData(){
     $('#items_body tr').each(function(){
         var productId = $(this).find('.item-product-select').val();
         var qty = parseFloat($(this).find('.item-qty').val()) || 0;
-        var unitPrice = parseFloat($(this).find('.item-unit-price').val()) || 0;
+        var unitPrice = parseMoneyInput($(this).find('.item-unit-price').val());
         if(productId && qty > 0){
             var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
             items.push({

@@ -185,15 +185,17 @@ class ProductInventoryFlowTests(TestCase):
         self.product.cost_price = Decimal('100')
         self.product.selling_price = Decimal('150')
         self.product.save(update_fields=['cost_price', 'selling_price'])
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5'))
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_b, quantity=Decimal('1'))
 
         response = self.client.post(
             reverse('api_save_product'),
             data={
                 'name': 'Combo test',
                 'unit': 'Bo',
-                'selling_price': '250',
-                'wholesale_price_no_warranty': '240',
-                'wholesale_price_warranty': '260',
+                'selling_price': '250.000',
+                'wholesale_price_no_warranty': '240.000',
+                'wholesale_price_warranty': '260.000',
                 'is_combo': '1',
                 'combo_items': json.dumps([
                     {'product_id': self.product.id, 'quantity': '2'},
@@ -208,7 +210,7 @@ class ProductInventoryFlowTests(TestCase):
 
         combo = Product.objects.get(id=payload['product']['id'])
         self.assertTrue(combo.is_combo)
-        self.assertEqual(combo.selling_price, Decimal('250'))
+        self.assertEqual(combo.selling_price, Decimal('250000'))
         self.assertEqual(combo.cost_price, Decimal('200'))
         combo_item = ComboItem.objects.get(combo=combo)
         self.assertEqual(combo_item.product_id, self.product.id)
@@ -222,7 +224,11 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(combo_row['combo_items'][0]['selling_price'], 150.0)
         self.assertEqual(combo_row['combo_items'][0]['product_code'], self.product.code)
         self.assertEqual(combo_row['combo_items'][0]['unit'], self.product.unit)
+        self.assertEqual(combo_row['combo_items'][0]['line_cost'], 200.0)
         self.assertEqual(combo_row['combo_items'][0]['line_total'], 300.0)
+        self.assertEqual(combo_row['total_stock'], 2.0)
+        self.assertEqual(combo_row['stock_by_warehouse'][0]['warehouse_id'], self.warehouse_a.id)
+        self.assertEqual(combo_row['stock_by_warehouse'][0]['quantity'], 2.0)
         self.assertEqual(component_row['combo_parent_count'], 1)
         self.assertEqual(component_row['combo_parents'][0]['id'], combo.id)
 
@@ -609,6 +615,53 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(item.system_quantity, Decimal('5.00'))
         self.assertEqual(item.actual_quantity, Decimal('3.50'))
         self.assertEqual(item.difference, Decimal('-1.50'))
+
+    def test_save_stock_check_auto_generates_code_and_date(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5.5'))
+
+        response = self.client.post(
+            reverse('api_save_stock_check'),
+            data=json.dumps({
+                'warehouse_id': self.warehouse_a.id,
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'actual_quantity': '7.25',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock_check = StockCheck.objects.get()
+        self.assertRegex(stock_check.code, r'^KK\d{5}$')
+        self.assertEqual(stock_check.check_date, date.today())
+        item = StockCheckItem.objects.get(stock_check=stock_check)
+        self.assertEqual(item.system_quantity, Decimal('5.50'))
+        self.assertEqual(item.difference, Decimal('1.75'))
+
+    def test_get_stock_checks_returns_newest_created_first_for_same_date(self):
+        StockCheck.objects.create(
+            code='KK-OLD',
+            warehouse=self.warehouse_a,
+            check_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+        StockCheck.objects.create(
+            code='KK-NEW',
+            warehouse=self.warehouse_a,
+            check_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_stock_checks'))
+
+        self.assertEqual(response.status_code, 200)
+        codes = [item['code'] for item in response.json()['data']]
+        self.assertEqual(codes[:2], ['KK-NEW', 'KK-OLD'])
 
     def test_delete_goods_receipt_rejects_negative_stock_when_disabled(self):
         BusinessConfig.objects.create(

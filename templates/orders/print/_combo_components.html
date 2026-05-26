@@ -1,0 +1,10 @@
+{% load order_format %}
+{% if print_template.show_combo_components and item.product and item.product.is_combo %}
+<div class="combo-components">
+    {% for combo_item in item.product.combo_items.all %}
+    {% if combo_item.product %}
+    <div class="combo-component">- {{ combo_item.quantity|qty_vn }} {{ combo_item.product.unit }} {{ combo_item.product.code }} - {{ combo_item.product.name }}</div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}

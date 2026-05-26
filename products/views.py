@@ -53,6 +53,27 @@ def _generate_next_goods_receipt_code():
     return candidate
 
 
+def _generate_next_stock_check_code():
+    prefix = 'KK'
+    max_number = 0
+    for code in (
+        StockCheck.all_objects
+        .select_for_update()
+        .filter(code__startswith=prefix)
+        .values_list('code', flat=True)
+    ):
+        match = re.match(r'^KK-?(\d+)$', code or '', re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
+
+    next_number = max_number + 1
+    while True:
+        candidate = f'{prefix}{next_number:05d}'
+        if not StockCheck.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_number += 1
+
+
 def _generate_next_product_code():
     prefix = 'SP'
     max_number = 0
@@ -114,6 +135,15 @@ def _parse_positive_decimal(value, default='0'):
 def _to_decimal(value, default='0'):
     try:
         return Decimal(str(value if value not in (None, '') else default))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(str(default))
+
+
+def _to_money_decimal(value, default='0'):
+    raw = str(value if value not in (None, '') else default).strip()
+    raw = raw.replace('.', '').replace(',', '')
+    try:
+        return Decimal(raw)
     except (InvalidOperation, TypeError, ValueError):
         return Decimal(str(default))
 
@@ -413,6 +443,13 @@ def _validate_combo_items(product, combo_data, request):
     if not normalized:
         raise ValueError('Vui lòng chọn ít nhất 1 sản phẩm thành phần cho combo.')
     return normalized
+
+
+def _calculate_combo_cost(normalized_combo_items):
+    return sum(
+        Decimal(str(component.cost_price or 0)) * quantity
+        for component, quantity in normalized_combo_items
+    )
 
 
 def _combo_stock_by_warehouse(product):
@@ -722,6 +759,7 @@ def api_get_products(request):
                 'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())) if ci.product else 0,
                 'cost_price': float(ci.product.cost_price) if ci.product else 0,
                 'selling_price': float(ci.product.selling_price) if ci.product else 0,
+                'line_cost': float(ci.quantity * ci.product.cost_price) if ci.product else 0,
                 'line_total': float(ci.quantity * ci.product.selling_price) if ci.product else 0,
             } for ci in p.combo_items.select_related('product').all()]
 
@@ -890,10 +928,10 @@ def api_save_product(request):
 
             product.barcode = request.POST.get('barcode', '')
             product.unit = request.POST.get('unit', 'Cái')
-            product.import_price = request.POST.get('import_price', 0) or 0
-            product.selling_price = request.POST.get('selling_price', 0) or 0
-            product.wholesale_price_no_warranty = request.POST.get('wholesale_price_no_warranty', 0) or 0
-            product.wholesale_price_warranty = request.POST.get('wholesale_price_warranty', 0) or 0
+            product.import_price = _to_money_decimal(request.POST.get('import_price', 0))
+            product.selling_price = _to_money_decimal(request.POST.get('selling_price', 0))
+            product.wholesale_price_no_warranty = _to_money_decimal(request.POST.get('wholesale_price_no_warranty', 0))
+            product.wholesale_price_warranty = _to_money_decimal(request.POST.get('wholesale_price_warranty', 0))
             product.min_stock = request.POST.get('min_stock', 0) or 0
             product.max_stock = request.POST.get('max_stock', 0) or 0
             product.description = request.POST.get('description', '')
@@ -963,11 +1001,7 @@ def api_save_product(request):
                             quantity=quantity,
                         )
 
-                total_cost = sum(
-                    Decimal(str(component.cost_price or 0)) * quantity
-                    for component, quantity in normalized_combo_items
-                )
-                product.cost_price = total_cost
+                product.cost_price = _calculate_combo_cost(normalized_combo_items)
                 product.save(update_fields=['cost_price'])
             else:
                 product.combo_items.all().delete()
@@ -1538,7 +1572,12 @@ def api_delete_stock_transfer(request):
 
 @login_required(login_url="/login/")
 def api_get_stock_checks(request):
-    checks = StockCheck.objects.select_related('warehouse').prefetch_related('items__product').all()
+    checks = (
+        StockCheck.objects
+        .select_related('warehouse')
+        .prefetch_related('items__product')
+        .order_by('-check_date', '-created_at', '-id')
+    )
     checks = filter_by_store(checks, request, field_name='warehouse__store')
     data = []
     for c in checks:
@@ -1581,7 +1620,12 @@ def api_save_stock_check(request):
             else:
                 sc = StockCheck()
                 sc.created_by = request.user
-            sc.code = data.get('code', '')
+
+            code = (data.get('code', '') or '').strip()
+            if not code:
+                code = sc.code or _generate_next_stock_check_code()
+            sc.code = code
+
             warehouse_id = data.get('warehouse_id') or None
             warehouse = _get_warehouse_for_user(request, warehouse_id) if warehouse_id else None
             if warehouse_id and not warehouse:
@@ -1614,7 +1658,13 @@ def api_save_stock_check(request):
                         sys_qty = Decimal('0')
                 normalized_items.append((item, product, variant_id, actual_qty, sys_qty))
 
-            sc.check_date = data.get('check_date')
+            check_date = (data.get('check_date', '') or '').strip()
+            if not check_date:
+                if sc.check_date:
+                    check_date = sc.check_date.strftime('%Y-%m-%d')
+                else:
+                    check_date = date.today().strftime('%Y-%m-%d')
+            sc.check_date = check_date
             sc.status = data.get('status', 0)
             sc.note = data.get('note', '')
             sc.save()

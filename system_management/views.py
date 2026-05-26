@@ -265,6 +265,8 @@ PRINT_TEMPLATE_EDITABLE_FIELDS = [
     'show_order_note',
     'show_item_note',
     'show_terms',
+    'show_print_time',
+    'show_combo_components',
 ]
 
 PRINT_TEMPLATE_BOOLEAN_FIELDS = [
@@ -290,6 +292,8 @@ PRINT_TEMPLATE_FIELD_DEFAULTS = {
     'show_order_note': True,
     'show_item_note': False,
     'show_terms': True,
+    'show_print_time': True,
+    'show_combo_components': True,
 }
 
 
@@ -1062,6 +1066,11 @@ def api_restore_print_template_history(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
+class _PreviewRelatedList(list):
+    def all(self):
+        return self
+
+
 def _make_preview_item(product, quantity, unit_price, discount_percent=0, note=''):
     qty = Decimal(str(quantity))
     price = Decimal(str(unit_price))
@@ -1100,10 +1109,23 @@ def _build_print_template_preview_context(request, template_type, print_template
     )
     warehouse = SimpleNamespace(name='Kho bán hàng')
     creator = SimpleNamespace(username='sales.demo', get_full_name=lambda: 'Nhân viên mẫu')
-    products = [
-        SimpleNamespace(code='SP001', name='Áo khoác mẫu', unit='Cái', note='Giao màu xanh, size M', image=None),
-        SimpleNamespace(code='SP002', name='Tai nghe demo', unit='Cái', note='Bảo hành 12 tháng', image=None),
+    component_products = [
+        SimpleNamespace(code='SP001', name='Áo khoác mẫu', unit='Cái', note='Giao màu xanh, size M', image=None, is_combo=False, combo_items=_PreviewRelatedList()),
+        SimpleNamespace(code='SP002', name='Tai nghe demo', unit='Cái', note='Bảo hành 12 tháng', image=None, is_combo=False, combo_items=_PreviewRelatedList()),
     ]
+    combo_product = SimpleNamespace(
+        code='CB001',
+        name='Combo mẫu',
+        unit='Bộ',
+        note='',
+        image=None,
+        is_combo=True,
+        combo_items=_PreviewRelatedList([
+            SimpleNamespace(product=component_products[0], quantity=Decimal('1')),
+            SimpleNamespace(product=component_products[1], quantity=Decimal('1')),
+        ]),
+    )
+    products = [combo_product, component_products[1]]
     items = [
         _make_preview_item(products[0], 2, 350000, 5, 'Khách yêu cầu đóng gói riêng'),
         _make_preview_item(products[1], 1, 120000, 0, ''),

@@ -123,6 +123,8 @@
     </div>
     {% endif %}
 
-    <div class="w-stamp">{% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}<br>{% endif %}Ngày in: {% now "d/m/Y H:i" %}</div>
+    {% if print_template.footer_note or print_template.show_print_time %}
+    <div class="w-stamp">{% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}{% if print_template.show_print_time %}<br>{% endif %}{% endif %}{% if print_template.show_print_time %}Ngày in: {% now "d/m/Y H:i" %}{% endif %}</div>
+    {% endif %}
 </div>
 {% endblock %}

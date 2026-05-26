@@ -84,6 +84,10 @@
                                 <label class="custom-control-label" for="inp_show_item_note">Ghi chú sản phẩm</label>
                             </div>
                             <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="inp_show_combo_components">
+                                <label class="custom-control-label" for="inp_show_combo_components">Thành phần combo</label>
+                            </div>
+                            <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_unit_price">
                                 <label class="custom-control-label" for="inp_show_unit_price">Đơn giá</label>
                             </div>
@@ -106,6 +110,10 @@
                             <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_order_note">
                                 <label class="custom-control-label" for="inp_show_order_note">Ghi chú chứng từ</label>
+                            </div>
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="inp_show_print_time">
+                                <label class="custom-control-label" for="inp_show_print_time">Thời gian in tự động</label>
                             </div>
                             <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_terms">
@@ -166,7 +174,9 @@ var SWITCH_FIELDS = [
     'show_payment_info',
     'show_order_note',
     'show_item_note',
-    'show_terms'
+    'show_terms',
+    'show_print_time',
+    'show_combo_components'
 ];
 
 function escapeHtml(value){

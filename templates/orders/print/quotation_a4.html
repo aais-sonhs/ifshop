@@ -76,6 +76,7 @@
                         {% if item.note %}<div class="item-note">{{ item.note }}</div>
                         {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
                     {% endif %}
+                    {% include "orders/print/_combo_components.html" %}
                 </td>
                 <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right">{{ item.quantity|qty_vn }}</td>

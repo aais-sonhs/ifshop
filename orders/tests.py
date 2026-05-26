@@ -12,8 +12,8 @@ from orders.models import (
     Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem,
     OrderReturnItem, Quotation,
 )
-from products.models import Product, ProductStock, ProductVariant, Warehouse
-from system_management.models import Brand, BusinessConfig, Store, UserProfile
+from products.models import ComboItem, Product, ProductStock, ProductVariant, Warehouse
+from system_management.models import Brand, BusinessConfig, PrintTemplate, Store, UserProfile
 
 
 class OrderRiskFlowTests(TestCase):
@@ -241,6 +241,36 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(row['price'], 12000000.0)
         self.assertEqual(row['variants'][0]['selling_price'], 10990000.0)
         self.assertEqual(row['variants'][0]['retail_price'], 12000000.0)
+
+    def test_products_select_exposes_combo_components_and_component_based_stock(self):
+        self.product.cost_price = 100
+        self.product.selling_price = 150
+        self.product.save(update_fields=['cost_price', 'selling_price'])
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
+        combo = Product.objects.create(
+            store=self.store,
+            code='CB-ORDER-001',
+            name='Combo bán hàng',
+            unit='Bo',
+            is_combo=True,
+            cost_price=200,
+            selling_price=250,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=2)
+
+        response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == combo.id)
+        warehouse_key = str(self.warehouse.id)
+        self.assertTrue(row['is_combo'])
+        self.assertEqual(row['stocks'][warehouse_key], 2.0)
+        self.assertEqual(row['total_stock'], 2.0)
+        self.assertEqual(row['combo_items'][0]['product_code'], self.product.code)
+        self.assertEqual(row['combo_items'][0]['unit'], self.product.unit)
+        self.assertEqual(row['combo_items'][0]['line_cost'], 200.0)
+        self.assertEqual(row['combo_items'][0]['total_stock'], 5.0)
 
     def test_save_order_allows_financial_edit_before_completion_when_receipt_exists(self):
         order = self._create_order(code='DH-PAID-EDIT-001', status=0)
@@ -507,6 +537,69 @@ class OrderRiskFlowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, 4)
 
+    def test_exported_order_rejects_price_change_and_item_removal(self):
+        order = self._create_order(code='DH-EXPORT-LOCKED', status=4)
+        item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        base_payload = {
+            'id': order.id,
+            'code': order.code,
+            'customer_id': self.customer.id,
+            'warehouse_id': self.warehouse.id,
+            'order_date': order.order_date.isoformat(),
+            'discount_amount': 0,
+            'shipping_fee': 0,
+            'status': 4,
+            'note': '',
+            'tags': '',
+            'pay_mode': 'none',
+            'payment_amount': 0,
+            'payment_lines': [],
+        }
+
+        changed_price_payload = {
+            **base_payload,
+            'items': [{
+                'product_id': self.product.id,
+                'variant_id': None,
+                'quantity': 1,
+                'unit_price': 90,
+                'discount_percent': 0,
+            }],
+        }
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps(changed_price_payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('đã xuất kho', payload['message'])
+        self.assertIn('sản phẩm/giá/số lượng', payload['message'])
+        item.refresh_from_db()
+        self.assertEqual(item.unit_price, 100)
+
+        removed_item_payload = {**base_payload, 'items': []}
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps(removed_item_payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('đã xuất kho', payload['message'])
+        self.assertEqual(order.items.count(), 1)
+
     def test_save_order_allows_below_cost_with_warning(self):
         self.product.cost_price = 150
         self.product.import_price = 150
@@ -579,6 +672,23 @@ class OrderRiskFlowTests(TestCase):
 
         order.refresh_from_db()
         self.assertNotEqual(order.note, 'Không được sửa')
+
+    def test_exported_order_note_remains_locked(self):
+        order = self._create_order(code='DH-EXPORT-NOTE', status=4)
+
+        response = self.client.post(
+            reverse('api_update_order_note'),
+            data=json.dumps({'id': order.id, 'note': 'Không được sửa sau xuất kho'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('xuất kho', payload['message'])
+
+        order.refresh_from_db()
+        self.assertNotEqual(order.note, 'Không được sửa sau xuất kho')
 
     def test_cancel_order_reopens_linked_quotation(self):
         quotation = self._create_quotation(code='BG-CANCEL-001')
@@ -1620,3 +1730,41 @@ class OrderRiskFlowTests(TestCase):
         content = response.content.decode()
         self.assertIn('Chưa chọn sản phẩm bảo hành', content)
         self.assertNotIn('Sản phẩm test đơn hàng', content)
+
+    def test_print_order_can_show_and_hide_combo_components(self):
+        combo = Product.objects.create(
+            store=self.store,
+            code='CB-PRINT-001',
+            name='Combo in đơn',
+            unit='Bo',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=2)
+        order = self._create_order(code='DH-COMBO-PRINT', status=5)
+        OrderItem.objects.create(
+            order=order,
+            product=combo,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_print_order'), {'id': order.id, 'type': 'a4', 'source': 'order'})
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('Combo in đơn', content)
+        self.assertIn('SP-ORDER-001 - Sản phẩm test đơn hàng', content)
+
+        PrintTemplate.objects.update_or_create(
+            brand=self.brand,
+            template_type='a4',
+            defaults={'title': 'Hóa đơn A4', 'show_combo_components': False},
+        )
+        hidden_response = self.client.get(reverse('api_print_order'), {'id': order.id, 'type': 'a4', 'source': 'order'})
+
+        self.assertEqual(hidden_response.status_code, 200)
+        hidden_content = hidden_response.content.decode()
+        self.assertIn('Combo in đơn', hidden_content)
+        self.assertNotIn('SP-ORDER-001 - Sản phẩm test đơn hàng', hidden_content)

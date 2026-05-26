@@ -1276,6 +1276,25 @@ def _get_receipted_order_blocking_changes(order, data):
     return changes
 
 
+def _get_exported_order_blocking_changes(order, data):
+    """Liệt kê các thay đổi bị khóa sau khi đơn đã xuất kho."""
+    changes = _get_receipted_order_blocking_changes(order, data)
+
+    if 'note' in data and (data.get('note') or '') != (order.note or ''):
+        changes.append('ghi chú')
+
+    if 'tags' in data and ((data.get('tags') or '').strip() or None) != (order.tags or None):
+        changes.append('tag')
+
+    if 'salesperson' in data and (data.get('salesperson') or None) != (order.salesperson or None):
+        changes.append('nhân viên bán hàng')
+
+    if 'server_staff' in data and (data.get('server_staff') or None) != (order.server_staff or None):
+        changes.append('nhân viên phục vụ')
+
+    return changes
+
+
 def _save_receipted_order_safe_update(request, order, data, old_status):
     """Cập nhật phần an toàn của đơn đã có phiếu thu mà không đụng tiền/hàng."""
     if old_status in (5, 6):
@@ -1751,9 +1770,16 @@ def api_get_products_for_select(request):
                     ci_stocks[str(s.warehouse_id)] = float(s.quantity)
                 combo_items.append({
                     'product_id': ci.product_id,
+                    'product_code': ci.product.code,
                     'product_name': ci.product.name,
+                    'unit': ci.product.unit,
                     'is_service': ci.product.is_service,
                     'quantity': float(ci.quantity),
+                    'cost_price': float(ci.product.cost_price),
+                    'selling_price': float(ci.product.selling_price),
+                    'line_cost': float(ci.quantity * ci.product.cost_price),
+                    'line_total': float(ci.quantity * ci.product.selling_price),
+                    'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())),
                     'stocks': ci_stocks,
                 })
 
@@ -2113,6 +2139,68 @@ def api_save_order(request):
                         'status': 'error',
                         'message': 'Không thể sửa đơn hàng đã Hoàn thành/Hủy. Vui lòng dùng chức năng hoàn hàng/hoàn tiền nếu cần xử lý sau bán.'
                     })
+                if old_status == 4:
+                    new_status_for_exported = int(data.get('status', old_status))
+                    if new_status_for_exported == 6:
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': 'Đơn hàng đã xuất kho. Vui lòng dùng quy trình hủy/hoàn hàng riêng để hệ thống xử lý tồn kho đúng nghiệp vụ.'
+                        })
+                    if new_status_for_exported not in (4, 5):
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': 'Đơn hàng đã xuất kho nên không thể quay lại trạng thái trước đó.'
+                        })
+
+                    blocking_changes = _get_exported_order_blocking_changes(o, data)
+                    if blocking_changes:
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': 'Đơn hàng đã xuất kho nên không thể chỉnh sửa thông tin đơn, sản phẩm, giá bán, số lượng hoặc xóa dòng hàng. Không thể thay đổi: '
+                            + ', '.join(dict.fromkeys(blocking_changes)) + '.'
+                        })
+
+                    if new_status_for_exported == 5:
+                        _refresh_order_payment(o)
+                        if not _order_can_complete(o, exported_status=old_status):
+                            return JsonResponse({
+                                'status': 'error',
+                                'message': _completion_block_message(o, exported_status=old_status)
+                            })
+                        o.status = 5
+                        o.save(update_fields=['status'])
+                        _sync_order_quotation_status(o, old_quotation_id=o.quotation_id)
+                        _log_order_history(
+                            order=o,
+                            actor=request.user,
+                            action='status',
+                            summary='Chuyển đơn đã xuất kho sang Hoàn thành; không thay đổi thông tin hàng hóa.',
+                            status_before=old_status,
+                            status_after=o.status,
+                        )
+                        return JsonResponse({
+                            'status': 'ok',
+                            'message': 'Đã chuyển đơn hàng sang Hoàn thành.',
+                            'order_id': o.id,
+                            'order_code': o.code,
+                            'order_status': o.status,
+                            'order_status_display': o.get_status_display(),
+                            'payment_status': o.payment_status,
+                            'payment_status_display': o.get_payment_status_display(),
+                            'paid_amount': float(o.paid_amount or 0),
+                        })
+
+                    return JsonResponse({
+                        'status': 'ok',
+                        'message': 'Đơn hàng đã xuất kho đang được khóa, không có thay đổi nào được ghi nhận.',
+                        'order_id': o.id,
+                        'order_code': o.code,
+                        'order_status': o.status,
+                        'order_status_display': o.get_status_display(),
+                        'payment_status': o.payment_status,
+                        'payment_status_display': o.get_payment_status_display(),
+                        'paid_amount': float(o.paid_amount or 0),
+                    })
             else:
                 o = Order()
                 o.created_by = request.user
@@ -2437,7 +2525,7 @@ def api_save_order(request):
 
 @login_required(login_url="/login/")
 def api_update_order_note(request):
-    """Cập nhật ghi chú cho đơn chưa hủy; đơn hoàn thành vẫn được bổ sung ghi chú."""
+    """Cập nhật ghi chú cho đơn chưa xuất kho/hủy; đơn hoàn thành vẫn được bổ sung ghi chú."""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
@@ -2449,6 +2537,11 @@ def api_update_order_note(request):
             return JsonResponse({
                 'status': 'error',
                 'message': 'Đơn hàng đã Hủy nên không thể chỉnh sửa ghi chú.'
+            })
+        if order.status == 4:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Đơn hàng đã xuất kho nên không thể chỉnh sửa ghi chú.'
             })
         old_note = order.note or ''
         order.note = data.get('note', '')
@@ -2478,10 +2571,10 @@ def api_delete_order(request):
         if not order:
             raise Order.DoesNotExist
         # Không cho xóa các đơn đã chốt trạng thái cuối hoặc đã phát sinh dòng tiền.
-        if order.status in (5, 6):
+        if order.status in (4, 5, 6):
             return JsonResponse({
                 'status': 'error',
-                'message': 'Không thể xóa đơn hàng đã Hoàn thành/Hủy.'
+                'message': 'Không thể xóa đơn hàng đã Xuất kho/Hoàn thành/Hủy.'
             })
         if Receipt.objects.filter(order=order).exists():
             return JsonResponse({
@@ -4246,7 +4339,7 @@ def api_print_order(request):
                 raise Quotation.DoesNotExist
         except Quotation.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy báo giá'})
-        items = quotation.items.select_related('product').all()
+        items = quotation.items.select_related('product').prefetch_related('product__combo_items__product').all()
 
         # Wrap quotation as an order-like object for template compatibility
         class QuotationWrapper:
@@ -4288,7 +4381,7 @@ def api_print_order(request):
                 raise Order.DoesNotExist
         except Order.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy đơn hàng'})
-        items = order.items.select_related('product').all()
+        items = order.items.select_related('product').prefetch_related('product__combo_items__product').all()
         remaining = max(0, float(order.final_amount) - float(order.paid_amount))
         valid_until = None
         brand = _get_brand_for_print(request, order)

@@ -28,7 +28,7 @@
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
                 <div class="row">
-                    <div class="col-md-3"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Mã phiếu</label><input type="text" class="form-control form-control-sm" id="inp_code" placeholder="Tự động khi lưu" readonly></div></div>
                     <div class="col-md-3"><div class="form-group"><label>Kho <span class="text-danger">*</span></label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
                     <div class="col-md-2"><div class="form-group"><label>Ngày kiểm <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_check_date"></div></div>
                     <div class="col-md-2"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Đang kiểm</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
@@ -76,30 +76,35 @@ var PRODUCTS = [];
 var itemRowIndex = 0;
 
 $(document).ready(function(){
-    $.get('/api/products-select/', function(res){ PRODUCTS = res.data; });
+    ensureProductsLoaded();
     loadData();
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');
         $('#inp_code,#inp_note').val('');
         $('#inp_warehouse_id').val('');
-        $('#inp_check_date').val('');
+        $('#inp_check_date').val(localDateInputValue());
         $('#inp_status').val('0');
         $('#items_body').html('');
         itemRowIndex = 0;
         $('#modal_title').text('Tạo phiếu kiểm');
         $('#modal_form').modal('show');
-        setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
+        setTimeout(function(){
+            $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+            ensureProductsLoaded();
+        }, 200);
     });
 
     $('#btn_add_item').click(function(){
-        addItemRow();
+        ensureProductsLoaded(function(){
+            addItemRow();
+        });
     });
 
     $('#btn_save').click(function(){
         var items = getItemsData();
-        if(!$('#inp_code').val() || !$('#inp_check_date').val() || !$('#inp_warehouse_id').val()){
-            alert('Vui lòng nhập mã phiếu, chọn kho và ngày kiểm'); return;
+        if(!$('#inp_check_date').val() || !$('#inp_warehouse_id').val()){
+            alert('Vui lòng chọn kho và ngày kiểm'); return;
         }
         if(items.length === 0){
             alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;
@@ -107,7 +112,7 @@ $(document).ready(function(){
 
         var data = {
             id: $('#edit_id').val() || null,
-            code: $('#inp_code').val(),
+            code: $('#edit_id').val() ? $('#inp_code').val() : '',
             warehouse_id: $('#inp_warehouse_id').val(),
             check_date: $('#inp_check_date').val(),
             status: parseInt($('#inp_status').val()),
@@ -132,22 +137,17 @@ $(document).ready(function(){
 
     // Delegate events for item rows
     $(document).on('change', '.item-product-select', function(){
-        var row = $(this).closest('tr');
-        var productId = $(this).val();
-        var product = PRODUCTS.find(function(p){ return p.id == productId; });
-        if(product){
-            row.find('.item-unit').text(product.unit);
-        }
+        updateRowSystemQuantity($(this).closest('tr'));
+    });
+
+    $('#inp_warehouse_id').on('change', function(){
+        $('#items_body tr').each(function(){
+            updateRowSystemQuantity($(this));
+        });
     });
 
     $(document).on('input change', '.item-actual-qty', function(){
-        var row = $(this).closest('tr');
-        var sysQty = parseInt(row.find('.item-sys-qty').val()) || 0;
-        var actualQty = parseInt($(this).val()) || 0;
-        var diff = actualQty - sysQty;
-        row.find('.item-diff').text(diff).removeClass('text-success text-danger');
-        if(diff > 0) row.find('.item-diff').addClass('text-success');
-        else if(diff < 0) row.find('.item-diff').addClass('text-danger');
+        updateRowDifference($(this).closest('tr'));
     });
 
     $(document).on('click', '.btn-remove-item', function(){
@@ -155,6 +155,64 @@ $(document).ready(function(){
         reindexRows();
     });
 });
+
+function localDateInputValue(date){
+    var d = date || new Date();
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + month + '-' + day;
+}
+
+function ensureProductsLoaded(callback){
+    if(PRODUCTS.length){
+        if(typeof callback === 'function') callback();
+        return;
+    }
+    $.get('/api/products-select/', function(res){
+        PRODUCTS = res.data || [];
+        if(typeof callback === 'function') callback();
+    });
+}
+
+function parseQty(value){
+    return parseFloat(String(value == null ? '' : value).replace(',', '.')) || 0;
+}
+
+function fmtQty(value){
+    var n = parseQty(value);
+    return n.toLocaleString('vi-VN', {maximumFractionDigits: 2});
+}
+
+function getRowProduct(row){
+    var productId = row.find('.item-product-select').val();
+    return PRODUCTS.find(function(p){ return p.id == productId; }) || null;
+}
+
+function getProductSystemStock(product, warehouseId){
+    if(!product || !warehouseId || !product.stocks) return 0;
+    return parseQty(product.stocks[String(warehouseId)] || 0);
+}
+
+function updateRowDifference(row){
+    var sysQty = parseQty(row.find('.item-sys-qty').val());
+    var actualQty = parseQty(row.find('.item-actual-qty').val());
+    var diff = actualQty - sysQty;
+    row.find('.item-diff').text(fmtQty(diff)).removeClass('text-success text-danger');
+    if(diff > 0) row.find('.item-diff').addClass('text-success');
+    else if(diff < 0) row.find('.item-diff').addClass('text-danger');
+}
+
+function updateRowSystemQuantity(row){
+    var product = getRowProduct(row);
+    if(product){
+        row.find('.item-unit').text(product.unit);
+    } else {
+        row.find('.item-unit').text('');
+    }
+    var sysQty = getProductSystemStock(product, $('#inp_warehouse_id').val());
+    row.find('.item-sys-qty').val(sysQty);
+    updateRowDifference(row);
+}
 
 function addItemRow(data){
     itemRowIndex++;
@@ -189,8 +247,8 @@ function addItemRow(data){
         '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
         '<td class="text-center item-unit">' + unit + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-sys-qty" value="' + sysQty + '" readonly style="background:#f0f0f0;"></td>' +
-        '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" min="0"></td>' +
-        '<td class="text-center font-weight-bold item-diff ' + diffClass + '">' + diff + '</td>' +
+        '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" min="0" step="0.01"></td>' +
+        '<td class="text-center font-weight-bold item-diff ' + diffClass + '">' + fmtQty(diff) + '</td>' +
         '<td><input type="text" class="form-control form-control-sm item-note" value="' + itemNote + '"></td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
@@ -230,7 +288,7 @@ function getItemsData(){
     var items = [];
     $('#items_body tr').each(function(){
         var productId = $(this).find('.item-product-select').val();
-        var actualQty = parseInt($(this).find('.item-actual-qty').val()) || 0;
+        var actualQty = parseQty($(this).find('.item-actual-qty').val());
         var note = $(this).find('.item-note').val() || '';
         if(productId){
             var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
@@ -293,11 +351,13 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        if(d.items && d.items.length > 0){
-            d.items.forEach(function(item){
-                addItemRow(item);
-            });
-        }
+        ensureProductsLoaded(function(){
+            if(d.items && d.items.length > 0){
+                d.items.forEach(function(item){
+                    addItemRow(item);
+                });
+            }
+        });
     });
 }
 

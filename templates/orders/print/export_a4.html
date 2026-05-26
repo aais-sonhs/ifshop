@@ -25,6 +25,8 @@
 .ex-table .product-thumb { width: 42px; height: 42px; object-fit: contain; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; }
 .ex-table .product-thumb-placeholder { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border:1px dashed #ccc; border-radius:4px; color:#999; font-size:10px; text-align:center; }
 .ex-table .item-note { color:#777; font-size:11px; margin-top:3px; }
+.ex-table .combo-components { margin-top:4px; color:#555; font-size:11px; line-height:1.35; }
+.ex-table .combo-component { padding-left:8px; }
 .ex-total { text-align: right; font-size: 14px; font-weight: 700; margin: 8px 0; color: #5d4037; }
 .ex-footer { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
 .ex-footer .sig-block { width: 180px; }
@@ -99,6 +101,7 @@
                         {% if item.note %}<div class="item-note">{{ item.note }}</div>
                         {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
                     {% endif %}
+                    {% include "orders/print/_combo_components.html" %}
                 </td>
                 <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right"><strong>{{ item.quantity|qty_vn }}</strong></td>
@@ -130,6 +133,8 @@
     </div>
     {% endif %}
 
-    <div class="ex-stamp">{% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}<br>{% endif %}Ngày in: {% now "d/m/Y H:i" %}</div>
+    {% if print_template.footer_note or print_template.show_print_time %}
+    <div class="ex-stamp">{% if print_template.footer_note %}{{ print_template.footer_note|linebreaksbr }}{% if print_template.show_print_time %}<br>{% endif %}{% endif %}{% if print_template.show_print_time %}Ngày in: {% now "d/m/Y H:i" %}{% endif %}</div>
+    {% endif %}
 </div>
 {% endblock %}

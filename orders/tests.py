@@ -1454,6 +1454,14 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(order_return.exchange_amount), 70.0)
         self.assertEqual(float(order_return.amount_due), 25.0)
         self.assertEqual(OrderReturnExchangeItem.objects.filter(order_return=order_return).count(), 1)
+        self.assertIsNotNone(order_return.exchange_order_id)
+        exchange_order = order_return.exchange_order
+        self.assertEqual(exchange_order.customer_id, order.customer_id)
+        self.assertEqual(exchange_order.warehouse_id, order.warehouse_id)
+        self.assertEqual(float(exchange_order.total_amount), 70.0)
+        self.assertEqual(float(exchange_order.discount_amount), 45.0)
+        self.assertEqual(float(exchange_order.final_amount), 25.0)
+        self.assertEqual(exchange_order.items.count(), 1)
         returned_stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
         exchanged_stock = ProductStock.objects.get(product=exchange_product, warehouse=self.warehouse)
         self.assertEqual(float(returned_stock.quantity), 4.0)
@@ -1461,12 +1469,29 @@ class OrderRiskFlowTests(TestCase):
 
         due_receipt = Receipt.objects.get(reference=f'ORDER_RETURN_DUE:{order_return.id}')
         self.assertEqual(float(due_receipt.amount), 25.0)
+        self.assertEqual(due_receipt.order_id, exchange_order.id)
         self.assertFalse(Payment.objects.filter(reference=f'ORDER_RETURN:{order_return.id}', status=1).exists())
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 1000025.0)
         history = OrderEditHistory.objects.filter(order=order, action='return').first()
         self.assertIn('hàng đổi', history.summary)
         self.assertIn('khách còn thanh toán 25đ', history.summary)
+        self.assertIn(exchange_order.code, history.summary)
+
+        orders_payload = self.client.get(reverse('api_get_orders')).json()['data']
+        original_row = next(row for row in orders_payload if row['id'] == order.id)
+        exchange_row = next(row for row in orders_payload if row['id'] == exchange_order.id)
+        self.assertTrue(original_row['has_returns'])
+        self.assertTrue(original_row['has_exchange_returns'])
+        self.assertEqual(original_row['returns'][0]['code'], order_return.code)
+        self.assertEqual(original_row['returns'][0]['exchange_order_id'], exchange_order.id)
+        self.assertTrue(exchange_row['is_exchange_order'])
+        self.assertEqual(exchange_row['exchange_source_return_code'], order_return.code)
+        self.assertEqual(exchange_row['exchange_original_order_code'], order.code)
+
+        detail_payload = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
+        self.assertEqual(detail_payload['status'], 'ok')
+        self.assertEqual(detail_payload['order']['returns'][0]['exchange_order_code'], exchange_order.code)
 
     def test_save_order_return_allows_standalone_compensation_refund(self):
         order = self._create_order(code='DH-RETURN-COMPENSATION', status=5)

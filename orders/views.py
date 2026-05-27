@@ -1224,6 +1224,143 @@ def _summarize_order_items_for_history(items, limit=5):
     return '; '.join(rows)
 
 
+def _serialize_order_return_summary(order_return):
+    has_return_items = order_return.items.count() > 0
+    has_exchange_items = order_return.exchange_items.count() > 0
+    parts = []
+    if _to_decimal(order_return.return_amount) > 0:
+        parts.append(f'Hàng trả {_format_money_for_history(order_return.return_amount)}')
+    if _to_decimal(order_return.exchange_amount) > 0:
+        parts.append(f'Hàng đổi {_format_money_for_history(order_return.exchange_amount)}')
+    if _to_decimal(order_return.total_refund) > 0:
+        parts.append(f'Hoàn khách {_format_money_for_history(order_return.total_refund)}')
+    if _to_decimal(order_return.amount_due) > 0:
+        parts.append(f'Thu thêm {_format_money_for_history(order_return.amount_due)}')
+    return {
+        'id': order_return.id,
+        'code': order_return.code,
+        'status': order_return.status,
+        'status_display': order_return.get_status_display(),
+        'return_date': order_return.return_date.strftime('%Y-%m-%d') if order_return.return_date else '',
+        'return_amount': float(order_return.return_amount or 0),
+        'exchange_amount': float(order_return.exchange_amount or 0),
+        'total_refund': float(order_return.total_refund or 0),
+        'amount_due': float(order_return.amount_due or 0),
+        'has_return_items': has_return_items,
+        'has_exchange_items': has_exchange_items,
+        'exchange_order_id': order_return.exchange_order_id,
+        'exchange_order_code': order_return.exchange_order.code if order_return.exchange_order else '',
+        'summary': '; '.join(parts) if parts else 'Không phát sinh chênh lệch tiền',
+    }
+
+
+def _order_return_summaries(order):
+    returns = getattr(order, 'visible_returns', None)
+    if returns is None:
+        returns = order.returns.select_related('exchange_order').prefetch_related(
+            'items',
+            'exchange_items',
+        ).exclude(status=3).order_by('-return_date', '-id')
+    return [_serialize_order_return_summary(item) for item in returns]
+
+
+def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
+    """Tạo/cập nhật đơn hàng phát sinh từ phần hàng đổi của phiếu trả/đổi."""
+    exchange_items = list(order_return.exchange_items.select_related('product', 'variant').all())
+    if order_return.status != 2 or not exchange_items:
+        exchange_order = order_return.exchange_order
+        if exchange_order and exchange_order.status != 6:
+            old_status = exchange_order.status
+            exchange_order.status = 6
+            exchange_order.note = (
+                f'[HỦY TỰ ĐỘNG] Phiếu trả/đổi {order_return.code} không còn hàng đổi.\n'
+                f'{exchange_order.note or ""}'
+            ).strip()
+            exchange_order.save(update_fields=['status', 'note'])
+            _log_order_history(
+                order=exchange_order,
+                actor=actor,
+                action='cancel',
+                summary=f'Hủy đơn đổi hàng do phiếu trả/đổi {order_return.code} không còn hàng đổi.',
+                status_before=old_status,
+                status_after=exchange_order.status,
+            )
+        return exchange_order
+
+    source_order = order_return.order
+    if not source_order:
+        return None
+
+    exchange_order = order_return.exchange_order
+    created = False
+    if not exchange_order:
+        exchange_order = Order(
+            code=_auto_next_order_code(),
+            created_by=actor,
+            creator_name=actor.get_full_name() or actor.username if actor else '',
+        )
+        created = True
+
+    offset_amount = min(
+        _to_decimal(order_return.return_amount) + _to_decimal(order_return.compensation_amount),
+        _to_decimal(order_return.exchange_amount),
+    )
+    exchange_order.store = source_order.store
+    exchange_order.customer = order_return.customer or source_order.customer
+    exchange_order.warehouse = order_return.warehouse or source_order.warehouse
+    exchange_order.order_date = order_return.return_date or date.today()
+    exchange_order.status = 4
+    exchange_order.total_amount = _to_decimal(order_return.exchange_amount)
+    exchange_order.discount_amount = offset_amount
+    exchange_order.shipping_fee = Decimal('0')
+    exchange_order.final_amount = _to_decimal(order_return.amount_due)
+    exchange_order.note = (
+        f'Đơn đổi hàng từ phiếu {order_return.code}'
+        + (f' của đơn gốc {source_order.code}.' if source_order else '.')
+    )
+    exchange_order.salesperson = source_order.salesperson
+    exchange_order.server_staff = source_order.server_staff
+    exchange_order.approver = source_order.approver
+    exchange_order.approval_status = source_order.approval_status
+    exchange_order.save()
+
+    if order_return.exchange_order_id != exchange_order.id:
+        order_return.exchange_order = exchange_order
+        order_return.save(update_fields=['exchange_order'])
+
+    exchange_order.items.all().delete()
+    for item in exchange_items:
+        cost = Decimal(str(item.product.cost_price or 0)) if item.product else Decimal('0')
+        if item.variant:
+            cost = Decimal(str(item.variant.cost_price or 0))
+        OrderItem.objects.create(
+            order=exchange_order,
+            product=item.product,
+            variant=item.variant,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            cost_price=cost,
+            discount_percent=item.discount_percent,
+            total_price=item.total_price,
+        )
+
+    if due_receipt and not getattr(due_receipt, 'is_deleted', False) and due_receipt.status == 1:
+        if due_receipt.order_id != exchange_order.id:
+            due_receipt.order = exchange_order
+            due_receipt.save(update_fields=['order'])
+    _refresh_order_payment(exchange_order)
+
+    _log_order_history(
+        order=exchange_order,
+        actor=actor,
+        action='create' if created else 'update',
+        summary=f'{"Tạo" if created else "Cập nhật"} đơn đổi hàng từ phiếu {order_return.code}; đơn gốc {source_order.code}.',
+        status_before=None if created else exchange_order.status,
+        status_after=exchange_order.status,
+    )
+    return exchange_order
+
+
 def _payload_requests_new_receipt(data):
     """Kiểm tra payload có đang yêu cầu tạo thêm phiếu thu hay không."""
     payment_lines = data.get('payment_lines') or []
@@ -1956,11 +2093,17 @@ def api_quick_create_customer(request):
 @login_required(login_url="/login/")
 def api_get_orders(request):
     active_receipts = Receipt.objects.select_related('payment_method_option').filter(status=1)
+    visible_returns = OrderReturn.objects.select_related('exchange_order').prefetch_related(
+        'items',
+        'exchange_items',
+    ).exclude(status=3).order_by('-return_date', '-id')
     orders = Order.objects.select_related(
-        'customer', 'customer__group', 'warehouse', 'created_by', 'approver'
+        'customer', 'customer__group', 'warehouse', 'created_by', 'approver',
+        'source_return_exchange', 'source_return_exchange__order',
     ).prefetch_related(
         'items__product',
         Prefetch('receipts', queryset=active_receipts, to_attr='active_receipts'),
+        Prefetch('returns', queryset=visible_returns, to_attr='visible_returns'),
     ).all()
     orders = filter_by_store(orders, request)
     data = []
@@ -1995,6 +2138,8 @@ def api_get_orders(request):
         creator_display = o.creator_name or ''
         if not creator_display and o.created_by:
             creator_display = o.created_by.get_full_name() or o.created_by.username
+        return_summaries = _order_return_summaries(o)
+        source_return = getattr(o, 'source_return_exchange', None)
         data.append({
             'id': o.id, 'code': o.code,
             'customer': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
@@ -2033,6 +2178,19 @@ def api_get_orders(request):
             'product_names': product_labels,
             'product_display': ', '.join(product_labels[:3]) + ('...' if len(product_labels) > 3 else ''),
             'product_search': ' '.join(product_search_parts),
+            'returns': return_summaries,
+            'return_count': len(return_summaries),
+            'has_returns': bool(return_summaries),
+            'has_exchange_returns': any(item['has_exchange_items'] for item in return_summaries),
+            'return_codes': [item['code'] for item in return_summaries],
+            'return_summary': '; '.join(
+                f"{item['code']}: {item['summary']}" for item in return_summaries[:3]
+            ),
+            'is_exchange_order': bool(source_return),
+            'exchange_source_return_id': source_return.id if source_return else None,
+            'exchange_source_return_code': source_return.code if source_return else '',
+            'exchange_original_order_id': source_return.order_id if source_return else None,
+            'exchange_original_order_code': source_return.order.code if source_return and source_return.order else '',
             'approver_id': o.approver_id,
             'approver_name': o.approver.get_full_name() if o.approver else '',
             'approval_status': o.approval_status,
@@ -2053,10 +2211,24 @@ def api_get_order_detail(request):
         o = _get_order_for_user(
             request,
             oid,
-            queryset=Order.objects.select_related('customer', 'warehouse'),
+            queryset=Order.objects.select_related(
+                'customer', 'warehouse',
+                'source_return_exchange', 'source_return_exchange__order',
+            ).prefetch_related(
+                Prefetch(
+                    'returns',
+                    queryset=OrderReturn.objects.select_related('exchange_order').prefetch_related(
+                        'items',
+                        'exchange_items',
+                    ).exclude(status=3).order_by('-return_date', '-id'),
+                    to_attr='visible_returns',
+                )
+            ),
         )
         if not o:
             raise Order.DoesNotExist
+        return_summaries = _order_return_summaries(o)
+        source_return = getattr(o, 'source_return_exchange', None)
         items = []
         for it in o.items.select_related('product', 'variant').all():
             product = it.product
@@ -2104,6 +2276,15 @@ def api_get_order_detail(request):
                 'approval_status_display': o.get_approval_status_display(),
                 'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
                 'bonus_amount': float(o.bonus_amount),
+                'returns': return_summaries,
+                'return_count': len(return_summaries),
+                'has_returns': bool(return_summaries),
+                'has_exchange_returns': any(item['has_exchange_items'] for item in return_summaries),
+                'is_exchange_order': bool(source_return),
+                'exchange_source_return_id': source_return.id if source_return else None,
+                'exchange_source_return_code': source_return.code if source_return else '',
+                'exchange_original_order_id': source_return.order_id if source_return else None,
+                'exchange_original_order_code': source_return.order.code if source_return and source_return.order else '',
             },
             'items': items,
         })
@@ -3501,7 +3682,7 @@ def api_delete_quotation(request):
 
 @login_required(login_url="/login/")
 def api_get_order_returns(request):
-    returns = OrderReturn.objects.select_related('order', 'customer', 'warehouse').prefetch_related(
+    returns = OrderReturn.objects.select_related('order', 'customer', 'warehouse', 'exchange_order').prefetch_related(
         'items__product',
         'exchange_items__product',
         'exchange_items__variant',
@@ -3529,6 +3710,8 @@ def api_get_order_returns(request):
             'id': r.id, 'code': r.code,
             'order': r.order.code if r.order else '(Thiếu đơn gốc)',
             'order_id': r.order_id,
+            'exchange_order_id': r.exchange_order_id,
+            'exchange_order_code': r.exchange_order.code if r.exchange_order else '',
             'customer': r.customer.name if r.customer else '',
             'customer_id': r.customer_id,
             'warehouse_id': r.warehouse_id,
@@ -3830,6 +4013,11 @@ def api_save_order_return(request):
                 payment_method=refund_payment_method,
                 cash_book_id=cash_book_id,
             )
+            exchange_order = _sync_exchange_order_for_return(
+                r,
+                request.user,
+                due_receipt=due_receipt,
+            )
             if has_item_payload:
                 return_item_summary = '; '.join(
                     f'{item["product"].code} - {item["product"].name} x{_format_qty_for_history(item["quantity"])} = {_format_money_for_history(item["total_price"])}'
@@ -3872,6 +4060,8 @@ def api_save_order_return(request):
                     return_summary += '; đã nhập kho hàng hoàn'
                 if r.exchange_items.exists():
                     return_summary += '; đã xuất kho hàng đổi'
+                if exchange_order and r.exchange_items.exists() and exchange_order.status != 6:
+                    return_summary += f'; đơn đổi hàng {exchange_order.code}'
                 if refund_payment and not getattr(refund_payment, 'is_deleted', False) and refund_payment.status == 1:
                     return_summary += f'; đã tạo phiếu chi hoàn tiền {refund_payment.code}'
                 if due_receipt and not getattr(due_receipt, 'is_deleted', False) and due_receipt.status == 1:
@@ -3896,6 +4086,8 @@ def api_save_order_return(request):
             'compensation_amount': float(r.compensation_amount or 0),
             'total_refund': float(r.total_refund or 0),
             'amount_due': float(r.amount_due or 0),
+            'exchange_order_id': exchange_order.id if exchange_order else None,
+            'exchange_order_code': exchange_order.code if exchange_order else '',
         }
         if r.status == 2 and _to_decimal(r.total_refund) > 0 and refund_payment:
             response_data.update({

@@ -231,6 +231,9 @@ class OrderReturn(SoftDeleteModel):
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu trả')
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, related_name='returns',
                               verbose_name='Đơn hàng gốc')
+    exchange_order = models.OneToOneField(Order, on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='source_return_exchange',
+                                          verbose_name='Đơn hàng đổi phát sinh')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='returns',
                                  verbose_name='Khách hàng')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='returns',

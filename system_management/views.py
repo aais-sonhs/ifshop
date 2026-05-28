@@ -230,11 +230,13 @@ PRINT_TEMPLATE_DEFAULTS = {
         'title': 'BÁO GIÁ',
         'terms': 'Báo giá có hiệu lực theo ngày hiệu lực trên phiếu.\nGiá trên chưa bao gồm VAT nếu chưa ghi rõ.\nThanh toán theo thỏa thuận hai bên.',
         'footer_note': 'Cảm ơn Quý khách đã quan tâm.',
+        'show_product_images': True,
     },
     'quotation_a4': {
         'title': 'BÁO GIÁ',
         'terms': 'Báo giá có hiệu lực theo ngày hiệu lực trên phiếu.\nGiá trên chưa bao gồm VAT nếu chưa ghi rõ.\nThanh toán theo thỏa thuận hai bên.',
         'footer_note': 'Cảm ơn Quý khách đã quan tâm.',
+        'show_product_images': True,
     },
     'warranty': {
         'title': 'PHIẾU BẢO HÀNH',
@@ -308,6 +310,7 @@ def _get_or_create_print_template(brand, template_type):
             'header_note': defaults.get('header_note', ''),
             'terms': defaults.get('terms', ''),
             'footer_note': defaults.get('footer_note', ''),
+            **{key: value for key, value in defaults.items() if key.startswith('show_')},
         },
     )
     if not template.title:

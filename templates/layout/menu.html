@@ -404,14 +404,7 @@ $(document).ready(function(){
                 <!-- I. QUẢN LÝ ĐƠN HÀNG -->
                 {% if not biz or biz.mod_orders %}
                 <li class="nav-header">ĐƠN HÀNG</li>
-                {% if not biz or biz.mod_quotations %}
-                <li class="nav-item">
-                    <a href="{% url 'quotation_tbl' %}" class="nav-link {% if active_tab == 'quotation_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-file-invoice"></i>
-                        <p>DS báo giá</p>
-                    </a>
-                </li>
-                {% endif %}
+                {% comment %} Hidden menu item: dùng màn /order-tbl/ thay cho /quotation-tbl/ {% endcomment %}
                 <li class="nav-item">
                     <a href="{% url 'order_tbl' %}" class="nav-link {% if active_tab == 'order_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-shopping-cart"></i>

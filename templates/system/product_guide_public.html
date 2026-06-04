@@ -1,0 +1,1856 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tài liệu hướng dẫn - Digimart</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <style>
+        :root {
+            --primary: #0f766e;
+            --primary-light: #14b8a6;
+            --primary-bg: #f0fdfa;
+            --accent: #f59e0b;
+            --dark: #0f172a;
+            --text: #334155;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --bg: #f8fafc;
+            --white: #ffffff;
+            --shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+            --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --sidebar-width: 260px;
+            --header-height: 72px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f0fdfa 0%, #f1f5f9 50%, #f8fafc 100%);
+            color: var(--text);
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            padding: 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            gap: 16px;
+        }
+
+        .header-tabs {
+            padding: 0 24px 12px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .header-tabs::-webkit-scrollbar { height: 0; }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--dark);
+        }
+
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--primary-light), var(--primary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .logo-text span {
+            color: var(--primary);
+        }
+
+        /* Field Tabs */
+        .field-tabs {
+            display: flex;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .field-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 100px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+
+        .field-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .field-tab:not(.active) {
+            background: var(--white);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .field-tab:not(.active):hover {
+            border-color: var(--primary-light);
+            color: var(--primary);
+            background: var(--primary-bg);
+        }
+
+        /* Layout */
+        .layout {
+            display: flex;
+            padding-top: 120px;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--white);
+            border-right: 1px solid var(--border);
+            position: fixed;
+            top: 120px;
+            left: 0;
+            bottom: 0;
+            overflow-y: auto;
+            padding: 24px 0;
+            z-index: 50;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .sidebar-title {
+            padding: 0 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-nav li {
+            margin: 0;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-nav a:hover {
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+
+        .sidebar-nav a.active {
+            background: var(--primary-bg);
+            color: var(--primary);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        .sidebar-nav a i {
+            width: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .sidebar-nav a.active i {
+            opacity: 1;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            padding: 32px 40px 60px;
+            max-width: calc(100% - var(--sidebar-width));
+        }
+
+        .content-wrapper {
+            max-width: 1000px;
+        }
+
+        /* Section */
+        .section {
+            background: var(--white);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 28px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            scroll-margin-top: 140px;
+        }
+
+        .section-hero {
+            background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(245, 158, 11, 0.05) 50%, rgba(79, 70, 229, 0.06));
+            padding: 48px;
+        }
+
+        .section-body {
+            padding: 40px;
+        }
+
+        /* Kicker */
+        .kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--primary);
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .kicker i {
+            font-size: 14px;
+        }
+
+        /* Headings */
+        h1 {
+            font-size: 2.75rem;
+            font-weight: 900;
+            line-height: 1.1;
+            color: var(--dark);
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--dark);
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .lead {
+            font-size: 1.15rem;
+            color: var(--text);
+            line-height: 1.8;
+            margin-bottom: 24px;
+        }
+
+        p { margin-bottom: 12px; }
+        p:last-child { margin-bottom: 0; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 28px;
+        }
+
+        .stat-card {
+            background: var(--white);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--primary);
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        /* Pill List */
+        .pill-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            background: var(--primary-bg);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        /* Credential Strip */
+        .credential-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 28px;
+            padding: 20px;
+            background: var(--dark);
+            border-radius: var(--radius-sm);
+            color: white;
+        }
+
+        .credential-item span {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+
+        .credential-item strong {
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        /* Two Column Layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        .two-col-60-40 {
+            grid-template-columns: 1.2fr 0.8fr;
+        }
+
+        /* Card Grid */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .card-grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 24px;
+            transition: all 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow);
+            border-color: var(--primary-light);
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--primary-bg);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            font-size: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card h3 {
+            margin-bottom: 8px;
+        }
+
+        .card p {
+            color: var(--text);
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        /* TOC Grid */
+        .toc-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 32px;
+        }
+
+        .toc-item {
+            display: flex;
+            gap: 16px;
+            padding: 20px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+
+        .toc-number {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 800;
+            font-size: 1rem;
+        }
+
+        .toc-content h3 {
+            font-size: 1rem;
+            margin-bottom: 6px;
+        }
+
+        .toc-content p {
+            font-size: 0.88rem;
+            color: var(--text-light);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* Step Grid */
+        .step-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 32px;
+        }
+
+        .step-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 24px;
+            position: relative;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--dark);
+            font-weight: 800;
+            font-size: 0.95rem;
+            margin-bottom: 16px;
+        }
+
+        .step-item h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .step-item p {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            margin: 0;
+        }
+
+        /* Flow */
+        .flow-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .flow-item {
+            display: flex;
+            gap: 20px;
+            padding: 24px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+
+        .flow-time {
+            flex-shrink: 0;
+            width: 100px;
+            color: var(--accent);
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .flow-content h3 {
+            font-size: 1.05rem;
+            margin-bottom: 6px;
+        }
+
+        .flow-content p {
+            margin: 0;
+            color: var(--text);
+        }
+
+        /* Check List */
+        .check-list {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0 0;
+        }
+
+        .check-list li {
+            position: relative;
+            padding-left: 28px;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .check-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 6px;
+            width: 18px;
+            height: 18px;
+            background: var(--primary-bg);
+            border: 2px solid var(--primary-light);
+            border-radius: 5px;
+        }
+
+        .check-list li::after {
+            content: '\f00c';
+            font-family: 'Font Awesome 5 Free';
+            font-weight: 900;
+            position: absolute;
+            left: 4px;
+            top: 8px;
+            font-size: 11px;
+            color: var(--primary);
+        }
+
+        .check-list-numbered {
+            counter-reset: checklist;
+            list-style: none;
+        }
+
+        .check-list-numbered li::before {
+            content: counter(checklist);
+            counter-increment: checklist;
+            background: var(--primary);
+            border: none;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .check-list-numbered li::after {
+            content: none;
+        }
+
+        /* Small Label */
+        .small-label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+            margin-top: 20px;
+        }
+
+        .small-label:first-child {
+            margin-top: 0;
+        }
+
+        /* Callout */
+        .callout {
+            background: linear-gradient(135deg, #fef3c7, #fef9c3);
+            border: 1px solid #fcd34d;
+            border-radius: var(--radius-sm);
+            padding: 20px 24px;
+            margin-top: 24px;
+        }
+
+        .callout p {
+            color: #92400e;
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .callout strong {
+            color: #78350f;
+        }
+
+        /* Report Card */
+        .report-card {
+            background: var(--dark);
+            border-radius: var(--radius-sm);
+            padding: 28px;
+            color: white;
+        }
+
+        .report-card h3,
+        .report-card p {
+            color: white;
+        }
+
+        .report-card p {
+            opacity: 0.85;
+        }
+
+        .metric-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .metric-pill {
+            display: inline-flex;
+            padding: 8px 14px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: white;
+        }
+
+        /* Mock Browser */
+        .mock-browser {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .mock-browser-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: #e2e8f0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .mock-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .mock-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .mock-dot:nth-child(1) { background: #ef4444; }
+        .mock-dot:nth-child(2) { background: #f59e0b; }
+        .mock-dot:nth-child(3) { background: #22c55e; }
+
+        .mock-url {
+            flex: 1;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            color: var(--text-light);
+            font-weight: 500;
+        }
+
+        .mock-body {
+            padding: 16px;
+            background: #f1f5f9;
+        }
+
+        .mock-app {
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            min-height: 320px;
+        }
+
+        .mock-sidebar {
+            background: var(--dark);
+            padding: 16px 12px;
+        }
+
+        .mock-logo {
+            color: white;
+            font-weight: 800;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .mock-nav {
+            height: 8px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .mock-nav.active {
+            background: var(--primary-light);
+            height: 28px;
+        }
+
+        .mock-main {
+            padding: 16px;
+            background: var(--bg);
+        }
+
+        .mock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .mock-title {
+            font-weight: 800;
+            font-size: 1rem;
+            color: var(--dark);
+        }
+
+        .mock-user-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .mock-user-dot {
+            width: 12px;
+            height: 12px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .mock-kpis {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .mock-kpi {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .mock-kpi-value {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .mock-kpi-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-light);
+            margin-top: 2px;
+        }
+
+        .mock-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            height: 100px;
+            padding: 16px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .mock-bar {
+            flex: 1;
+            background: linear-gradient(to top, var(--primary), var(--primary-light));
+            border-radius: 4px 4px 0 0;
+        }
+
+        .mock-table {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .mock-row {
+            display: grid;
+            grid-template-columns: 1fr 80px 60px;
+            gap: 12px;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+        }
+
+        .mock-row:last-child { border-bottom: 0; }
+
+        .mock-line {
+            height: 8px;
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .mock-line.w-70 { width: 70%; }
+        .mock-line.green { background: #22c55e; }
+        .mock-line.yellow { background: #f59e0b; }
+        .mock-line.blue { background: #38bdf8; }
+
+        /* Mock POS */
+        .mock-pos {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 16px;
+        }
+
+        .mock-products {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .mock-product {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .mock-product-img {
+            height: 32px;
+            background: linear-gradient(135deg, #bae6fd, #ccfbf1);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .mock-cart {
+            background: var(--dark);
+            border-radius: 8px;
+            padding: 16px;
+            color: white;
+        }
+
+        .mock-cart h4 {
+            font-size: 1rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+        }
+
+        .mock-cart-item {
+            height: 8px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .mock-cart-btn {
+            margin-top: 20px;
+            padding: 12px;
+            background: var(--primary-light);
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        /* Image Caption */
+        .image-caption {
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-light);
+            margin-top: 14px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 32px 24px;
+            color: var(--text-light);
+            font-size: 0.9rem;
+            margin-left: var(--sidebar-width);
+        }
+
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        /* Mobile Menu Toggle */
+        .mobile-menu-btn {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: white;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--text);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .two-col { grid-template-columns: 1fr; }
+            .two-col-60-40 { grid-template-columns: 1fr; }
+            .step-grid { grid-template-columns: repeat(2, 1fr); }
+            .toc-grid { grid-template-columns: repeat(2, 1fr); }
+            .card-grid-3 { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .header-top { padding: 12px 16px; }
+            .header-tabs { padding: 0 16px 10px; }
+
+            .mobile-menu-btn {
+                display: flex;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                z-index: 200;
+                background: white;
+                width: 280px;
+                box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.4);
+                z-index: 150;
+            }
+
+            .sidebar-overlay.show {
+                display: block;
+            }
+
+            .layout {
+                padding-top: 100px;
+            }
+
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 20px 16px 40px;
+            }
+
+            .section-hero { padding: 32px 24px; }
+            .section-body { padding: 28px 20px; }
+
+            h1 { font-size: 2rem; }
+            h2 { font-size: 1.5rem; }
+
+            .stats-grid { grid-template-columns: 1fr; }
+            .card-grid,
+            .card-grid-3 { grid-template-columns: 1fr; }
+            .step-grid,
+            .toc-grid { grid-template-columns: 1fr; }
+            .credential-strip { grid-template-columns: 1fr; }
+            .mock-app { grid-template-columns: 1fr; }
+            .mock-sidebar { display: none; }
+            .mock-pos { grid-template-columns: 1fr; }
+            .mock-products { grid-template-columns: repeat(2, 1fr); }
+            .flow-item { flex-direction: column; gap: 8px; }
+            .flow-time { width: auto; }
+
+            .footer {
+                margin-left: 0;
+            }
+        }
+
+        @media print {
+            .header, .sidebar, .mobile-menu-btn { display: none; }
+            .main-content { margin-left: 0; max-width: 100%; padding: 0; }
+            .section { box-shadow: none; border: none; page-break-inside: avoid; }
+            body { background: white; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-top">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a href="/product-guide/" class="logo">
+                    <div class="logo-icon">D</div>
+                    <div class="logo-text">Digi<span>mart</span></div>
+                </a>
+            </div>
+        </div>
+        <div class="header-tabs">
+            <nav class="field-tabs">
+                {% for item in doc_nav %}
+                <a class="field-tab {% if item.active %}active{% endif %}" href="/product-guide/?field={{ item.key }}">
+                    <i class="{{ item.icon }}"></i>
+                    {{ item.label }}
+                </a>
+                {% endfor %}
+            </nav>
+        </div>
+    </header>
+
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-title">Mục lục</div>
+            <ul class="sidebar-nav">
+                <li><a href="#overview" class="active"><i class="fas fa-home"></i> Tổng quan</a></li>
+                <li><a href="#toc"><i class="fas fa-list-ol"></i> Mục lục chi tiết</a></li>
+                <li><a href="#modules"><i class="fas fa-cubes"></i> Module chính</a></li>
+                <li><a href="#setup"><i class="fas fa-cog"></i> Thiết lập ban đầu</a></li>
+                <li><a href="#daily"><i class="fas fa-calendar-day"></i> Luồng hàng ngày</a></li>
+                <li><a href="#roles"><i class="fas fa-user-shield"></i> Theo vai trò</a></li>
+                <li><a href="#workflow"><i class="fas fa-project-diagram"></i> Nghiệp vụ</a></li>
+                <li><a href="#ops1"><i class="fas fa-tasks"></i> Bán hàng & Trả hàng</a></li>
+                <li><a href="#ops2"><i class="fas fa-warehouse"></i> Kho & Thu chi</a></li>
+                <li><a href="#reports"><i class="fas fa-chart-bar"></i> Báo cáo</a></li>
+                <li><a href="#checklist"><i class="fas fa-clipboard-check"></i> Checklist triển khai</a></li>
+                <li><a href="#troubleshoot"><i class="fas fa-exclamation-triangle"></i> Lỗi thường gặp</a></li>
+                <li><a href="#field"><i class="fas fa-industry"></i> Theo lĩnh vực</a></li>
+                {% if field_deep_dive %}
+                <li><a href="#deepdive"><i class="fas fa-search-plus"></i> Chuyên sâu</a></li>
+                {% endif %}
+                <li><a href="#final"><i class="fas fa-flag-checkered"></i> Báo cáo & bàn giao</a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="content-wrapper">
+                <!-- Hero Section -->
+                <section id="overview" class="section section-hero">
+                    <div class="two-col two-col-60-40">
+                        <div>
+                            <span class="kicker"><i class="fas fa-book-open"></i> Tài liệu hướng dẫn sử dụng</span>
+                            <h1>{{ document.name }}</h1>
+                            <p class="lead">{{ document.tagline }}</p>
+                            <p>{{ document.audience }}</p>
+
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value">15+</div>
+                                    <div class="stat-label">Trang nội dung hướng dẫn</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value">5</div>
+                                    <div class="stat-label">Vai trò sử dụng chính</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value">9+</div>
+                                    <div class="stat-label">Nghiệp vụ thao tác chi tiết</div>
+                                </div>
+                            </div>
+
+                            <div class="pill-list">
+                                <span class="pill">Bán hàng</span>
+                                <span class="pill">Kho và giá vốn</span>
+                                <span class="pill">Khách hàng</span>
+                                <span class="pill">Thu chi</span>
+                                <span class="pill">Báo cáo</span>
+                                <span class="pill">Phân quyền</span>
+                            </div>
+
+                            <div class="credential-strip">
+                                <div class="credential-item">
+                                    <span>Môi trường</span>
+                                    <strong>{{ demo_account.site }}</strong>
+                                </div>
+                                <div class="credential-item">
+                                    <span>Tài khoản</span>
+                                    <strong>Cấp riêng khi demo</strong>
+                                </div>
+                                <div class="credential-item">
+                                    <span>Bảo mật</span>
+                                    <strong>Không ghi mật khẩu trong tài liệu</strong>
+                                </div>
+                            </div>
+                            <p style="color: var(--text-light); font-size: 0.88rem; margin-top: 12px;">{{ demo_account.note }}</p>
+                        </div>
+
+                        <div>
+                            <div class="mock-browser">
+                                <div class="mock-browser-bar">
+                                    <div class="mock-dots"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+                                    <div class="mock-url">digimart.vn/dashboard</div>
+                                </div>
+                                <div class="mock-body">
+                                    <div class="mock-app">
+                                        <div class="mock-sidebar">
+                                            <div class="mock-logo">Digimart</div>
+                                            <div class="mock-nav active"></div>
+                                            <div class="mock-nav"></div>
+                                            <div class="mock-nav"></div>
+                                            <div class="mock-nav"></div>
+                                            <div class="mock-nav"></div>
+                                        </div>
+                                        <div class="mock-main">
+                                            <div class="mock-header">
+                                                <div class="mock-title">Dashboard điều hành</div>
+                                                <div class="mock-user-badge"><div class="mock-user-dot"></div>Người dùng</div>
+                                            </div>
+                                            <div class="mock-kpis">
+                                                <div class="mock-kpi"><div class="mock-kpi-value">128tr</div><div class="mock-kpi-label">Doanh thu tháng</div></div>
+                                                <div class="mock-kpi"><div class="mock-kpi-value">462</div><div class="mock-kpi-label">Đơn hàng</div></div>
+                                                <div class="mock-kpi"><div class="mock-kpi-value">18</div><div class="mock-kpi-label">Cảnh báo tồn</div></div>
+                                            </div>
+                                            <div class="mock-chart">
+                                                <div class="mock-bar" style="height: 40%"></div>
+                                                <div class="mock-bar" style="height: 65%"></div>
+                                                <div class="mock-bar" style="height: 50%"></div>
+                                                <div class="mock-bar" style="height: 85%"></div>
+                                                <div class="mock-bar" style="height: 70%"></div>
+                                                <div class="mock-bar" style="height: 95%"></div>
+                                                <div class="mock-bar" style="height: 75%"></div>
+                                            </div>
+                                            <div class="mock-table">
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 green"></div><div class="mock-line blue"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 yellow"></div><div class="mock-line green"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 blue"></div><div class="mock-line"></div></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="image-caption">Minh họa giao diện web: dashboard, KPI, biểu đồ và cảnh báo tồn kho.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Table of Contents -->
+                <section id="toc" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-list-ol"></i> Mục lục hướng dẫn</span>
+                        <h2>Những phần chính trong tài liệu chi tiết</h2>
+                        <p>Tài liệu được tổ chức theo trình tự: tổng quan, thiết lập, vận hành hằng ngày, hướng dẫn theo vai trò, thao tác nghiệp vụ, triển khai và xử lý lỗi.</p>
+
+                        <div class="toc-grid">
+                            <div class="toc-item">
+                                <div class="toc-number">1</div>
+                                <div class="toc-content">
+                                    <h3>Tổng quan và module</h3>
+                                    <p>Giới thiệu sản phẩm, giao diện web, module chính và cách bật theo mô hình.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">2</div>
+                                <div class="toc-content">
+                                    <h3>Thiết lập ban đầu</h3>
+                                    <p>Thương hiệu, cửa hàng, kho, người dùng, phân quyền và dữ liệu cần chuẩn bị.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">3</div>
+                                <div class="toc-content">
+                                    <h3>Luồng dùng hằng ngày</h3>
+                                    <p>Đầu ngày, trong ngày, cuối ngày và các việc cần kiểm tra theo ca.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">4</div>
+                                <div class="toc-content">
+                                    <h3>Hướng dẫn theo vai trò</h3>
+                                    <p>Chủ doanh nghiệp, quản lý, bán hàng, kho, kế toán dùng những chức năng nào.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">5</div>
+                                <div class="toc-content">
+                                    <h3>Thao tác nghiệp vụ</h3>
+                                    <p>Khách hàng, báo giá, POS, trả hàng, nhập hàng, kiểm hàng, chuyển kho, thu chi, báo cáo.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">6</div>
+                                <div class="toc-content">
+                                    <h3>Triển khai và hỗ trợ</h3>
+                                    <p>Checklist bàn giao, lỗi thường gặp và hướng dẫn chuyên sâu theo từng lĩnh vực.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="two-col" style="margin-top: 32px;">
+                            <div class="card-grid">
+                                {% for item in document.positioning %}
+                                <div class="card">
+                                    <div class="card-icon"><i class="fas fa-check"></i></div>
+                                    <h3>{{ item.title }}</h3>
+                                    <p>{{ item.body }}</p>
+                                </div>
+                                {% endfor %}
+                                <div class="card">
+                                    <div class="card-icon"><i class="fas fa-layer-group"></i></div>
+                                    <h3>Triển khai theo ngành</h3>
+                                    <p>Mỗi lĩnh vực có tài liệu riêng, từ phần tổng quan sản phẩm tới luồng thao tác hàng ngày của khách.</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mock-browser">
+                                    <div class="mock-browser-bar">
+                                        <div class="mock-dots"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+                                        <div class="mock-url">digimart.vn/order-tbl/</div>
+                                    </div>
+                                    <div class="mock-body">
+                                        <div class="mock-main">
+                                            <div class="mock-header">
+                                                <div class="mock-title">Bán hàng / báo giá</div>
+                                                <div class="mock-user-badge"><div class="mock-user-dot"></div>Nhân viên</div>
+                                            </div>
+                                            <div class="mock-table">
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 green"></div><div class="mock-line blue"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 blue"></div><div class="mock-line yellow"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 green"></div><div class="mock-line green"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70"></div><div class="mock-line blue"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 yellow"></div><div class="mock-line"></div></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="callout">
+                                    <p><strong>Điểm nhấn khi demo:</strong> khách nhìn được toàn bộ hành trình từ báo giá, đơn hàng, thanh toán, trừ kho tới báo cáo mà không phải nhập lại dữ liệu nhiều lần.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Common Modules -->
+                <section id="modules" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-cubes"></i> Module chính</span>
+                        <h2>Các phần khách hàng sẽ dùng trong phần mềm</h2>
+                        <p>Bộ module được tổ chức theo nghiệp vụ thực tế. Chủ cửa hàng có thể bắt đầu với bán hàng và kho, sau đó mở rộng sang báo cáo, phân quyền, POS, lịch hẹn hoặc sơ đồ bàn.</p>
+
+                        <div class="card-grid card-grid-3">
+                            {% for module in common_modules %}
+                            <div class="card">
+                                <div class="card-icon"><i class="{{ module.icon }}"></i></div>
+                                <h3>{{ module.title }}</h3>
+                                <p>{{ module.body }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="callout">
+                            <p><strong>Triển khai nhiều lĩnh vực:</strong> tài liệu này dùng chung cấu trúc, còn phần chuyên sâu sẽ đổi theo lĩnh vực đang chọn.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Setup Steps -->
+                <section id="setup" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-cog"></i> Thiết lập ban đầu</span>
+                        <h2>Checklist triển khai trước khi vận hành thật</h2>
+                        <p class="lead">Phần này dành cho đội triển khai và chủ doanh nghiệp. Làm theo thứ tự này giúp dữ liệu đầu vào sạch, nhân viên dễ học và báo cáo cuối ngày đáng tin cậy.</p>
+
+                        <div class="step-grid">
+                            {% for step in setup_steps %}
+                            <div class="step-item">
+                                <div class="step-number">{{ forloop.counter }}</div>
+                                <h3>{{ step.title }}</h3>
+                                <p>{{ step.body }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="two-col" style="margin-top: 32px;">
+                            <div class="card">
+                                <span class="small-label">Dữ liệu cần chuẩn bị</span>
+                                <ul class="check-list">
+                                    <li>Danh sách sản phẩm, dịch vụ, giá bán, giá nhập và đơn vị tính.</li>
+                                    <li>Tồn kho đầu kỳ, kho chính, cửa hàng, nhà cung cấp và khách hàng cũ.</li>
+                                    <li>Danh sách tài khoản nhân viên, vai trò và phạm vi dữ liệu được xem.</li>
+                                    <li>Mẫu hóa đơn, máy in, phương thức thanh toán và quy trình duyệt đơn nếu có.</li>
+                                </ul>
+                            </div>
+
+                            <div class="mock-browser">
+                                <div class="mock-browser-bar">
+                                    <div class="mock-dots"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+                                    <div class="mock-url">digimart.vn/business-config/</div>
+                                </div>
+                                <div class="mock-body">
+                                    <div class="mock-main">
+                                        <div class="mock-header">
+                                            <div class="mock-title">Mô hình kinh doanh</div>
+                                            <div class="mock-user-badge"><div class="mock-user-dot"></div>Chủ shop</div>
+                                        </div>
+                                        <div class="mock-kpis">
+                                            <div class="mock-kpi"><div class="mock-kpi-value">POS</div><div class="mock-kpi-label">Bật bán nhanh</div></div>
+                                            <div class="mock-kpi"><div class="mock-kpi-value">Kho</div><div class="mock-kpi-label">Theo dõi tồn</div></div>
+                                            <div class="mock-kpi"><div class="mock-kpi-value">BC</div><div class="mock-kpi-label">Báo cáo</div></div>
+                                        </div>
+                                        <div class="mock-table">
+                                            <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 green"></div><div class="mock-line green"></div></div>
+                                            <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 blue"></div><div class="mock-line green"></div></div>
+                                            <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 yellow"></div><div class="mock-line"></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Daily Flow -->
+                <section id="daily" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-calendar-day"></i> Khách sử dụng hàng ngày</span>
+                        <h2>Luồng vận hành trong ngày</h2>
+                        <p>Đây là phần nhân viên và quản lý có thể đọc để hiểu nhịp làm việc cơ bản: kiểm tra đầu ngày, bán hàng trong ngày và đối soát cuối ngày.</p>
+
+                        <div class="two-col">
+                            <div class="flow-list">
+                                {% for item in daily_flow %}
+                                <div class="flow-item">
+                                    <div class="flow-time">{{ item.time }}</div>
+                                    <div class="flow-content">
+                                        <h3>{{ item.title }}</h3>
+                                        <p>{{ item.body }}</p>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <div>
+                                <div class="mock-browser">
+                                    <div class="mock-browser-bar">
+                                        <div class="mock-dots"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+                                        <div class="mock-url">digimart.vn/pos/</div>
+                                    </div>
+                                    <div class="mock-body">
+                                        <div class="mock-pos">
+                                            <div class="mock-products">
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                                <div class="mock-product"><div class="mock-product-img"></div><div class="mock-line"></div></div>
+                                            </div>
+                                            <div class="mock-cart">
+                                                <h4>Giỏ hàng</h4>
+                                                <div class="mock-cart-item"></div>
+                                                <div class="mock-cart-item"></div>
+                                                <div class="mock-cart-item"></div>
+                                                <div class="mock-cart-btn">Thanh toán</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="image-caption">Minh họa giao diện POS: chọn hàng, xem giỏ và thanh toán trên cùng một màn hình.</p>
+                            </div>
+                        </div>
+
+                        <div class="card-grid card-grid-3" style="margin-top: 32px;">
+                            <div class="card">
+                                <h3>Chủ / Quản lý</h3>
+                                <p>Xem dashboard, báo cáo, duyệt đơn nếu có, kiểm soát người dùng, tồn kho, công nợ và hiệu quả cửa hàng.</p>
+                            </div>
+                            <div class="card">
+                                <h3>Nhân viên bán hàng</h3>
+                                <p>Tạo báo giá, đơn hàng, POS, chọn khách, in hóa đơn, xử lý trả hàng theo quyền được cấp.</p>
+                            </div>
+                            <div class="card">
+                                <h3>Kho / Kế toán</h3>
+                                <p>Nhập hàng, kiểm hàng, chuyển kho, ghi nhận phiếu thu chi, theo dõi sổ quỹ và đối soát cuối ngày.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Role Guides -->
+                <section id="roles" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-user-shield"></i> Hướng dẫn theo vai trò</span>
+                        <h2>Ai dùng phần nào trong hệ thống</h2>
+                        <p class="lead">Khi đào tạo khách hàng, nên chia theo vai trò thay vì hướng dẫn tất cả mọi người toàn bộ phần mềm. Mỗi người chỉ cần nắm đúng phần việc hằng ngày, quyền được dùng và điểm cần kiểm tra trước khi lưu dữ liệu.</p>
+
+                        <div class="card-grid">
+                            {% for guide in role_guides %}
+                            <div class="card">
+                                <h3>{{ guide.role }}</h3>
+                                <p><strong>Mục tiêu:</strong> {{ guide.goal }}</p>
+                                <span class="small-label">Quyền/chức năng nên có</span>
+                                <ul class="check-list">
+                                    {% for item in guide.permissions %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                                <span class="small-label">Công việc hằng ngày</span>
+                                <ul class="check-list">
+                                    {% for item in guide.daily_tasks %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Workflow Sections -->
+                <section id="workflow" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-project-diagram"></i> Hướng dẫn thao tác tổng quan</span>
+                        <h2>Các nhóm nghiệp vụ khách hàng sẽ dùng thường xuyên</h2>
+                        <p>Đây là bản đồ nghiệp vụ chung để khách hiểu phần mềm trước khi đi vào từng thao tác chi tiết. Mỗi nhóm bên dưới tương ứng với các menu chính trong sidebar.</p>
+
+                        <div class="card-grid">
+                            {% for section in workflow_sections %}
+                            <div class="card">
+                                <h3>{{ section.title }}</h3>
+                                <ul class="check-list">
+                                    {% for item in section.items %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Detailed Operations 1 -->
+                <section id="ops1" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-tasks"></i> Thao tác chi tiết</span>
+                        <h2>Khách hàng, báo giá, bán hàng và trả hàng</h2>
+                        <p class="lead">Các hướng dẫn này đi theo trình tự người dùng thao tác trên phần mềm. Có thể dùng trực tiếp trong buổi đào tạo để nhân viên thực hành từng bước.</p>
+
+                        <div class="card-grid">
+                            {% for guide in detailed_operation_guides|slice:":4" %}
+                            <div class="card">
+                                <h3>{{ guide.title }}</h3>
+                                <p><strong>Mục tiêu:</strong> {{ guide.goal }}</p>
+                                <span class="small-label">Các bước thực hiện</span>
+                                <ol class="check-list check-list-numbered">
+                                    {% for step in guide.steps %}
+                                    <li>{{ step }}</li>
+                                    {% endfor %}
+                                </ol>
+                                <span class="small-label">Cần kiểm tra</span>
+                                <ul class="check-list">
+                                    {% for check in guide.checks %}
+                                    <li>{{ check }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Detailed Operations 2 -->
+                <section id="ops2" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-warehouse"></i> Thao tác chi tiết</span>
+                        <h2>Kho, nhập hàng, kiểm hàng và thu chi</h2>
+                        <p class="lead">Nhóm thao tác này ảnh hưởng trực tiếp tới tồn kho, giá vốn, dòng tiền và báo cáo. Khi đào tạo, cần yêu cầu khách tự nhập thử dữ liệu mẫu và đối chiếu kết quả sau mỗi bước.</p>
+
+                        <div class="card-grid">
+                            {% for guide in detailed_operation_guides|slice:"4:8" %}
+                            <div class="card">
+                                <h3>{{ guide.title }}</h3>
+                                <p><strong>Mục tiêu:</strong> {{ guide.goal }}</p>
+                                <span class="small-label">Các bước thực hiện</span>
+                                <ol class="check-list check-list-numbered">
+                                    {% for step in guide.steps %}
+                                    <li>{{ step }}</li>
+                                    {% endfor %}
+                                </ol>
+                                <span class="small-label">Cần kiểm tra</span>
+                                <ul class="check-list">
+                                    {% for check in guide.checks %}
+                                    <li>{{ check }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Reports -->
+                <section id="reports" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-chart-bar"></i> Thao tác chi tiết</span>
+                        <h2>Báo cáo và kiểm tra dữ liệu sau vận hành</h2>
+                        <p class="lead">Báo cáo là nơi khách kiểm chứng dữ liệu đã nhập đúng hay chưa. Nếu báo cáo lệch, cần quay lại đơn hàng, phiếu nhập, phiếu thu chi hoặc tồn kho để tìm nguyên nhân.</p>
+
+                        <div class="two-col">
+                            {% for guide in detailed_operation_guides|slice:"8:" %}
+                            <div class="card">
+                                <h3>{{ guide.title }}</h3>
+                                <p><strong>Mục tiêu:</strong> {{ guide.goal }}</p>
+                                <span class="small-label">Các bước thực hiện</span>
+                                <ol class="check-list check-list-numbered">
+                                    {% for step in guide.steps %}
+                                    <li>{{ step }}</li>
+                                    {% endfor %}
+                                </ol>
+                                <span class="small-label">Cần kiểm tra</span>
+                                <ul class="check-list">
+                                    {% for check in guide.checks %}
+                                    <li>{{ check }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+
+                            <div class="report-card">
+                                <span class="small-label" style="color: #93c5fd;">Cách đọc báo cáo nhanh</span>
+                                <h3>Đọc từ tổng quan tới chi tiết</h3>
+                                <p>Trước tiên xem tổng doanh thu, đơn hàng, công nợ và tồn kho. Sau đó đi vào chi tiết theo sản phẩm, khách hàng, nhân viên, kho hoặc phương thức thanh toán để tìm nguyên nhân tăng/giảm.</p>
+                                <div class="metric-pills">
+                                    <span class="metric-pill">Doanh thu</span>
+                                    <span class="metric-pill">Công nợ</span>
+                                    <span class="metric-pill">Tồn kho</span>
+                                    <span class="metric-pill">Sổ quỹ</span>
+                                    <span class="metric-pill">Khách hàng</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Implementation Checklist -->
+                <section id="checklist" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-clipboard-check"></i> Checklist triển khai</span>
+                        <h2>Từ khảo sát tới bàn giao chính thức</h2>
+                        <p class="lead">Checklist này giúp đội triển khai không bỏ sót dữ liệu và giúp khách biết họ cần chuẩn bị gì. Có thể dùng làm biên bản bàn giao ngắn gọn sau mỗi dự án.</p>
+
+                        <div class="card-grid">
+                            {% for phase in implementation_checklist %}
+                            <div class="card">
+                                <h3>{{ phase.phase }}</h3>
+                                <ul class="check-list">
+                                    {% for item in phase.items %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="callout">
+                            <p><strong>Nguyên tắc bàn giao:</strong> không bàn giao chỉ bằng lời nói. Hãy yêu cầu khách tự tạo một khách hàng, một đơn bán, một phiếu nhập, một phiếu thu và mở báo cáo để xác nhận họ đã hiểu luồng dữ liệu.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Troubleshooting -->
+                <section id="troubleshoot" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-exclamation-triangle"></i> Xử lý lỗi thường gặp</span>
+                        <h2>Khi dữ liệu không đúng hoặc người dùng không thao tác được</h2>
+                        <p class="lead">Phần này dùng cho hỗ trợ sau triển khai. Khi khách báo lỗi, nên hỏi đúng triệu chứng, kiểm tra nguyên nhân thường gặp trước, rồi mới can thiệp sâu vào dữ liệu.</p>
+
+                        <div class="card-grid">
+                            {% for item in troubleshooting_guides %}
+                            <div class="card">
+                                <h3>{{ item.problem }}</h3>
+                                <span class="small-label">Nguyên nhân thường gặp</span>
+                                <ul class="check-list">
+                                    {% for cause in item.causes %}
+                                    <li>{{ cause }}</li>
+                                    {% endfor %}
+                                </ul>
+                                <span class="small-label">Cách xử lý</span>
+                                <ul class="check-list">
+                                    {% for fix in item.fixes %}
+                                    <li>{{ fix }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Field Specific -->
+                <section id="field" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-industry"></i> Tài liệu theo lĩnh vực</span>
+                        <h2>Quy trình riêng cho {{ document.name }}</h2>
+                        <p>Phần này thay đổi theo từng lĩnh vực. Khi triển khai ngành khác, chọn tab ở đầu trang để có tài liệu đúng ngữ cảnh và thuật ngữ khách hàng quen dùng.</p>
+
+                        <div class="two-col">
+                            <div class="card-grid">
+                                {% for item in document.field_workflows %}
+                                <div class="card">
+                                    <h3>{{ item.title }}</h3>
+                                    <p>{{ item.body }}</p>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="report-card">
+                                <span class="small-label" style="color: #93c5fd;">Khi demo ngành này</span>
+                                <h3>Nhấn mạnh luồng nghiệp vụ thật</h3>
+                                <p>Không chỉ giới thiệu danh sách tính năng. Hãy đi theo một ca sử dụng hoàn chỉnh: tạo dữ liệu, bán hàng hoặc đặt lịch, ghi nhận thanh toán, kiểm tra kho/công nợ và xem báo cáo.</p>
+                                <div class="metric-pills">
+                                    {% for metric in document.metrics %}
+                                    <span class="metric-pill">{{ metric }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if field_deep_dive %}
+                        <div class="callout">
+                            <p><strong>{{ field_deep_dive.title }}:</strong> phần dưới đây là hướng dẫn chuyên sâu theo lĩnh vực đang chọn, dùng khi đào tạo trực tiếp cho khách.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                {% if field_deep_dive %}
+                <section id="deepdive" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-search-plus"></i> Chuyên sâu theo lĩnh vực</span>
+                        <h2>{{ field_deep_dive.title }}</h2>
+                        <p class="lead">Mỗi lĩnh vực có cách vận hành khác nhau. Phần này giúp đội triển khai và khách hàng thống nhất những điểm cần làm kỹ nhất trước khi chạy thật.</p>
+
+                        <div class="card-grid">
+                            {% for section in field_deep_dive.sections %}
+                            <div class="card">
+                                <h3>{{ section.title }}</h3>
+                                <ul class="check-list">
+                                    {% for item in section.items %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Final Section -->
+                <section id="final" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-flag-checkered"></i> Báo cáo và bàn giao</span>
+                        <h2>Khách hàng thấy được kết quả sau khi vận hành</h2>
+                        <p>Mục tiêu cuối cùng của phần mềm là giúp chủ doanh nghiệp ra quyết định nhanh hơn: biết bán gì tốt, tồn gì thấp, tiền nằm ở đâu và nhân viên đang xử lý công việc thế nào.</p>
+
+                        <div class="two-col">
+                            <div>
+                                <div class="mock-browser">
+                                    <div class="mock-browser-bar">
+                                        <div class="mock-dots"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+                                        <div class="mock-url">digimart.vn/report-sales/</div>
+                                    </div>
+                                    <div class="mock-body">
+                                        <div class="mock-main">
+                                            <div class="mock-header">
+                                                <div class="mock-title">Báo cáo bán hàng</div>
+                                                <div class="mock-user-badge"><div class="mock-user-dot"></div>Quản lý</div>
+                                            </div>
+                                            <div class="mock-chart">
+                                                <div class="mock-bar" style="height: 65%"></div>
+                                                <div class="mock-bar" style="height: 50%"></div>
+                                                <div class="mock-bar" style="height: 88%"></div>
+                                                <div class="mock-bar" style="height: 76%"></div>
+                                                <div class="mock-bar" style="height: 96%"></div>
+                                                <div class="mock-bar" style="height: 70%"></div>
+                                            </div>
+                                            <div class="mock-table">
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 green"></div><div class="mock-line blue"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 yellow"></div><div class="mock-line green"></div></div>
+                                                <div class="mock-row"><div class="mock-line"></div><div class="mock-line w-70 blue"></div><div class="mock-line"></div></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="image-caption">Minh họa giao diện báo cáo: biểu đồ, bảng tổng hợp và chỉ số quản trị.</p>
+                            </div>
+
+                            <div>
+                                <div class="card-grid">
+                                    <div class="card">
+                                        <h3>Phân quyền theo vai trò</h3>
+                                        <p>Chủ thương hiệu quản lý người dùng, nhóm quyền và cửa hàng. Nhân viên chỉ thấy chức năng cần dùng, giảm rủi ro sửa nhầm dữ liệu.</p>
+                                    </div>
+                                    <div class="card">
+                                        <h3>Mỗi lĩnh vực một tài liệu</h3>
+                                        <p>Chọn đúng tab lĩnh vực và gửi cho khách trước buổi đào tạo để họ nắm bức tranh tổng quan.</p>
+                                    </div>
+                                </div>
+
+                                <div class="callout">
+                                    <p><strong>Bàn giao khuyến nghị:</strong> gửi khách tài liệu đúng lĩnh vực, tài khoản demo, checklist dữ liệu cần chuẩn bị và lịch đào tạo theo vai trò. Sau khi khách hiểu sản phẩm, đào tạo thao tác sẽ nhanh và ít nhầm hơn.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <p>Tài liệu hướng dẫn sử dụng <strong>Digimart</strong> &copy; 2024. Mọi thắc mắc vui lòng liên hệ bộ phận hỗ trợ.</p>
+    </footer>
+
+    <script>
+    // Toggle mobile sidebar
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.querySelector('.sidebar-overlay').classList.toggle('show');
+    }
+
+    // Scroll spy for sidebar
+    document.addEventListener('DOMContentLoaded', function() {
+        const sections = document.querySelectorAll('.section[id]');
+        const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+        function updateActiveLink() {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 120;
+                if (window.scrollY >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', updateActiveLink);
+        updateActiveLink();
+
+        // Smooth scroll for sidebar links
+        navLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href').substring(1);
+                const target = document.getElementById(targetId);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                // Close mobile sidebar
+                if (window.innerWidth <= 768) {
+                    toggleSidebar();
+                }
+            });
+        });
+    });
+    </script>
+</body>
+</html>

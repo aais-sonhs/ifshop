@@ -359,13 +359,15 @@ def _apply_print_template_data(template, data):
     return template
 
 
-@login_required(login_url="/login/")
 def product_guide(request):
     selected_key = normalize_document_key(request.GET.get('field', ''))
 
     if not selected_key:
-        brand = _get_request_brand(request)
-        selected_key = normalize_document_key(BusinessConfig.get_config(brand=brand).business_type)
+        try:
+            brand = _get_request_brand(request)
+            selected_key = normalize_document_key(BusinessConfig.get_config(brand=brand).business_type)
+        except Exception:
+            selected_key = 'custom'
 
     selected_key, document = get_product_document(selected_key)
     doc_nav = []
@@ -390,7 +392,12 @@ def product_guide(request):
         'troubleshooting_guides': TROUBLESHOOTING_GUIDES,
         'field_deep_dive': FIELD_DEEP_DIVES.get(selected_key),
     }
-    return render(request, "system/product_guide.html", context)
+
+    # Use public template for unauthenticated users
+    if request.user.is_authenticated:
+        return render(request, "system/product_guide.html", context)
+    else:
+        return render(request, "system/product_guide_public.html", context)
 
 
 @login_required(login_url="/login/")

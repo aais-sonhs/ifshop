@@ -54,21 +54,11 @@
         min-height: 980px;
         overflow: hidden;
         padding: 42px;
-        page-break-after: always;
-        break-after: page;
         position: relative;
     }
 
     .doc-page::after {
-        bottom: 22px;
-        color: #94a3b8;
-        content: attr(data-page);
-        font-size: 0.75rem;
-        font-weight: 800;
-        letter-spacing: 0;
-        position: absolute;
-        right: 34px;
-        text-transform: uppercase;
+        display: none;
     }
 
     .doc-cover {
@@ -929,7 +919,7 @@
     </div>
 
     <div id="productDocPrintArea">
-        <section class="doc-page doc-cover" data-page="Trang 1">
+        <section class="doc-page doc-cover">
             <div class="doc-hero-layout">
                 <div>
                     <div class="doc-version-ribbon">
@@ -1031,7 +1021,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 2">
+        <section class="doc-page">
             <div class="doc-section-head">
                 <div>
                     <span class="doc-kicker">Mục lục hướng dẫn</span>
@@ -1132,7 +1122,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 3">
+        <section class="doc-page">
             <div class="doc-section-head">
                 <div>
                     <span class="doc-kicker">Module chính</span>
@@ -1158,7 +1148,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 4">
+        <section class="doc-page">
             <span class="doc-kicker">Thiết lập ban đầu</span>
             <h2>Checklist triển khai trước khi vận hành thật</h2>
             <p class="doc-lead">
@@ -1212,7 +1202,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 5">
+        <section class="doc-page">
             <div class="doc-section-head">
                 <div>
                     <span class="doc-kicker">Khách sử dụng hàng ngày</span>
@@ -1282,7 +1272,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 6">
+        <section class="doc-page">
             <span class="doc-kicker">Hướng dẫn theo vai trò</span>
             <h2>Ai dùng phần nào trong hệ thống</h2>
             <p class="doc-lead">
@@ -1311,7 +1301,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 7">
+        <section class="doc-page">
             <span class="doc-kicker">Hướng dẫn thao tác tổng quan</span>
             <h2>Các nhóm nghiệp vụ khách hàng sẽ dùng thường xuyên</h2>
             <p class="doc-lead">
@@ -1332,7 +1322,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 8">
+        <section class="doc-page">
             <span class="doc-kicker">Thao tác chi tiết</span>
             <h2>Khách hàng, báo giá, bán hàng và trả hàng</h2>
             <p class="doc-lead">
@@ -1361,7 +1351,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 9">
+        <section class="doc-page">
             <span class="doc-kicker">Thao tác chi tiết</span>
             <h2>Kho, nhập hàng, kiểm hàng và thu chi</h2>
             <p class="doc-lead">
@@ -1390,7 +1380,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 10">
+        <section class="doc-page">
             <span class="doc-kicker">Thao tác chi tiết</span>
             <h2>Báo cáo và kiểm tra dữ liệu sau vận hành</h2>
             <p class="doc-lead">
@@ -1432,7 +1422,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 11">
+        <section class="doc-page">
             <span class="doc-kicker">Checklist triển khai</span>
             <h2>Từ khảo sát tới bàn giao chính thức</h2>
             <p class="doc-lead">
@@ -1457,7 +1447,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 12">
+        <section class="doc-page">
             <span class="doc-kicker">Xử lý lỗi thường gặp</span>
             <h2>Khi dữ liệu không đúng hoặc người dùng không thao tác được</h2>
             <p class="doc-lead">
@@ -1485,7 +1475,7 @@
             </div>
         </section>
 
-        <section class="doc-page" data-page="Trang 13">
+        <section class="doc-page">
             <div class="doc-section-head">
                 <div>
                     <span class="doc-kicker">Tài liệu theo lĩnh vực</span>
@@ -1526,7 +1516,7 @@
         </section>
 
         {% if field_deep_dive %}
-        <section class="doc-page" data-page="Trang 14">
+        <section class="doc-page">
             <span class="doc-kicker">Chuyên sâu theo lĩnh vực</span>
             <h2>{{ field_deep_dive.title }}</h2>
             <p class="doc-lead">
@@ -1548,7 +1538,7 @@
         </section>
         {% endif %}
 
-        <section class="doc-page" data-page="{% if field_deep_dive %}Trang 15{% else %}Trang 14{% endif %}">
+        <section class="doc-page">
             <div class="doc-section-head">
                 <div>
                     <span class="doc-kicker">Báo cáo và bàn giao</span>

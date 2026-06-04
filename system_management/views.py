@@ -393,11 +393,7 @@ def product_guide(request):
         'field_deep_dive': FIELD_DEEP_DIVES.get(selected_key),
     }
 
-    # Use public template for unauthenticated users
-    if request.user.is_authenticated:
-        return render(request, "system/product_guide.html", context)
-    else:
-        return render(request, "system/product_guide_public.html", context)
+    return render(request, "system/product_guide_public.html", context)
 
 
 @login_required(login_url="/login/")

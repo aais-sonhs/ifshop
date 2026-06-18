@@ -1,10 +1,12 @@
-# Core framework
-Django==6.0.1
-djangorestframework==3.16.1
-
-# Authentication
-django-allauth==65.14.0
-django-rest-auth==0.9.5
+numpy==1.23.5
+django
+djangorestframework
+django-rest-auth
+django-allauth
+django-cors-headers
+openpyxl-image-loader
+django-ajax-image-upload
+django-bootstrap-static
 
 # Database
 psycopg2-binary==2.9.11

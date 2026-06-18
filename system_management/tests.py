@@ -507,7 +507,7 @@ class SystemManagementScopeTests(TestCase):
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('brand_tbl', 'user_management_tbl'):
+        for route_name in ('brand_tbl', 'user_management_tbl', 'service_price_tbl'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 200, msg=route_name)
 
@@ -515,15 +515,18 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(api_response.status_code, 200)
         self.assertEqual(api_response.json()['data'], [])
 
+        service_price_response = self.client.get(reverse('api_get_service_prices'))
+        self.assertEqual(service_price_response.status_code, 200)
+
     def test_superadmin_is_redirected_from_brand_owned_system_settings(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'service_price_tbl', 'printer_setting_tbl', 'print_template_setting'):
+        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'printer_setting_tbl', 'print_template_setting'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 302, msg=route_name)
             self.assertEqual(response.url, '/brand-tbl/')
 
-        for route_name in ('api_get_role_group_permissions', 'api_get_service_prices', 'api_get_printers', 'api_get_print_templates'):
+        for route_name in ('api_get_role_group_permissions', 'api_get_printers', 'api_get_print_templates'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 403, msg=route_name)
 

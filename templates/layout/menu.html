@@ -734,6 +734,12 @@ $(document).ready(function(){
                         <p>Quản lý tài khoản</p>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %} active{% endif %}">
+                        <i class="nav-icon fas fa-file-invoice-dollar"></i>
+                        <p>Giá dịch vụ</p>
+                    </a>
+                </li>
                 {% endif %}
 
             </ul>

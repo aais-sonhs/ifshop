@@ -799,8 +799,6 @@ def api_save_role_group_permissions(request):
 
 @login_required(login_url="/login/")
 def api_get_service_prices(request):
-    if request.user.is_superuser:
-        return _forbid_json('Super Admin không có quyền xem giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     items = ServicePrice.objects.all()
@@ -816,8 +814,6 @@ def api_get_service_prices(request):
 def api_save_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if request.user.is_superuser:
-        return _forbid_json('Super Admin không có quyền cấu hình giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -842,8 +838,6 @@ def api_save_service_price(request):
 def api_delete_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if request.user.is_superuser:
-        return _forbid_json('Super Admin không có quyền cấu hình giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:

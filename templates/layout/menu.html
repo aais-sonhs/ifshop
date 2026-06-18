@@ -672,8 +672,8 @@ $(document).ready(function(){
                         <p>Danh mục</p>
                     </a>
                 </li>
-                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}menu-open{% endif %}">
-                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}active{% endif %}">
+                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}menu-open{% endif %}">
+                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -694,12 +694,6 @@ $(document).ready(function(){
                             <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phương thức TT</p>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %}active{% endif %}">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>Giá dịch vụ</p>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -732,6 +726,12 @@ $(document).ready(function(){
                     <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-users-cog"></i>
                         <p>Quản lý tài khoản</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %} active{% endif %}">
+                        <i class="nav-icon fas fa-file-invoice-dollar"></i>
+                        <p>Giá dịch vụ</p>
                     </a>
                 </li>
                 {% endif %}

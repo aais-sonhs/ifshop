@@ -458,8 +458,8 @@ def category_tbl(request):
 
 @login_required(login_url="/login/")
 def service_price_tbl(request):
-    if not can_manage_users(request.user):
-        return _redirect_no_system_access(request)
+    if not request.user.is_superuser:
+        return _redirect_no_system_access(request, 'Chỉ Super Admin được cấu hình giá dịch vụ toàn hệ thống')
     context = {'active_tab': 'service_price_tbl'}
     return render(request, "system/service_price.html", context)
 
@@ -794,8 +794,8 @@ def api_save_role_group_permissions(request):
 
 @login_required(login_url="/login/")
 def api_get_service_prices(request):
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được xem giá dịch vụ toàn hệ thống')
     items = ServicePrice.objects.all()
     data = [{
         'id': s.id, 'name': s.name, 'price': float(s.price),
@@ -809,8 +809,8 @@ def api_get_service_prices(request):
 def api_save_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được cấu hình giá dịch vụ toàn hệ thống')
     try:
         data = json.loads(request.body)
         sid = data.get('id')
@@ -833,8 +833,8 @@ def api_save_service_price(request):
 def api_delete_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được cấu hình giá dịch vụ toàn hệ thống')
     try:
         data = json.loads(request.body)
         ServicePrice.objects.filter(id=data.get('id')).delete()

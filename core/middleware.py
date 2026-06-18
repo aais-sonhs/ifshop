@@ -12,6 +12,7 @@ class SuperadminAccessMiddleware:
     - /brand-tbl/, /api/brands/*, /api/stores/*
     - /user-management-tbl/, /api/users/*
     - /business-config/, /api/business-config/*
+    - /service-price-tbl/, /api/service-prices/*
     - /api/role-groups/*
     - /login/, /logout/, /register/, /admin/
     - /api/profile/*, /api/stores-for-user/, /product-guide/
@@ -23,6 +24,7 @@ class SuperadminAccessMiddleware:
         '/brand-tbl/', '/api/brands/', '/api/stores/',
         '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
         '/business-config/', '/api/business-config/',
+        '/service-price-tbl/', '/api/service-prices/',
         '/api/role-groups/',
         '/product-guide/',
         '/api/profile/',

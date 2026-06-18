@@ -4,12 +4,32 @@
 # sleep 15
 
 # Di chuyển đến thư mục dự án Django
-# cd /home/aais/Documents/ifshop || exit 1
+cd /home/ifshop/Documents/ifshop || exit 1
 
 if [ -f .env ]; then
   set -a
   . ./.env
   set +a
+fi
+
+CONDA_ENV_NAME=${CONDA_ENV_NAME:-env}
+
+if ! command -v conda >/dev/null 2>&1; then
+  echo "Không tìm thấy lệnh conda trong PATH."
+  exit 1
+fi
+
+CONDA_BASE=$(conda info --base 2>/dev/null)
+if [ -z "$CONDA_BASE" ] || [ ! -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+  echo "Không tìm thấy file khởi tạo conda.sh."
+  exit 1
+fi
+
+# shellcheck disable=SC1091
+. "$CONDA_BASE/etc/profile.d/conda.sh"
+if ! conda activate "$CONDA_ENV_NAME"; then
+  echo "Không thể activate conda env '$CONDA_ENV_NAME'."
+  exit 1
 fi
 
 # Lấy cấu hình từ app.yml
@@ -19,13 +39,14 @@ LOG_LEVEL=$(grep 'LOG_LEVEL' app.yml | awk '{print $2}' | tr -d '[:space:]')
 
 # Mặc định LOG_LEVEL = warning nếu không cấu hình
 LOG_LEVEL=${LOG_LEVEL:-warning}
-DJANGO_ENV=${DJANGO_ENV:-production}
+DJANGO_ENV=${DJANGO_ENV:-development}
 DJANGO_SECRET_KEY_FILE=${DJANGO_SECRET_KEY_FILE:-"$HOME/.config/ifshop/secret_key"}
 
 echo "PORT_APP is: $PORT_APP"
 echo "NUM_WORKERS is: $NUM_WORKERS"
 echo "LOG_LEVEL is: $LOG_LEVEL"
 echo "DJANGO_ENV is: $DJANGO_ENV"
+echo "Python is: $(command -v python)"
 
 if [ -z "$DJANGO_SECRET_KEY" ]; then
   mkdir -p "$(dirname "$DJANGO_SECRET_KEY_FILE")"
@@ -64,7 +85,10 @@ if [ "$LOG_LEVEL" = "info" ] || [ "$LOG_LEVEL" = "debug" ]; then
 fi
 
 # Thu gom static files (CSS, JS, images) vào static_root/
-python manage.py collectstatic --noinput 2>/dev/null
+if ! python manage.py collectstatic --noinput; then
+  echo "collectstatic thất bại."
+  exit 1
+fi
 
 # Chạy Uvicorn (ASGI)
-python -m uvicorn config.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG
+exec python -m uvicorn config.asgi:application --host 0.0.0.0 --port $PORT_APP --workers $NUM_WORKERS --log-level $LOG_LEVEL $ACCESS_LOG_FLAG

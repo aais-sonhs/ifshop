@@ -29,7 +29,7 @@ from .product_docs import (
     get_product_document,
     normalize_document_key,
 )
-from core.store_utils import can_manage_users, get_managed_store_ids
+from core.store_utils import can_manage_users, get_managed_store_ids, is_brand_owner
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +77,19 @@ DEFAULT_ROLE_GROUPS = {
 }
 
 
-def _ensure_default_role_groups():
+def _build_role_group_group_name(name, brand=None):
+    if brand is None:
+        return name
+    return f"[brand:{brand.id}] {name}"
+
+
+def _ensure_default_role_groups(brand):
     module_values = [choice[0] for choice in ModulePermission.MODULE_CHOICES]
     action_values = [choice[0] for choice in ModulePermission.ACTION_CHOICES]
     for name, config in DEFAULT_ROLE_GROUPS.items():
-        group, _ = Group.objects.get_or_create(name=name)
+        group, _ = Group.objects.get_or_create(name=_build_role_group_group_name(name, brand))
         role_group, created = RoleGroup.objects.get_or_create(
+            brand=brand,
             name=name,
             defaults={
                 'description': config['description'],
@@ -113,15 +120,12 @@ def _ensure_default_role_groups():
                 for action in actions
             ]
         for module, action in allowed_pairs:
-            permission, _ = ModulePermission.objects.get_or_create(
+            ModulePermission.objects.get_or_create(
                 role_group=role_group,
                 module=module,
                 action=action,
                 defaults={'is_allowed': True},
             )
-            if not permission.is_allowed:
-                permission.is_allowed = True
-                permission.save(update_fields=['is_allowed'])
 
 
 def _forbid_json(message='Bạn không có quyền quản lý hệ thống'):
@@ -215,6 +219,30 @@ def _get_request_brand(request):
     if not brand:
         brand = Brand.objects.filter(owner=request.user).first()
     return brand
+
+
+def _get_role_group_queryset_for_request(request, include_inactive=True):
+    queryset = RoleGroup.objects.select_related('group', 'brand')
+    if request.user.is_superuser:
+        return queryset.none()
+
+    brand = _get_request_brand(request)
+    if not brand or not is_brand_owner(request.user):
+        return queryset.none()
+
+    queryset = queryset.filter(brand=brand)
+    if not include_inactive:
+        queryset = queryset.filter(is_active=True)
+    return queryset
+
+
+def _get_role_group_for_request(request, role_group_id, include_inactive=True):
+    if not role_group_id:
+        return None
+    return _get_role_group_queryset_for_request(
+        request,
+        include_inactive=include_inactive,
+    ).filter(id=role_group_id).first()
 
 
 PRINT_TEMPLATE_DEFAULTS = {
@@ -406,16 +434,16 @@ def user_management_tbl(request):
 
 @login_required(login_url="/login/")
 def role_group_tbl(request):
-    if not request.user.is_superuser:
-        return _redirect_no_system_access(request, 'Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
+    if not is_brand_owner(request.user):
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu được quản lý nhóm vai trò của thương hiệu')
     context = {'active_tab': 'role_group_tbl'}
     return render(request, "system/role_group.html", context)
 
 
 @login_required(login_url="/login/")
 def permission_tbl(request):
-    if not request.user.is_superuser:
-        return _redirect_no_system_access(request, 'Chỉ Super Admin được cấu hình quyền toàn hệ thống')
+    if not is_brand_owner(request.user):
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu được cấu hình quyền cho nhân viên')
     context = {'active_tab': 'permission_tbl'}
     return render(request, "system/permission.html", context)
 
@@ -442,17 +470,20 @@ def service_price_tbl(request):
 def api_get_role_groups(request):
     if not can_manage_users(request.user):
         return _forbid_json('Bạn không có quyền xem nhóm vai trò')
-    _ensure_default_role_groups()
-    role_groups = RoleGroup.objects.select_related('group').all()
-    if not request.user.is_superuser:
-        role_groups = role_groups.filter(is_active=True)
+    if request.user.is_superuser:
+        return JsonResponse({'data': []})
+
+    brand = _get_request_brand(request)
+    if not brand or not is_brand_owner(request.user):
+        return JsonResponse({'data': []})
+
+    _ensure_default_role_groups(brand)
+    role_groups = _get_role_group_queryset_for_request(request, include_inactive=False)
     data = []
-    manageable_users = None if request.user.is_superuser else _get_manageable_users_queryset(request)
+    manageable_users = _get_manageable_users_queryset(request)
     for rg in role_groups:
         if not rg.group:
             user_count = 0
-        elif request.user.is_superuser:
-            user_count = rg.group.user_set.count()
         else:
             user_count = manageable_users.filter(groups=rg.group).count()
         data.append({
@@ -471,30 +502,41 @@ def api_save_role_group(request):
     from django.contrib.auth.models import Group
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu được quản lý nhóm vai trò')
     try:
         data = json.loads(request.body)
+        brand = _get_request_brand(request)
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không xác định được thương hiệu hiện tại'})
         rid = data.get('id')
         if rid:
-            rg = RoleGroup.objects.get(id=rid)
-            rg.name = data.get('name', rg.name)
+            rg = _get_role_group_for_request(request, rid, include_inactive=True)
+            if not rg:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhóm vai trò trong thương hiệu của bạn'}, status=404)
+            new_name = (data.get('name') or rg.name).strip()
+            if not new_name:
+                return JsonResponse({'status': 'error', 'message': 'Tên nhóm không được để trống'})
+            if RoleGroup.objects.filter(brand=brand, name=new_name).exclude(id=rg.id).exists():
+                return JsonResponse({'status': 'error', 'message': f'Nhóm vai trò "{new_name}" đã tồn tại'})
+            rg.name = new_name
             rg.description = data.get('description', '')
             rg.is_active = data.get('is_active', True)
             # Update Django Group name to match
             if rg.group:
-                rg.group.name = rg.name
+                rg.group.name = _build_role_group_group_name(rg.name, brand)
                 rg.group.save()
             rg.save()
         else:
-            name = data.get('name', '')
+            name = (data.get('name') or '').strip()
             if not name:
                 return JsonResponse({'status': 'error', 'message': 'Tên nhóm không được để trống'})
-            if RoleGroup.objects.filter(name=name).exists():
+            if RoleGroup.objects.filter(brand=brand, name=name).exists():
                 return JsonResponse({'status': 'error', 'message': f'Nhóm vai trò "{name}" đã tồn tại'})
             # Create Django Group first
-            group = Group.objects.create(name=name)
+            group = Group.objects.create(name=_build_role_group_group_name(name, brand))
             rg = RoleGroup.objects.create(
+                brand=brand,
                 name=name,
                 description=data.get('description', ''),
                 group=group,
@@ -509,11 +551,13 @@ def api_save_role_group(request):
 def api_delete_role_group(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin được quản lý nhóm vai trò toàn hệ thống')
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu được quản lý nhóm vai trò')
     try:
         data = json.loads(request.body)
-        rg = RoleGroup.objects.get(id=data.get('id'))
+        rg = _get_role_group_for_request(request, data.get('id'), include_inactive=True)
+        if not rg:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhóm vai trò trong thương hiệu của bạn'}, status=404)
         # Delete associated Django Group
         if rg.group:
             rg.group.delete()  # This also deletes the RoleGroup due to CASCADE
@@ -541,10 +585,9 @@ def api_assign_role_group(request):
         if user.is_superuser:
             return JsonResponse({'status': 'error', 'message': 'Không thể gán nhóm vai trò cho Super Admin'})
 
-        role_group_qs = RoleGroup.objects.select_related('group')
-        if not request.user.is_superuser:
-            role_group_qs = role_group_qs.filter(is_active=True)
-        rg = role_group_qs.get(id=data.get('role_group_id'))
+        rg = _get_role_group_for_request(request, data.get('role_group_id'), include_inactive=False)
+        if not rg:
+            return JsonResponse({'status': 'error', 'message': 'Nhóm vai trò không hợp lệ hoặc đã ngừng hoạt động'}, status=404)
         action = data.get('action', 'add')  # 'add' or 'remove'
 
         if action == 'add':
@@ -560,7 +603,6 @@ def api_assign_role_group(request):
 
 @login_required(login_url="/login/")
 def business_config_tbl(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
@@ -570,7 +612,6 @@ def business_config_tbl(request):
 
 @login_required(login_url="/login/")
 def setting_quotation(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
@@ -580,7 +621,6 @@ def setting_quotation(request):
 
 @login_required(login_url="/login/")
 def setting_order(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         from django.contrib import messages
         messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
@@ -601,7 +641,6 @@ def api_get_business_config(request):
     except Exception:
         pass
     if not brand:
-        from core.store_utils import is_brand_owner
         if is_brand_owner(request.user):
             brand = Brand.objects.filter(owner=request.user).first()
     c = BusinessConfig.get_config(brand=brand)
@@ -639,7 +678,6 @@ def api_get_business_config(request):
 def api_save_business_config(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         return JsonResponse({'status': 'error', 'message': 'Chỉ chủ thương hiệu mới được phép thay đổi cài đặt.'}, status=403)
     try:
@@ -679,6 +717,75 @@ def api_save_business_config(request):
         c.opt_allow_negative_stock = data.get('opt_allow_negative_stock', False)
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu cấu hình thành công! Reload trang để thấy thay đổi trên menu.'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_get_role_group_permissions(request):
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu được xem phân quyền nhân viên')
+
+    role_group = _get_role_group_for_request(
+        request,
+        request.GET.get('role_group_id'),
+        include_inactive=True,
+    )
+    if not role_group:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhóm vai trò trong thương hiệu của bạn'}, status=404)
+
+    allowed_pairs = set(
+        ModulePermission.objects.filter(
+            role_group=role_group,
+            is_allowed=True,
+        ).values_list('module', 'action')
+    )
+    permissions = {}
+    for module, _ in ModulePermission.MODULE_CHOICES:
+        permissions[module] = {}
+        for action, _ in ModulePermission.ACTION_CHOICES:
+            permissions[module][action] = (module, action) in allowed_pairs
+
+    return JsonResponse({
+        'status': 'ok',
+        'role_group': {'id': role_group.id, 'name': role_group.name},
+        'permissions': permissions,
+    })
+
+
+@login_required(login_url="/login/")
+def api_save_role_group_permissions(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu được cấu hình quyền cho nhân viên')
+
+    try:
+        data = json.loads(request.body)
+        role_group = _get_role_group_for_request(
+            request,
+            data.get('role_group_id'),
+            include_inactive=True,
+        )
+        if not role_group:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhóm vai trò trong thương hiệu của bạn'}, status=404)
+
+        permission_map = data.get('permissions') or {}
+        for module, _ in ModulePermission.MODULE_CHOICES:
+            module_map = permission_map.get(module) or {}
+            for action, _ in ModulePermission.ACTION_CHOICES:
+                is_allowed = bool(module_map.get(action, False))
+                permission, _ = ModulePermission.objects.get_or_create(
+                    role_group=role_group,
+                    module=module,
+                    action=action,
+                    defaults={'is_allowed': is_allowed},
+                )
+                if permission.is_allowed != is_allowed:
+                    permission.is_allowed = is_allowed
+                    permission.save(update_fields=['is_allowed'])
+
+        return JsonResponse({'status': 'ok', 'message': f'Đã lưu phân quyền cho nhóm "{role_group.name}"'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -762,6 +869,15 @@ def api_get_users(request):
         # Regular user: chỉ thấy chính mình
         users = users.filter(id=request.user.id)
 
+    scoped_role_groups = {}
+    current_brand = None
+    if not request.user.is_superuser:
+        current_brand = _get_request_brand(request)
+        scoped_role_groups = {
+            role_group.name: role_group.id
+            for role_group in _get_role_group_queryset_for_request(request, include_inactive=True)
+        }
+
     data = []
     for u in users:
         store_name = ''
@@ -769,11 +885,19 @@ def api_get_users(request):
         brand_name = ''
         position = ''
         user_groups = list(u.groups.all())
-        role_group_ids = []
+        display_groups = []
+        role_group_ids = set()
         for group in user_groups:
             role_group = getattr(group, 'role_group', None)
-            if role_group:
-                role_group_ids.append(role_group.id)
+            display_groups.append(role_group.name if role_group else group.name)
+            if not role_group:
+                continue
+            if request.user.is_superuser:
+                continue
+            if current_brand and role_group.brand_id == current_brand.id:
+                role_group_ids.add(role_group.id)
+            elif role_group.brand_id is None and role_group.name in scoped_role_groups:
+                role_group_ids.add(scoped_role_groups[role_group.name])
         try:
             if hasattr(u, 'profile'):
                 position = u.profile.position or ''
@@ -794,8 +918,8 @@ def api_get_users(request):
             'email': u.email or '',
             'is_active': u.is_active,
             'is_superuser': u.is_superuser,
-            'groups': ', '.join([g.name for g in user_groups]),
-            'group_ids': role_group_ids,
+            'groups': ', '.join(display_groups),
+            'group_ids': sorted(role_group_ids),
             'position': position,
             'store_name': store_name,
             'store_id': store_id,
@@ -887,7 +1011,10 @@ def api_save_user(request):
             except (TypeError, ValueError):
                 return JsonResponse({'status': 'error', 'message': 'Nhóm phân quyền không hợp lệ'})
 
-            role_group_qs = RoleGroup.objects.select_related('group').filter(id__in=group_ids)
+            role_group_qs = _get_role_group_queryset_for_request(
+                request,
+                include_inactive=request.user.is_superuser,
+            ).filter(id__in=group_ids)
             if not request.user.is_superuser:
                 role_group_qs = role_group_qs.filter(is_active=True)
             role_groups = list(role_group_qs)

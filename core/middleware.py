@@ -12,7 +12,7 @@ class SuperadminAccessMiddleware:
     - /brand-tbl/, /api/brands/*, /api/stores/*
     - /user-management-tbl/, /api/users/*
     - /business-config/, /api/business-config/*
-    - /role-group-tbl/, /permission-tbl/, /api/role-groups/*
+    - /api/role-groups/*
     - /login/, /logout/, /register/, /admin/
     - /api/profile/*, /api/stores-for-user/, /product-guide/
     - Static/media files
@@ -23,7 +23,7 @@ class SuperadminAccessMiddleware:
         '/brand-tbl/', '/api/brands/', '/api/stores/',
         '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
         '/business-config/', '/api/business-config/',
-        '/role-group-tbl/', '/permission-tbl/', '/api/role-groups/',
+        '/api/role-groups/',
         '/product-guide/',
         '/api/profile/',
         '/static/', '/media/', '/favicon',

@@ -5,6 +5,9 @@
         <h3 class="card-title"><i class="fas fa-key mr-2"></i>Phân quyền</h3>
     </div>
     <div class="card-body">
+        <div class="alert alert-info">
+            Chọn nhóm vai trò trong thương hiệu của bạn để bật hoặc tắt quyền cho nhân viên.
+        </div>
         <div class="row mb-3">
             <div class="col-md-4">
                 <select class="form-control" id="select_role">
@@ -88,4 +91,128 @@
         </button>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function resetPermissionInputs(){
+    $('input[data-module][data-action]').prop('checked', false);
+}
+
+function applyPermissionMap(permissionMap){
+    var map = permissionMap || {};
+    resetPermissionInputs();
+    $('input[data-module][data-action]').each(function(){
+        var moduleName = $(this).data('module');
+        var actionName = $(this).data('action');
+        var allowed = !!(map[moduleName] && map[moduleName][actionName]);
+        $(this).prop('checked', allowed);
+    });
+}
+
+function collectPermissionMap(){
+    var map = {};
+    $('input[data-module][data-action]').each(function(){
+        var moduleName = $(this).data('module');
+        var actionName = $(this).data('action');
+        if(!map[moduleName]){
+            map[moduleName] = {};
+        }
+        map[moduleName][actionName] = $(this).is(':checked');
+    });
+    return map;
+}
+
+function escapeHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
+function loadRoleGroups(preferredId){
+    $.get('/api/role-groups/', function(res){
+        var items = res.data || [];
+        var selectedId = preferredId || $('#select_role').val() || '';
+        var options = '<option value="">-- Chọn nhóm vai trò --</option>';
+        items.forEach(function(item){
+            options += '<option value="' + item.id + '">' + escapeHtml(item.name) + '</option>';
+        });
+        $('#select_role').html(options);
+
+        var matched = items.some(function(item){ return String(item.id) === String(selectedId); });
+        if(matched){
+            $('#select_role').val(String(selectedId));
+        } else if(items.length === 1){
+            $('#select_role').val(String(items[0].id));
+        }
+
+        if($('#select_role').val()){
+            loadPermissions();
+        } else {
+            resetPermissionInputs();
+            $('#btn_save_permission').prop('disabled', true);
+        }
+    });
+}
+
+function loadPermissions(){
+    var roleGroupId = $('#select_role').val();
+    if(!roleGroupId){
+        resetPermissionInputs();
+        $('#btn_save_permission').prop('disabled', true);
+        return;
+    }
+
+    $.get('/api/permissions/role-group/', {role_group_id: roleGroupId}, function(res){
+        if(res.status !== 'ok'){
+            alert(res.message || 'Không tải được phân quyền');
+            return;
+        }
+        applyPermissionMap(res.permissions || {});
+        $('#btn_save_permission').prop('disabled', false);
+    }).fail(function(xhr){
+        var message = 'Không tải được phân quyền';
+        if(xhr.responseJSON && xhr.responseJSON.message){
+            message = xhr.responseJSON.message;
+        }
+        alert(message);
+    });
+}
+
+function savePermissions(){
+    var roleGroupId = $('#select_role').val();
+    if(!roleGroupId){
+        alert('Vui lòng chọn nhóm vai trò');
+        return;
+    }
+
+    $.ajax({
+        url: '/api/permissions/role-group/save/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({
+            role_group_id: roleGroupId,
+            permissions: collectPermissionMap()
+        }),
+        success: function(res){
+            alert(res.message || 'Đã lưu phân quyền');
+            if(res.status === 'ok'){
+                loadPermissions();
+            }
+        },
+        error: function(xhr){
+            var message = 'Không lưu được phân quyền';
+            if(xhr.responseJSON && xhr.responseJSON.message){
+                message = xhr.responseJSON.message;
+            }
+            alert(message);
+        }
+    });
+}
+
+$(document).ready(function(){
+    $('#btn_save_permission').prop('disabled', true);
+    $('#select_role').change(loadPermissions);
+    $('#btn_save_permission').click(savePermissions);
+    loadRoleGroups();
+});
+</script>
 {% endblock %}

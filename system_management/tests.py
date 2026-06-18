@@ -2,11 +2,12 @@ import importlib
 import json
 import sys
 
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from core.store_utils import can_access_module
 from system_management.models import (
     Brand, BusinessConfig, PrinterSetting, PrintTemplate, PrintTemplateHistory,
     RoleGroup, Store, UserProfile,
@@ -205,22 +206,22 @@ class SystemManagementScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_brand_owner_cannot_create_global_role_group(self):
+    def test_brand_owner_can_create_brand_role_group(self):
         response = self.client.post(
             reverse('api_save_role_group'),
             data=json.dumps({'name': 'Owner Global Role'}),
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertFalse(RoleGroup.objects.filter(name='Owner Global Role').exists())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(RoleGroup.objects.filter(brand=self.brand, name='Owner Global Role').exists())
 
     def test_brand_owner_can_assign_role_group_when_saving_managed_user(self):
-        auth_group = Group.objects.create(name='Kế toán')
-        role_group = RoleGroup.objects.create(name='Kế toán', group=auth_group, is_active=True)
-
         groups_response = self.client.get(reverse('api_get_role_groups'))
         self.assertEqual(groups_response.status_code, 200)
+        role_group_row = next(row for row in groups_response.json()['data'] if row['name'] == 'Kế toán')
+        role_group = RoleGroup.objects.get(id=role_group_row['id'])
         self.assertIn(role_group.id, {row['id'] for row in groups_response.json()['data']})
 
         response = self.client.post(
@@ -240,7 +241,7 @@ class SystemManagementScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
-        self.assertTrue(self.staff_a.groups.filter(id=auth_group.id).exists())
+        self.assertTrue(self.staff_a.groups.filter(id=role_group.group_id).exists())
 
         list_response = self.client.get(reverse('api_get_users'))
         row = next(item for item in list_response.json()['data'] if item['id'] == self.staff_a.id)
@@ -248,9 +249,10 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(row['position'], 'Kế toán')
 
     def test_password_only_update_preserves_user_profile_and_groups(self):
-        auth_group = Group.objects.create(name='Bán hàng')
-        RoleGroup.objects.create(name='Bán hàng', group=auth_group, is_active=True)
-        self.staff_a.groups.add(auth_group)
+        groups_response = self.client.get(reverse('api_get_role_groups'))
+        role_group_row = next(row for row in groups_response.json()['data'] if row['name'] == 'Nhân viên bán hàng')
+        role_group = RoleGroup.objects.get(id=role_group_row['id'])
+        self.staff_a.groups.add(role_group.group)
         self.staff_a.profile.position = 'Nhân viên bán hàng'
         self.staff_a.profile.save(update_fields=['position'])
 
@@ -269,8 +271,54 @@ class SystemManagementScopeTests(TestCase):
         self.staff_a.profile.refresh_from_db()
         self.assertEqual(self.staff_a.profile.store_id, self.store.id)
         self.assertEqual(self.staff_a.profile.position, 'Nhân viên bán hàng')
-        self.assertTrue(self.staff_a.groups.filter(id=auth_group.id).exists())
+        self.assertTrue(self.staff_a.groups.filter(id=role_group.group_id).exists())
         self.assertTrue(self.staff_a.check_password('newpass123'))
+
+    def test_brand_owner_can_manage_permission_matrix_for_brand_role_group(self):
+        response = self.client.get(reverse('permission_tbl'))
+        self.assertEqual(response.status_code, 200)
+
+        groups_response = self.client.get(reverse('api_get_role_groups'))
+        self.assertEqual(groups_response.status_code, 200)
+        role_group_row = next(row for row in groups_response.json()['data'] if row['name'] == 'Kế toán')
+        role_group = RoleGroup.objects.get(id=role_group_row['id'])
+
+        permission_response = self.client.get(
+            reverse('api_get_role_group_permissions'),
+            {'role_group_id': role_group.id},
+        )
+        self.assertEqual(permission_response.status_code, 200)
+        permission_payload = permission_response.json()
+        self.assertEqual(permission_payload['status'], 'ok')
+        self.assertTrue(permission_payload['permissions']['reports']['view'])
+        self.assertFalse(permission_payload['permissions']['orders']['add'])
+
+        permission_map = permission_payload['permissions']
+        permission_map['orders']['add'] = True
+        permission_map['reports']['view'] = False
+        save_response = self.client.post(
+            reverse('api_save_role_group_permissions'),
+            data=json.dumps({
+                'role_group_id': role_group.id,
+                'permissions': permission_map,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(save_response.status_code, 200)
+        self.assertEqual(save_response.json()['status'], 'ok', msg=save_response.content.decode())
+
+        reload_response = self.client.get(
+            reverse('api_get_role_group_permissions'),
+            {'role_group_id': role_group.id},
+        )
+        self.assertEqual(reload_response.status_code, 200)
+        reloaded = reload_response.json()['permissions']
+        self.assertTrue(reloaded['orders']['add'])
+        self.assertFalse(reloaded['reports']['view'])
+
+        self.staff_a.groups.set([role_group.group])
+        self.assertTrue(can_access_module(self.staff_a, 'orders', 'add'))
+        self.assertFalse(can_access_module(self.staff_a, 'reports', 'view'))
 
     def test_regular_staff_can_read_active_printers_for_print_preview(self):
         PrinterSetting.objects.create(name='LAN Printer', printer_type='lan', ip_address='192.168.1.10')
@@ -459,27 +507,31 @@ class SystemManagementScopeTests(TestCase):
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('brand_tbl', 'user_management_tbl', 'role_group_tbl', 'permission_tbl'):
+        for route_name in ('brand_tbl', 'user_management_tbl'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 200, msg=route_name)
 
         api_response = self.client.get(reverse('api_get_role_groups'))
         self.assertEqual(api_response.status_code, 200)
-        self.assertIn('data', api_response.json())
+        self.assertEqual(api_response.json()['data'], [])
 
-    def test_superadmin_is_redirected_from_shop_operation_routes(self):
+    def test_superadmin_is_redirected_from_brand_owned_system_settings(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('category_tbl', 'service_price_tbl', 'printer_setting_tbl'):
+        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'service_price_tbl', 'printer_setting_tbl', 'print_template_setting'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 302, msg=route_name)
-            self.assertEqual(response['Location'], '/brand-tbl/')
+            self.assertEqual(response.url, '/brand-tbl/')
+
+        for route_name in ('api_get_role_group_permissions', 'api_get_service_prices', 'api_get_printers', 'api_get_print_templates'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 403, msg=route_name)
 
     def test_superadmin_is_blocked_from_shop_operation_apis(self):
         PrinterSetting.objects.create(name='LAN Printer', printer_type='lan', ip_address='192.168.1.10')
         self.client.force_login(self.superuser)
 
-        for route_name in ('api_get_service_prices', 'api_get_printers', 'api_get_business_config'):
+        for route_name in ('api_get_business_config',):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 403, msg=route_name)
 

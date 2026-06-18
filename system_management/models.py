@@ -26,7 +26,11 @@ class UserProfile(models.Model):
 
 class RoleGroup(models.Model):
     """Nhóm vai trò sử dụng"""
-    name = models.CharField(max_length=100, unique=True, verbose_name='Tên nhóm vai trò')
+    brand = models.ForeignKey(
+        'Brand', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='role_groups', verbose_name='Thương hiệu'
+    )
+    name = models.CharField(max_length=100, verbose_name='Tên nhóm vai trò')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name='role_group',
                                  verbose_name='Django Group')
@@ -37,9 +41,12 @@ class RoleGroup(models.Model):
         db_table = 'role_groups'
         verbose_name = 'Nhóm vai trò'
         verbose_name_plural = 'Nhóm vai trò'
+        unique_together = ['brand', 'name']
         ordering = ['name']
 
     def __str__(self):
+        if self.brand_id:
+            return f"{self.brand.name} - {self.name}"
         return self.name
 
 

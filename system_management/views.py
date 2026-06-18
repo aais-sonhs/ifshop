@@ -422,6 +422,8 @@ def permission_tbl(request):
 
 @login_required(login_url="/login/")
 def category_tbl(request):
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
     context = {'active_tab': 'category_tbl'}
     return render(request, "system/category.html", context)
 

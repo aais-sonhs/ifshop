@@ -467,6 +467,18 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(api_response.status_code, 200)
         self.assertIn('data', api_response.json())
 
+    def test_superadmin_is_redirected_from_brand_owned_system_settings(self):
+        self.client.force_login(self.superuser)
+
+        for route_name in ('category_tbl', 'service_price_tbl', 'printer_setting_tbl', 'print_template_setting'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 302, msg=route_name)
+            self.assertEqual(response.url, '/brand-tbl/')
+
+        for route_name in ('api_get_service_prices', 'api_get_printers', 'api_get_print_templates'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 403, msg=route_name)
+
     def test_product_guide_is_available_for_owner_and_superadmin(self):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)

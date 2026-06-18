@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Đợi các dịch vụ khác khởi động nếu cần
-# sleep 15
+sleep 15
 
 # Di chuyển đến thư mục dự án Django
-# cd /home/aais/Documents/ifshop || exit 1
+cd /home/aais/Documents/ifshop || exit 1
 
 if [ -f .env ]; then
   set -a

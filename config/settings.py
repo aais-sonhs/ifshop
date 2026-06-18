@@ -52,12 +52,12 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = _env_list(
     'DJANGO_ALLOWED_HOSTS',
-    'localhost,127.0.0.1,113.160.218.241,ifshop.ipchello.com,.appliedaisystem.com,.ipchello.com',
+    'localhost, 127.0.0.1,113.160.218.241, 192.168.21.21, ifshop.ipchello.com, .ipchello.com',
 )
 CSRF_TRUSTED_ORIGINS = [
-    'https://*.appliedaisystem.com',
     'https://*.127.0.0.1',
     'http://113.160.218.241:8020',
+    'http://192.168.21.21:4005',
     'https://*.ipchello.com',
     'https://ifshop.ipchello.com'
 ]

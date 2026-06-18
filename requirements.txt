@@ -1,0 +1,17 @@
+# Core framework
+Django==6.0.1
+djangorestframework==3.16.1
+
+# Authentication
+django-allauth==65.14.0
+django-rest-auth==0.9.5
+
+# Database
+psycopg2-binary==2.9.11
+
+# File export / image handling
+openpyxl==3.1.5
+Pillow==10.4.0
+
+# ASGI production server
+uvicorn[standard]==0.42.0

@@ -467,6 +467,30 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(api_response.status_code, 200)
         self.assertIn('data', api_response.json())
 
+    def test_superadmin_is_redirected_from_shop_operation_routes(self):
+        self.client.force_login(self.superuser)
+
+        for route_name in ('category_tbl', 'service_price_tbl', 'printer_setting_tbl'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 302, msg=route_name)
+            self.assertEqual(response['Location'], '/brand-tbl/')
+
+    def test_superadmin_is_blocked_from_shop_operation_apis(self):
+        PrinterSetting.objects.create(name='LAN Printer', printer_type='lan', ip_address='192.168.1.10')
+        self.client.force_login(self.superuser)
+
+        for route_name in ('api_get_service_prices', 'api_get_printers', 'api_get_business_config'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 403, msg=route_name)
+
+    def test_superadmin_cannot_open_brand_owner_configuration_routes(self):
+        self.client.force_login(self.superuser)
+
+        for route_name in ('business_config_tbl', 'print_template_setting'):
+            response = self.client.get(reverse(route_name))
+            self.assertEqual(response.status_code, 302, msg=route_name)
+            self.assertEqual(response['Location'], '/brand-tbl/')
+
     def test_product_guide_is_available_for_owner_and_superadmin(self):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)

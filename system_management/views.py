@@ -422,14 +422,16 @@ def permission_tbl(request):
 
 @login_required(login_url="/login/")
 def category_tbl(request):
+    if request.user.is_superuser:
+        return _redirect_no_system_access(request, 'Super Admin không quản lý danh mục vận hành cửa hàng')
     context = {'active_tab': 'category_tbl'}
     return render(request, "system/category.html", context)
 
 
 @login_required(login_url="/login/")
 def service_price_tbl(request):
-    if not can_manage_users(request.user):
-        return _redirect_no_system_access(request)
+    if request.user.is_superuser or not can_manage_users(request.user):
+        return _redirect_no_system_access(request, 'Super Admin không quản lý giá dịch vụ ở cấp cửa hàng')
     context = {'active_tab': 'service_price_tbl'}
     return render(request, "system/service_price.html", context)
 
@@ -685,6 +687,8 @@ def api_save_business_config(request):
 
 @login_required(login_url="/login/")
 def api_get_service_prices(request):
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền xem giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     items = ServicePrice.objects.all()
@@ -700,6 +704,8 @@ def api_get_service_prices(request):
 def api_save_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền cấu hình giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -724,6 +730,8 @@ def api_save_service_price(request):
 def api_delete_service_price(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền cấu hình giá dịch vụ ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -940,16 +948,17 @@ def api_get_stores_for_user(request):
 
 @login_required(login_url="/login/")
 def printer_setting_tbl(request):
-    if not can_manage_users(request.user):
-        return _redirect_no_system_access(request)
+    if request.user.is_superuser or not can_manage_users(request.user):
+        return _redirect_no_system_access(request, 'Super Admin không quản lý máy in ở cấp cửa hàng')
     context = {'active_tab': 'printer_setting_tbl'}
     return render(request, "system/printer_setting.html", context)
 
 
 @login_required(login_url="/login/")
 def print_template_setting(request):
-    if not can_manage_users(request.user):
-        return _redirect_no_system_access(request)
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu mới được phép cấu hình mẫu in')
     context = {
         'active_tab': 'print_template_setting',
         'template_types': PrintTemplate.TEMPLATE_TYPE_CHOICES,
@@ -985,8 +994,9 @@ def _serialize_print_template_history(history):
 
 @login_required(login_url="/login/")
 def api_get_print_templates(request):
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu mới được phép xem cấu hình mẫu in')
     brand = _get_request_brand(request)
     templates = [
         _serialize_print_template(_get_or_create_print_template(brand, template_type))
@@ -999,8 +1009,9 @@ def api_get_print_templates(request):
 def api_save_print_template(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu mới được phép cấu hình mẫu in')
     try:
         data = json.loads(request.body)
         template_type = data.get('template_type')
@@ -1028,8 +1039,9 @@ def api_save_print_template(request):
 
 @login_required(login_url="/login/")
 def api_get_print_template_histories(request):
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu mới được phép xem lịch sử mẫu in')
     template_type = request.GET.get('template_type')
     valid_types = [value for value, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES]
     if template_type not in valid_types:
@@ -1045,8 +1057,9 @@ def api_get_print_template_histories(request):
 def api_restore_print_template_history(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu mới được phép khôi phục mẫu in')
     try:
         data = json.loads(request.body)
         brand = _get_request_brand(request)
@@ -1188,8 +1201,9 @@ def _build_print_template_preview_context(request, template_type, print_template
 def api_preview_print_template(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    if not can_manage_users(request.user):
-        return _forbid_json()
+    from core.store_utils import is_brand_owner
+    if not is_brand_owner(request.user):
+        return _forbid_json('Chỉ chủ thương hiệu mới được phép xem trước mẫu in')
     try:
         data = json.loads(request.body)
         template_type = data.get('template_type')
@@ -1228,6 +1242,8 @@ def api_preview_print_template(request):
 
 @login_required(login_url="/login/")
 def api_get_printers(request):
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền xem cấu hình máy in ở cấp cửa hàng')
     printers = PrinterSetting.objects.filter(is_active=True)
     data = [{
         'id': p.id, 'name': p.name,
@@ -1248,6 +1264,8 @@ def api_get_printers(request):
 def api_save_printer(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền cấu hình máy in ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -1280,6 +1298,8 @@ def api_save_printer(request):
 def api_delete_printer(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền cấu hình máy in ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -1295,6 +1315,8 @@ def api_test_printer(request):
     """Test kết nối máy in LAN"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền cấu hình máy in ở cấp cửa hàng')
     if not can_manage_users(request.user):
         return _forbid_json()
     try:
@@ -1326,6 +1348,8 @@ def api_direct_print(request):
     """In trực tiếp qua máy in LAN (gửi raw data qua socket)"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền in trực tiếp qua cấu hình máy in cửa hàng')
     try:
         import socket
         data = json.loads(request.body)

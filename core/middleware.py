@@ -11,9 +11,6 @@ class SuperadminAccessMiddleware:
     Allowed paths for superadmin (platform management only):
     - /brand-tbl/, /api/brands/*, /api/stores/*
     - /user-management-tbl/, /api/users/*
-    - /category-tbl/, /service-price-tbl/, /api/service-prices/*
-    - /printer-setting-tbl/, /api/printers/*
-    - /business-config/, /api/business-config/*
     - /role-group-tbl/, /permission-tbl/, /api/role-groups/*
     - /login/, /logout/, /register/, /admin/
     - /api/profile/*, /api/stores-for-user/, /product-guide/
@@ -24,9 +21,6 @@ class SuperadminAccessMiddleware:
         '/login/', '/logout/', '/register/', '/admin/',
         '/brand-tbl/', '/api/brands/', '/api/stores/',
         '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
-        '/category-tbl/', '/service-price-tbl/', '/api/service-prices/',
-        '/printer-setting-tbl/', '/api/printers/',
-        '/business-config/', '/api/business-config/',
         '/role-group-tbl/', '/permission-tbl/', '/api/role-groups/',
         '/product-guide/',
         '/api/profile/',

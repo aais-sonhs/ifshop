@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# sleep 15
+sleep 15
 
 # Di chuyển đến thư mục dự án Django
 cd /home/ifshop/Documents/ifshop || exit 1

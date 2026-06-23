@@ -56,6 +56,18 @@
             <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày" aria-label="Tạo đến ngày"></div>
         </div>
         <div class="mb-2" id="active_order_filter_summary"></div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="order_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="order_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="order_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="row mb-2">
             <div class="col-md-12 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <span id="col_config_container"></span>
@@ -80,6 +92,7 @@
                 <tbody></tbody>
             </table>
         </div>
+        <div id="order_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 
@@ -1338,6 +1351,10 @@
     background: #f3f6f9;
     color: #607d8b;
 }
+.order-page-btn.active {
+    font-weight: 700;
+    pointer-events: none;
+}
 </style>
 <script src="/static/js/column_config.js"></script>
 <script>
@@ -1347,6 +1364,16 @@ var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
 var ORDER_PAYMENT_PREFERENCE_STORAGE_KEY = 'ifshop_order_payment_preferences';
 var ORDER_STOCK_INFO_STORAGE_KEY = 'ifshop_order_stock_info_visible_v2';
+var ORDER_PAGE_SIZE_KEY = 'ifshop_order_page_size';
+var ORDER_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(ORDER_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    meta: null
+};
+var ORDER_LIST_XHR = null;
 var ORDER_WAREHOUSES = [
 {% for w in warehouses %}
     {id: {{ w.id }}, name: '{{ w.name|escapejs }}'},
@@ -3345,6 +3372,7 @@ $(document).ready(function(){
     currentStockInfoVisible = getStoredStockInfoVisible();
     syncQuickSearchStockFilterUI();
     syncStockInfoVisibility();
+    $('#order_page_size').val(String(ORDER_PAGE_STATE.page_size));
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
     $.get('/api/products-select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
     initCustomerPicker();
@@ -4210,11 +4238,57 @@ function getOrderStatusFilterText(statusValue){
     return $.trim($('.filter-tab[data-status="'+statusValue+'"]').contents().first().text()) || '';
 }
 
-function renderOrderFilterSummary(totalCount, filteredCount){
-    var chips = [];
+function resetOrderPage(){
+    ORDER_PAGE_STATE.page = 1;
+}
+
+function getCurrentOrderFilters(){
     var activeStatus = $('.filter-tab.active').data('status');
-    if(activeStatus === undefined) activeStatus = '';
-    activeStatus = activeStatus.toString();
+    if(activeStatus === undefined || activeStatus === null) activeStatus = '';
+    return {
+        status: String(activeStatus),
+        payment_status: $('#filter_payment_status').val() || '',
+        customer_group: $('#filter_customer_group').val() || '',
+        payment_method: $('#filter_payment_method').val() || '',
+        creator: $('#filter_creator').val() || '',
+        product: ($('#filter_product').val() || '').trim(),
+        from_date: $('#filter_from_date').val() || '',
+        to_date: $('#filter_to_date').val() || '',
+        created_from: $('#filter_created_from').val() || '',
+        created_to: $('#filter_created_to').val() || '',
+        text: ($('#filter_text').val() || '').trim()
+    };
+}
+
+function getOrderRequestParams(){
+    var filters = getCurrentOrderFilters();
+    var params = {
+        page: ORDER_PAGE_STATE.page || 1,
+        page_size: ORDER_PAGE_STATE.page_size || 50
+    };
+    Object.keys(filters).forEach(function(key){
+        if(filters[key] !== '' && filters[key] !== null && filters[key] !== undefined){
+            params[key] = filters[key];
+        }
+    });
+    return params;
+}
+
+function renderOrderStatusCounts(meta){
+    var counts = (meta && meta.status_counts) || {};
+    $('#tab_count_all').text(Number(counts.all || 0));
+    $('#tab_count_0').text(Number(counts['0'] || 0));
+    $('#tab_count_1').text(Number(counts['1'] || 0));
+    $('#tab_count_2').text(Number(counts['2'] || 0));
+    $('#tab_count_3').text(Number(counts['3'] || 0));
+    $('#tab_count_4').text(Number(counts['4'] || 0));
+    $('#tab_count_5').text(Number(counts['5'] || 0));
+    $('#tab_count_6').text(Number(counts['6'] || 0));
+}
+
+function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
+    var chips = [];
+    var activeStatus = getCurrentOrderFilters().status || '';
     if(activeStatus !== ''){
         chips.push({key:'status', label:'Trạng thái', value:getOrderStatusFilterText(activeStatus)});
     }
@@ -4252,14 +4326,12 @@ function renderOrderFilterSummary(totalCount, filteredCount){
     }
 
     if(!chips.length){
-        $('#active_order_filter_summary').html(
-            '<div class="small text-muted"><i class="fas fa-filter mr-1"></i>Đang xem tất cả đơn hàng · ' +
-            filteredCount + '/' + totalCount + ' đơn</div>'
-        );
+        $('#active_order_filter_summary').html('<div class="small text-muted"><i class="fas fa-filter mr-1"></i>Không áp dụng bộ lọc</div>');
         return;
     }
     var html = '<div class="d-flex align-items-center flex-wrap" style="gap:6px;">' +
-        '<span class="small text-muted mr-1"><i class="fas fa-filter mr-1"></i>Đang lọc ' + filteredCount + '/' + totalCount + ' đơn:</span>';
+        '<span class="small text-muted mr-1"><i class="fas fa-filter mr-1"></i>Đang lọc ' + pageCount + '/' + totalFilteredCount +
+        (totalAllCount !== totalFilteredCount ? ' trên tổng ' + totalAllCount : '') + ' đơn:</span>';
     chips.forEach(function(chip){
         html += '<span class="badge badge-light border px-2 py-1">' +
             '<span class="text-muted">' + escapeHtml(chip.label) + ':</span> ' + escapeHtml(chip.value) +
@@ -4270,66 +4342,76 @@ function renderOrderFilterSummary(totalCount, filteredCount){
     $('#active_order_filter_summary').html(html);
 }
 
+function renderOrderPagination(meta){
+    meta = meta || {};
+    var totalFiltered = Number(meta.total_filtered_count || 0);
+    var totalAll = Number(meta.total_all_count || totalFiltered);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+
+    if(totalFiltered === 0){
+        $('#order_pagination_summary').html('<span class="text-muted small">Không có đơn hàng phù hợp.</span>');
+        $('#order_pagination').html('');
+        return;
+    }
+
+    $('#order_pagination_summary').html(
+        '<span>Hiển thị <strong>' + startIndex + '-' + endIndex + '</strong> / <strong>' + totalFiltered + '</strong> đơn' +
+        (totalFiltered !== totalAll ? ' trên tổng <strong>' + totalAll + '</strong>' : '') +
+        ' · Trang <strong>' + currentPage + '/' + totalPages + '</strong></span>'
+    );
+
+    if(totalPages <= 1){
+        $('#order_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, arr){
+        return arr.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '';
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary order-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' + (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') + ' order-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary order-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#order_pagination').html(html);
+}
+
 function loadData(){
-    $.get('/api/orders/',function(res){
-        var filterStatus = $('.filter-tab.active').data('status');
-        if(filterStatus === undefined) filterStatus = '';
-        filterStatus = filterStatus.toString();
-        var filterPayment = $('#filter_payment_status').val();
-        var filterGroup = $('#filter_customer_group').val();
-        var filterPaymentMethod = $('#filter_payment_method').val();
-        var filterCreator = $('#filter_creator').val();
-        var filterProduct = ($('#filter_product').val() || '').trim().toLowerCase();
-        var filterFrom = $('#filter_from_date').val();
-        var filterTo = $('#filter_to_date').val();
-        var filterCreatedFrom = $('#filter_created_from').val();
-        var filterCreatedTo = $('#filter_created_to').val();
-        var filterText = ($('#filter_text').val() || '').trim().toLowerCase();
+    var params = getOrderRequestParams();
+    if(ORDER_LIST_XHR && ORDER_LIST_XHR.readyState !== 4){
+        ORDER_LIST_XHR.abort();
+    }
+    ORDER_LIST_XHR = $.get('/api/orders/', params, function(res){
+        var meta = res.meta || {};
+        var filtered = res.data || [];
+        ORDER_PAGE_STATE.meta = meta;
+        ORDER_PAGE_STATE.page = Number(meta.page || ORDER_PAGE_STATE.page || 1);
+        ORDER_PAGE_STATE.page_size = Number(meta.page_size || ORDER_PAGE_STATE.page_size || 50);
+        $('#order_page_size').val(String(ORDER_PAGE_STATE.page_size));
+        renderOrderStatusCounts(meta);
+        renderOrderFilterSummary(
+            filtered.length,
+            Number(meta.total_filtered_count || filtered.length),
+            Number(meta.total_all_count || filtered.length)
+        );
+        renderOrderPagination(meta);
 
-        // Count by status for tabs
-        var counts = {};
-        res.data.forEach(function(d){ counts[d.status] = (counts[d.status]||0) + 1; });
-        $('#tab_count_all').text(res.data.length);
-        $('#tab_count_0').text(counts[0]||0);
-        $('#tab_count_1').text(counts[1]||0);
-        $('#tab_count_2').text(counts[2]||0);
-        $('#tab_count_3').text(counts[3]||0);
-        $('#tab_count_4').text(counts[4]||0);
-        $('#tab_count_5').text(counts[5]||0);
-        $('#tab_count_6').text(counts[6]||0);
-
-        var filtered = res.data.filter(function(d){
-            if(filterStatus !== '' && d.status != filterStatus) return false;
-            if(filterPayment !== '' && d.payment_status != filterPayment) return false;
-            if(filterGroup && d.customer_group_id != filterGroup) return false;
-            if(filterPaymentMethod){
-                var methodIds = (d.payment_method_option_ids || []).map(function(id){ return String(id); });
-                if(methodIds.indexOf(filterPaymentMethod) < 0) return false;
-            }
-            if(filterCreator && String(d.creator_id || '') !== filterCreator) return false;
-            if(filterProduct){
-                var productText = ((d.product_search || '') + ' ' + (d.product_display || '')).toLowerCase();
-                if(productText.indexOf(filterProduct) < 0) return false;
-            }
-            if(filterFrom && d.order_date < filterFrom) return false;
-            if(filterTo && d.order_date > filterTo) return false;
-            if(filterCreatedFrom && (!d.created_date || d.created_date < filterCreatedFrom)) return false;
-            if(filterCreatedTo && (!d.created_date || d.created_date > filterCreatedTo)) return false;
-            if(filterText){
-                var searchable = (
-                    d.code + ' ' + d.customer + ' ' + (d.customer_phone || '') + ' ' +
-                    d.note + ' ' + (d.tags || '') + ' ' + (d.customer_group || '') + ' ' +
-                    (d.creator_name || '') + ' ' + (d.product_search || '') + ' ' +
-                    (d.payment_method_display || '') + ' ' + (d.return_summary || '') + ' ' +
-                    ((d.return_codes || []).join(' ')) + ' ' + (d.exchange_source_return_code || '') + ' ' +
-                    (d.exchange_original_order_code || '')
-                ).toLowerCase();
-                if(searchable.indexOf(filterText) < 0) return false;
-            }
-            return true;
-        });
-        renderOrderFilterSummary(res.data.length, filtered.length);
-
+        var startIndex = Number(meta.start_index || 1);
         var h='';filtered.forEach(function(d,i){
             var customerHtml = d.customer;
             if(d.customer_group){
@@ -4400,7 +4482,7 @@ function loadData(){
                 statusHtml += ' <span class="badge badge-danger" title="Từ chối duyệt"><i class="fas fa-times-circle"></i> Từ chối</span>';
             }
             h+='<tr' + rowStyle + '><td class="text-center" style="vertical-align:middle;"><input type="checkbox" class="order-row-check" value="'+d.id+'" data-code="'+escapeHtml(d.code)+'" data-customer="'+escapeHtml(d.customer)+'" data-customer-id="'+(d.customer_id || '')+'" data-status="'+d.status+'" data-final="'+(Number(d.final_amount) || 0)+'" data-paid="'+(Number(d.paid_amount) || 0)+'" data-remaining="'+(Number(d.remaining_amount) || 0)+'"></td>'+
-                orderColConfig.td('stt', (i+1))+
+                orderColConfig.td('stt', (startIndex + i))+
                 orderColConfig.td('code', d.code)+
                 orderColConfig.td('customer', customerHtml)+
                 orderColConfig.td('warehouse', d.warehouse)+
@@ -4414,8 +4496,17 @@ function loadData(){
                 orderColConfig.td('status', statusHtml)+
                 orderColConfig.td('actions', actions, 'class="text-center"')+
                 '</tr>';
-        });$('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        });
+        $('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#check_all_orders').prop('checked', false);
         orderColConfig.apply();
+        refreshBulkToolbar();
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
+        $('#data_tbl tbody').html('<tr><td colspan="14" class="text-center text-danger">Không tải được danh sách đơn hàng.</td></tr>');
+        $('#order_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
+        $('#order_pagination').html('');
+        renderOrderStatusCounts({status_counts:{}});
         refreshBulkToolbar();
     });
 }
@@ -4449,6 +4540,7 @@ $('#btn_export_orders').click(function(){
 $(document).on('click', '.filter-tab', function(){
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $(this).addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    resetOrderPage();
     loadData();
 });
 
@@ -4463,6 +4555,7 @@ $('#btn_clear_filter').click(function(){
     $('#filter_created_from, #filter_created_to').val('');
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    resetOrderPage();
     loadData();
 });
 
@@ -4492,20 +4585,49 @@ $(document).on('click', '.order-filter-chip-remove', function(){
     } else if(key === 'text'){
         $('#filter_text').val('');
     }
+    resetOrderPage();
     loadData();
 });
 
 // Real-time filters
-$('#filter_text').on('input', function(){ loadData(); });
-$('#filter_product').on('input', function(){ loadData(); });
+var orderFilterInputTimer = null;
+$('#btn_search').click(function(){
+    resetOrderPage();
+    loadData();
+});
+$('#filter_text, #filter_product').on('input', function(){
+    resetOrderPage();
+    clearTimeout(orderFilterInputTimer);
+    orderFilterInputTimer = setTimeout(function(){ loadData(); }, 250);
+});
 $('#filter_text, #filter_product').on('keydown', function(e){
     if(e.key === 'Enter'){
         e.preventDefault();
+        resetOrderPage();
         loadData();
     }
 });
-$('#filter_customer_group, #filter_payment_status, #filter_payment_method, #filter_creator').on('change', function(){ loadData(); });
-$('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to').on('change', function(){ loadData(); });
+$('#filter_customer_group, #filter_payment_status, #filter_payment_method, #filter_creator').on('change', function(){
+    resetOrderPage();
+    loadData();
+});
+$('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to').on('change', function(){
+    resetOrderPage();
+    loadData();
+});
+$('#order_page_size').change(function(){
+    ORDER_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+    localStorage.setItem(ORDER_PAGE_SIZE_KEY, String(ORDER_PAGE_STATE.page_size));
+    resetOrderPage();
+    loadData();
+});
+$(document).on('click', '.order-page-btn', function(){
+    if($(this).prop('disabled')) return;
+    var page = parseInt($(this).data('page'), 10);
+    if(!page || page < 1 || page === ORDER_PAGE_STATE.page) return;
+    ORDER_PAGE_STATE.page = page;
+    loadData();
+});
 $(document).on('change', '.order-row-check', function(){ refreshBulkToolbar(); });
 $('#check_all_orders').on('change', function(){
     $('.order-row-check').prop('checked', $(this).is(':checked'));
@@ -5361,6 +5483,7 @@ $(document).on('click', '.filter-load-btn', function(){
     $('#filter_created_from').val(f.created_from || '');
     $('#filter_created_to').val(f.created_to || '');
     $('#filter_text').val(f.text || '');
+    resetOrderPage();
     loadData();
     if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
 });

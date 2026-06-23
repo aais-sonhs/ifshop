@@ -272,6 +272,59 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(row['combo_items'][0]['line_cost'], 200.0)
         self.assertEqual(row['combo_items'][0]['total_stock'], 5.0)
 
+    def test_get_orders_returns_paginated_meta(self):
+        created_orders = []
+        for idx in range(12):
+            created_orders.append(self._create_order(code=f'DH-PAGE-{idx:02d}', status=1))
+
+        response = self.client.get(reverse('api_get_orders'), {'page': 2, 'page_size': 10})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['total_filtered_count'], 12)
+        self.assertEqual(payload['meta']['total_pages'], 2)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 12)
+        self.assertEqual(len(payload['data']), 2)
+        expected_ids = [order.id for order in list(reversed(created_orders))[10:12]]
+        self.assertEqual([row['id'] for row in payload['data']], expected_ids)
+
+    def test_get_orders_filters_by_product_on_server(self):
+        other_same_store_product = Product.objects.create(
+            store=self.store,
+            code='SP-ORDER-FILTER',
+            name='Sản phẩm lọc đơn',
+            created_by=self.user,
+        )
+        first_order = self._create_order(code='DH-FILTER-001', status=1)
+        second_order = self._create_order(code='DH-FILTER-002', status=1)
+        OrderItem.objects.create(order=first_order, product=self.product, quantity=1, unit_price=100, total_price=100)
+        OrderItem.objects.create(order=second_order, product=other_same_store_product, quantity=1, unit_price=100, total_price=100)
+
+        response = self.client.get(reverse('api_get_orders'), {'product': 'FILTER'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual([row['id'] for row in payload['data']], [second_order.id])
+
+    def test_get_orders_status_counts_ignore_active_status_filter(self):
+        self._create_order(code='DH-COUNT-001', status=1)
+        self._create_order(code='DH-COUNT-002', status=1)
+        completed_order = self._create_order(code='DH-COUNT-003', status=5)
+
+        response = self.client.get(reverse('api_get_orders'), {'status': 1})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(all(row['status'] == 1 for row in payload['data']))
+        self.assertEqual(payload['meta']['status_counts']['all'], 3)
+        self.assertEqual(payload['meta']['status_counts']['1'], 2)
+        self.assertEqual(payload['meta']['status_counts']['5'], 1)
+        self.assertNotIn(completed_order.id, [row['id'] for row in payload['data']])
+
     def test_save_order_allows_financial_edit_before_completion_when_receipt_exists(self):
         order = self._create_order(code='DH-PAID-EDIT-001', status=0)
         OrderItem.objects.create(

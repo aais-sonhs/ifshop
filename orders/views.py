@@ -4,11 +4,12 @@ import re
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_FLOOR
+from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
@@ -80,6 +81,18 @@ def _to_decimal(value, default='0'):
 
 def _non_negative_decimal(value, default='0'):
     return max(_to_decimal(value, default), Decimal('0'))
+
+
+def _to_positive_int(value, default, minimum=1, maximum=None):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        parsed = default
+    if parsed < minimum:
+        parsed = minimum
+    if maximum is not None and parsed > maximum:
+        parsed = maximum
+    return parsed
 
 
 def _normalize_percentage(value):
@@ -2093,22 +2106,110 @@ def api_quick_create_customer(request):
 
 # ============ API: ORDER ============
 
-@login_required(login_url="/login/")
-def api_get_orders(request):
+def _get_order_list_filters(request):
+    params = request.GET
+    return {
+        'status': (params.get('status') or '').strip(),
+        'payment_status': (params.get('payment_status') or '').strip(),
+        'customer_group': (params.get('customer_group') or '').strip(),
+        'payment_method': (params.get('payment_method') or '').strip(),
+        'creator': (params.get('creator') or '').strip(),
+        'product': (params.get('product') or '').strip(),
+        'from_date': (params.get('from_date') or params.get('date_from') or '').strip(),
+        'to_date': (params.get('to_date') or params.get('date_to') or '').strip(),
+        'created_from': (params.get('created_from') or '').strip(),
+        'created_to': (params.get('created_to') or '').strip(),
+        'text': (params.get('text') or '').strip(),
+    }
+
+
+def _apply_order_list_filters(queryset, filters, include_status=True):
+    need_distinct = False
+
+    if filters.get('from_date'):
+        queryset = queryset.filter(order_date__gte=filters['from_date'])
+    if filters.get('to_date'):
+        queryset = queryset.filter(order_date__lte=filters['to_date'])
+    if filters.get('created_from'):
+        queryset = queryset.filter(created_at__date__gte=filters['created_from'])
+    if filters.get('created_to'):
+        queryset = queryset.filter(created_at__date__lte=filters['created_to'])
+
+    if include_status and filters.get('status') not in ('', None):
+        queryset = queryset.filter(status=filters['status'])
+    if filters.get('payment_status') not in ('', None):
+        queryset = queryset.filter(payment_status=filters['payment_status'])
+    if filters.get('customer_group'):
+        queryset = queryset.filter(customer__group_id=filters['customer_group'])
+    if filters.get('payment_method'):
+        queryset = queryset.filter(
+            receipts__status=1,
+            receipts__payment_method_option_id=filters['payment_method'],
+        )
+        need_distinct = True
+    if filters.get('creator'):
+        queryset = queryset.filter(created_by_id=filters['creator'])
+    if filters.get('product'):
+        product = filters['product']
+        queryset = queryset.filter(
+            Q(items__product__code__icontains=product) |
+            Q(items__product__name__icontains=product) |
+            Q(items__product__barcode__icontains=product) |
+            Q(items__item_name__icontains=product)
+        )
+        need_distinct = True
+    if filters.get('text'):
+        text = filters['text']
+        queryset = queryset.filter(
+            Q(code__icontains=text) |
+            Q(customer__name__icontains=text) |
+            Q(customer__phone__icontains=text) |
+            Q(note__icontains=text) |
+            Q(tags__icontains=text) |
+            Q(customer__group__name__icontains=text) |
+            Q(creator_name__icontains=text) |
+            Q(created_by__first_name__icontains=text) |
+            Q(created_by__last_name__icontains=text) |
+            Q(created_by__username__icontains=text) |
+            Q(items__product__code__icontains=text) |
+            Q(items__product__name__icontains=text) |
+            Q(items__product__barcode__icontains=text) |
+            Q(items__item_name__icontains=text) |
+            Q(receipts__payment_method_option__name__icontains=text, receipts__status=1) |
+            Q(returns__code__icontains=text) |
+            Q(returns__exchange_order__code__icontains=text) |
+            Q(source_return_exchange__code__icontains=text) |
+            Q(source_return_exchange__order__code__icontains=text)
+        )
+        need_distinct = True
+
+    if need_distinct:
+        queryset = queryset.distinct()
+    return queryset
+
+
+def _prefetch_order_list_queryset(queryset):
     active_receipts = Receipt.objects.select_related('payment_method_option').filter(status=1)
     visible_returns = OrderReturn.objects.select_related('exchange_order').prefetch_related(
         'items',
         'exchange_items',
     ).exclude(status=3).order_by('-return_date', '-id')
-    orders = Order.objects.select_related(
-        'customer', 'customer__group', 'warehouse', 'created_by', 'approver',
-        'source_return_exchange', 'source_return_exchange__order',
+    return queryset.select_related(
+        'customer',
+        'customer__group',
+        'warehouse',
+        'created_by',
+        'approver',
+        'source_return_exchange',
+        'source_return_exchange__order',
     ).prefetch_related(
         'items__product',
         Prefetch('receipts', queryset=active_receipts, to_attr='active_receipts'),
         Prefetch('returns', queryset=visible_returns, to_attr='visible_returns'),
-    ).all()
-    orders = filter_by_store(orders, request)
+    )
+
+
+def _serialize_order_list(orders):
     data = []
     for o in orders:
         receipts = list(getattr(o, 'active_receipts', []))
@@ -2201,7 +2302,52 @@ def api_get_orders(request):
             'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
             'bonus_amount': float(o.bonus_amount),
         })
-    return JsonResponse({'data': data})
+    return data
+
+
+def _build_order_status_counts(queryset):
+    counts = {str(idx): 0 for idx, _ in Order.STATUS_CHOICES}
+    grouped = queryset.values('status').annotate(count=Count('id', distinct=True))
+    for row in grouped:
+        counts[str(row['status'])] = row['count']
+    counts['all'] = queryset.count()
+    return counts
+
+
+@login_required(login_url="/login/")
+def api_get_orders(request):
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    filters = _get_order_list_filters(request)
+
+    base_queryset = filter_by_store(Order.objects.all(), request)
+    total_all_count = base_queryset.count()
+
+    status_scope_queryset = _apply_order_list_filters(base_queryset, filters, include_status=False)
+    status_counts = _build_order_status_counts(status_scope_queryset)
+
+    filtered_queryset = _apply_order_list_filters(base_queryset, filters, include_status=True).order_by('-order_date', '-id')
+    list_queryset = _prefetch_order_list_queryset(filtered_queryset)
+    paginator = Paginator(list_queryset, page_size)
+    page_obj = paginator.get_page(page)
+    data = _serialize_order_list(list(page_obj.object_list))
+
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': total_all_count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+            'status_counts': status_counts,
+        }
+    })
 
 
 @login_required(login_url="/login/")

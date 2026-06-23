@@ -232,6 +232,86 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(component_row['combo_parent_count'], 1)
         self.assertEqual(component_row['combo_parents'][0]['id'], combo.id)
 
+    def test_product_list_stock_filter_uses_computed_combo_stock(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('4'))
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_b, quantity=Decimal('2'))
+        combo = Product.objects.create(
+            store=self.store,
+            code='SP-COMBO-STOCK',
+            name='Combo ton kho',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('2'))
+
+        response = self.client.get(reverse('api_get_products'), data={'stock': 'instock'})
+
+        self.assertEqual(response.status_code, 200)
+        ids = [item['id'] for item in response.json()['data']]
+        self.assertIn(combo.id, ids)
+
+    def test_product_list_total_stock_price_filter_uses_computed_combo_stock(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('4'))
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_b, quantity=Decimal('2'))
+        combo = Product.objects.create(
+            store=self.store,
+            code='SP-COMBO-TOTAL',
+            name='Combo tong ton',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('2'))
+
+        response = self.client.get(
+            reverse('api_get_products'),
+            data={'price_basis': 'total_stock', 'price_from': '3', 'price_to': '3'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ids = [item['id'] for item in response.json()['data']]
+        self.assertIn(combo.id, ids)
+
+    def test_product_list_component_filter_ignores_deleted_combo_parents(self):
+        combo = Product.objects.create(
+            store=self.store,
+            code='SP-COMBO-DELETED',
+            name='Combo da xoa',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('1'))
+        combo.delete()
+
+        component_response = self.client.get(reverse('api_get_products'), data={'combo_usage': 'component'})
+        standalone_response = self.client.get(reverse('api_get_products'), data={'combo_usage': 'standalone'})
+
+        self.assertEqual(component_response.status_code, 200)
+        self.assertEqual(standalone_response.status_code, 200)
+        component_ids = [item['id'] for item in component_response.json()['data']]
+        standalone_ids = [item['id'] for item in standalone_response.json()['data']]
+        self.assertNotIn(self.product.id, component_ids)
+        self.assertIn(self.product.id, standalone_ids)
+
+    def test_product_list_text_search_matches_combo_relations(self):
+        combo = Product.objects.create(
+            store=self.store,
+            code='SP-COMBO-SEARCH',
+            name='Combo tim kiem',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('1'))
+
+        component_search = self.client.get(reverse('api_get_products'), data={'text': self.product.code})
+        combo_search = self.client.get(reverse('api_get_products'), data={'text': combo.code})
+
+        self.assertEqual(component_search.status_code, 200)
+        self.assertEqual(combo_search.status_code, 200)
+        component_search_ids = [item['id'] for item in component_search.json()['data']]
+        combo_search_ids = [item['id'] for item in combo_search.json()['data']]
+        self.assertIn(combo.id, component_search_ids)
+        self.assertIn(self.product.id, combo_search_ids)
+
     def test_product_purchase_history_api_returns_selected_product_receipts_only(self):
         other_same_store_product = Product.objects.create(
             store=self.store,

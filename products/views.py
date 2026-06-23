@@ -584,7 +584,13 @@ def _annotate_product_list_queryset(queryset):
             Subquery(total_stock_subquery, output_field=DecimalField(max_digits=15, decimal_places=2)),
             Value(Decimal('0'), output_field=DecimalField(max_digits=15, decimal_places=2)),
         ),
-        is_combo_component=Exists(ComboItem.objects.filter(product_id=OuterRef('pk'))),
+        is_combo_component=Exists(
+            ComboItem.objects.filter(
+                product_id=OuterRef('pk'),
+                combo__is_active=True,
+                combo__is_deleted=False,
+            )
+        ),
         low_stock_threshold=Case(
             When(min_stock__gt=0, then=F('min_stock')),
             default=Value(Decimal('5'), output_field=DecimalField(max_digits=15, decimal_places=2)),
@@ -593,7 +599,7 @@ def _annotate_product_list_queryset(queryset):
     )
 
 
-def _apply_product_list_filters(queryset, request):
+def _apply_product_list_filters(queryset, request, apply_computed_stock_filters=True):
     params = request.GET
     text = (params.get('text') or '').strip()
     category = (params.get('category') or '').strip()
@@ -617,6 +623,17 @@ def _apply_product_list_filters(queryset, request):
     queryset = _annotate_product_list_queryset(queryset)
 
     if text:
+        combo_match_ids = ComboItem.objects.filter(
+            Q(product__code__icontains=text) |
+            Q(product__name__icontains=text)
+        ).values('combo_id')
+        combo_parent_match_ids = ComboItem.objects.filter(
+            combo__is_active=True,
+            combo__is_deleted=False,
+        ).filter(
+            Q(combo__code__icontains=text) |
+            Q(combo__name__icontains=text)
+        ).values('product_id')
         queryset = queryset.filter(
             Q(code__icontains=text) |
             Q(name__icontains=text) |
@@ -625,7 +642,9 @@ def _apply_product_list_filters(queryset, request):
             Q(category__name__icontains=text) |
             Q(category__parent__name__icontains=text) |
             Q(supplier__name__icontains=text) |
-            Q(location__name__icontains=text)
+            Q(location__name__icontains=text) |
+            Q(pk__in=combo_match_ids) |
+            Q(pk__in=combo_parent_match_ids)
         )
 
     if category:
@@ -668,12 +687,13 @@ def _apply_product_list_filters(queryset, request):
     if created_to:
         queryset = queryset.filter(created_at__date__lte=created_to)
 
-    if stock == 'out':
-        queryset = queryset.filter(total_stock_simple__lte=0)
-    elif stock == 'instock':
-        queryset = queryset.filter(total_stock_simple__gt=0)
-    elif stock == 'low':
-        queryset = queryset.filter(total_stock_simple__gt=0, total_stock_simple__lte=F('low_stock_threshold'))
+    if apply_computed_stock_filters:
+        if stock == 'out':
+            queryset = queryset.filter(total_stock_simple__lte=0)
+        elif stock == 'instock':
+            queryset = queryset.filter(total_stock_simple__gt=0)
+        elif stock == 'low':
+            queryset = queryset.filter(total_stock_simple__gt=0, total_stock_simple__lte=F('low_stock_threshold'))
 
     if import_history == 'has_import':
         queryset = queryset.filter(latest_purchase_date__isnull=False)
@@ -696,6 +716,8 @@ def _apply_product_list_filters(queryset, request):
         'total_stock': 'total_stock_simple',
     }
     price_field = price_field_map.get(price_basis)
+    if not apply_computed_stock_filters and price_basis == 'total_stock':
+        price_field = None
     if price_field:
         if price_from not in ('', None):
             queryset = queryset.filter(**{f'{price_field}__gte': _to_decimal(price_from)})
@@ -703,6 +725,216 @@ def _apply_product_list_filters(queryset, request):
             queryset = queryset.filter(**{f'{price_field}__lte': _to_decimal(price_to)})
 
     return queryset
+
+
+def _prefetch_product_list_queryset(queryset):
+    return queryset.select_related(
+        'category',
+        'category__parent',
+        'supplier',
+        'location',
+        'created_by',
+    ).prefetch_related(
+        'variants',
+        'stocks__warehouse',
+        'combo_items__product__stocks__warehouse',
+        'in_combos__combo',
+        'receipt_items__goods_receipt',
+    )
+
+
+def _serialize_product_list(products):
+    receipt_map = _build_receipt_history_map(products)
+
+    data = []
+    for p in products:
+        category = p.category
+        root_category = category.parent if category and category.parent_id else category
+        product_type = category if category and category.parent_id else None
+        receipt_items = receipt_map.get(p.id, [])
+        variants = [{
+            'id': v.id,
+            'size_name': v.size_name,
+            'sku': v.sku,
+            'barcode': v.barcode or '',
+            'import_price': float(v.import_price),
+            'cost_price': float(v.cost_price),
+            'selling_price': float(v.selling_price),
+            'wholesale_price_no_warranty': float(v.wholesale_price_no_warranty),
+            'wholesale_price_warranty': float(v.wholesale_price_warranty),
+            'is_active': v.is_active,
+        } for v in p.variants.all()]
+
+        combo_items = []
+        if p.is_combo:
+            combo_items = [{
+                'product_id': ci.product_id,
+                'product_code': ci.product.code if ci.product else '',
+                'product_name': ci.product.name if ci.product else '',
+                'product_image': ci.product.image.url if ci.product and ci.product.image else '',
+                'unit': ci.product.unit if ci.product else '',
+                'is_service': ci.product.is_service if ci.product else False,
+                'quantity': float(ci.quantity),
+                'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())) if ci.product else 0,
+                'cost_price': float(ci.product.cost_price) if ci.product else 0,
+                'selling_price': float(ci.product.selling_price) if ci.product else 0,
+                'line_cost': float(ci.quantity * ci.product.cost_price) if ci.product else 0,
+                'line_total': float(ci.quantity * ci.product.selling_price) if ci.product else 0,
+            } for ci in p.combo_items.select_related('product').all()]
+
+        combo_parents = []
+        for combo_link in p.in_combos.all():
+            combo = combo_link.combo
+            if not combo or not combo.is_active or getattr(combo, 'is_deleted', False):
+                continue
+            combo_parents.append({
+                'id': combo.id,
+                'code': combo.code,
+                'name': combo.name,
+                'quantity': float(combo_link.quantity),
+            })
+
+        stock_by_warehouse = [{
+            'warehouse': s.warehouse.name if s.warehouse else '',
+            'warehouse_id': s.warehouse_id,
+            'quantity': float(s.quantity),
+        } for s in p.stocks.select_related('warehouse').all()]
+
+        if p.is_combo:
+            stock_by_warehouse, total_stock = _combo_stock_by_warehouse(p)
+        else:
+            total_stock = float(sum(s.quantity for s in p.stocks.all()))
+
+        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
+        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
+
+        latest_purchase = None
+        recent_import_prices = []
+        recent_purchase_receipts = []
+        purchase_receipt_count = 0
+        purchase_total_quantity = 0
+        purchase_total_amount = 0
+        purchase_price_changed = False
+        if receipt_items:
+            receipt_summaries = _summarize_purchase_receipts(receipt_items)
+            recent_purchase_receipts = receipt_summaries[:3]
+            latest_item = receipt_items[0]
+            latest_purchase = {
+                'receipt_id': latest_item.goods_receipt_id,
+                'receipt_code': latest_item.goods_receipt.code if latest_item.goods_receipt else '',
+                'receipt_date': latest_item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
+                'receipt_date_raw': latest_item.goods_receipt.receipt_date.strftime('%Y-%m-%d') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
+                'supplier': latest_item.goods_receipt.supplier.name if latest_item.goods_receipt and latest_item.goods_receipt.supplier else '',
+                'warehouse': latest_item.goods_receipt.warehouse.name if latest_item.goods_receipt and latest_item.goods_receipt.warehouse else '',
+                'variant': latest_item.variant.size_name if latest_item.variant else '',
+                'quantity': float(latest_item.quantity),
+                'unit_price': float(latest_item.unit_price),
+                'total_price': float(latest_item.total_price),
+            }
+            for item in receipt_items:
+                purchase_total_quantity += float(item.quantity or 0)
+                purchase_total_amount += float(item.total_price or 0)
+            purchase_receipt_count = len(receipt_summaries)
+            purchase_price_changed = len({
+                float(item.unit_price or 0)
+                for item in receipt_items
+            }) > 1
+            recent_import_prices = [{
+                'date': item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if item.goods_receipt and item.goods_receipt.receipt_date else '',
+                'price': float(item.unit_price),
+                'quantity': float(item.quantity),
+            } for item in receipt_items[:3]]
+
+        data.append({
+            'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
+            'category': root_category.name if root_category else '',
+            'category_id': root_category.id if root_category else None,
+            'category_record_id': p.category_id,
+            'product_type': product_type.name if product_type else '',
+            'product_type_id': product_type.id if product_type else None,
+            'unit': p.unit,
+            'import_price': float(p.import_price),
+            'cost_price': effective_cost,
+            'cost_price_stored': float(p.cost_price),
+            'selling_price': float(p.selling_price),
+            'retail_price': float(p.selling_price),
+            'wholesale_price_no_warranty': float(p.wholesale_price_no_warranty),
+            'wholesale_price_warranty': float(p.wholesale_price_warranty),
+            'min_stock': p.min_stock, 'max_stock': p.max_stock,
+            'supplier': p.supplier.name if p.supplier else '',
+            'supplier_id': p.supplier_id,
+            'total_stock': total_stock,
+            'stock_by_warehouse': stock_by_warehouse,
+            'image': p.image.url if p.image else '',
+            'description': p.description or '',
+            'is_active': p.is_active,
+            'is_weight_based': p.is_weight_based,
+            'is_service': p.is_service,
+            'is_combo': p.is_combo,
+            'combo_items': combo_items,
+            'combo_parents': combo_parents,
+            'combo_parent_count': len(combo_parents),
+            'variants': variants,
+            'location_id': p.location_id,
+            'location': p.location.name if p.location else '',
+            'specification': p.specification or '',
+            'created_at': p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
+            'created_at_display': p.created_at.strftime('%d/%m/%Y %H:%M') if p.created_at else '',
+            'creator_id': p.created_by_id,
+            'creator_name': (p.created_by.get_full_name() or p.created_by.username) if p.created_by else '',
+            'latest_purchase': latest_purchase,
+            'recent_purchase_receipts': recent_purchase_receipts,
+            'recent_import_prices': recent_import_prices,
+            'purchase_receipt_count': purchase_receipt_count,
+            'purchase_total_quantity': purchase_total_quantity,
+            'purchase_total_amount': purchase_total_amount,
+            'purchase_price_changed': purchase_price_changed,
+        })
+    return data
+
+
+def _needs_python_product_post_filter(request):
+    params = request.GET
+    stock = (params.get('stock') or '').strip()
+    price_basis = (params.get('price_basis') or 'import_price').strip()
+    price_from = (params.get('price_from') or '').strip()
+    price_to = (params.get('price_to') or '').strip()
+    return bool(stock) or (
+        price_basis == 'total_stock' and (price_from not in ('', None) or price_to not in ('', None))
+    )
+
+
+def _apply_python_product_post_filters(items, request):
+    params = request.GET
+    stock = (params.get('stock') or '').strip()
+    price_basis = (params.get('price_basis') or 'import_price').strip()
+    price_from = (params.get('price_from') or '').strip()
+    price_to = (params.get('price_to') or '').strip()
+
+    price_from_value = float(_to_decimal(price_from)) if price_from not in ('', None) else None
+    price_to_value = float(_to_decimal(price_to)) if price_to not in ('', None) else None
+
+    filtered = []
+    for item in items:
+        total_stock = float(item.get('total_stock') or 0)
+        low_stock_threshold = item.get('min_stock') or 0
+        low_stock_threshold = float(low_stock_threshold) if low_stock_threshold and low_stock_threshold > 0 else 5.0
+
+        if stock == 'out' and total_stock > 0:
+            continue
+        if stock == 'instock' and total_stock <= 0:
+            continue
+        if stock == 'low' and (total_stock <= 0 or total_stock > low_stock_threshold):
+            continue
+
+        if price_basis == 'total_stock':
+            if price_from_value is not None and total_stock < price_from_value:
+                continue
+            if price_to_value is not None and total_stock > price_to_value:
+                continue
+
+        filtered.append(item)
+    return filtered
 
 
 def _summarize_purchase_receipts(receipt_items, limit=None):
@@ -910,164 +1142,25 @@ def api_get_products(request):
 
     base_queryset = filter_by_store(Product.objects.all(), request)
     total_all_count = base_queryset.count()
-    filtered_queryset = _apply_product_list_filters(base_queryset, request).order_by('name', 'id')
-    paginator = Paginator(filtered_queryset, page_size)
-    page_obj = paginator.get_page(page)
-    products = list(
-        page_obj.object_list
-        .select_related('category', 'category__parent', 'supplier', 'location', 'created_by')
-        .prefetch_related(
-            'variants', 'stocks__warehouse', 'combo_items__product__stocks__warehouse', 'in_combos__combo',
-            'receipt_items__goods_receipt',
-        )
-    )
-    receipt_map = _build_receipt_history_map(products)
+    needs_python_post_filter = _needs_python_product_post_filter(request)
+    filtered_queryset = _apply_product_list_filters(
+        base_queryset,
+        request,
+        apply_computed_stock_filters=not needs_python_post_filter,
+    ).order_by('name', 'id')
+    if needs_python_post_filter:
+        # Combo ton kho duoc tinh tu thanh phan, nen mot so bo loc can chay sau khi serialize.
+        products = list(_prefetch_product_list_queryset(filtered_queryset))
+        filtered_data = _apply_python_product_post_filters(_serialize_product_list(products), request)
+        paginator = Paginator(filtered_data, page_size)
+        page_obj = paginator.get_page(page)
+        data = list(page_obj.object_list)
+    else:
+        paginator = Paginator(filtered_queryset, page_size)
+        page_obj = paginator.get_page(page)
+        products = list(_prefetch_product_list_queryset(page_obj.object_list))
+        data = _serialize_product_list(products)
 
-    data = []
-    for p in products:
-        category = p.category
-        root_category = category.parent if category and category.parent_id else category
-        product_type = category if category and category.parent_id else None
-        receipt_items = receipt_map.get(p.id, [])
-        variants = [{
-            'id': v.id,
-            'size_name': v.size_name,
-            'sku': v.sku,
-            'barcode': v.barcode or '',
-            'import_price': float(v.import_price),
-            'cost_price': float(v.cost_price),
-            'selling_price': float(v.selling_price),
-            'wholesale_price_no_warranty': float(v.wholesale_price_no_warranty),
-            'wholesale_price_warranty': float(v.wholesale_price_warranty),
-            'is_active': v.is_active,
-        } for v in p.variants.all()]
-
-        # Combo items
-        combo_items = []
-        if p.is_combo:
-            combo_items = [{
-                'product_id': ci.product_id,
-                'product_code': ci.product.code if ci.product else '',
-                'product_name': ci.product.name if ci.product else '',
-                'product_image': ci.product.image.url if ci.product and ci.product.image else '',
-                'unit': ci.product.unit if ci.product else '',
-                'is_service': ci.product.is_service if ci.product else False,
-                'quantity': float(ci.quantity),
-                'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())) if ci.product else 0,
-                'cost_price': float(ci.product.cost_price) if ci.product else 0,
-                'selling_price': float(ci.product.selling_price) if ci.product else 0,
-                'line_cost': float(ci.quantity * ci.product.cost_price) if ci.product else 0,
-                'line_total': float(ci.quantity * ci.product.selling_price) if ci.product else 0,
-            } for ci in p.combo_items.select_related('product').all()]
-
-        combo_parents = []
-        for combo_link in p.in_combos.all():
-            combo = combo_link.combo
-            if not combo or not combo.is_active:
-                continue
-            combo_parents.append({
-                'id': combo.id,
-                'code': combo.code,
-                'name': combo.name,
-                'quantity': float(combo_link.quantity),
-            })
-
-        stock_by_warehouse = [{
-            'warehouse': s.warehouse.name if s.warehouse else '',
-            'warehouse_id': s.warehouse_id,
-            'quantity': float(s.quantity),
-        } for s in p.stocks.select_related('warehouse').all()]
-
-        if p.is_combo:
-            stock_by_warehouse, total_stock = _combo_stock_by_warehouse(p)
-        else:
-            total_stock = float(sum(s.quantity for s in p.stocks.all()))
-
-        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
-        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
-
-        latest_purchase = None
-        recent_import_prices = []
-        recent_purchase_receipts = []
-        purchase_receipt_count = 0
-        purchase_total_quantity = 0
-        purchase_total_amount = 0
-        purchase_price_changed = False
-        if receipt_items:
-            receipt_summaries = _summarize_purchase_receipts(receipt_items)
-            recent_purchase_receipts = receipt_summaries[:3]
-            latest_item = receipt_items[0]
-            latest_purchase = {
-                'receipt_id': latest_item.goods_receipt_id,
-                'receipt_code': latest_item.goods_receipt.code if latest_item.goods_receipt else '',
-                'receipt_date': latest_item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
-                'receipt_date_raw': latest_item.goods_receipt.receipt_date.strftime('%Y-%m-%d') if latest_item.goods_receipt and latest_item.goods_receipt.receipt_date else '',
-                'supplier': latest_item.goods_receipt.supplier.name if latest_item.goods_receipt and latest_item.goods_receipt.supplier else '',
-                'warehouse': latest_item.goods_receipt.warehouse.name if latest_item.goods_receipt and latest_item.goods_receipt.warehouse else '',
-                'variant': latest_item.variant.size_name if latest_item.variant else '',
-                'quantity': float(latest_item.quantity),
-                'unit_price': float(latest_item.unit_price),
-                'total_price': float(latest_item.total_price),
-            }
-            for item in receipt_items:
-                purchase_total_quantity += float(item.quantity or 0)
-                purchase_total_amount += float(item.total_price or 0)
-            purchase_receipt_count = len(receipt_summaries)
-            purchase_price_changed = len({
-                float(item.unit_price or 0)
-                for item in receipt_items
-            }) > 1
-            recent_import_prices = [{
-                'date': item.goods_receipt.receipt_date.strftime('%d/%m/%Y') if item.goods_receipt and item.goods_receipt.receipt_date else '',
-                'price': float(item.unit_price),
-                'quantity': float(item.quantity),
-            } for item in receipt_items[:3]]
-
-        data.append({
-            'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
-            'category': root_category.name if root_category else '',
-            'category_id': root_category.id if root_category else None,
-            'category_record_id': p.category_id,
-            'product_type': product_type.name if product_type else '',
-            'product_type_id': product_type.id if product_type else None,
-            'unit': p.unit,
-            'import_price': float(p.import_price),
-            'cost_price': effective_cost,
-            'cost_price_stored': float(p.cost_price),
-            'selling_price': float(p.selling_price),
-            'retail_price': float(p.selling_price),
-            'wholesale_price_no_warranty': float(p.wholesale_price_no_warranty),
-            'wholesale_price_warranty': float(p.wholesale_price_warranty),
-            'min_stock': p.min_stock, 'max_stock': p.max_stock,
-            'supplier': p.supplier.name if p.supplier else '',
-            'supplier_id': p.supplier_id,
-            'total_stock': total_stock,
-            'stock_by_warehouse': stock_by_warehouse,
-            'image': p.image.url if p.image else '',
-            'description': p.description or '',
-            'is_active': p.is_active,
-            'is_weight_based': p.is_weight_based,
-            'is_service': p.is_service,
-            'is_combo': p.is_combo,
-            'combo_items': combo_items,
-            'combo_parents': combo_parents,
-            'combo_parent_count': len(combo_parents),
-            'variants': variants,
-            'location_id': p.location_id,
-            'location': p.location.name if p.location else '',
-            'specification': p.specification or '',
-            'created_at': p.created_at.strftime('%Y-%m-%d') if p.created_at else '',
-            'created_at_display': p.created_at.strftime('%d/%m/%Y %H:%M') if p.created_at else '',
-            'creator_id': p.created_by_id,
-            'creator_name': (p.created_by.get_full_name() or p.created_by.username) if p.created_by else '',
-            'latest_purchase': latest_purchase,
-            'recent_purchase_receipts': recent_purchase_receipts,
-            'recent_import_prices': recent_import_prices,
-            'purchase_receipt_count': purchase_receipt_count,
-            'purchase_total_quantity': purchase_total_quantity,
-            'purchase_total_amount': purchase_total_amount,
-            'purchase_price_changed': purchase_price_changed,
-        })
     return JsonResponse({
         'data': data,
         'meta': {

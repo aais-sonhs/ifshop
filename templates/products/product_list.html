@@ -177,6 +177,7 @@
                     <div><strong>Dùng đúng file xuất từ nút Xuất Excel để import lại nhanh nhất.</strong></div>
                     <div class="small mt-1">Hệ thống cập nhật theo <strong>Mã SP</strong>. Mã mới sẽ tạo sản phẩm mới, bỏ trống mã sẽ tự sinh mã. Danh mục, loại sản phẩm, NCC và vị trí chưa có sẽ được tạo tự động.</div>
                     <div class="small mt-1">Combo mới chưa import bằng Excel vì cần khai báo thành phần; hãy tạo combo trên màn hình.</div>
+                    <div class="small mt-1">Nếu sản phẩm đang có biến thể/quy cách cũ, các cột giá nhập và giá sỉ trong file sẽ áp cùng một mức cho toàn bộ biến thể của sản phẩm đó.</div>
                 </div>
                 <div class="form-group">
                     <label>File Excel (.xlsx, .xlsm)</label>
@@ -184,8 +185,8 @@
                 </div>
                 <div class="custom-control custom-checkbox">
                     <input type="checkbox" class="custom-control-input" id="product_import_stock">
-                    <label class="custom-control-label" for="product_import_stock">Nhập tồn kho ban đầu từ cột “Tồn kho” cho sản phẩm mới</label>
-                    <small class="form-text text-muted">Chỉ áp dụng cho sản phẩm tạo mới và ghi vào kho mặc định; không đè tồn kho của sản phẩm đã có.</small>
+                    <label class="custom-control-label" for="product_import_stock">Cập nhật tồn kho từ cột “Tồn kho” vào kho mặc định</label>
+                    <small class="form-text text-muted">Áp dụng cho sản phẩm mới và sản phẩm đang chỉ theo dõi tồn ở kho mặc định. Nếu sản phẩm đã có tồn ở kho khác, hãy dùng kiểm kho hoặc chứng từ kho để tránh lệch dữ liệu.</small>
                 </div>
                 <div id="product_import_result" class="mt-3"></div>
             </div>

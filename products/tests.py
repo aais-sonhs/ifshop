@@ -18,6 +18,7 @@ from products.models import (
     ProductCategory,
     ProductLocation,
     ProductStock,
+    ProductVariant,
     StockCheck,
     StockCheckItem,
     StockTransfer,
@@ -445,7 +446,7 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
         self.assertEqual(payload['summary']['created'], 1)
         self.assertEqual(payload['summary']['updated'], 1)
-        self.assertEqual(payload['summary']['stock_initialized'], 1)
+        self.assertEqual(payload['summary']['stock_initialized'], 2)
 
         self.product.refresh_from_db()
         self.assertEqual(self.product.name, 'San pham da sua Excel')
@@ -454,7 +455,7 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(self.product.cost_price, Decimal('9000'))
         self.assertEqual(self.product.selling_price, Decimal('15000'))
         self.assertFalse(self.product.is_active)
-        self.assertFalse(ProductStock.objects.filter(product=self.product, quantity=Decimal('999')).exists())
+        self.assertTrue(ProductStock.objects.filter(product=self.product, quantity=Decimal('999')).exists())
 
         new_product = Product.objects.get(name='San pham moi import')
         self.assertRegex(new_product.code, r'^SP\d{3}$')
@@ -504,6 +505,128 @@ class ProductInventoryFlowTests(TestCase):
         self.other_product.refresh_from_db()
         self.assertEqual(self.other_product.name, 'San pham store khac')
         self.assertFalse(Product.objects.filter(store=self.store, code=self.other_product.code).exists())
+
+    def test_import_products_excel_updates_existing_product_stock_in_default_warehouse(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('5'),
+        )
+        upload = self._build_product_import_upload(
+            rows=[[
+                self.product.code,
+                'San pham test sua ton',
+                0,
+            ]],
+            headers=['Mã SP', 'Tên sản phẩm', 'Tồn kho'],
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload, 'import_stock': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['updated'], 1)
+        self.assertEqual(payload['summary']['stock_initialized'], 1)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'San pham test sua ton')
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        self.assertEqual(stock.quantity, Decimal('0'))
+
+    def test_import_products_excel_rejects_existing_stock_split_across_other_warehouses(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('5'),
+        )
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_b,
+            quantity=Decimal('2'),
+        )
+        upload = self._build_product_import_upload(
+            rows=[[
+                self.product.code,
+                'San pham test khong duoc sua ton',
+                9,
+            ]],
+            headers=['Mã SP', 'Tên sản phẩm', 'Tồn kho'],
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload, 'import_stock': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertEqual(payload['summary']['updated'], 0)
+        self.assertEqual(payload['summary']['errors'], 1)
+        self.assertIn('không thể cập nhật tồn từ file Excel', payload['errors'][0]['message'])
+
+        stocks = {
+            stock.warehouse_id: stock.quantity
+            for stock in ProductStock.objects.filter(product=self.product)
+        }
+        self.assertEqual(stocks[self.warehouse_a.id], Decimal('5.00'))
+        self.assertEqual(stocks[self.warehouse_b.id], Decimal('2.00'))
+
+    def test_import_products_excel_syncs_wholesale_prices_to_existing_variants(self):
+        variant_small = ProductVariant.objects.create(
+            product=self.product,
+            size_name='S',
+            sku='SP-001-S',
+            import_price=Decimal('1000'),
+            wholesale_price_no_warranty=Decimal('1100'),
+            wholesale_price_warranty=Decimal('1200'),
+        )
+        variant_large = ProductVariant.objects.create(
+            product=self.product,
+            size_name='L',
+            sku='SP-001-L',
+            import_price=Decimal('2000'),
+            wholesale_price_no_warranty=Decimal('2100'),
+            wholesale_price_warranty=Decimal('2200'),
+        )
+        upload = self._build_product_import_upload(
+            rows=[[
+                self.product.code,
+                self.product.name,
+                3300,
+                4400,
+                5500,
+            ]],
+            headers=['Mã SP', 'Tên sản phẩm', 'Giá nhập', 'Giá sỉ KBH', 'Giá sỉ BH'],
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['updated'], 1)
+        self.assertEqual(payload['summary']['variants_synced'], 2)
+
+        self.product.refresh_from_db()
+        variant_small.refresh_from_db()
+        variant_large.refresh_from_db()
+        self.assertEqual(self.product.import_price, Decimal('3300'))
+        self.assertEqual(self.product.wholesale_price_no_warranty, Decimal('4400'))
+        self.assertEqual(self.product.wholesale_price_warranty, Decimal('5500'))
+        self.assertEqual(variant_small.import_price, Decimal('3300'))
+        self.assertEqual(variant_small.wholesale_price_no_warranty, Decimal('4400'))
+        self.assertEqual(variant_small.wholesale_price_warranty, Decimal('5500'))
+        self.assertEqual(variant_large.import_price, Decimal('3300'))
+        self.assertEqual(variant_large.wholesale_price_no_warranty, Decimal('4400'))
+        self.assertEqual(variant_large.wholesale_price_warranty, Decimal('5500'))
 
     def test_product_purchase_history_api_returns_selected_product_receipts_only(self):
         other_same_store_product = Product.objects.create(

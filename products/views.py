@@ -2708,6 +2708,73 @@ def _get_default_import_warehouse(store):
     return Warehouse.objects.filter(store=store, is_active=True).order_by('id').first()
 
 
+def _sync_product_import_stock(product, default_warehouse, stock_quantity, created):
+    if not default_warehouse:
+        raise ValueError('Không có kho mặc định để nhập tồn từ file Excel')
+
+    stock_quantity = _parse_import_decimal(stock_quantity, default=Decimal('0'))
+    existing_stocks = list(
+        ProductStock.objects
+        .select_for_update()
+        .filter(product=product)
+        .select_related('warehouse')
+    )
+
+    if not created:
+        non_default_stocks = [
+            stock for stock in existing_stocks
+            if stock.warehouse_id != default_warehouse.id and _to_decimal(stock.quantity) != 0
+        ]
+        if non_default_stocks:
+            warehouse_names = ', '.join(
+                stock.warehouse.name if stock.warehouse else f'ID {stock.warehouse_id}'
+                for stock in non_default_stocks[:3]
+            )
+            if len(non_default_stocks) > 3:
+                warehouse_names += ', ...'
+            raise ValueError(
+                f'Sản phẩm "{product.code}" đang có tồn ở kho khác ({warehouse_names}), '
+                'không thể cập nhật tồn từ file Excel. Hãy dùng kiểm kho hoặc chứng từ kho.'
+            )
+
+    default_stock = next(
+        (stock for stock in existing_stocks if stock.warehouse_id == default_warehouse.id),
+        None,
+    )
+    if default_stock:
+        default_stock.quantity = stock_quantity
+        default_stock.save(update_fields=['quantity'])
+        return 1
+
+    if stock_quantity == 0 and created:
+        return 0
+
+    ProductStock.objects.create(
+        product=product,
+        warehouse=default_warehouse,
+        quantity=stock_quantity,
+    )
+    return 1
+
+
+def _sync_variant_prices_from_product_import(product, headers):
+    if not product.id:
+        return 0
+
+    variant_updates = {}
+    if 'import_price' in headers:
+        variant_updates['import_price'] = product.import_price
+    if 'wholesale_price_no_warranty' in headers:
+        variant_updates['wholesale_price_no_warranty'] = product.wholesale_price_no_warranty
+    if 'wholesale_price_warranty' in headers:
+        variant_updates['wholesale_price_warranty'] = product.wholesale_price_warranty
+
+    if not variant_updates:
+        return 0
+
+    return product.variants.update(**variant_updates)
+
+
 def _upsert_product_import_row(row, headers, request, default_store, default_warehouse, import_stock, seen_codes):
     code = _excel_cell_text(_row_import_value(row, headers, 'code'))
     name = _excel_cell_text(_row_import_value(row, headers, 'name'))
@@ -2813,19 +2880,16 @@ def _upsert_product_import_row(row, headers, request, default_store, default_war
         product.cost_price = _parse_import_decimal(_row_import_value(row, headers, 'cost_price'), integer=True)
 
     product.save()
+    variants_synced = _sync_variant_prices_from_product_import(product, headers)
 
     stock_initialized = 0
-    if import_stock and created and 'stock' in headers and not product.is_combo and not product.is_service:
-        stock_quantity = _parse_import_decimal(_row_import_value(row, headers, 'stock'), default=Decimal('0'))
-        if stock_quantity != 0:
-            if not default_warehouse:
-                raise ValueError('Không có kho mặc định để nhập tồn ban đầu')
-            ProductStock.objects.update_or_create(
-                product=product,
-                warehouse=default_warehouse,
-                defaults={'quantity': stock_quantity},
-            )
-            stock_initialized = 1
+    if import_stock and 'stock' in headers and not product.is_combo and not product.is_service:
+        stock_initialized = _sync_product_import_stock(
+            product=product,
+            default_warehouse=default_warehouse,
+            stock_quantity=_row_import_value(row, headers, 'stock'),
+            created=created,
+        )
 
     return {
         'created': created,
@@ -2833,6 +2897,7 @@ def _upsert_product_import_row(row, headers, request, default_store, default_war
         'created_suppliers': created_suppliers,
         'created_locations': created_locations,
         'stock_initialized': stock_initialized,
+        'variants_synced': variants_synced,
     }
 
 
@@ -2873,6 +2938,7 @@ def import_products_excel(request):
         'created_suppliers': 0,
         'created_locations': 0,
         'stock_initialized': 0,
+        'variants_synced': 0,
     }
     errors = []
     seen_codes = set()
@@ -2901,6 +2967,7 @@ def import_products_excel(request):
             summary['created_suppliers'] += result['created_suppliers']
             summary['created_locations'] += result['created_locations']
             summary['stock_initialized'] += result['stock_initialized']
+            summary['variants_synced'] += result['variants_synced']
         except Exception as exc:
             summary['errors'] += 1
             if len(errors) < 50:
@@ -2921,7 +2988,9 @@ def import_products_excel(request):
     if summary['errors']:
         message += f', {summary["errors"]} dòng lỗi'
     if summary['stock_initialized']:
-        message += f', nhập tồn ban đầu cho {summary["stock_initialized"]} sản phẩm'
+        message += f', đồng bộ tồn kho cho {summary["stock_initialized"]} sản phẩm'
+    if summary['variants_synced']:
+        message += f', đồng bộ giá cho {summary["variants_synced"]} biến thể'
 
     return JsonResponse({
         'status': status,

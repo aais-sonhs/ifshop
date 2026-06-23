@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 from django.core.paginator import Paginator
@@ -2440,6 +2441,460 @@ def api_delete_location(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
+# ============ EXCEL IMPORT ============
+
+PRODUCT_IMPORT_HEADER_ALIASES = {
+    'ma sp': 'code',
+    'ma san pham': 'code',
+    'code': 'code',
+    'sku': 'code',
+    'ten sp': 'name',
+    'ten san pham': 'name',
+    'name': 'name',
+    'barcode': 'barcode',
+    'ma vach': 'barcode',
+    'danh muc': 'category',
+    'category': 'category',
+    'dvt': 'unit',
+    'don vi': 'unit',
+    'don vi tinh': 'unit',
+    'unit': 'unit',
+    'quy cach': 'specification',
+    'quy cach san pham': 'specification',
+    'spec': 'specification',
+    'loai san pham': 'product_type',
+    'product type': 'product_type',
+    'tinh chat': 'product_nature',
+    'loai': 'product_nature',
+    'product nature': 'product_nature',
+    'gia nhap': 'import_price',
+    'gia von': 'cost_price',
+    'gia ban le': 'selling_price',
+    'gia ban': 'selling_price',
+    'gia si kbh': 'wholesale_price_no_warranty',
+    'gia si khong bao hanh': 'wholesale_price_no_warranty',
+    'gia si bh': 'wholesale_price_warranty',
+    'gia si co bao hanh': 'wholesale_price_warranty',
+    'ton kho': 'stock',
+    'ton': 'stock',
+    'ton toi thieu': 'min_stock',
+    'min stock': 'min_stock',
+    'ton toi da': 'max_stock',
+    'max stock': 'max_stock',
+    'trang thai': 'is_active',
+    'status': 'is_active',
+    'ncc': 'supplier',
+    'nha cung cap': 'supplier',
+    'supplier': 'supplier',
+    'vi tri': 'location',
+    'location': 'location',
+    'mo ta': 'description',
+    'ghi chu': 'description',
+    'description': 'description',
+}
+
+
+def _normalize_excel_text(value):
+    text = str(value if value is not None else '').strip().lower()
+    text = text.replace('đ', 'd')
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r'[^a-z0-9]+', ' ', text).strip()
+
+
+def _excel_cell_text(value):
+    if value is None:
+        return ''
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return str(value.quantize(Decimal('1')))
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _parse_import_decimal(value, default=Decimal('0'), integer=False):
+    if value in (None, ''):
+        return default
+    if isinstance(value, Decimal):
+        parsed = value
+    elif isinstance(value, (int, float)):
+        parsed = Decimal(str(value))
+    else:
+        raw = _excel_cell_text(value)
+        raw = raw.replace('\xa0', '').replace(' ', '')
+        raw = raw.replace('₫', '').replace('đ', '').replace('Đ', '')
+        raw = re.sub(r'[^0-9,\.\-]', '', raw)
+        if raw in ('', '-'):
+            return default
+        if raw.count(',') > 1 or raw.count('.') > 1:
+            raw = raw.replace(',', '').replace('.', '')
+        elif ',' in raw and '.' in raw:
+            raw = raw.replace(',', '').replace('.', '')
+        elif ',' in raw:
+            left, right = raw.rsplit(',', 1)
+            raw = left + right if len(right) == 3 else left + '.' + right
+        elif '.' in raw:
+            left, right = raw.rsplit('.', 1)
+            raw = left + right if len(right) == 3 else raw
+        try:
+            parsed = Decimal(raw)
+        except (InvalidOperation, TypeError, ValueError):
+            return default
+    if integer:
+        return parsed.quantize(Decimal('1'), rounding=ROUND_FLOOR)
+    return parsed
+
+
+def _parse_import_int(value, default=0):
+    parsed = _parse_import_decimal(value, default=Decimal(str(default)), integer=True)
+    try:
+        return max(0, int(parsed))
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_import_active(value, current=True):
+    raw = _normalize_excel_text(value)
+    if not raw:
+        return current
+    if raw in {'0', 'false', 'no', 'khong', 'tat', 'inactive'}:
+        return False
+    if any(token in raw for token in ['ngung', 'nghi ban', 'khong hoat dong']):
+        return False
+    if raw in {'1', 'true', 'yes', 'co', 'active'}:
+        return True
+    if any(token in raw for token in ['dang hoat dong', 'dang ban']):
+        return True
+    return current
+
+
+def _parse_import_product_nature(value):
+    raw = _normalize_excel_text(value)
+    if not raw:
+        return None
+    if 'combo' in raw:
+        return 'combo'
+    if 'dich vu' in raw or 'service' in raw:
+        return 'service'
+    if 'can dong' in raw or 'khoi luong' in raw or 'weight' in raw:
+        return 'weight'
+    if 'san pham' in raw or 'vat ly' in raw or 'normal' in raw:
+        return 'normal'
+    return None
+
+
+def _find_product_import_header(sheet, max_rows=20):
+    for row_index, row in enumerate(sheet.iter_rows(min_row=1, max_row=max_rows, values_only=True), 1):
+        headers = {}
+        for col_index, value in enumerate(row, 1):
+            key = PRODUCT_IMPORT_HEADER_ALIASES.get(_normalize_excel_text(value))
+            if key and key not in headers:
+                headers[key] = col_index
+        if 'name' in headers and (len(headers) >= 3 or 'code' in headers):
+            return row_index, headers
+    raise ValueError('Không tìm thấy dòng tiêu đề. File cần có cột "Tên sản phẩm" và nên dùng mẫu xuất Excel từ danh sách sản phẩm.')
+
+
+def _row_import_value(row, headers, key):
+    col_index = headers.get(key)
+    if not col_index or col_index > len(row):
+        return None
+    return row[col_index - 1]
+
+
+def _row_has_product_import_data(row, headers):
+    return any(_excel_cell_text(_row_import_value(row, headers, key)) for key in headers)
+
+
+def _get_or_create_import_category(name, parent=None):
+    name = _excel_cell_text(name)
+    if not name:
+        return None, 0
+    queryset = ProductCategory.objects.filter(name__iexact=name)
+    queryset = queryset.filter(parent=parent) if parent else queryset.filter(parent__isnull=True)
+    category = queryset.order_by('id').first()
+    if category:
+        if not category.is_active:
+            category.is_active = True
+            category.save(update_fields=['is_active'])
+        return category, 0
+    return ProductCategory.objects.create(name=name, parent=parent, is_active=True), 1
+
+
+def _resolve_product_import_category(row, headers):
+    category_name = _row_import_value(row, headers, 'category')
+    product_type_name = _row_import_value(row, headers, 'product_type')
+    category, created_count = _get_or_create_import_category(category_name)
+    product_type_name = _excel_cell_text(product_type_name)
+    if product_type_name:
+        product_type, type_created = _get_or_create_import_category(product_type_name, parent=category)
+        return product_type, created_count + type_created
+    return category, created_count
+
+
+def _get_or_create_import_supplier(name, user):
+    name = _excel_cell_text(name)
+    if not name:
+        return None, 0
+    supplier = Supplier.objects.filter(name__iexact=name).order_by('id').first()
+    if supplier:
+        if not supplier.is_active:
+            supplier.is_active = True
+            supplier.save(update_fields=['is_active'])
+        return supplier, 0
+    supplier = Supplier.objects.create(
+        code=_generate_next_supplier_code(),
+        name=name,
+        created_by=user,
+        is_active=True,
+    )
+    return supplier, 1
+
+
+def _get_or_create_import_location(name):
+    name = _excel_cell_text(name)
+    if not name:
+        return None, 0
+    location = ProductLocation.objects.filter(name__iexact=name).order_by('id').first()
+    if location:
+        if not location.is_active:
+            location.is_active = True
+            location.save(update_fields=['is_active'])
+        return location, 0
+    return ProductLocation.objects.create(name=name, is_active=True), 1
+
+
+def _get_default_import_warehouse(store):
+    if not store:
+        return None
+    return Warehouse.objects.filter(store=store, is_active=True).order_by('id').first()
+
+
+def _upsert_product_import_row(row, headers, request, default_store, default_warehouse, import_stock, seen_codes):
+    code = _excel_cell_text(_row_import_value(row, headers, 'code'))
+    name = _excel_cell_text(_row_import_value(row, headers, 'name'))
+    if not name:
+        raise ValueError('Thiếu Tên sản phẩm')
+
+    created = False
+    if code:
+        code_key = code.lower()
+        if code_key in seen_codes:
+            raise ValueError(f'Mã SP "{code}" bị trùng trong file')
+        seen_codes.add(code_key)
+
+        product = _product_queryset_for_request(request).filter(code__iexact=code).first()
+        if not product:
+            existing = Product.all_objects.filter(code__iexact=code).first()
+            if existing:
+                raise ValueError(f'Mã SP "{code}" đã tồn tại ở sản phẩm đã xóa hoặc ngoài phạm vi cửa hàng của bạn')
+            product = Product(code=code, created_by=request.user, store=default_store)
+            created = True
+    else:
+        product = Product(
+            code=_generate_next_product_code(),
+            created_by=request.user,
+            store=default_store,
+        )
+        created = True
+
+    product.name = name
+    if 'code' in headers and code:
+        product.code = code
+    if 'barcode' in headers:
+        product.barcode = _excel_cell_text(_row_import_value(row, headers, 'barcode')) or None
+    if 'unit' in headers:
+        product.unit = _excel_cell_text(_row_import_value(row, headers, 'unit')) or 'Cái'
+    elif created and not product.unit:
+        product.unit = 'Cái'
+    if 'specification' in headers:
+        product.specification = _excel_cell_text(_row_import_value(row, headers, 'specification')) or None
+    if 'description' in headers:
+        product.description = _excel_cell_text(_row_import_value(row, headers, 'description'))
+    if 'min_stock' in headers:
+        product.min_stock = _parse_import_int(_row_import_value(row, headers, 'min_stock'))
+    if 'max_stock' in headers:
+        product.max_stock = _parse_import_int(_row_import_value(row, headers, 'max_stock'))
+    if 'is_active' in headers:
+        product.is_active = _parse_import_active(_row_import_value(row, headers, 'is_active'), current=product.is_active)
+    elif created:
+        product.is_active = True
+
+    created_categories = 0
+    if 'category' in headers or 'product_type' in headers:
+        product.category, created_categories = _resolve_product_import_category(row, headers)
+
+    created_suppliers = 0
+    if 'supplier' in headers:
+        product.supplier, created_suppliers = _get_or_create_import_supplier(
+            _row_import_value(row, headers, 'supplier'),
+            request.user,
+        )
+
+    created_locations = 0
+    if 'location' in headers:
+        product.location, created_locations = _get_or_create_import_location(_row_import_value(row, headers, 'location'))
+
+    nature = _parse_import_product_nature(_row_import_value(row, headers, 'product_nature'))
+    if nature == 'combo':
+        if created:
+            raise ValueError('Import Excel chưa hỗ trợ tạo combo mới. Hãy tạo combo trên màn hình để khai báo thành phần.')
+        if not product.is_combo:
+            raise ValueError('Không thể đổi sản phẩm thường thành combo bằng Excel. Hãy tạo combo trên màn hình.')
+    elif product.is_combo and nature and nature != 'combo':
+        raise ValueError('Không thể đổi combo đã lưu thành sản phẩm thường bằng Excel.')
+    elif not product.is_combo:
+        if nature == 'service':
+            product.is_service = True
+            product.is_weight_based = False
+        elif nature == 'weight':
+            product.is_service = False
+            product.is_weight_based = True
+        elif nature == 'normal':
+            product.is_service = False
+            product.is_weight_based = False
+        elif created:
+            product.is_service = False
+            product.is_weight_based = False
+
+    if 'import_price' in headers:
+        product.import_price = _parse_import_decimal(_row_import_value(row, headers, 'import_price'), integer=True)
+    if 'selling_price' in headers:
+        product.selling_price = _parse_import_decimal(_row_import_value(row, headers, 'selling_price'), integer=True)
+    if 'wholesale_price_no_warranty' in headers:
+        product.wholesale_price_no_warranty = _parse_import_decimal(
+            _row_import_value(row, headers, 'wholesale_price_no_warranty'),
+            integer=True,
+        )
+    if 'wholesale_price_warranty' in headers:
+        product.wholesale_price_warranty = _parse_import_decimal(
+            _row_import_value(row, headers, 'wholesale_price_warranty'),
+            integer=True,
+        )
+    if 'cost_price' in headers and not product.is_combo:
+        product.cost_price = _parse_import_decimal(_row_import_value(row, headers, 'cost_price'), integer=True)
+
+    product.save()
+
+    stock_initialized = 0
+    if import_stock and created and 'stock' in headers and not product.is_combo and not product.is_service:
+        stock_quantity = _parse_import_decimal(_row_import_value(row, headers, 'stock'), default=Decimal('0'))
+        if stock_quantity != 0:
+            if not default_warehouse:
+                raise ValueError('Không có kho mặc định để nhập tồn ban đầu')
+            ProductStock.objects.update_or_create(
+                product=product,
+                warehouse=default_warehouse,
+                defaults={'quantity': stock_quantity},
+            )
+            stock_initialized = 1
+
+    return {
+        'created': created,
+        'created_categories': created_categories,
+        'created_suppliers': created_suppliers,
+        'created_locations': created_locations,
+        'stock_initialized': stock_initialized,
+    }
+
+
+@login_required(login_url="/login/")
+def import_products_excel(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn file Excel'})
+    if not upload.name.lower().endswith(('.xlsx', '.xlsm')):
+        return JsonResponse({'status': 'error', 'message': 'Chỉ hỗ trợ file .xlsx hoặc .xlsm'})
+
+    default_store = _get_default_store_for_request(request)
+    if not default_store:
+        return JsonResponse({'status': 'error', 'message': 'Tài khoản chưa có phạm vi cửa hàng hợp lệ'})
+
+    import_stock = request.POST.get('import_stock') == '1'
+    default_warehouse = _get_default_import_warehouse(default_store) if import_stock else None
+
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(upload, read_only=True, data_only=True)
+        sheet = workbook.active
+        header_row, headers = _find_product_import_header(sheet)
+    except Exception as exc:
+        return JsonResponse({'status': 'error', 'message': f'Không đọc được file Excel: {exc}'})
+
+    summary = {
+        'total_rows': 0,
+        'created': 0,
+        'updated': 0,
+        'skipped': 0,
+        'errors': 0,
+        'created_categories': 0,
+        'created_suppliers': 0,
+        'created_locations': 0,
+        'stock_initialized': 0,
+    }
+    errors = []
+    seen_codes = set()
+
+    for row_number, row in enumerate(sheet.iter_rows(min_row=header_row + 1, values_only=True), header_row + 1):
+        if not _row_has_product_import_data(row, headers):
+            summary['skipped'] += 1
+            continue
+        summary['total_rows'] += 1
+        try:
+            with transaction.atomic():
+                result = _upsert_product_import_row(
+                    row,
+                    headers,
+                    request,
+                    default_store,
+                    default_warehouse,
+                    import_stock,
+                    seen_codes,
+                )
+            if result['created']:
+                summary['created'] += 1
+            else:
+                summary['updated'] += 1
+            summary['created_categories'] += result['created_categories']
+            summary['created_suppliers'] += result['created_suppliers']
+            summary['created_locations'] += result['created_locations']
+            summary['stock_initialized'] += result['stock_initialized']
+        except Exception as exc:
+            summary['errors'] += 1
+            if len(errors) < 50:
+                errors.append({'row': row_number, 'message': str(exc)})
+
+    success_count = summary['created'] + summary['updated']
+    if success_count and summary['errors']:
+        status = 'partial'
+    elif summary['errors']:
+        status = 'error'
+    else:
+        status = 'ok'
+
+    message = (
+        f'Đã import {success_count} sản phẩm '
+        f'({summary["created"]} tạo mới, {summary["updated"]} cập nhật)'
+    )
+    if summary['errors']:
+        message += f', {summary["errors"]} dòng lỗi'
+    if summary['stock_initialized']:
+        message += f', nhập tồn ban đầu cho {summary["stock_initialized"]} sản phẩm'
+
+    return JsonResponse({
+        'status': status,
+        'message': message,
+        'summary': summary,
+        'errors': errors,
+    })
+
+
 # ============ EXCEL EXPORT ============
 
 @login_required(login_url="/login/")
@@ -2471,8 +2926,12 @@ def export_products_excel(request):
         {'key': 'wholesale_no_w', 'label': 'Giá sỉ KBH', 'width': 14},
         {'key': 'wholesale_w', 'label': 'Giá sỉ BH', 'width': 14},
         {'key': 'stock', 'label': 'Tồn kho', 'width': 10},
+        {'key': 'min_stock', 'label': 'Tồn tối thiểu', 'width': 12},
+        {'key': 'max_stock', 'label': 'Tồn tối đa', 'width': 12},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 14},
         {'key': 'supplier', 'label': 'NCC', 'width': 18},
         {'key': 'location', 'label': 'Vị trí', 'width': 14},
+        {'key': 'description', 'label': 'Mô tả', 'width': 28},
     ]
 
     rows = []
@@ -2502,8 +2961,12 @@ def export_products_excel(request):
             'wholesale_no_w': float(p.wholesale_price_no_warranty),
             'wholesale_w': float(p.wholesale_price_warranty),
             'stock': total_stock,
+            'min_stock': p.min_stock,
+            'max_stock': p.max_stock,
+            'status': 'Đang hoạt động' if p.is_active else 'Ngừng hoạt động',
             'supplier': p.supplier.name if p.supplier else '',
             'location': p.location.name if p.location else '',
+            'description': p.description or '',
         })
 
     return excel_response(

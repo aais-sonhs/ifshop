@@ -5,6 +5,7 @@
         <h3 class="card-title"><i class="fas fa-tags mr-2"></i>Danh sách sản phẩm</h3>
         <div class="card-tools">
             <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/products/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn_import_products" title="Nhập Excel"><i class="fas fa-file-import"></i> Nhập Excel</button>
             <button type="button" class="btn btn-sm btn-outline-info" id="btn_manage_product_categories"><i class="fas fa-sitemap"></i> Danh mục/Loại</button>
             <button type="button" class="btn btn-sm btn-warning" id="btn_add_combo"><i class="fas fa-cubes"></i> Tạo combo</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
@@ -161,6 +162,38 @@
             </table>
         </div>
         <div id="product_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_import_products" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-file-import mr-1"></i>Nhập sản phẩm từ Excel</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info py-2">
+                    <div><strong>Dùng đúng file xuất từ nút Xuất Excel để import lại nhanh nhất.</strong></div>
+                    <div class="small mt-1">Hệ thống cập nhật theo <strong>Mã SP</strong>. Mã mới sẽ tạo sản phẩm mới, bỏ trống mã sẽ tự sinh mã. Danh mục, loại sản phẩm, NCC và vị trí chưa có sẽ được tạo tự động.</div>
+                    <div class="small mt-1">Combo mới chưa import bằng Excel vì cần khai báo thành phần; hãy tạo combo trên màn hình.</div>
+                </div>
+                <div class="form-group">
+                    <label>File Excel (.xlsx, .xlsm)</label>
+                    <input type="file" class="form-control-file" id="product_import_file" accept=".xlsx,.xlsm">
+                </div>
+                <div class="custom-control custom-checkbox">
+                    <input type="checkbox" class="custom-control-input" id="product_import_stock">
+                    <label class="custom-control-label" for="product_import_stock">Nhập tồn kho ban đầu từ cột “Tồn kho” cho sản phẩm mới</label>
+                    <small class="form-text text-muted">Chỉ áp dụng cho sản phẩm tạo mới và ghi vào kho mặc định; không đè tồn kho của sản phẩm đã có.</small>
+                </div>
+                <div id="product_import_result" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_submit_product_import"><i class="fas fa-upload mr-1"></i>Nhập Excel</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1589,6 +1622,96 @@ $(document).on('click', '.product-page-btn', function(){
 });
 $('#btn_export_products').click(function(){
     window.location.href = '/api/products/export-excel/';
+});
+
+function renderProductImportResult(res){
+    res = res || {};
+    var summary = res.summary || {};
+    var statusClass = res.status === 'error'
+        ? 'alert-danger'
+        : (res.status === 'partial' ? 'alert-warning' : 'alert-success');
+    var html = '<div class="alert ' + statusClass + ' py-2 mb-2">' + escapeHtml(res.message || 'Đã xử lý file Excel') + '</div>';
+    html += '<div class="small text-muted mb-2">' +
+        'Tổng dòng: <strong>' + fmt(summary.total_rows || 0) + '</strong>' +
+        ' · Tạo mới: <strong>' + fmt(summary.created || 0) + '</strong>' +
+        ' · Cập nhật: <strong>' + fmt(summary.updated || 0) + '</strong>' +
+        ' · Lỗi: <strong>' + fmt(summary.errors || 0) + '</strong>';
+    if(summary.created_categories || summary.created_suppliers || summary.created_locations){
+        html += ' · Master mới: <strong>' + fmt((summary.created_categories || 0) + (summary.created_suppliers || 0) + (summary.created_locations || 0)) + '</strong>';
+    }
+    if(summary.stock_initialized){
+        html += ' · Nhập tồn: <strong>' + fmt(summary.stock_initialized) + '</strong>';
+    }
+    html += '</div>';
+    if(res.errors && res.errors.length){
+        html += '<div class="border rounded p-2" style="max-height:220px;overflow:auto;background:#fff;">';
+        html += '<div class="font-weight-bold small mb-1">Các dòng lỗi cần sửa:</div>';
+        res.errors.forEach(function(item){
+            html += '<div class="small text-danger">Dòng ' + escapeHtml(item.row) + ': ' + escapeHtml(item.message || '') + '</div>';
+        });
+        html += '</div>';
+    }
+    $('#product_import_result').html(html);
+}
+
+function refreshProductScreenAfterImport(){
+    invalidateComboSourceCache();
+    loadProductCategories(function(){
+        refreshSuppliers(null, function(){
+            refreshLocations(null, function(){
+                resetProductPage();
+                loadData();
+            });
+        });
+    });
+}
+
+$('#btn_import_products').click(function(){
+    $('#product_import_file').val('');
+    $('#product_import_stock').prop('checked', false);
+    $('#product_import_result').html('');
+    $('#modal_import_products').modal('show');
+});
+
+$('#btn_submit_product_import').click(function(){
+    var fileInput = $('#product_import_file')[0];
+    var file = fileInput && fileInput.files ? fileInput.files[0] : null;
+    if(!file){
+        alert('Vui lòng chọn file Excel');
+        return;
+    }
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('import_stock', $('#product_import_stock').is(':checked') ? '1' : '0');
+
+    var $btn = $('#btn_submit_product_import');
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang nhập...');
+    $.ajax({
+        url: '/api/products/import-excel/',
+        type: 'POST',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: fd,
+        processData: false,
+        contentType: false,
+        success: function(res){
+            renderProductImportResult(res);
+            if(res.status === 'ok' || res.status === 'partial'){
+                refreshProductScreenAfterImport();
+            }
+        },
+        error: function(xhr){
+            var res = xhr && xhr.responseJSON ? xhr.responseJSON : {};
+            renderProductImportResult({
+                status: 'error',
+                message: res.message || res.error || 'Không import được file Excel',
+                summary: {total_rows: 0, created: 0, updated: 0, errors: 1},
+                errors: []
+            });
+        },
+        complete: function(){
+            $btn.prop('disabled', false).html('<i class="fas fa-upload mr-1"></i>Nhập Excel');
+        }
+    });
 });
 
 function getProductStockRows(product){

@@ -1,8 +1,11 @@
 import json
+from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
+import openpyxl
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -56,6 +59,49 @@ class ProductInventoryFlowTests(TestCase):
 
     def setUp(self):
         self.client.force_login(self.user)
+
+    def _build_product_import_upload(self, rows, headers=None, header_row=1):
+        headers = headers or [
+            'Mã SP',
+            'Tên sản phẩm',
+            'Barcode',
+            'Danh mục',
+            'ĐVT',
+            'Quy cách',
+            'Loại sản phẩm',
+            'Tính chất',
+            'Giá nhập',
+            'Giá vốn',
+            'Giá bán lẻ',
+            'Giá sỉ KBH',
+            'Giá sỉ BH',
+            'Tồn kho',
+            'Tồn tối thiểu',
+            'Tồn tối đa',
+            'Trạng thái',
+            'NCC',
+            'Vị trí',
+            'Mô tả',
+        ]
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        if header_row > 1:
+            sheet.cell(row=1, column=1, value='DANH SÁCH SẢN PHẨM')
+            sheet.cell(row=2, column=1, value='Mẫu import từ export')
+        for col_index, header in enumerate(headers, 1):
+            sheet.cell(row=header_row, column=col_index, value=header)
+        for row_index, row in enumerate(rows, header_row + 1):
+            for col_index, value in enumerate(row, 1):
+                sheet.cell(row=row_index, column=col_index, value=value)
+
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+        return SimpleUploadedFile(
+            'products.xlsx',
+            stream.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
 
     def test_save_product_auto_generates_code_when_blank(self):
         response = self.client.post(
@@ -311,6 +357,153 @@ class ProductInventoryFlowTests(TestCase):
         combo_search_ids = [item['id'] for item in combo_search.json()['data']]
         self.assertIn(combo.id, component_search_ids)
         self.assertIn(self.product.id, combo_search_ids)
+
+    def test_import_products_excel_creates_and_updates_products_from_export_template(self):
+        headers = [
+            'STT',
+            'Mã SP',
+            'Tên sản phẩm',
+            'Barcode',
+            'Danh mục',
+            'ĐVT',
+            'Quy cách',
+            'Loại sản phẩm',
+            'Tính chất',
+            'Giá nhập',
+            'Giá vốn',
+            'Giá bán lẻ',
+            'Giá sỉ KBH',
+            'Giá sỉ BH',
+            'Tồn kho',
+            'Tồn tối thiểu',
+            'Tồn tối đa',
+            'Trạng thái',
+            'NCC',
+            'Vị trí',
+            'Mô tả',
+        ]
+        upload = self._build_product_import_upload(
+            rows=[
+                [
+                    1,
+                    self.product.code,
+                    'San pham da sua Excel',
+                    'BC-UPDATE',
+                    'Thiet bi',
+                    'Cai',
+                    'Hop 10 cai',
+                    'May ep',
+                    'Sản phẩm',
+                    11000,
+                    9000,
+                    15000,
+                    14000,
+                    16000,
+                    999,
+                    2,
+                    20,
+                    'Ngừng hoạt động',
+                    self.supplier.name,
+                    'Ke A1',
+                    'Mo ta cap nhat',
+                ],
+                [
+                    2,
+                    '',
+                    'San pham moi import',
+                    'BC-NEW',
+                    'Do uong',
+                    'Lon',
+                    '330ml',
+                    'Nuoc ngot',
+                    'Cân/đong',
+                    '1.200',
+                    '1.000',
+                    '2.000',
+                    '1.800',
+                    '2.200',
+                    '12,5',
+                    1,
+                    100,
+                    'Đang hoạt động',
+                    'NCC Moi Excel',
+                    'Ke B2',
+                    'Tao tu Excel',
+                ],
+            ],
+            headers=headers,
+            header_row=4,
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload, 'import_stock': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['created'], 1)
+        self.assertEqual(payload['summary']['updated'], 1)
+        self.assertEqual(payload['summary']['stock_initialized'], 1)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'San pham da sua Excel')
+        self.assertEqual(self.product.barcode, 'BC-UPDATE')
+        self.assertEqual(self.product.import_price, Decimal('11000'))
+        self.assertEqual(self.product.cost_price, Decimal('9000'))
+        self.assertEqual(self.product.selling_price, Decimal('15000'))
+        self.assertFalse(self.product.is_active)
+        self.assertFalse(ProductStock.objects.filter(product=self.product, quantity=Decimal('999')).exists())
+
+        new_product = Product.objects.get(name='San pham moi import')
+        self.assertRegex(new_product.code, r'^SP\d{3}$')
+        self.assertEqual(new_product.store_id, self.store.id)
+        self.assertEqual(new_product.barcode, 'BC-NEW')
+        self.assertEqual(new_product.unit, 'Lon')
+        self.assertEqual(new_product.specification, '330ml')
+        self.assertEqual(new_product.import_price, Decimal('1200'))
+        self.assertEqual(new_product.cost_price, Decimal('1000'))
+        self.assertEqual(new_product.selling_price, Decimal('2000'))
+        self.assertEqual(new_product.wholesale_price_no_warranty, Decimal('1800'))
+        self.assertEqual(new_product.wholesale_price_warranty, Decimal('2200'))
+        self.assertEqual(new_product.min_stock, 1)
+        self.assertEqual(new_product.max_stock, 100)
+        self.assertTrue(new_product.is_weight_based)
+        self.assertFalse(new_product.is_service)
+        self.assertEqual(new_product.description, 'Tao tu Excel')
+        self.assertEqual(new_product.supplier.name, 'NCC Moi Excel')
+        self.assertEqual(new_product.location.name, 'Ke B2')
+
+        category = ProductCategory.objects.get(name='Do uong', parent__isnull=True)
+        product_type = ProductCategory.objects.get(name='Nuoc ngot', parent=category)
+        self.assertEqual(new_product.category_id, product_type.id)
+
+        stock = ProductStock.objects.get(product=new_product, warehouse=self.warehouse_a)
+        self.assertEqual(stock.quantity, Decimal('12.50'))
+
+    def test_import_products_excel_rejects_product_code_outside_user_store(self):
+        upload = self._build_product_import_upload(
+            rows=[[self.other_product.code, 'Khong duoc import']],
+            headers=['Mã SP', 'Tên sản phẩm'],
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertEqual(payload['summary']['created'], 0)
+        self.assertEqual(payload['summary']['updated'], 0)
+        self.assertEqual(payload['summary']['errors'], 1)
+        self.assertIn('ngoài phạm vi', payload['errors'][0]['message'])
+
+        self.other_product.refresh_from_db()
+        self.assertEqual(self.other_product.name, 'San pham store khac')
+        self.assertFalse(Product.objects.filter(store=self.store, code=self.other_product.code).exists())
 
     def test_product_purchase_history_api_returns_selected_product_receipts_only(self):
         other_same_store_product = Product.objects.create(

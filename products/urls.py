@@ -44,6 +44,7 @@ urlpatterns = [
     path('api/locations/save/', views.api_save_location, name='api_save_location'),
     path('api/locations/delete/', views.api_delete_location, name='api_delete_location'),
     path('api/products/export-excel/', views.export_products_excel, name='export_products_excel'),
+    path('api/products/import-excel/', views.import_products_excel, name='import_products_excel'),
     path('api/goods-receipts/export-excel/', views.export_goods_receipts_excel, name='export_goods_receipts_excel'),
     path('api/stock-transfers/export-excel/', views.export_stock_transfers_excel, name='export_stock_transfers_excel'),
     path('api/stock-checks/export-excel/', views.export_stock_checks_excel, name='export_stock_checks_excel'),

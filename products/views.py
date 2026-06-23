@@ -16,6 +16,7 @@ from django.db.models import (
     Exists,
     F,
     OuterRef,
+    Prefetch,
     Q,
     Subquery,
     Sum,
@@ -1612,19 +1613,13 @@ def api_save_category(request):
 
 # ============ API: GOODS RECEIPT ============
 
-@login_required(login_url="/login/")
-def api_get_goods_receipts(request):
-    """Trả về danh sách phiếu nhập trong phạm vi store mà user được phép xem."""
-    receipts = (
-        GoodsReceipt.objects
-        .select_related('supplier', 'warehouse', 'purchase_order')
-        .prefetch_related('items__product')
-        .order_by('-receipt_date', '-created_at', '-id')
-    )
-    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+def _serialize_goods_receipt_list(receipts):
     data = []
     for r in receipts:
-        receipt_items = list(r.items.select_related('product', 'variant').all())
+        receipt_items = getattr(r, 'prefetched_items', None)
+        if receipt_items is None:
+            receipt_items = r.items.select_related('product', 'variant').all()
+        receipt_items = list(receipt_items)
         total_quantity, total_amount = _calculate_goods_receipt_totals(receipt_items)
         items = []
         for item in receipt_items:
@@ -1658,7 +1653,48 @@ def api_get_goods_receipts(request):
             'note': r.note or '',
             'items': items,
         })
-    return JsonResponse({'data': data})
+    return data
+
+
+@login_required(login_url="/login/")
+def api_get_goods_receipts(request):
+    """Trả về danh sách phiếu nhập trong phạm vi store mà user được phép xem."""
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+
+    receipts = (
+        GoodsReceipt.objects
+        .select_related('supplier', 'warehouse', 'purchase_order')
+        .order_by('-receipt_date', '-created_at', '-id')
+    )
+    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    paginator = Paginator(receipts, page_size)
+    page_obj = paginator.get_page(page)
+    page_receipts = (
+        page_obj.object_list
+        .prefetch_related(Prefetch(
+            'items',
+            queryset=GoodsReceiptItem.objects.select_related('product', 'variant'),
+            to_attr='prefetched_items',
+        ))
+    )
+    data = _serialize_goods_receipt_list(page_receipts)
+
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': paginator.count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        }
+    })
 
 
 @login_required(login_url="/login/")

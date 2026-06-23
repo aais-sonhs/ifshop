@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/payments/', views.api_get_payments, name='api_get_payments'),
     path('api/payments/save/', views.api_save_payment, name='api_save_payment'),
     path('api/payments/delete/', views.api_delete_payment, name='api_delete_payment'),
+    path('api/finance-entries/', views.api_get_finance_entries, name='api_get_finance_entries'),
     path('api/finance-categories/', views.api_get_finance_categories, name='api_get_finance_categories'),
     path('api/finance-categories/save/', views.api_save_finance_category, name='api_save_finance_category'),
     path('api/cashbooks/', views.api_get_cashbooks, name='api_get_cashbooks'),

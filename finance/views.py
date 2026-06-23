@@ -1,11 +1,14 @@
 import json
 import logging
+import re
 from decimal import Decimal
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import F, Q
+from django.db.models import CharField, F, Q, Value
+from django.db.models.functions import Coalesce
 from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
@@ -86,6 +89,34 @@ def _parse_decimal_filter(value):
         return Decimal(str(value))
     except Exception:
         return None
+
+
+def _to_positive_int(value, default, minimum=1, maximum=None):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        parsed = default
+    if parsed < minimum:
+        parsed = minimum
+    if maximum is not None and parsed > maximum:
+        parsed = maximum
+    return parsed
+
+
+def _generate_next_payment_code():
+    prefix = 'PC-'
+    max_number = 0
+    for code in Payment.all_objects.filter(code__startswith='PC').values_list('code', flat=True):
+        match = re.match(r'^PC-?(\d+)$', code or '', re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
+
+    next_number = max_number + 1
+    while True:
+        candidate = f'{prefix}{next_number:03d}'
+        if not Payment.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_number += 1
 
 
 def _apply_receipt_filters(queryset, request):
@@ -611,12 +642,8 @@ def api_delete_receipt(request):
 
 # ============ API: PAYMENT ============
 
-@login_required(login_url="/login/")
-def api_get_payments(request):
-    """Trả về danh sách phiếu chi sau khi áp quyền theo store."""
-    payments = Payment.objects.select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option').all()
-    payments = _filter_payments_for_user(payments, request)
-    data = [{
+def _serialize_payment_list(payments):
+    return [{
         'id': p.id, 'code': p.code,
         'category': p.category.name if p.category else '',
         'category_id': p.category_id,
@@ -638,7 +665,171 @@ def api_get_payments(request):
         'payment_method_display': p.get_payment_method_label(),
         'note': p.note or '',
     } for p in payments]
-    return JsonResponse({'data': data})
+
+
+def _get_finance_entry_queryset(request):
+    entry_type = (request.GET.get('type') or '').strip()
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    receipt_queryset = _filter_receipts_for_user(Receipt.objects.all(), request).order_by()
+    payment_queryset = _filter_payments_for_user(Payment.objects.all(), request).order_by()
+
+    if date_from:
+        receipt_queryset = receipt_queryset.filter(receipt_date__gte=date_from)
+        payment_queryset = payment_queryset.filter(payment_date__gte=date_from)
+    if date_to:
+        receipt_queryset = receipt_queryset.filter(receipt_date__lte=date_to)
+        payment_queryset = payment_queryset.filter(payment_date__lte=date_to)
+
+    receipt_entries = receipt_queryset.annotate(
+        entry_type=Value('thu', output_field=CharField()),
+        entry_date=F('receipt_date'),
+        category_name=Coalesce(F('category__name'), Value('', output_field=CharField())),
+        target_name=Coalesce(F('customer__name'), Value('', output_field=CharField())),
+        cash_book_name=Coalesce(F('cash_book__name'), Value('', output_field=CharField())),
+        created_at_sort=F('created_at'),
+        sort_id=F('id'),
+    ).values(
+        'entry_type',
+        'id',
+        'code',
+        'category_name',
+        'target_name',
+        'amount',
+        'payment_method',
+        'entry_date',
+        'cash_book_name',
+        'status',
+        'created_at',
+        'created_at_sort',
+        'sort_id',
+    )
+
+    payment_entries = payment_queryset.annotate(
+        entry_type=Value('chi', output_field=CharField()),
+        entry_date=F('payment_date'),
+        category_name=Coalesce(F('category__name'), Value('', output_field=CharField())),
+        target_name=Coalesce(F('supplier__name'), F('customer__name'), Value('', output_field=CharField())),
+        cash_book_name=Coalesce(F('cash_book__name'), Value('', output_field=CharField())),
+        created_at_sort=F('created_at'),
+        sort_id=F('id'),
+    ).values(
+        'entry_type',
+        'id',
+        'code',
+        'category_name',
+        'target_name',
+        'amount',
+        'payment_method',
+        'entry_date',
+        'cash_book_name',
+        'status',
+        'created_at',
+        'created_at_sort',
+        'sort_id',
+    )
+
+    if entry_type == 'thu':
+        return receipt_entries.order_by('-entry_date', '-created_at_sort', '-sort_id')
+    if entry_type == 'chi':
+        return payment_entries.order_by('-entry_date', '-created_at_sort', '-sort_id')
+    return receipt_entries.union(payment_entries, all=True).order_by('-entry_date', '-created_at_sort', '-sort_id')
+
+
+def _serialize_finance_entries(rows):
+    status_labels = dict(Receipt.STATUS_CHOICES)
+    data = []
+    for row in rows:
+        entry_type = row.get('entry_type') or ''
+        entry_date = row.get('entry_date')
+        created_at = row.get('created_at')
+        data.append({
+            'id': row.get('id'),
+            'entry_type': entry_type,
+            'type': 'Thu' if entry_type == 'thu' else 'Chi',
+            'type_class': 'success' if entry_type == 'thu' else 'danger',
+            'code': row.get('code') or '',
+            'category': row.get('category_name') or '',
+            'target': row.get('target_name') or '',
+            'amount': float(row.get('amount') or 0),
+            'payment_method': row.get('payment_method'),
+            'date': entry_date.strftime('%Y-%m-%d') if entry_date else '',
+            'created_at': created_at.strftime('%d/%m/%Y %H:%M:%S') if created_at else '',
+            'cash_book': row.get('cash_book_name') or '',
+            'status': row.get('status'),
+            'status_display': status_labels.get(row.get('status'), ''),
+        })
+    return data
+
+
+@login_required(login_url="/login/")
+def api_get_finance_entries(request):
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    entries = _get_finance_entry_queryset(request)
+    paginator = Paginator(entries, page_size)
+    page_obj = paginator.get_page(page)
+    data = _serialize_finance_entries(list(page_obj.object_list))
+
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': paginator.count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        }
+    })
+
+
+@login_required(login_url="/login/")
+def api_get_payments(request):
+    """Trả về danh sách phiếu chi sau khi áp quyền theo store."""
+    should_paginate = request.GET.get('page') is not None or request.GET.get('page_size') is not None
+    payments = (
+        Payment.objects
+        .select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option')
+        .order_by('-payment_date', '-created_at', '-id')
+    )
+    payments = _filter_payments_for_user(payments, request)
+
+    if not should_paginate:
+        return JsonResponse({
+            'data': _serialize_payment_list(payments),
+            'next_code': _generate_next_payment_code(),
+        })
+
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    paginator = Paginator(payments, page_size)
+    page_obj = paginator.get_page(page)
+    data = _serialize_payment_list(page_obj.object_list)
+    next_code = _generate_next_payment_code()
+
+    return JsonResponse({
+        'data': data,
+        'next_code': next_code,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': paginator.count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+            'next_code': next_code,
+        }
+    })
 
 
 @login_required(login_url="/login/")
@@ -667,7 +858,7 @@ def api_save_payment(request):
                 p.created_by = request.user
 
             # 2. Gán dữ liệu cơ bản từ payload.
-            p.code = data.get('code', '')
+            p.code = (data.get('code', '') or '').strip() or (p.code or _generate_next_payment_code())
             p.category_id = data.get('category_id') or None
             p.cash_book_id = data.get('cash_book_id') or None
             p.supplier_id = data.get('supplier_id') or None

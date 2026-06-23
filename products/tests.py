@@ -755,6 +755,38 @@ class ProductInventoryFlowTests(TestCase):
             ['P-ORDER-NEWEST', 'P-ORDER-MIDDLE', 'P-ORDER-OLDER'],
         )
 
+    def test_goods_receipt_list_returns_paginated_meta(self):
+        today = date.today()
+        now = timezone.now()
+        for index in range(11):
+            receipt = GoodsReceipt.objects.create(
+                code=f'P-PAGE-{index:02d}',
+                supplier=self.supplier,
+                warehouse=self.warehouse_a,
+                receipt_date=today,
+                status=1,
+                created_by=self.user,
+            )
+            GoodsReceipt.objects.filter(id=receipt.id).update(created_at=now - timedelta(minutes=10 - index))
+
+        response = self.client.get(
+            reverse('api_get_goods_receipts'),
+            data={'page': 2, 'page_size': 10},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['page_count'], 1)
+        self.assertEqual(payload['meta']['total_pages'], 2)
+        self.assertEqual(payload['meta']['total_filtered_count'], 11)
+        self.assertEqual(payload['meta']['total_all_count'], 11)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 11)
+        self.assertFalse(payload['meta']['has_next'])
+        self.assertEqual([item['code'] for item in payload['data']], ['P-PAGE-00'])
+
     def test_delete_completed_stock_transfer_reverts_stock(self):
         transfer = StockTransfer.objects.create(
             code='CK-001',

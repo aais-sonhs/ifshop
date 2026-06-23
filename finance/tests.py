@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 
@@ -102,6 +102,145 @@ class FinanceFlowTests(TestCase):
         deleted_payment = Payment.all_objects.get(id=payment.id)
         self.assertEqual(cash_book.balance, Decimal('1000'))
         self.assertTrue(deleted_payment.is_deleted)
+
+    def test_payment_list_returns_paginated_meta_when_requested(self):
+        today = date.today()
+        for index in range(11):
+            Payment.objects.create(
+                code=f'PC-PAGE-{index:02d}',
+                store=self.store,
+                amount=Decimal('100'),
+                payment_date=today - timedelta(days=10 - index),
+                status=1,
+                created_by=self.user,
+            )
+
+        response = self.client.get(
+            reverse('api_get_payments'),
+            data={'page': 2, 'page_size': 10},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['page_count'], 1)
+        self.assertEqual(payload['meta']['total_pages'], 2)
+        self.assertEqual(payload['meta']['total_filtered_count'], 11)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 11)
+        self.assertFalse(payload['meta']['has_next'])
+        self.assertEqual([item['code'] for item in payload['data']], ['PC-PAGE-00'])
+        self.assertEqual(payload['meta']['next_code'], 'PC-001')
+
+    def test_payment_list_without_pagination_keeps_legacy_full_response(self):
+        for index in range(11):
+            Payment.objects.create(
+                code=f'PC-LEGACY-{index:02d}',
+                store=self.store,
+                amount=Decimal('100'),
+                payment_date=date.today() - timedelta(days=index),
+                status=1,
+                created_by=self.user,
+            )
+
+        response = self.client.get(reverse('api_get_payments'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertNotIn('meta', payload)
+        self.assertEqual(len(payload['data']), 11)
+        self.assertEqual(payload['next_code'], 'PC-001')
+
+    def test_save_payment_auto_generates_code_when_blank(self):
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': '',
+                'amount': 100,
+                'payment_date': date.today().isoformat(),
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        payment = Payment.objects.get(amount=Decimal('100'))
+        self.assertEqual(payment.code, 'PC-001')
+        self.assertEqual(payment.store_id, self.store.id)
+
+    def test_finance_entries_api_returns_paginated_combined_rows(self):
+        today = date.today()
+        for index in range(6):
+            Receipt.objects.create(
+                code=f'PT-LIST-{index:02d}',
+                store=self.store,
+                customer=self.customer,
+                amount=Decimal('100'),
+                receipt_date=today - timedelta(days=index),
+                status=1,
+                created_by=self.user,
+            )
+        for index in range(5):
+            Payment.objects.create(
+                code=f'PC-LIST-{index:02d}',
+                store=self.store,
+                amount=Decimal('50'),
+                payment_date=today - timedelta(days=index + 6),
+                status=1,
+                created_by=self.user,
+            )
+
+        response = self.client.get(
+            reverse('api_get_finance_entries'),
+            data={'page': 2, 'page_size': 10},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['page_count'], 1)
+        self.assertEqual(payload['meta']['total_pages'], 2)
+        self.assertEqual(payload['meta']['total_filtered_count'], 11)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 11)
+        self.assertFalse(payload['meta']['has_next'])
+        self.assertEqual(payload['data'][0]['code'], 'PC-LIST-04')
+        self.assertEqual(payload['data'][0]['type'], 'Chi')
+        self.assertEqual(payload['data'][0]['status_display'], 'Hoàn thành')
+
+    def test_finance_entries_api_filters_by_type(self):
+        Receipt.objects.create(
+            code='PT-FILTER-001',
+            store=self.store,
+            customer=self.customer,
+            amount=Decimal('100'),
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-FILTER-001',
+            store=self.store,
+            amount=Decimal('50'),
+            payment_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+
+        response = self.client.get(
+            reverse('api_get_finance_entries'),
+            data={'type': 'thu', 'page': 1, 'page_size': 10},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual([item['code'] for item in payload['data']], ['PT-FILTER-001'])
+        self.assertEqual(payload['data'][0]['type'], 'Thu')
 
     def test_save_receipt_rejects_foreign_order(self):
         other_order = self._create_order(

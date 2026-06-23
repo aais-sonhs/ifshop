@@ -17,12 +17,25 @@
             <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
             <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Tìm kiếm</button></div>
         </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="finance_entry_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="finance_entry_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="finance_entry_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Loại</th><th>Mã phiếu</th><th>Danh mục</th><th>Đối tượng</th><th>Số tiền</th><th>HTTT</th><th>Ngày</th><th>Quỹ</th><th>Trạng thái</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
+        <div id="finance_entry_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 {% endblock %}
@@ -30,6 +43,15 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+var FINANCE_ENTRY_PAGE_SIZE_KEY = 'ifshop_finance_entry_page_size';
+var FINANCE_ENTRY_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(FINANCE_ENTRY_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    meta: null
+};
 function fmtDt(dateStr, createdAt){
     if(!dateStr) return '';
     var p = dateStr.split('-');
@@ -41,48 +63,104 @@ function fmtDt(dateStr, createdAt){
     return d;
 }
 $(document).ready(function(){
+    $('#finance_entry_page_size').val(String(FINANCE_ENTRY_PAGE_STATE.page_size));
     loadData();
-    $('#btn_search').click(function(){loadData();});
+    $('#btn_search').click(function(){
+        resetFinanceEntryPage();
+        loadData();
+    });
+    $('#finance_entry_page_size').change(function(){
+        FINANCE_ENTRY_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        localStorage.setItem(FINANCE_ENTRY_PAGE_SIZE_KEY, String(FINANCE_ENTRY_PAGE_STATE.page_size));
+        resetFinanceEntryPage();
+        loadData();
+    });
+    $(document).on('click', '.finance-entry-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === FINANCE_ENTRY_PAGE_STATE.page) return;
+        FINANCE_ENTRY_PAGE_STATE.page = page;
+        loadData();
+    });
 });
+function resetFinanceEntryPage(){
+    FINANCE_ENTRY_PAGE_STATE.page = 1;
+}
+function renderFinanceEntryPagination(meta){
+    meta = meta || {};
+    var totalFiltered = Number(meta.total_filtered_count || 0);
+    var totalAll = Number(meta.total_all_count || totalFiltered);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+
+    if(totalFiltered === 0){
+        $('#finance_entry_pagination_summary').html('<span class="text-muted small">Chưa có phiếu thu chi.</span>');
+        $('#finance_entry_pagination').html('');
+        return;
+    }
+
+    $('#finance_entry_pagination_summary').html(
+        '<span>Hiển thị <strong>' + startIndex + '-' + endIndex + '</strong> / <strong>' + totalFiltered + '</strong> phiếu thu chi' +
+        (totalFiltered !== totalAll ? ' trên tổng <strong>' + totalAll + '</strong>' : '') +
+        ' · Trang <strong>' + currentPage + '/' + totalPages + '</strong></span>'
+    );
+
+    if(totalPages <= 1){
+        $('#finance_entry_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, arr){
+        return arr.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '';
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary finance-entry-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' + (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') + ' finance-entry-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary finance-entry-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#finance_entry_pagination').html(html);
+}
 function loadData(){
-    var all = [];
-    $.when(
-        $.get('/api/receipts/'),
-        $.get('/api/payments/')
-    ).done(function(r1, r2){
-        var filterType = $('#filter_type').val();
-        var fromDate = $('#filter_from_date').val();
-        var toDate = $('#filter_to_date').val();
-
-        if (!filterType || filterType === 'thu') {
-            r1[0].data.forEach(function(d){
-                d._type = 'Thu'; d._type_class = 'success'; d._date = d.receipt_date; d._target = d.customer;
-                all.push(d);
-            });
-        }
-        if (!filterType || filterType === 'chi') {
-            r2[0].data.forEach(function(d){
-                d._type = 'Chi'; d._type_class = 'danger'; d._date = d.payment_date; d._target = d.target;
-                all.push(d);
-            });
-        }
-
-        // Filter by date
-        if (fromDate) { all = all.filter(function(d){ return d._date >= fromDate; }); }
-        if (toDate) { all = all.filter(function(d){ return d._date <= toDate; }); }
-
-        // Sort by date desc
-        all.sort(function(a,b){ return b._date.localeCompare(a._date); });
-
+    $.get('/api/finance-entries/', {
+        type: $('#filter_type').val(),
+        date_from: $('#filter_from_date').val(),
+        date_to: $('#filter_to_date').val(),
+        page: FINANCE_ENTRY_PAGE_STATE.page || 1,
+        page_size: FINANCE_ENTRY_PAGE_STATE.page_size || 50
+    }, function(res){
+        FINANCE_ENTRY_PAGE_STATE.meta = res.meta || {};
+        FINANCE_ENTRY_PAGE_STATE.page = Number((res.meta && res.meta.page) || FINANCE_ENTRY_PAGE_STATE.page || 1);
+        FINANCE_ENTRY_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || FINANCE_ENTRY_PAGE_STATE.page_size || 50);
+        $('#finance_entry_page_size').val(String(FINANCE_ENTRY_PAGE_STATE.page_size));
         var h = '';
-        all.forEach(function(d, i){
+        var startIndex = Number((res.meta && res.meta.start_index) || 1);
+        (res.data || []).forEach(function(d, i){
             var pmLabel = d.payment_method === 2 ? '🏦 CK' : '💵 TM';
-            h += '<tr><td>'+(i+1)+'</td><td><span class="badge badge-'+d._type_class+'">'+d._type+'</span></td>'+
-                '<td>'+d.code+'</td><td>'+d.category+'</td><td>'+d._target+'</td>'+
-                '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d._date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
+            h += '<tr><td>'+(startIndex+i)+'</td><td><span class="badge badge-'+d.type_class+'">'+d.type+'</span></td>'+
+                '<td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
+                '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
                 '<td>'+d.status_display+'</td></tr>';
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="10" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        renderFinanceEntryPagination(res.meta || {});
+    }).fail(function(){
+        $('#data_tbl tbody').html('<tr><td colspan="10" class="text-center text-danger">Không tải được danh sách phiếu thu chi.</td></tr>');
+        $('#finance_entry_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
+        $('#finance_entry_pagination').html('');
     });
 }
 </script>

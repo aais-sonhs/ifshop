@@ -10,12 +10,25 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="payment_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="payment_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="payment_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Số tiền</th><th>HTTT</th><th>Ngày chi</th><th>Quỹ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
+        <div id="payment_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 <div class="modal fade" id="modal_form" tabindex="-1">
@@ -59,7 +72,18 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+var PAYMENT_PAGE_SIZE_KEY = 'ifshop_payment_page_size';
+var PAYMENT_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(PAYMENT_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    meta: null
+};
+var PAYMENT_NEXT_CODE = '';
 $(document).ready(function(){
+    $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
     loadData();
 
     // Hiển thị số dư khi chọn quỹ
@@ -90,17 +114,7 @@ $(document).ready(function(){
         var today = new Date().toISOString().split('T')[0];
         $('#inp_payment_date').val(today);
         $('#inp_status').val('0');$('#inp_payment_method').val('2');
-        // Auto generate mã phiếu chi: PC-001...
-        var prefix = 'PC-';
-        var maxNum = 0;
-        $('#data_tbl tbody tr').each(function(){
-            var code = $(this).find('td:eq(1)').text();
-            if(code.indexOf(prefix) === 0){
-                var num = parseInt(code.replace(prefix, ''));
-                if(num > maxNum) maxNum = num;
-            }
-        });
-        $('#inp_code').val(prefix + String(maxNum + 1).padStart(3, '0'));
+        $('#inp_code').val(PAYMENT_NEXT_CODE || '');
         $('#modal_title').text('Tạo phiếu chi');$('#modal_form').modal('show');
     });
     $('#btn_save').click(function(){
@@ -112,11 +126,26 @@ $(document).ready(function(){
             payment_date:$('#inp_payment_date').val(),description:$('#inp_description').val(),
             status:parseInt($('#inp_status').val()),payment_method:parseInt($methodOpt.data('legacy-type'))||2,
             payment_method_option_id:$methodOpt.val()||null,note:$('#inp_note').val()};
-        if(!data.code||!data.payment_date){alert('Vui lòng nhập mã và ngày chi');return;}
+        if(!data.payment_date){alert('Vui lòng nhập ngày chi');return;}
         $.ajax({url:'/api/payments/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
-            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');if(!data.id) resetPaymentPage();loadData();}alert(r.message);}
         });
+    });
+
+    $('#payment_page_size').change(function(){
+        PAYMENT_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        localStorage.setItem(PAYMENT_PAGE_SIZE_KEY, String(PAYMENT_PAGE_STATE.page_size));
+        resetPaymentPage();
+        loadData();
+    });
+
+    $(document).on('click', '.payment-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === PAYMENT_PAGE_STATE.page) return;
+        PAYMENT_PAGE_STATE.page = page;
+        loadData();
     });
 });
 function fmtDt(dateStr, createdAt){
@@ -129,18 +158,84 @@ function fmtDt(dateStr, createdAt){
     }
     return d;
 }
+function resetPaymentPage(){
+    PAYMENT_PAGE_STATE.page = 1;
+}
+function renderPaymentPagination(meta){
+    meta = meta || {};
+    var totalFiltered = Number(meta.total_filtered_count || 0);
+    var totalAll = Number(meta.total_all_count || totalFiltered);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+
+    if(totalFiltered === 0){
+        $('#payment_pagination_summary').html('<span class="text-muted small">Chưa có phiếu chi.</span>');
+        $('#payment_pagination').html('');
+        return;
+    }
+
+    $('#payment_pagination_summary').html(
+        '<span>Hiển thị <strong>' + startIndex + '-' + endIndex + '</strong> / <strong>' + totalFiltered + '</strong> phiếu chi' +
+        (totalFiltered !== totalAll ? ' trên tổng <strong>' + totalAll + '</strong>' : '') +
+        ' · Trang <strong>' + currentPage + '/' + totalPages + '</strong></span>'
+    );
+
+    if(totalPages <= 1){
+        $('#payment_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, arr){
+        return arr.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '';
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary payment-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' + (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') + ' payment-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary payment-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#payment_pagination').html(html);
+}
 function loadData(){
-    $.get('/api/payments/',function(res){
-        var h='';res.data.forEach(function(d,i){
+    $.get('/api/payments/', {
+        page: PAYMENT_PAGE_STATE.page || 1,
+        page_size: PAYMENT_PAGE_STATE.page_size || 50
+    }, function(res){
+        PAYMENT_PAGE_STATE.meta = res.meta || {};
+        PAYMENT_PAGE_STATE.page = Number((res.meta && res.meta.page) || PAYMENT_PAGE_STATE.page || 1);
+        PAYMENT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PAYMENT_PAGE_STATE.page_size || 50);
+        PAYMENT_NEXT_CODE = (res.meta && res.meta.next_code) || res.next_code || PAYMENT_NEXT_CODE || '';
+        $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
+        var h='';
+        var startIndex = Number((res.meta && res.meta.start_index) || 1);
+        res.data.forEach(function(d,i){
             var grBadge = d.goods_receipt ? '<span class="badge badge-info">'+d.goods_receipt+'</span>' : '';
             var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
-            h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
+            h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
                 '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
                 '<td>'+d.status_display+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });$('#data_tbl tbody').html(h||'<tr><td colspan="11" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        renderPaymentPagination(res.meta || {});
+    }).fail(function(){
+        $('#data_tbl tbody').html('<tr><td colspan="11" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
+        $('#payment_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
+        $('#payment_pagination').html('');
     });
 }
 function editItem(d){

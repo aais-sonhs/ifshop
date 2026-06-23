@@ -125,14 +125,28 @@ def api_delete_staff(request):
 
 @login_required(login_url="/login/")
 def api_get_rooms(request):
-    rooms = Room.objects.all()
+    room_type_map = dict(Room.ROOM_TYPE_CHOICES)
+    status_map = dict(Room.STATUS_CHOICES)
+    rooms = list(Room.objects.values(
+        'id',
+        'name',
+        'room_type',
+        'status',
+        'max_capacity',
+        'note',
+        'is_active',
+    ))
     data = [{
-        'id': r.id, 'name': r.name,
-        'room_type': r.room_type, 'room_type_display': r.get_room_type_display(),
-        'status': r.status, 'status_display': r.get_status_display(),
-        'max_capacity': r.max_capacity, 'note': r.note or '',
-        'is_active': r.is_active,
-    } for r in rooms]
+        'id': row['id'],
+        'name': row['name'],
+        'room_type': row['room_type'],
+        'room_type_display': room_type_map.get(row['room_type'], ''),
+        'status': row['status'],
+        'status_display': status_map.get(row['status'], ''),
+        'max_capacity': row['max_capacity'],
+        'note': row['note'] or '',
+        'is_active': row['is_active'],
+    } for row in rooms]
     return JsonResponse({'data': data})
 
 
@@ -231,8 +245,13 @@ def api_delete_service(request):
 
 @login_required(login_url="/login/")
 def api_get_service_categories(request):
-    cats = ServiceCategory.objects.all()
-    data = [{'id': c.id, 'name': c.name, 'description': c.description or '', 'is_active': c.is_active} for c in cats]
+    cats = list(ServiceCategory.objects.values('id', 'name', 'description', 'is_active'))
+    data = [{
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'is_active': row['is_active'],
+    } for row in cats]
     return JsonResponse({'data': data})
 
 

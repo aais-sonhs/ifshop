@@ -369,13 +369,30 @@ def api_upload_customer_avatar(request):
 
 @login_required(login_url="/login/")
 def api_get_customer_groups(request):
-    groups = CustomerGroup.objects.all()
+    groups = list(
+        CustomerGroup.objects.annotate(
+            customer_count=Count(
+                'customers',
+                filter=Q(customers__is_deleted=False),
+                distinct=True,
+            )
+        ).values(
+            'id',
+            'name',
+            'description',
+            'discount_percent',
+            'customer_count',
+            'is_active',
+        )
+    )
     data = [{
-        'id': g.id, 'name': g.name, 'description': g.description or '',
-        'discount_percent': float(g.discount_percent),
-        'customer_count': g.customers.count(),
-        'is_active': g.is_active,
-    } for g in groups]
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'discount_percent': float(row['discount_percent']),
+        'customer_count': row['customer_count'],
+        'is_active': row['is_active'],
+    } for row in groups]
     return JsonResponse({'data': data})
 
 
@@ -496,17 +513,36 @@ def cafe_table_tbl(request):
 @login_required(login_url="/login/")
 def api_get_cafe_tables(request):
     """Trả về bản đồ bàn trong phạm vi store mà user được phép xem."""
-    tables = CafeTable.objects.select_related('current_order').filter(is_active=True)
-    tables = filter_by_store(tables, request)
+    area_display_map = dict(CafeTable.AREA_CHOICES)
+    status_display_map = dict(CafeTable.STATUS_CHOICES)
+    tables = list(
+        filter_by_store(CafeTable.objects.filter(is_active=True), request).values(
+            'id',
+            'number',
+            'name',
+            'area',
+            'capacity',
+            'status',
+            'current_order_id',
+            'note',
+            'sort_order',
+            current_order_code=F('current_order__code'),
+        )
+    )
     data = [{
-        'id': t.id, 'number': t.number, 'name': t.name or f'Bàn {t.number}',
-        'area': t.area, 'area_display': t.get_area_display(),
-        'capacity': t.capacity, 'status': t.status,
-        'status_display': t.get_status_display(),
-        'current_order_id': t.current_order_id,
-        'current_order_code': t.current_order.code if t.current_order else '',
-        'note': t.note or '', 'sort_order': t.sort_order,
-    } for t in tables]
+        'id': row['id'],
+        'number': row['number'],
+        'name': row['name'] or f"Bàn {row['number']}",
+        'area': row['area'],
+        'area_display': area_display_map.get(row['area'], ''),
+        'capacity': row['capacity'],
+        'status': row['status'],
+        'status_display': status_display_map.get(row['status'], ''),
+        'current_order_id': row['current_order_id'],
+        'current_order_code': row['current_order_code'] or '',
+        'note': row['note'] or '',
+        'sort_order': row['sort_order'],
+    } for row in tables]
     return JsonResponse({'data': data})
 
 
@@ -593,17 +629,26 @@ def api_get_point_history(request):
     customer, txns = _get_point_history_queryset(request, cid)
     if not customer:
         return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khách hàng'})
-    txns = txns[:100]
+    type_display_map = dict(PointTransaction.TYPE_CHOICES)
+    txn_rows = list(txns[:100].values(
+        'id',
+        'transaction_type',
+        'points',
+        'balance_after',
+        'description',
+        'created_at',
+        order_code=F('order__code'),
+    ))
     data = [{
-        'id': t.id,
-        'type': t.transaction_type,
-        'type_display': t.get_transaction_type_display(),
-        'points': t.points,
-        'balance_after': t.balance_after,
-        'description': t.description or '',
-        'order_code': t.order.code if t.order else '',
-        'created_at': t.created_at.strftime('%d/%m/%Y %H:%M'),
-    } for t in txns]
+        'id': row['id'],
+        'type': row['transaction_type'],
+        'type_display': type_display_map.get(row['transaction_type'], ''),
+        'points': row['points'],
+        'balance_after': row['balance_after'],
+        'description': row['description'] or '',
+        'order_code': row['order_code'] or '',
+        'created_at': row['created_at'].strftime('%d/%m/%Y %H:%M'),
+    } for row in txn_rows]
     return JsonResponse({
         'status': 'ok', 'data': data,
         'customer_points': customer.points,

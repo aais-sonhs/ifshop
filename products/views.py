@@ -3,10 +3,25 @@ import logging
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
+from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction
+from django.db.models import (
+    Case,
+    Count,
+    DecimalField,
+    Exists,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
@@ -146,6 +161,18 @@ def _to_money_decimal(value, default='0'):
         return Decimal(raw)
     except (InvalidOperation, TypeError, ValueError):
         return Decimal(str(default))
+
+
+def _to_positive_int(value, default, minimum=1, maximum=None):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        parsed = default
+    if parsed < minimum:
+        parsed = minimum
+    if maximum is not None and parsed > maximum:
+        parsed = maximum
+    return parsed
 
 
 def _adjust_stock_quantity(stock, delta):
@@ -533,6 +560,151 @@ def _build_receipt_history_map(products):
     return receipt_map
 
 
+def _annotate_product_list_queryset(queryset):
+    latest_receipt_items = (
+        GoodsReceiptItem.objects
+        .filter(product_id=OuterRef('pk'), goods_receipt__status=1)
+        .order_by('-goods_receipt__receipt_date', '-goods_receipt__id', '-id')
+    )
+    total_stock_subquery = (
+        ProductStock.objects
+        .filter(product_id=OuterRef('pk'))
+        .values('product_id')
+        .annotate(total=Coalesce(Sum('quantity'), Value(Decimal('0'))))
+        .values('total')[:1]
+    )
+    return queryset.annotate(
+        latest_purchase_date=Subquery(latest_receipt_items.values('goods_receipt__receipt_date')[:1]),
+        purchase_price_count=Count(
+            'receipt_items__unit_price',
+            filter=Q(receipt_items__goods_receipt__status=1),
+            distinct=True,
+        ),
+        total_stock_simple=Coalesce(
+            Subquery(total_stock_subquery, output_field=DecimalField(max_digits=15, decimal_places=2)),
+            Value(Decimal('0'), output_field=DecimalField(max_digits=15, decimal_places=2)),
+        ),
+        is_combo_component=Exists(ComboItem.objects.filter(product_id=OuterRef('pk'))),
+        low_stock_threshold=Case(
+            When(min_stock__gt=0, then=F('min_stock')),
+            default=Value(Decimal('5'), output_field=DecimalField(max_digits=15, decimal_places=2)),
+            output_field=DecimalField(max_digits=15, decimal_places=2),
+        ),
+    )
+
+
+def _apply_product_list_filters(queryset, request):
+    params = request.GET
+    text = (params.get('text') or '').strip()
+    category = (params.get('category') or '').strip()
+    product_type = (params.get('product_type') or '').strip()
+    stock = (params.get('stock') or '').strip()
+    supplier = (params.get('supplier') or '').strip()
+    location = (params.get('location') or '').strip()
+    product_kind = (params.get('type') or '').strip()
+    combo_usage = (params.get('combo_usage') or '').strip()
+    status = (params.get('status') or '').strip()
+    creator = (params.get('creator') or '').strip()
+    created_from = (params.get('created_from') or '').strip()
+    created_to = (params.get('created_to') or '').strip()
+    import_history = (params.get('import_history') or '').strip()
+    import_from = (params.get('import_from') or '').strip()
+    import_to = (params.get('import_to') or '').strip()
+    price_basis = (params.get('price_basis') or 'import_price').strip()
+    price_from = (params.get('price_from') or '').strip()
+    price_to = (params.get('price_to') or '').strip()
+
+    queryset = _annotate_product_list_queryset(queryset)
+
+    if text:
+        queryset = queryset.filter(
+            Q(code__icontains=text) |
+            Q(name__icontains=text) |
+            Q(barcode__icontains=text) |
+            Q(specification__icontains=text) |
+            Q(category__name__icontains=text) |
+            Q(category__parent__name__icontains=text) |
+            Q(supplier__name__icontains=text) |
+            Q(location__name__icontains=text)
+        )
+
+    if category:
+        queryset = queryset.filter(
+            Q(category_id=category) |
+            Q(category__parent_id=category)
+        )
+    if product_type:
+        queryset = queryset.filter(category_id=product_type)
+    if supplier:
+        queryset = queryset.filter(supplier_id=supplier)
+    if location:
+        queryset = queryset.filter(location_id=location)
+
+    if product_kind == 'normal':
+        queryset = queryset.filter(is_combo=False, is_service=False, is_weight_based=False)
+    elif product_kind == 'combo':
+        queryset = queryset.filter(is_combo=True)
+    elif product_kind == 'service':
+        queryset = queryset.filter(is_service=True)
+    elif product_kind == 'weight':
+        queryset = queryset.filter(is_weight_based=True)
+
+    if combo_usage == 'is_combo':
+        queryset = queryset.filter(is_combo=True)
+    elif combo_usage == 'component':
+        queryset = queryset.filter(is_combo_component=True)
+    elif combo_usage == 'standalone':
+        queryset = queryset.filter(is_combo=False, is_combo_component=False)
+
+    if status == 'active':
+        queryset = queryset.filter(is_active=True)
+    elif status == 'inactive':
+        queryset = queryset.filter(is_active=False)
+
+    if creator:
+        queryset = queryset.filter(created_by_id=creator)
+    if created_from:
+        queryset = queryset.filter(created_at__date__gte=created_from)
+    if created_to:
+        queryset = queryset.filter(created_at__date__lte=created_to)
+
+    if stock == 'out':
+        queryset = queryset.filter(total_stock_simple__lte=0)
+    elif stock == 'instock':
+        queryset = queryset.filter(total_stock_simple__gt=0)
+    elif stock == 'low':
+        queryset = queryset.filter(total_stock_simple__gt=0, total_stock_simple__lte=F('low_stock_threshold'))
+
+    if import_history == 'has_import':
+        queryset = queryset.filter(latest_purchase_date__isnull=False)
+    elif import_history == 'no_import':
+        queryset = queryset.filter(latest_purchase_date__isnull=True)
+    elif import_history == 'changed_price':
+        queryset = queryset.filter(purchase_price_count__gt=1)
+
+    if import_from:
+        queryset = queryset.filter(latest_purchase_date__gte=import_from)
+    if import_to:
+        queryset = queryset.filter(latest_purchase_date__lte=import_to)
+
+    price_field_map = {
+        'import_price': 'import_price',
+        'cost_price': 'cost_price',
+        'selling_price': 'selling_price',
+        'wholesale_price_no_warranty': 'wholesale_price_no_warranty',
+        'wholesale_price_warranty': 'wholesale_price_warranty',
+        'total_stock': 'total_stock_simple',
+    }
+    price_field = price_field_map.get(price_basis)
+    if price_field:
+        if price_from not in ('', None):
+            queryset = queryset.filter(**{f'{price_field}__gte': _to_decimal(price_from)})
+        if price_to not in ('', None):
+            queryset = queryset.filter(**{f'{price_field}__lte': _to_decimal(price_to)})
+
+    return queryset
+
+
 def _summarize_purchase_receipts(receipt_items, limit=None):
     """Gom lịch sử nhập của sản phẩm theo từng phiếu nhập."""
     receipts = []
@@ -633,6 +805,19 @@ def product_tbl(request):
     categories = list(
         ProductCategory.objects.filter(is_active=True).values('id', 'name', 'parent_id')
     )
+    creator_rows = (
+        filter_by_store(Product.objects.filter(created_by__isnull=False), request)
+        .values('created_by_id', 'created_by__first_name', 'created_by__last_name', 'created_by__username')
+        .distinct()
+        .order_by('created_by__first_name', 'created_by__last_name', 'created_by__username')
+    )
+    creators = []
+    for row in creator_rows:
+        full_name = ' '.join(part for part in [row['created_by__first_name'], row['created_by__last_name']] if part).strip()
+        creators.append({
+            'id': row['created_by_id'],
+            'name': full_name or row['created_by__username'] or 'Không xác định',
+        })
     context = {
         'active_tab': 'product_tbl',
         'categories': categories,
@@ -641,6 +826,7 @@ def product_tbl(request):
         'suppliers': list(Supplier.objects.filter(is_active=True).values('id', 'name')),
         'locations': list(ProductLocation.objects.filter(is_active=True).values('id', 'name')),
         'warehouses': list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name')),
+        'creators': creators,
     }
     return render(request, "products/product_list.html", context)
 
@@ -719,11 +905,22 @@ def cost_adjustment_tbl(request):
 
 @login_required(login_url="/login/")
 def api_get_products(request):
-    products = Product.objects.select_related('category', 'category__parent', 'supplier', 'location', 'created_by').prefetch_related(
-        'variants', 'stocks__warehouse', 'combo_items__product__stocks__warehouse', 'in_combos__combo',
-        'receipt_items__goods_receipt',
-    ).all()
-    products = filter_by_store(products, request)
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+
+    base_queryset = filter_by_store(Product.objects.all(), request)
+    total_all_count = base_queryset.count()
+    filtered_queryset = _apply_product_list_filters(base_queryset, request).order_by('name', 'id')
+    paginator = Paginator(filtered_queryset, page_size)
+    page_obj = paginator.get_page(page)
+    products = list(
+        page_obj.object_list
+        .select_related('category', 'category__parent', 'supplier', 'location', 'created_by')
+        .prefetch_related(
+            'variants', 'stocks__warehouse', 'combo_items__product__stocks__warehouse', 'in_combos__combo',
+            'receipt_items__goods_receipt',
+        )
+    )
     receipt_map = _build_receipt_history_map(products)
 
     data = []
@@ -870,6 +1067,48 @@ def api_get_products(request):
             'purchase_total_quantity': purchase_total_quantity,
             'purchase_total_amount': purchase_total_amount,
             'purchase_price_changed': purchase_price_changed,
+        })
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': total_all_count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        }
+    })
+
+
+@login_required(login_url="/login/")
+def api_get_combo_source_products(request):
+    products = list(
+        filter_by_store(
+            Product.objects.filter(is_combo=False).prefetch_related('stocks__warehouse').order_by('name', 'id'),
+            request,
+        )
+    )
+    data = []
+    for product in products:
+        stock_by_warehouse = [{
+            'warehouse_id': stock.warehouse_id,
+            'quantity': float(stock.quantity),
+        } for stock in product.stocks.all()]
+        data.append({
+            'id': product.id,
+            'code': product.code,
+            'name': product.name,
+            'selling_price': float(product.selling_price),
+            'cost_price': float(product.cost_price),
+            'total_stock': float(sum(stock.quantity for stock in product.stocks.all())),
+            'stock_by_warehouse': stock_by_warehouse,
+            'is_service': product.is_service,
+            'is_active': product.is_active,
         })
     return JsonResponse({'data': data})
 
@@ -1054,13 +1293,24 @@ def api_delete_product(request):
 
 @login_required(login_url="/login/")
 def api_get_warehouses(request):
-    warehouses = Warehouse.objects.all()
-    warehouses = filter_by_store(warehouses, request)
+    warehouses = list(
+        filter_by_store(Warehouse.objects.all(), request).values(
+            'id',
+            'code',
+            'name',
+            'address',
+            'is_active',
+            manager_username=F('manager__username'),
+        )
+    )
     data = [{
-        'id': w.id, 'code': w.code, 'name': w.name,
-        'address': w.address or '', 'manager': w.manager.username if w.manager else '',
-        'is_active': w.is_active,
-    } for w in warehouses]
+        'id': row['id'],
+        'code': row['code'],
+        'name': row['name'],
+        'address': row['address'] or '',
+        'manager': row['manager_username'] or '',
+        'is_active': row['is_active'],
+    } for row in warehouses]
     return JsonResponse({'data': data})
 
 
@@ -1109,14 +1359,30 @@ def api_delete_warehouse(request):
 
 @login_required(login_url="/login/")
 def api_get_suppliers(request):
-    suppliers = Supplier.objects.all()
+    suppliers = list(Supplier.objects.values(
+        'id',
+        'code',
+        'name',
+        'phone',
+        'email',
+        'address',
+        'tax_code',
+        'contact_person',
+        'note',
+        'is_active',
+    ))
     data = [{
-        'id': s.id, 'code': s.code, 'name': s.name,
-        'phone': s.phone or '', 'email': s.email or '',
-        'address': s.address or '', 'tax_code': s.tax_code or '',
-        'contact_person': s.contact_person or '', 'note': s.note or '',
-        'is_active': s.is_active,
-    } for s in suppliers]
+        'id': row['id'],
+        'code': row['code'],
+        'name': row['name'],
+        'phone': row['phone'] or '',
+        'email': row['email'] or '',
+        'address': row['address'] or '',
+        'tax_code': row['tax_code'] or '',
+        'contact_person': row['contact_person'] or '',
+        'note': row['note'] or '',
+        'is_active': row['is_active'],
+    } for row in suppliers]
     return JsonResponse({'data': data})
 
 
@@ -1192,15 +1458,22 @@ def api_delete_supplier(request):
 
 @login_required(login_url="/login/")
 def api_get_categories(request):
-    cats = ProductCategory.objects.select_related('parent').all()
+    cats = list(ProductCategory.objects.values(
+        'id',
+        'name',
+        'description',
+        'parent_id',
+        'is_active',
+        parent_name=F('parent__name'),
+    ))
     data = [{
-        'id': c.id,
-        'name': c.name,
-        'description': c.description or '',
-        'parent_id': c.parent_id,
-        'parent': c.parent.name if c.parent else '',
-        'is_active': c.is_active,
-    } for c in cats]
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'parent_id': row['parent_id'],
+        'parent': row['parent_name'] or '',
+        'is_active': row['is_active'],
+    } for row in cats]
     return JsonResponse({'data': data})
 
 
@@ -1832,17 +2105,32 @@ def api_delete_purchase_order(request):
 
 @login_required(login_url="/login/")
 def api_get_cost_adjustments(request):
-    items = CostAdjustment.objects.select_related('product', 'adjusted_by').all()
-    items = filter_by_store(items, request, field_name='product__store')
+    items = list(
+        filter_by_store(
+            CostAdjustment.objects.all(),
+            request,
+            field_name='product__store',
+        ).values(
+            'id',
+            'old_cost',
+            'new_cost',
+            'reason',
+            'adjusted_at',
+            product_name=F('product__name'),
+            product_code=F('product__code'),
+            adjusted_by_username=F('adjusted_by__username'),
+        )
+    )
     data = [{
-        'id': c.id,
-        'product': c.product.name if c.product else '',
-        'product_code': c.product.code if c.product else '',
-        'old_cost': float(c.old_cost), 'new_cost': float(c.new_cost),
-        'reason': c.reason or '',
-        'adjusted_by': c.adjusted_by.username if c.adjusted_by else '',
-        'adjusted_at': c.adjusted_at.strftime('%d/%m/%Y %H:%M') if c.adjusted_at else '',
-    } for c in items]
+        'id': row['id'],
+        'product': row['product_name'] or '',
+        'product_code': row['product_code'] or '',
+        'old_cost': float(row['old_cost']),
+        'new_cost': float(row['new_cost']),
+        'reason': row['reason'] or '',
+        'adjusted_by': row['adjusted_by_username'] or '',
+        'adjusted_at': row['adjusted_at'].strftime('%d/%m/%Y %H:%M') if row['adjusted_at'] else '',
+    } for row in items]
     return JsonResponse({'data': data})
 
 
@@ -2001,11 +2289,7 @@ def api_product_sales_history(request):
 
 @login_required(login_url="/login/")
 def api_get_locations(request):
-    locs = ProductLocation.objects.all()
-    data = [
-        {'id': location.id, 'name': location.name, 'is_active': location.is_active}
-        for location in locs
-    ]
+    data = list(ProductLocation.objects.values('id', 'name', 'is_active'))
     return JsonResponse({'data': data})
 
 

@@ -801,12 +801,15 @@ def api_save_role_group_permissions(request):
 def api_get_service_prices(request):
     if not can_manage_users(request.user):
         return _forbid_json()
-    items = ServicePrice.objects.all()
+    items = list(ServicePrice.objects.values('id', 'name', 'price', 'unit', 'description', 'is_active'))
     data = [{
-        'id': s.id, 'name': s.name, 'price': float(s.price),
-        'unit': s.unit or '', 'description': s.description or '',
-        'is_active': s.is_active,
-    } for s in items]
+        'id': row['id'],
+        'name': row['name'],
+        'price': float(row['price']),
+        'unit': row['unit'] or '',
+        'description': row['description'] or '',
+        'is_active': row['is_active'],
+    } for row in items]
     return JsonResponse({'data': data})
 
 
@@ -1062,11 +1065,17 @@ def api_delete_user(request):
 def api_get_stores_for_user(request):
     """Lấy danh sách stores mà user hiện tại được quản lý"""
     store_ids = get_managed_store_ids(request.user)
-    stores = Store.objects.filter(id__in=store_ids).select_related('brand')
+    stores = list(Store.objects.filter(id__in=store_ids).values(
+        'id',
+        'code',
+        'name',
+        brand_name=db_models.F('brand__name'),
+    ))
     data = [{
-        'id': s.id, 'name': f"{s.brand.name} - {s.name}" if s.brand else s.name,
-        'code': s.code,
-    } for s in stores]
+        'id': row['id'],
+        'name': f"{row['brand_name']} - {row['name']}" if row['brand_name'] else row['name'],
+        'code': row['code'],
+    } for row in stores]
     return JsonResponse({'data': data})
 
 
@@ -1370,19 +1379,32 @@ def api_preview_print_template(request):
 def api_get_printers(request):
     if request.user.is_superuser:
         return _forbid_json('Super Admin không có quyền xem cấu hình máy in ở cấp cửa hàng')
-    printers = PrinterSetting.objects.filter(is_active=True)
+    printer_type_map = dict(PrinterSetting.PRINTER_TYPE_CHOICES)
+    paper_size_map = dict(PrinterSetting.PAPER_SIZE_CHOICES)
+    printers = list(PrinterSetting.objects.filter(is_active=True).values(
+        'id',
+        'name',
+        'printer_type',
+        'ip_address',
+        'port',
+        'paper_size',
+        'description',
+        'is_default',
+        'is_active',
+    ))
     data = [{
-        'id': p.id, 'name': p.name,
-        'printer_type': p.printer_type,
-        'printer_type_display': p.get_printer_type_display(),
-        'ip_address': p.ip_address or '',
-        'port': p.port,
-        'paper_size': p.paper_size,
-        'paper_size_display': p.get_paper_size_display(),
-        'description': p.description or '',
-        'is_default': p.is_default,
-        'is_active': p.is_active,
-    } for p in printers]
+        'id': row['id'],
+        'name': row['name'],
+        'printer_type': row['printer_type'],
+        'printer_type_display': printer_type_map.get(row['printer_type'], ''),
+        'ip_address': row['ip_address'] or '',
+        'port': row['port'],
+        'paper_size': row['paper_size'],
+        'paper_size_display': paper_size_map.get(row['paper_size'], ''),
+        'description': row['description'] or '',
+        'is_default': row['is_default'],
+        'is_active': row['is_active'],
+    } for row in printers]
     return JsonResponse({'data': data})
 
 

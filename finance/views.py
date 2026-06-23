@@ -5,7 +5,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import F, Q
 from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
@@ -735,12 +735,22 @@ def api_delete_payment(request):
 
 @login_required(login_url="/login/")
 def api_get_finance_categories(request):
-    cats = FinanceCategory.objects.all()
+    type_display_map = dict(FinanceCategory.TYPE_CHOICES)
+    cats = list(FinanceCategory.objects.values(
+        'id',
+        'name',
+        'type',
+        'description',
+        'is_active',
+    ))
     data = [{
-        'id': c.id, 'name': c.name, 'type': c.type,
-        'type_display': c.get_type_display(),
-        'description': c.description or '', 'is_active': c.is_active,
-    } for c in cats]
+        'id': row['id'],
+        'name': row['name'],
+        'type': row['type'],
+        'type_display': type_display_map.get(row['type'], ''),
+        'description': row['description'] or '',
+        'is_active': row['is_active'],
+    } for row in cats]
     return JsonResponse({'data': data})
 
 
@@ -770,11 +780,14 @@ def api_save_finance_category(request):
 
 @login_required(login_url="/login/")
 def api_get_cashbooks(request):
-    books = CashBook.objects.all()
+    books = list(CashBook.objects.values('id', 'name', 'description', 'balance', 'is_active'))
     data = [{
-        'id': b.id, 'name': b.name, 'description': b.description or '',
-        'balance': float(b.balance), 'is_active': b.is_active,
-    } for b in books]
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'balance': float(row['balance']),
+        'is_active': row['is_active'],
+    } for row in books]
     return JsonResponse({'data': data})
 
 
@@ -801,18 +814,30 @@ def api_save_cashbook(request):
 
 @login_required(login_url="/login/")
 def api_get_payment_methods(request):
+    legacy_type_map = dict(PaymentMethodOption.LEGACY_CHOICES)
+    methods = list(PaymentMethodOption.objects.values(
+        'id',
+        'code',
+        'name',
+        'description',
+        'legacy_type',
+        'default_cash_book_id',
+        'sort_order',
+        'is_active',
+        default_cash_book_name=F('default_cash_book__name'),
+    ))
     data = [{
-        'id': m.id,
-        'code': m.code,
-        'name': m.name,
-        'description': m.description or '',
-        'legacy_type': m.legacy_type,
-        'legacy_type_display': m.get_legacy_type_display(),
-        'default_cash_book_id': m.default_cash_book_id,
-        'default_cash_book': m.default_cash_book.name if m.default_cash_book else '',
-        'sort_order': m.sort_order,
-        'is_active': m.is_active,
-    } for m in PaymentMethodOption.objects.select_related('default_cash_book').all()]
+        'id': row['id'],
+        'code': row['code'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'legacy_type': row['legacy_type'],
+        'legacy_type_display': legacy_type_map.get(row['legacy_type'], ''),
+        'default_cash_book_id': row['default_cash_book_id'],
+        'default_cash_book': row['default_cash_book_name'] or '',
+        'sort_order': row['sort_order'],
+        'is_active': row['is_active'],
+    } for row in methods]
     return JsonResponse({'data': data})
 
 

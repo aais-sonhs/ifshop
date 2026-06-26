@@ -119,6 +119,21 @@
                 <tbody></tbody>
             </table>
         </div>
+        <div class="d-flex align-items-center justify-content-between flex-wrap mt-3" style="gap:8px;">
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label class="mb-0 small text-muted" for="customer_page_size">Hiển thị</label>
+                <select class="form-control form-control-sm" id="customer_page_size" style="width:auto;">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+                <small class="text-muted" id="customer_page_info"></small>
+            </div>
+            <nav aria-label="Phân trang khách hàng">
+                <ul class="pagination pagination-sm mb-0" id="customer_pagination"></ul>
+            </nav>
+        </div>
     </div>
 </div>
 
@@ -321,6 +336,7 @@
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 .customer-product-match-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
 .customer-product-match{display:block;border:1px solid #bee5eb;background:#f0fbff;border-radius:4px;padding:4px 6px;font-size:12px;line-height:1.35;}
+#customer_pagination .page-link{min-width:36px;text-align:center;}
 </style>
 {% endblock %}
 
@@ -340,6 +356,91 @@ var allCustomers = [];
 var _histOrders = [];
 var _customerOrderPreviewCache = {};
 var CUSTOMER_FILTER_KEY = 'ifshop_customer_filters';
+var CUSTOMER_PAGE_SIZE_KEY = 'ifshop_customer_page_size';
+var customerListState = {
+    page: 1,
+    pageSize: 50,
+    pageButtonCount: 5,
+};
+
+function getStoredCustomerPageSize(){
+    var stored = parseInt(localStorage.getItem(CUSTOMER_PAGE_SIZE_KEY), 10);
+    return [20, 50, 100, 200].indexOf(stored) >= 0 ? stored : 50;
+}
+
+function resetCustomerPagination(){
+    customerListState.page = 1;
+}
+
+function getCustomerPaginationMeta(filteredCount){
+    var pageSize = Math.max(parseInt(customerListState.pageSize, 10) || 50, 1);
+    var totalPages = filteredCount > 0 ? Math.ceil(filteredCount / pageSize) : 1;
+    var page = Math.min(Math.max(customerListState.page || 1, 1), totalPages);
+    var startIndex = filteredCount > 0 ? ((page - 1) * pageSize) : 0;
+    var endIndex = Math.min(startIndex + pageSize, filteredCount);
+    customerListState.page = page;
+    return {
+        page: page,
+        pageSize: pageSize,
+        totalPages: totalPages,
+        startIndex: startIndex,
+        endIndex: endIndex,
+    };
+}
+
+function renderCustomerPagination(filteredCount){
+    var meta = getCustomerPaginationMeta(filteredCount);
+    if(filteredCount === 0){
+        $('#customer_page_info').text('Không có khách hàng nào');
+        $('#customer_pagination').html('');
+        return meta;
+    }
+
+    $('#customer_page_info').text(
+        'Hiển thị ' + (meta.startIndex + 1) + ' - ' + meta.endIndex + ' / ' + filteredCount + ' khách'
+    );
+
+    if(meta.totalPages <= 1){
+        $('#customer_pagination').html('');
+        return meta;
+    }
+
+    var half = Math.floor(customerListState.pageButtonCount / 2);
+    var startPage = Math.max(meta.page - half, 1);
+    var endPage = Math.min(startPage + customerListState.pageButtonCount - 1, meta.totalPages);
+    startPage = Math.max(endPage - customerListState.pageButtonCount + 1, 1);
+    var items = [];
+
+    function pushPageItem(label, page, disabled, active){
+        items.push(
+            '<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">' +
+            '<button type="button" class="page-link" data-page="' + page + '"' + (disabled ? ' disabled' : '') + '>' +
+            label +
+            '</button></li>'
+        );
+    }
+
+    pushPageItem('&laquo;', meta.page - 1, meta.page === 1, false);
+    if(startPage > 1){
+        pushPageItem('1', 1, false, meta.page === 1);
+        if(startPage > 2){
+            items.push('<li class="page-item disabled"><span class="page-link">...</span></li>');
+        }
+    }
+    for(var page = startPage; page <= endPage; page++){
+        pushPageItem(String(page), page, false, page === meta.page);
+    }
+    if(endPage < meta.totalPages){
+        if(endPage < meta.totalPages - 1){
+            items.push('<li class="page-item disabled"><span class="page-link">...</span></li>');
+        }
+        pushPageItem(String(meta.totalPages), meta.totalPages, false, meta.page === meta.totalPages);
+    }
+    pushPageItem('&raquo;', meta.page + 1, meta.page === meta.totalPages, false);
+
+    $('#customer_pagination').html(items.join(''));
+    return meta;
+}
 
 function getCustomerTypeBadge(type){
     if(Number(type) === 2) return '<span class="badge badge-primary">Công ty</span>';
@@ -654,6 +755,15 @@ function findBestCustomerMatch(list, term){
 }
 
 function focusCustomerRow(customerId){
+    var filtered = filterCustomers(allCustomers);
+    var index = filtered.findIndex(function(item){ return item.id === customerId; });
+    if(index >= 0){
+        var targetPage = Math.floor(index / customerListState.pageSize) + 1;
+        if(customerListState.page !== targetPage){
+            customerListState.page = targetPage;
+            renderTable();
+        }
+    }
     var $row = $('#customer_row_' + customerId);
     if(!$row.length) return;
     $('#data_tbl tbody tr').removeClass('customer-row-highlight');
@@ -772,19 +882,22 @@ var customerColConfig = new ColumnConfig({
 });
 
 $(document).ready(function(){
+    customerListState.pageSize = getStoredCustomerPageSize();
+    $('#customer_page_size').val(String(customerListState.pageSize));
     loadData();
     renderCustomerSavedFilters();
-    $('#filter_search').on('input', function(){ renderTable(); });
+    $('#filter_search').on('input', function(){ resetCustomerPagination(); renderTable(); });
     $('#filter_search').on('keydown', function(e){
         if(e.key !== 'Enter') return;
         e.preventDefault();
         submitCustomerSearch();
     });
-    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_purchase_price_basis').on('change', function(){ renderTable(); });
+    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_purchase_price_basis').on('change', function(){ resetCustomerPagination(); renderTable(); });
     $('#filter_product, #filter_purchase_price_from, #filter_purchase_price_to').on('input', function(){
         if(this.id === 'filter_purchase_price_from' || this.id === 'filter_purchase_price_to'){
             $('#filter_purchase_price_preset').val('');
         }
+        resetCustomerPagination();
         renderTable();
     });
     $('#filter_purchase_price_preset').on('change', function(){
@@ -796,6 +909,7 @@ $(document).ready(function(){
         } else {
             $('#filter_purchase_price_from, #filter_purchase_price_to').val('');
         }
+        resetCustomerPagination();
         renderTable();
     });
     $('#btn_search_customer').click(function(){ submitCustomerSearch(); });
@@ -805,6 +919,7 @@ $(document).ready(function(){
         $('#filter_product, #filter_created_from, #filter_created_to, #filter_purchase_price_from, #filter_purchase_price_to').val('');
         $('#filter_purchase_price_basis').val('unit_price');
         $('#filter_purchase_price_preset').val('');
+        resetCustomerPagination();
         renderTable();
     });
     $('#btn_save_customer_filter').click(function(){
@@ -857,6 +972,7 @@ $(document).ready(function(){
         $('#filter_purchase_price_to').val(f.purchase_price_to || '');
         $('#filter_created_from').val(f.created_from || '');
         $('#filter_created_to').val(f.created_to || '');
+        resetCustomerPagination();
         renderTable();
         if(typeof toastr !== 'undefined') toastr.info('Đã tải bộ lọc: ' + f.name);
         else alert('Đã tải bộ lọc: ' + f.name);
@@ -971,6 +1087,18 @@ $(document).ready(function(){
             $row.addClass('expanded');
             $detail.show();
         }
+    });
+    $('#customer_page_size').on('change', function(){
+        customerListState.pageSize = parseInt($(this).val(), 10) || 50;
+        localStorage.setItem(CUSTOMER_PAGE_SIZE_KEY, String(customerListState.pageSize));
+        resetCustomerPagination();
+        renderTable();
+    });
+    $('#customer_pagination').on('click', 'button[data-page]', function(){
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || $(this).prop('disabled')) return;
+        customerListState.page = page;
+        renderTable();
     });
 });
 
@@ -1126,6 +1254,7 @@ function loadData(){
         allCustomers = res.data;
         populateCustomerCreatorFilter(allCustomers);
         populateCustomerProductSuggestions(allCustomers);
+        resetCustomerPagination();
         renderTable();
     });
 }
@@ -1134,8 +1263,10 @@ function renderTable(){
     var filters = getCurrentCustomerFilters();
     var productKeyword = normalizeCustomerText(filters.product);
     var filtered = filterCustomers(allCustomers);
+    var pagination = renderCustomerPagination(filtered.length);
+    var pagedCustomers = filtered.slice(pagination.startIndex, pagination.endIndex);
     var h = '';
-    filtered.forEach(function(d, i){
+    pagedCustomers.forEach(function(d, i){
         var debtValue = Number(d.total_debt || 0);
         var debtStyle = debtValue > 0 ? 'color:#dc3545;font-weight:bold;' : '';
         var avatarSrc = d.avatar_url || defaultAvatar;
@@ -1151,7 +1282,7 @@ function renderTable(){
             '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\' >Sửa</button> '+
             '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
         h+='<tr id="customer_row_'+d.id+'" style="vertical-align:middle;">'+
-            customerColConfig.td('stt', (i+1))+
+            customerColConfig.td('stt', (pagination.startIndex + i + 1))+
             customerColConfig.td('avatar', avatarImg, 'class="text-center" style="padding:4px;"')+
             customerColConfig.td('code', escapeHtml(d.code))+
             customerColConfig.td('name', nameHtml, 'style="min-width:220px;white-space:normal;"')+

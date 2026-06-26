@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from datetime import datetime
 from django.db import transaction
 from django.db.models import Count, F, Q, Sum
 from django.shortcuts import render
@@ -92,6 +93,7 @@ def _build_customer_order_metrics_map(request, customers):
     for row in orders.values('customer_id').annotate(
         total_purchased=Sum('final_amount'),
         total_paid=Sum('paid_amount'),
+        order_count=Count('id'),
         unpaid_order_count=Count('id', filter=Q(payment_status=0)),
         debt_order_count=Count('id', filter=Q(final_amount__gt=F('paid_amount'))),
     ):
@@ -100,10 +102,63 @@ def _build_customer_order_metrics_map(request, customers):
         metrics[row['customer_id']] = {
             'total_purchased': total_purchased,
             'total_debt': max(total_purchased - total_paid, 0),
+            'order_count': row['order_count'] or 0,
             'unpaid_order_count': row['unpaid_order_count'] or 0,
             'debt_order_count': row['debt_order_count'] or 0,
         }
     return metrics
+
+
+def _customer_metrics_for_display(customer, metrics_map):
+    """Ưu tiên số liệu từ đơn hàng thật; fallback về field cache khi mới import lịch sử."""
+    cached_total_purchased = float(customer.total_purchased or 0)
+    cached_total_debt = float(customer.total_debt or 0)
+    cached_order_count = int(customer.order_count or 0)
+    metrics = metrics_map.get(customer.id)
+    if not metrics:
+        return {
+            'total_purchased': cached_total_purchased,
+            'total_debt': cached_total_debt,
+            'unpaid_order_count': 0,
+            'debt_order_count': 0,
+            'order_count': cached_order_count,
+            'source': 'legacy_import' if customer.imported_legacy_metrics else 'customer_cache',
+        }
+    if customer.imported_legacy_metrics:
+        return {
+            'total_purchased': cached_total_purchased + metrics.get('total_purchased', 0),
+            'total_debt': cached_total_debt + metrics.get('total_debt', 0),
+            'unpaid_order_count': metrics.get('unpaid_order_count', 0),
+            'debt_order_count': metrics.get('debt_order_count', 0),
+            'order_count': cached_order_count + metrics.get('order_count', 0),
+            'source': 'orders_plus_legacy_import',
+        }
+    return {
+        'total_purchased': metrics.get('total_purchased', cached_total_purchased),
+        'total_debt': metrics.get('total_debt', cached_total_debt),
+        'unpaid_order_count': metrics.get('unpaid_order_count', 0),
+        'debt_order_count': metrics.get('debt_order_count', 0),
+        'order_count': metrics.get('order_count', cached_order_count),
+        'source': 'orders',
+    }
+
+
+def _customer_total_for_membership(customer):
+    """Tổng mua dùng để nâng hạng: cộng nền import lịch sử với đơn mới trong hệ thống."""
+    if not customer:
+        return 0
+    if not customer.imported_legacy_metrics:
+        return float(customer.total_purchased or 0)
+
+    live_total = (
+        Order.objects
+        .filter(customer=customer)
+        .exclude(status=6)
+        .aggregate(total=Sum('final_amount'))
+        .get('total')
+        or 0
+    )
+    return float(customer.total_purchased or 0) + float(live_total)
 
 
 def _safe_float(value):
@@ -232,36 +287,61 @@ def api_get_customers(request):
     customers = filter_by_store(customers, request)
     metrics_map = _build_customer_order_metrics_map(request, customers)
     product_history_map = _build_customer_product_history_map(request, customers)
-    data = [{
-        'id': c.id, 'code': c.code, 'name': c.name,
-        'avatar_url': c.avatar.url if c.avatar else '',
-        'customer_type': c.customer_type,
-        'customer_type_display': c.get_customer_type_display(),
-        'phone': c.phone or '', 'email': c.email or '',
-        'address': c.address or '',
-        'id_number': c.id_number or '',
-        'company': c.company or '',
-        'tax_code': c.tax_code or '',
-        'company_address': c.company_address or '',
-        'owner_tax_code': c.owner_tax_code or '',
-        'group': c.group.name if c.group else '', 'group_id': c.group_id,
-        'total_purchased': metrics_map.get(c.id, {}).get('total_purchased', 0),
-        'total_debt': metrics_map.get(c.id, {}).get('total_debt', 0),
-        'unpaid_order_count': metrics_map.get(c.id, {}).get('unpaid_order_count', 0),
-        'debt_order_count': metrics_map.get(c.id, {}).get('debt_order_count', 0),
-        'points': c.points, 'membership_level': c.membership_level,
-        'membership_display': c.get_membership_level_display(),
-        'gender': c.gender, 'gender_display': c.get_gender_display(),
-        'date_of_birth': c.date_of_birth.strftime('%d/%m/%Y') if c.date_of_birth else '',
-        'created_at': c.created_at.strftime('%Y-%m-%d') if c.created_at else '',
-        'created_at_display': c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
-        'creator_id': c.created_by_id,
-        'creator_name': (c.created_by.get_full_name() or c.created_by.username) if c.created_by else '',
-        'purchased_product_names': product_history_map.get(c.id, {}).get('names', []),
-        'purchased_product_search': product_history_map.get(c.id, {}).get('search', ''),
-        'purchase_filter_items': product_history_map.get(c.id, {}).get('filter_items', []),
-        'note': c.note or '', 'is_active': c.is_active,
-    } for c in customers]
+    data = []
+    for c in customers:
+        metrics = _customer_metrics_for_display(c, metrics_map)
+        data.append({
+            'metrics': metrics,
+            'id': c.id, 'code': c.code, 'name': c.name,
+            'avatar_url': c.avatar.url if c.avatar else '',
+            'customer_type': c.customer_type,
+            'customer_type_display': c.get_customer_type_display(),
+            'phone': c.phone or '', 'email': c.email or '',
+            'address': c.address or '',
+            'id_number': c.id_number or '',
+            'company': c.company or '',
+            'tax_code': c.tax_code or '',
+            'company_address': c.company_address or '',
+            'owner_tax_code': c.owner_tax_code or '',
+            'promotion_policy': c.promotion_policy or '',
+            'contact_person': c.contact_person or '',
+            'contact_phone': c.contact_phone or '',
+            'contact_email': c.contact_email or '',
+            'province': c.province or '',
+            'district': c.district or '',
+            'ward': c.ward or '',
+            'website': c.website or '',
+            'fax': c.fax or '',
+            'default_price_policy': c.default_price_policy or '',
+            'default_discount_percent': float(c.default_discount_percent or 0),
+            'default_payment_method': c.default_payment_method or '',
+            'group': c.group.name if c.group else '',
+            'group_id': c.group_id,
+            'group_code': c.group.code if c.group else '',
+            'imported_legacy_metrics': c.imported_legacy_metrics,
+            'total_purchased': metrics.get('total_purchased', 0),
+            'total_debt': metrics.get('total_debt', 0),
+            'order_count': metrics.get('order_count', 0),
+            'unpaid_order_count': metrics.get('unpaid_order_count', 0),
+            'debt_order_count': metrics.get('debt_order_count', 0),
+            'total_product_quantity': float(c.total_product_quantity or 0),
+            'total_returned_product_quantity': float(c.total_returned_product_quantity or 0),
+            'points': c.points, 'membership_level': c.membership_level,
+            'membership_display': c.get_membership_level_display(),
+            'membership_expiry_date': c.membership_expiry_date.strftime('%d/%m/%Y') if c.membership_expiry_date else '',
+            'amount_to_next_membership': float(c.amount_to_next_membership or 0),
+            'last_purchase_at': c.last_purchase_at.strftime('%d/%m/%Y %H:%M') if c.last_purchase_at else '',
+            'gender': c.gender, 'gender_display': c.get_gender_display(),
+            'date_of_birth': c.date_of_birth.strftime('%d/%m/%Y') if c.date_of_birth else '',
+            'created_at': c.created_at.strftime('%Y-%m-%d') if c.created_at else '',
+            'created_at_display': c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
+            'creator_id': c.created_by_id,
+            'creator_name': (c.created_by.get_full_name() or c.created_by.username) if c.created_by else '',
+            'purchased_product_names': product_history_map.get(c.id, {}).get('names', []),
+            'purchased_product_search': product_history_map.get(c.id, {}).get('search', ''),
+            'purchase_filter_items': product_history_map.get(c.id, {}).get('filter_items', []),
+            'note': c.note or '', 'is_active': c.is_active,
+        })
     return JsonResponse({'data': data})
 
 
@@ -294,8 +374,36 @@ def api_save_customer(request):
         c.tax_code = data.get('tax_code', '')
         c.company_address = data.get('company_address', '')
         c.owner_tax_code = data.get('owner_tax_code', '')
+        c.promotion_policy = data.get('promotion_policy', '')
+        c.contact_person = data.get('contact_person', '')
+        c.contact_phone = data.get('contact_phone', '')
+        c.contact_email = data.get('contact_email', '')
+        c.province = data.get('province', '')
+        c.district = data.get('district', '')
+        c.ward = data.get('ward', '')
+        c.website = data.get('website', '')
+        c.fax = data.get('fax', '')
+        c.default_price_policy = data.get('default_price_policy', '')
+        c.default_discount_percent = data.get('default_discount_percent', 0) or 0
+        c.default_payment_method = data.get('default_payment_method', '')
+        c.order_count = data.get('order_count', c.order_count or 0) or 0
+        c.total_product_quantity = data.get('total_product_quantity', c.total_product_quantity or 0) or 0
+        c.total_returned_product_quantity = data.get('total_returned_product_quantity', c.total_returned_product_quantity or 0) or 0
         c.note = data.get('note', '')
         c.group_id = data.get('group_id') or None
+        c.total_purchased = data.get('total_purchased', c.total_purchased or 0) or 0
+        c.total_debt = data.get('total_debt', c.total_debt or 0) or 0
+        c.imported_legacy_metrics = bool(data.get('imported_legacy_metrics', c.imported_legacy_metrics))
+        c.points = data.get('points', c.points or 0) or 0
+        c.membership_level = data.get('membership_level', c.membership_level or 0) or 0
+        c.amount_to_next_membership = data.get('amount_to_next_membership', c.amount_to_next_membership or 0) or 0
+        dob = (data.get('date_of_birth') or '').strip()
+        c.date_of_birth = datetime.strptime(dob, '%d/%m/%Y').date() if dob else None
+        membership_expiry = (data.get('membership_expiry_date') or '').strip()
+        c.membership_expiry_date = datetime.strptime(membership_expiry, '%d/%m/%Y').date() if membership_expiry else None
+        last_purchase = (data.get('last_purchase_at') or '').strip()
+        c.last_purchase_at = datetime.strptime(last_purchase, '%d/%m/%Y %H:%M') if last_purchase else None
+        c.gender = data.get('gender', c.gender or 0) or 0
         c.is_active = data.get('is_active', True)
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
@@ -704,7 +812,7 @@ def api_adjust_points(request):
 
 def _auto_upgrade_membership(customer):
     """Tự động nâng hạng thành viên dựa trên tổng mua hàng"""
-    total = float(customer.total_purchased)
+    total = _customer_total_for_membership(customer)
     if total >= 100_000_000:
         customer.membership_level = 4  # Kim cương
     elif total >= 50_000_000:
@@ -734,8 +842,11 @@ def add_loyalty_points_for_order(order):
             return
         customer = order.customer
         customer.points += points
-        customer.total_purchased = float(customer.total_purchased) + float(order.final_amount)
-        customer.save(update_fields=['points', 'total_purchased'])
+        update_fields = ['points']
+        if not customer.imported_legacy_metrics:
+            customer.total_purchased = float(customer.total_purchased) + float(order.final_amount)
+            update_fields.append('total_purchased')
+        customer.save(update_fields=update_fields)
         _auto_upgrade_membership(customer)
 
         PointTransaction.objects.create(
@@ -895,7 +1006,7 @@ def export_customers_excel(request):
     total_purchased = 0
     total_debt = 0
     for i, c in enumerate(customers, 1):
-        metrics = metrics_map.get(c.id, {'total_purchased': 0, 'total_debt': 0})
+        metrics = _customer_metrics_for_display(c, metrics_map)
         total_purchased += metrics['total_purchased']
         total_debt += metrics['total_debt']
         rows.append({

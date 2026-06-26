@@ -1,14 +1,16 @@
 from datetime import date
 import json
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
 from customers.models import CafeTable, Customer
+from customers.views import add_loyalty_points_for_order
 from orders.models import Order, OrderItem
 from products.models import Product
-from system_management.models import Brand, Store, UserProfile
+from system_management.models import Brand, BusinessConfig, Store, UserProfile
 
 
 class CustomerScopeTests(TestCase):
@@ -207,6 +209,57 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(row['total_purchased'], 100.0)
         self.assertEqual(row['total_debt'], 60.0)
 
+    def test_get_customers_falls_back_to_cached_metrics_without_orders(self):
+        self.customer.total_purchased = Decimal('1234000')
+        self.customer.total_debt = Decimal('345000')
+        self.customer.order_count = 7
+        self.customer.imported_legacy_metrics = True
+        self.customer.save(update_fields=['total_purchased', 'total_debt', 'order_count', 'imported_legacy_metrics'])
+
+        response = self.client.get(reverse('api_get_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['id'] == self.customer.id)
+        self.assertTrue(row['imported_legacy_metrics'])
+        self.assertEqual(row['metrics']['source'], 'legacy_import')
+        self.assertEqual(row['total_purchased'], 1234000.0)
+        self.assertEqual(row['total_debt'], 345000.0)
+        self.assertEqual(row['order_count'], 7)
+
+    def test_get_customers_combines_legacy_metrics_with_live_orders(self):
+        self.customer.total_purchased = Decimal('1234000')
+        self.customer.total_debt = Decimal('345000')
+        self.customer.order_count = 7
+        self.customer.imported_legacy_metrics = True
+        self.customer.save(update_fields=['total_purchased', 'total_debt', 'order_count', 'imported_legacy_metrics'])
+
+        Order.objects.create(
+            code='DH-CUST-LEGACY-001',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            payment_status=1,
+            total_amount=600000,
+            final_amount=600000,
+            paid_amount=450000,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['id'] == self.customer.id)
+        self.assertTrue(row['imported_legacy_metrics'])
+        self.assertEqual(row['metrics']['source'], 'orders_plus_legacy_import')
+        self.assertEqual(row['total_purchased'], 1834000.0)
+        self.assertEqual(row['total_debt'], 495000.0)
+        self.assertEqual(row['order_count'], 8)
+        self.assertEqual(row['debt_order_count'], 1)
+        self.assertEqual(row['unpaid_order_count'], 0)
+
     def test_customer_unpaid_metrics_ignore_canceled_orders(self):
         active_unpaid = Order.objects.create(
             code='DH-CUST-UNPAID',
@@ -239,6 +292,7 @@ class CustomerScopeTests(TestCase):
             item for item in customers_response.json()['data']
             if item['id'] == self.customer.id
         )
+        self.assertEqual(customer_payload['metrics']['source'], 'orders')
         self.assertEqual(customer_payload['total_purchased'], 100.0)
         self.assertEqual(customer_payload['total_debt'], 100.0)
         self.assertEqual(customer_payload['unpaid_order_count'], 1)
@@ -318,3 +372,112 @@ class CustomerScopeTests(TestCase):
             and item['order_code'] == order.code
             for item in customer_payload['purchase_filter_items']
         ))
+
+    def test_save_customer_persists_extended_import_fields(self):
+        response = self.client.post(
+            reverse('api_save_customer'),
+            data=json.dumps({
+                'code': 'CKH004',
+                'name': 'Customer Extended',
+                'promotion_policy': 'Theo nhóm khách hàng',
+                'contact_person': 'Nguyen Van B',
+                'contact_phone': '0901002003',
+                'contact_email': 'contact@example.com',
+                'province': 'Hà Nội',
+                'district': 'Ba Đình',
+                'ward': 'Trúc Bạch',
+                'website': 'example.com',
+                'fax': '0241234567',
+                'default_price_policy': 'Bảng giá lẻ',
+                'default_discount_percent': '7.5',
+                'default_payment_method': 'Chuyển khoản',
+                'total_purchased': '1500000',
+                'total_debt': '250000',
+                'imported_legacy_metrics': True,
+                'order_count': 3,
+                'total_product_quantity': '12.5',
+                'total_returned_product_quantity': '1.5',
+                'points': 12,
+                'membership_level': 2,
+                'membership_expiry_date': '31/12/2026',
+                'amount_to_next_membership': '500000',
+                'last_purchase_at': '25/06/2026 09:03',
+                'date_of_birth': '01/01/1990',
+                'gender': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        customer = Customer.objects.get(code='CKH004')
+        self.assertEqual(customer.promotion_policy, 'Theo nhóm khách hàng')
+        self.assertEqual(customer.contact_person, 'Nguyen Van B')
+        self.assertEqual(customer.contact_phone, '0901002003')
+        self.assertEqual(customer.contact_email, 'contact@example.com')
+        self.assertEqual(customer.province, 'Hà Nội')
+        self.assertEqual(customer.district, 'Ba Đình')
+        self.assertEqual(customer.ward, 'Trúc Bạch')
+        self.assertEqual(customer.website, 'example.com')
+        self.assertEqual(customer.fax, '0241234567')
+        self.assertEqual(customer.default_price_policy, 'Bảng giá lẻ')
+        self.assertEqual(customer.default_discount_percent, Decimal('7.5'))
+        self.assertEqual(customer.default_payment_method, 'Chuyển khoản')
+        self.assertTrue(customer.imported_legacy_metrics)
+        self.assertEqual(customer.total_purchased, Decimal('1500000'))
+        self.assertEqual(customer.total_debt, Decimal('250000'))
+        self.assertEqual(customer.order_count, 3)
+        self.assertEqual(customer.total_product_quantity, Decimal('12.5'))
+        self.assertEqual(customer.total_returned_product_quantity, Decimal('1.5'))
+        self.assertEqual(customer.points, 12)
+        self.assertEqual(customer.membership_level, 2)
+        self.assertEqual(customer.membership_expiry_date.isoformat(), '2026-12-31')
+        self.assertEqual(customer.amount_to_next_membership, Decimal('500000'))
+        self.assertEqual(customer.last_purchase_at.strftime('%d/%m/%Y %H:%M'), '25/06/2026 09:03')
+        self.assertEqual(customer.date_of_birth.isoformat(), '1990-01-01')
+        self.assertEqual(customer.gender, 1)
+
+    def test_add_loyalty_points_for_legacy_customer_uses_combined_total_for_membership(self):
+        BusinessConfig.objects.update_or_create(
+            pk=1,
+            defaults={
+                'business_type': 'custom',
+                'business_name': 'Doanh nghiệp',
+                'opt_loyalty_points': True,
+                'opt_loyalty_rate': 10000,
+            },
+        )
+        self.customer.total_purchased = Decimal('4900000')
+        self.customer.total_debt = Decimal('50000')
+        self.customer.order_count = 2
+        self.customer.imported_legacy_metrics = True
+        self.customer.save(update_fields=['total_purchased', 'total_debt', 'order_count', 'imported_legacy_metrics'])
+
+        order = Order.objects.create(
+            code='DH-CUST-LOYALTY-LEGACY',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            payment_status=2,
+            total_amount=200000,
+            final_amount=200000,
+            paid_amount=200000,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+
+        add_loyalty_points_for_order(order)
+        self.customer.refresh_from_db()
+
+        self.assertEqual(self.customer.points, 20)
+        self.assertEqual(self.customer.total_purchased, Decimal('4900000'))
+        self.assertEqual(self.customer.membership_level, 1)
+
+        response = self.client.get(reverse('api_get_customers'))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['id'] == self.customer.id)
+        self.assertEqual(row['metrics']['source'], 'orders_plus_legacy_import')
+        self.assertEqual(row['total_purchased'], 5100000.0)
+        self.assertEqual(row['order_count'], 3)

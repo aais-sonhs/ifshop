@@ -5,6 +5,7 @@ from core.soft_delete import SoftDeleteModel
 
 class CustomerGroup(SoftDeleteModel):
     """Nhóm khách hàng"""
+    code = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name='Mã nhóm')
     name = models.CharField(max_length=255, verbose_name='Tên nhóm')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0,
@@ -48,10 +49,30 @@ class Customer(SoftDeleteModel):
     owner_tax_code = models.CharField(max_length=20, blank=True, null=True, verbose_name='MST cá nhân chủ hộ')
     group = models.ForeignKey(CustomerGroup, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='customers', verbose_name='Nhóm khách hàng')
+    promotion_policy = models.CharField(max_length=100, blank=True, null=True, verbose_name='Áp dụng ưu đãi')
+    contact_person = models.CharField(max_length=255, blank=True, null=True, verbose_name='Người liên hệ')
+    contact_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='SĐT người liên hệ')
+    contact_email = models.CharField(max_length=254, blank=True, null=True, verbose_name='Email người liên hệ')
+    province = models.CharField(max_length=100, blank=True, null=True, verbose_name='Tỉnh thành')
+    district = models.CharField(max_length=100, blank=True, null=True, verbose_name='Quận huyện')
+    ward = models.CharField(max_length=100, blank=True, null=True, verbose_name='Phường xã')
+    website = models.CharField(max_length=255, blank=True, null=True, verbose_name='Website')
+    fax = models.CharField(max_length=50, blank=True, null=True, verbose_name='Fax')
+    default_price_policy = models.CharField(max_length=255, blank=True, null=True, verbose_name='Chính sách giá mặc định')
+    default_discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                                                   verbose_name='Chiết khấu mặc định (%)')
+    default_payment_method = models.CharField(max_length=255, blank=True, null=True,
+                                              verbose_name='Phương thức thanh toán mặc định')
     total_purchased = models.DecimalField(max_digits=18, decimal_places=0, default=0,
                                           verbose_name='Tổng mua hàng')
     total_debt = models.DecimalField(max_digits=18, decimal_places=0, default=0,
                                      verbose_name='Công nợ')
+    imported_legacy_metrics = models.BooleanField(default=False, verbose_name='Dữ liệu chỉ số lịch sử import')
+    order_count = models.IntegerField(default=0, verbose_name='Số lượng đơn hàng')
+    total_product_quantity = models.DecimalField(max_digits=18, decimal_places=2, default=0,
+                                                 verbose_name='Tổng SL sản phẩm đã mua')
+    total_returned_product_quantity = models.DecimalField(max_digits=18, decimal_places=2, default=0,
+                                                          verbose_name='Tổng SL sản phẩm hoàn trả')
     # Tích điểm & thành viên
     MEMBERSHIP_CHOICES = (
         (0, 'Thường'),
@@ -62,6 +83,10 @@ class Customer(SoftDeleteModel):
     )
     points = models.IntegerField(default=0, verbose_name='Điểm tích lũy')
     membership_level = models.IntegerField(choices=MEMBERSHIP_CHOICES, default=0, verbose_name='Hạng thành viên')
+    membership_expiry_date = models.DateField(blank=True, null=True, verbose_name='Ngày hết hạn thẻ')
+    amount_to_next_membership = models.DecimalField(max_digits=18, decimal_places=0, default=0,
+                                                    verbose_name='Giá trị còn lại để lên hạng')
+    last_purchase_at = models.DateTimeField(blank=True, null=True, verbose_name='Ngày mua cuối cùng')
     date_of_birth = models.DateField(blank=True, null=True, verbose_name='Ngày sinh')
     GENDER_CHOICES = ((0, 'Khác'), (1, 'Nam'), (2, 'Nữ'))
     gender = models.IntegerField(choices=GENDER_CHOICES, default=0, verbose_name='Giới tính')

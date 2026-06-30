@@ -81,6 +81,29 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(customer.phone, '0909009009')
         self.assertEqual(customer.store_id, self.store.id)
 
+    def test_save_customer_persists_customer_kind_and_api_returns_display(self):
+        response = self.client.post(
+            reverse('api_save_customer'),
+            data=json.dumps({
+                'code': 'CKH003K',
+                'name': 'Customer Wholesale',
+                'customer_kind': Customer.CUSTOMER_KIND_WHOLESALE,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        customer = Customer.objects.get(code='CKH003K')
+        self.assertEqual(customer.customer_kind, Customer.CUSTOMER_KIND_WHOLESALE)
+
+        customers_response = self.client.get(reverse('api_get_customers'))
+        self.assertEqual(customers_response.status_code, 200)
+        row = next(item for item in customers_response.json()['data'] if item['id'] == customer.id)
+        self.assertEqual(row['customer_kind'], Customer.CUSTOMER_KIND_WHOLESALE)
+        self.assertEqual(row['customer_kind_display'], 'Khách buôn / sỉ')
+
     def test_save_customer_rejects_foreign_customer_edit(self):
         response = self.client.post(
             reverse('api_save_customer'),

@@ -73,19 +73,24 @@ def _group_name_keyword_q(prefix, keywords):
 
 
 def _get_sales_report_customer_kind_q(kind, prefix='customer'):
-    """Lọc khách lẻ/khách buôn theo nhóm khách hàng hiện có, không cần thêm schema."""
+    """Ưu tiên field customer_kind; fallback sang suy luận từ nhóm KH cho dữ liệu cũ."""
     if kind not in {'retail', 'wholesale', 'other'}:
         return Q()
 
-    null_customer_q = Q(**{_report_lookup(prefix, 'isnull'): True}) if prefix else Q()
-    retail_q = null_customer_q | _group_name_keyword_q(prefix, RETAIL_GROUP_KEYWORDS)
-    wholesale_q = _group_name_keyword_q(prefix, WHOLESALE_GROUP_KEYWORDS)
+    kind_lookup = _report_lookup(prefix, 'customer_kind')
+    explicit_kind_q = Q(**{kind_lookup: kind})
+    blank_kind_q = Q(**{kind_lookup: ''})
+    retail_legacy_q = blank_kind_q & _group_name_keyword_q(prefix, RETAIL_GROUP_KEYWORDS)
+    wholesale_legacy_q = blank_kind_q & _group_name_keyword_q(prefix, WHOLESALE_GROUP_KEYWORDS)
+
     if kind == 'retail':
-        return retail_q
+        if prefix:
+            return explicit_kind_q | retail_legacy_q | Q(**{_report_lookup(prefix, 'isnull'): True})
+        return explicit_kind_q | retail_legacy_q
     if kind == 'wholesale':
-        return wholesale_q
-    has_customer_q = Q(**{_report_lookup(prefix, 'isnull'): False}) if prefix else Q()
-    return has_customer_q & ~(retail_q | wholesale_q)
+        return explicit_kind_q | wholesale_legacy_q
+    known_legacy_q = retail_legacy_q | wholesale_legacy_q
+    return explicit_kind_q | (blank_kind_q & ~known_legacy_q)
 
 
 def _get_sales_report_return_customer_kind_q(kind):
@@ -100,6 +105,13 @@ def _get_sales_report_return_customer_kind_q(kind):
 def _classify_sales_report_customer_kind(customer):
     if not customer:
         return 'retail', 'Khách lẻ'
+    explicit_kind = str(getattr(customer, 'customer_kind', '') or '').strip()
+    explicit_label = next(
+        (option['label'] for option in CUSTOMER_KIND_OPTIONS if option['value'] == explicit_kind),
+        '',
+    )
+    if explicit_label:
+        return explicit_kind, explicit_label
     group_name = customer.group.name if getattr(customer, 'group', None) else ''
     normalized_group = _normalize_report_text(group_name)
     if any(keyword in normalized_group for keyword in ('si', 'buon', 'ban buon', 'dai ly', 'wholesale')):
@@ -180,6 +192,66 @@ def _get_sales_report_time_group_meta(time_group):
     if time_group == 'year':
         return {'label': 'Năm', 'key_format': '%Y', 'display_format': '%Y'}
     return {'label': 'Ngày', 'key_format': '%Y-%m-%d', 'display_format': '%d/%m/%Y'}
+
+
+def _get_sales_report_filter_labels(filters):
+    from customers.models import Customer, CustomerGroup
+    from products.models import Product, ProductCategory
+    from system_management.models import Store
+
+    def _lookup_name(model, raw_id):
+        lookup_id = _parse_filter_int(raw_id)
+        if lookup_id is None:
+            return str(raw_id or '').strip()
+        return model.objects.filter(id=lookup_id).values_list('name', flat=True).first() or str(raw_id)
+
+    filter_labels = []
+    if filters.get('time_group'):
+        filter_labels.append(f"Xem theo: {_get_sales_report_time_group_meta(filters['time_group'])['label']}")
+    if filters.get('store_id'):
+        filter_labels.append(f"Cửa hàng: {_lookup_name(Store, filters['store_id'])}")
+    if filters.get('customer_kind'):
+        kind_label = next(
+            (option['label'] for option in CUSTOMER_KIND_OPTIONS if option['value'] == filters['customer_kind']),
+            filters['customer_kind'],
+        )
+        filter_labels.append(f"Kiểu khách: {kind_label}")
+    if filters.get('customer_group_id'):
+        filter_labels.append(f"Nhóm KH: {_lookup_name(CustomerGroup, filters['customer_group_id'])}")
+    if filters.get('category_id'):
+        filter_labels.append(f"Nhóm mặt hàng: {_lookup_name(ProductCategory, filters['category_id'])}")
+    if filters.get('product_type_id'):
+        filter_labels.append(f"Loại SP: {_lookup_name(ProductCategory, filters['product_type_id'])}")
+    if filters.get('customer_id'):
+        customer_name = _lookup_name(Customer, filters['customer_id'])
+        filter_labels.append(f"Khách hàng: {customer_name}")
+    if filters.get('product_id'):
+        product_name = _lookup_name(Product, filters['product_id'])
+        filter_labels.append(f"Mặt hàng: {product_name}")
+    if filters.get('salesperson'):
+        filter_labels.append(f"Nhân viên: {filters['salesperson']}")
+    if filters.get('search'):
+        filter_labels.append(f"Từ khóa: {filters['search']}")
+    if filters.get('profit_filter'):
+        profit_label = {
+            'profit': 'Có lãi',
+            'loss': 'Báo lỗ',
+        }.get(filters['profit_filter'], filters['profit_filter'])
+        filter_labels.append(f"Lợi nhuận: {profit_label}")
+    for key, label in (
+        ('revenue_min', 'DT từ'),
+        ('revenue_max', 'DT đến'),
+        ('cost_min', 'GV từ'),
+        ('cost_max', 'GV đến'),
+        ('line_profit_min', 'LN dòng từ'),
+        ('line_profit_max', 'LN dòng đến'),
+        ('profit_min', 'LN gộp từ'),
+        ('profit_max', 'LN gộp đến'),
+    ):
+        if filters.get(key) is not None:
+            value = filters[key]
+            filter_labels.append(f"{label}: {int(value) if float(value).is_integer() else value}")
+    return filter_labels
 
 
 def _filter_sales_returns_by_scope(queryset, request):
@@ -1807,35 +1879,7 @@ def export_sales_excel(request):
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    filter_labels = []
-    if filters.get('store_id'):
-        filter_labels.append(f"Cửa hàng: {filters['store_id']}")
-    if filters.get('customer_kind'):
-        kind_label = next(
-            (option['label'] for option in CUSTOMER_KIND_OPTIONS if option['value'] == filters['customer_kind']),
-            filters['customer_kind'],
-        )
-        filter_labels.append(f"Kiểu khách: {kind_label}")
-    if filters.get('customer_group_id'):
-        filter_labels.append(f"Nhóm KH: {filters['customer_group_id']}")
-    if filters.get('category_id'):
-        filter_labels.append(f"Nhóm mặt hàng: {filters['category_id']}")
-    if filters.get('product_type_id'):
-        filter_labels.append(f"Loại SP: {filters['product_type_id']}")
-    if filters.get('profit_filter'):
-        filter_labels.append(f"Lợi nhuận: {filters['profit_filter']}")
-    for key, label in (
-        ('revenue_min', 'DT từ'),
-        ('revenue_max', 'DT đến'),
-        ('cost_min', 'GV từ'),
-        ('cost_max', 'GV đến'),
-        ('line_profit_min', 'LN dòng từ'),
-        ('line_profit_max', 'LN dòng đến'),
-        ('profit_min', 'LN gộp từ'),
-        ('profit_max', 'LN gộp đến'),
-    ):
-        if filters.get(key) is not None:
-            filter_labels.append(f"{label}: {int(filters[key]) if float(filters[key]).is_integer() else filters[key]}")
+    filter_labels = _get_sales_report_filter_labels(filters)
     if filter_labels:
         ws.merge_cells('A3:G3')
         ws['A3'] = 'Bộ lọc: ' + ' | '.join(filter_labels)

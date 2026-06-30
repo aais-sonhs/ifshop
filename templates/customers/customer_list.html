@@ -62,7 +62,15 @@
                     <option value="">-- Người tạo --</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_customer_kind">
+                    <option value="">-- Khách buôn/lẻ --</option>
+                    <option value="retail">Khách lẻ</option>
+                    <option value="wholesale">Khách buôn / sỉ</option>
+                    <option value="other">Khác / chưa phân loại</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <input type="text" class="form-control form-control-sm" id="filter_product" list="customer_product_suggestions" placeholder="Sản phẩm đã mua...">
                 <datalist id="customer_product_suggestions"></datalist>
             </div>
@@ -115,7 +123,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="customer_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="code">Mã KH</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="code">Mã KH</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -160,7 +168,7 @@
                     <div><small class="text-muted">Click để chọn ảnh đại diện</small></div>
                 </div>
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="form-group">
                             <label>Loại khách hàng</label>
                             <select class="form-control" id="inp_customer_type" onchange="toggleCustomerType()">
@@ -170,8 +178,18 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-4"><div class="form-group"><label>Mã KH</label><input type="text" class="form-control" id="inp_code" placeholder="Tự sinh nếu bỏ trống"></div></div>
-                    <div class="col-md-4"><div class="form-group"><label>Nhóm KH</label><select class="form-control" id="inp_group_id"><option value="">-- Chọn --</option>{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Khách buôn/lẻ</label>
+                            <select class="form-control" id="inp_customer_kind">
+                                <option value="retail">Khách lẻ</option>
+                                <option value="wholesale">Khách buôn / sỉ</option>
+                                <option value="other">Khác / chưa phân loại</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3"><div class="form-group"><label>Mã KH</label><input type="text" class="form-control" id="inp_code" placeholder="Tự sinh nếu bỏ trống"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Nhóm KH</label><select class="form-control" id="inp_group_id"><option value="">-- Chọn --</option>{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Tên KH / Người liên hệ <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_name"></div></div>
@@ -448,6 +466,14 @@ function getCustomerTypeBadge(type){
     return '<span class="badge badge-light border">Cá nhân</span>';
 }
 
+function getCustomerKindBadge(kind, label){
+    var normalizedKind = String(kind || '');
+    var safeLabel = escapeHtml(label || 'Chưa chọn');
+    if(normalizedKind === 'wholesale') return '<span class="badge badge-info">'+safeLabel+'</span>';
+    if(normalizedKind === 'retail') return '<span class="badge badge-success">'+safeLabel+'</span>';
+    return '<span class="badge badge-light border">'+safeLabel+'</span>';
+}
+
 function getMembershipBadge(level, label){
     var normalizedLevel = Number(level || 0);
     var badgeClasses = {
@@ -609,6 +635,7 @@ function getCurrentCustomerFilters(){
         search: ($('#filter_search').val() || '').trim(),
         group: $('#filter_customer_group').val() || '',
         type: $('#filter_customer_type').val() || '',
+        kind: $('#filter_customer_kind').val() || '',
         membership: $('#filter_membership').val() || '',
         debt: $('#filter_debt').val() || '',
         status: $('#filter_status').val() || '',
@@ -634,6 +661,9 @@ function renderCustomerFilterSummary(filteredCount, totalCount){
     }
     if(filters.type){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_type'))+'</span>');
+    }
+    if(filters.kind){
+        chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_kind'))+'</span>');
     }
     if(filters.membership){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_membership'))+'</span>');
@@ -685,6 +715,7 @@ function filterCustomers(list){
         }
         if(filters.group && String(d.group_id || '') !== filters.group) return false;
         if(filters.type && String(d.customer_type || '') !== filters.type) return false;
+        if(filters.kind && String(d.customer_kind || '') !== filters.kind) return false;
         if(filters.membership && String(d.membership_level || 0) !== filters.membership) return false;
         if(filters.status === 'active' && !d.is_active) return false;
         if(filters.status === 'inactive' && d.is_active) return false;
@@ -720,6 +751,7 @@ function resetCustomerForm(){
     $('input[id^=inp_],textarea[id^=inp_]').val('');
     $('#inp_group_id').val('');
     $('#inp_customer_type').val('1');
+    $('#inp_customer_kind').val('retail');
     toggleCustomerType();
     $('#avatar_preview').attr('src', defaultAvatar);
     $('#inp_avatar_file').val('');
@@ -807,6 +839,7 @@ function renderCustomerSavedFilters(){
         if(f.search) desc.push('"'+escapeHtml(f.search)+'"');
         if(f.group_text) desc.push(escapeHtml(f.group_text));
         if(f.type_text) desc.push(escapeHtml(f.type_text));
+        if(f.kind_text) desc.push(escapeHtml(f.kind_text));
         if(f.membership_text) desc.push(escapeHtml(f.membership_text));
         if(f.debt_text) desc.push(escapeHtml(f.debt_text));
         if(f.status_text) desc.push(escapeHtml(f.status_text));
@@ -867,6 +900,7 @@ var customerColConfig = new ColumnConfig({
         {key: 'code',             label: 'Mã KH',           default: true,  alwaysOn: true},
         {key: 'name',             label: 'Tên khách hàng',  default: true,  alwaysOn: true},
         {key: 'type',             label: 'Loại KH',         default: true},
+        {key: 'kind',             label: 'Buôn/lẻ',         default: true},
         {key: 'phone',            label: 'SĐT',             default: true},
         {key: 'email',            label: 'Email',           default: false},
         {key: 'group',            label: 'Nhóm',            default: true},
@@ -892,7 +926,7 @@ $(document).ready(function(){
         e.preventDefault();
         submitCustomerSearch();
     });
-    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_purchase_price_basis').on('change', function(){ resetCustomerPagination(); renderTable(); });
+    $('#filter_customer_group, #filter_customer_type, #filter_customer_kind, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_purchase_price_basis').on('change', function(){ resetCustomerPagination(); renderTable(); });
     $('#filter_product, #filter_purchase_price_from, #filter_purchase_price_to').on('input', function(){
         if(this.id === 'filter_purchase_price_from' || this.id === 'filter_purchase_price_to'){
             $('#filter_purchase_price_preset').val('');
@@ -915,7 +949,7 @@ $(document).ready(function(){
     $('#btn_search_customer').click(function(){ submitCustomerSearch(); });
     $('#btn_clear_customer_filters').click(function(){
         $('#filter_search').val('');
-        $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_creator').val('');
+        $('#filter_customer_group, #filter_customer_type, #filter_customer_kind, #filter_membership, #filter_debt, #filter_status, #filter_creator').val('');
         $('#filter_product, #filter_created_from, #filter_created_to, #filter_purchase_price_from, #filter_purchase_price_to').val('');
         $('#filter_purchase_price_basis').val('unit_price');
         $('#filter_purchase_price_preset').val('');
@@ -933,6 +967,8 @@ $(document).ready(function(){
             group_text: getSelectedText('#filter_customer_group'),
             type: $('#filter_customer_type').val() || '',
             type_text: getSelectedText('#filter_customer_type'),
+            kind: $('#filter_customer_kind').val() || '',
+            kind_text: getSelectedText('#filter_customer_kind'),
             membership: $('#filter_membership').val() || '',
             membership_text: getSelectedText('#filter_membership'),
             debt: $('#filter_debt').val() || '',
@@ -961,6 +997,7 @@ $(document).ready(function(){
         $('#filter_search').val(f.search || '');
         $('#filter_customer_group').val(f.group || '');
         $('#filter_customer_type').val(f.type || '');
+        $('#filter_customer_kind').val(f.kind || '');
         $('#filter_membership').val(f.membership || '');
         $('#filter_debt').val(f.debt || '');
         $('#filter_status').val(f.status || '');
@@ -1001,6 +1038,7 @@ $(document).ready(function(){
         var ctype = parseInt($('#inp_customer_type').val());
         var data={id:$('#edit_id').val()||null,
             customer_type: ctype,
+            customer_kind: $('#inp_customer_kind').val() || 'retail',
             code:$('#inp_code').val(),name:$('#inp_name').val(),
             phone:$('#inp_phone').val(),email:$('#inp_email').val(),
             id_number:$('#inp_id_number').val(),
@@ -1287,6 +1325,7 @@ function renderTable(){
             customerColConfig.td('code', escapeHtml(d.code))+
             customerColConfig.td('name', nameHtml, 'style="min-width:220px;white-space:normal;"')+
             customerColConfig.td('type', getCustomerTypeBadge(d.customer_type))+
+            customerColConfig.td('kind', getCustomerKindBadge(d.customer_kind, d.customer_kind_display), 'class="text-center"')+
             customerColConfig.td('phone', escapeHtml(d.phone || ''))+
             customerColConfig.td('email', escapeHtml(d.email || ''))+
             customerColConfig.td('group', groupHtml)+
@@ -1302,10 +1341,11 @@ function renderTable(){
     });
     if(!h){
         var searchTerm = getCurrentCustomerFilters().search;
+        var totalColumns = $('#data_tbl thead th').length || 17;
         var createHtml = searchTerm
             ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="btn_create_customer_from_search"><i class="fas fa-plus"></i> Thêm khách từ thông tin đang tìm</button></div>'
             : '';
-        h = '<tr><td colspan="16" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp' + createHtml + '</td></tr>';
+        h = '<tr><td colspan="'+totalColumns+'" class="text-center text-muted py-3">Không tìm thấy khách hàng phù hợp' + createHtml + '</td></tr>';
     }
     $('#data_tbl tbody').html(h);
     customerColConfig.apply();
@@ -1319,6 +1359,7 @@ function editItem(d){
     $('#inp_owner_tax_code').val(d.owner_tax_code);
     if(d.customer_type === 3) $('#inp_company_hkd').val(d.company); else $('#inp_company_hkd').val('');
     $('#inp_address').val(d.address);$('#inp_note').val(d.note);$('#inp_group_id').val(d.group_id);
+    $('#inp_customer_kind').val(d.customer_kind || 'retail');
     $('#inp_customer_type').val(d.customer_type || 1); toggleCustomerType();
     $('#avatar_preview').attr('src', d.avatar_url || defaultAvatar);
     $('#inp_avatar_file').val('');

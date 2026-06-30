@@ -290,7 +290,17 @@
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Khách buôn/lẻ</label>
+                            <select class="form-control form-control-sm" id="qc_customer_kind">
+                                <option value="retail">Khách lẻ</option>
+                                <option value="wholesale">Khách buôn / sỉ</option>
+                                <option value="other">Khác / chưa phân loại</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
                         <div class="form-group">
                             <label>Nhóm khách hàng</label>
                             <select class="form-control form-control-sm" id="qc_group_id">
@@ -301,7 +311,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="form-group">
                             <label>Ghi chú</label>
                             <input type="text" class="form-control form-control-sm" id="qc_note" placeholder="VD: Khách buôn, khách mới...">
@@ -1383,6 +1393,9 @@ function openQuickCustomerModalWithTerm(term){
     $('#qc_name').val(draft.name);
     $('#qc_phone').val(draft.phone);
     $('#qc_email,#qc_company,#qc_address').val('');
+    $('#qc_group_id').val('');
+    $('#qc_note').val('');
+    $('#qc_customer_kind').val('retail');
     $('#modal_quick_customer').modal('show');
     setTimeout(function(){
         if(draft.name){
@@ -1783,6 +1796,7 @@ $(document).ready(function(){
             email: $('#qc_email').val().trim(),
             company: $('#qc_company').val().trim(),
             address: $('#qc_address').val().trim(),
+            customer_kind: $('#qc_customer_kind').val() || 'retail',
             group_id: $('#qc_group_id').val() || null,
             note: $('#qc_note').val().trim(),
         };

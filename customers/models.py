@@ -30,9 +30,24 @@ class Customer(SoftDeleteModel):
         (2, 'Công ty'),
         (3, 'Hộ kinh doanh'),
     )
+    CUSTOMER_KIND_RETAIL = 'retail'
+    CUSTOMER_KIND_WHOLESALE = 'wholesale'
+    CUSTOMER_KIND_OTHER = 'other'
+    CUSTOMER_KIND_CHOICES = (
+        (CUSTOMER_KIND_RETAIL, 'Khách lẻ'),
+        (CUSTOMER_KIND_WHOLESALE, 'Khách buôn / sỉ'),
+        (CUSTOMER_KIND_OTHER, 'Khác / chưa phân loại'),
+    )
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='customers', verbose_name='Cửa hàng')
     customer_type = models.IntegerField(choices=CUSTOMER_TYPE_CHOICES, default=1, verbose_name='Loại khách hàng')
+    customer_kind = models.CharField(
+        max_length=20,
+        choices=CUSTOMER_KIND_CHOICES,
+        blank=True,
+        default='',
+        verbose_name='Khách buôn/lẻ',
+    )
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã khách hàng')
     name = models.CharField(max_length=255, verbose_name='Tên khách hàng')
     avatar = models.ImageField(upload_to='customers/avatars/', blank=True, null=True, verbose_name='Ảnh đại diện')
@@ -106,6 +121,9 @@ class Customer(SoftDeleteModel):
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    def get_customer_kind_label(self):
+        return dict(self.CUSTOMER_KIND_CHOICES).get(self.customer_kind, 'Chưa chọn')
 
 
 class PointTransaction(models.Model):

@@ -168,6 +168,25 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 1)
         self.assertEqual(order.final_amount, 100)
 
+    def test_quick_create_customer_persists_customer_kind(self):
+        response = self.client.post(
+            reverse('api_quick_create_customer'),
+            data=json.dumps({
+                'name': 'Khách tạo nhanh',
+                'phone': '0909555666',
+                'customer_kind': Customer.CUSTOMER_KIND_WHOLESALE,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        customer = Customer.objects.get(code=payload['customer']['code'])
+        self.assertEqual(customer.customer_kind, Customer.CUSTOMER_KIND_WHOLESALE)
+        self.assertEqual(customer.store_id, self.store.id)
+
     def test_products_select_keeps_negative_stock_values(self):
         ProductStock.objects.create(
             product=self.product,

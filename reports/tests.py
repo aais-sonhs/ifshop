@@ -1,8 +1,10 @@
 from datetime import date
+from io import BytesIO
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
 from orders.models import Order, OrderItem, OrderReturn
@@ -392,6 +394,82 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['order_details'][0]['customer_kind'], 'wholesale')
         self.assertEqual(payload['customer_kind_breakdown'][0]['name'], 'Khách buôn / sỉ')
 
+    def test_api_report_sales_prefers_explicit_customer_kind_field(self):
+        today = date.today()
+        neutral_group = CustomerGroup.objects.create(name='VIP thân thiết')
+        wholesale_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-EX-SI',
+            name='Khách field sỉ',
+            group=neutral_group,
+            customer_kind=Customer.CUSTOMER_KIND_WHOLESALE,
+            created_by=self.user,
+        )
+        retail_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-EX-LE',
+            name='Khách field lẻ',
+            group=neutral_group,
+            customer_kind=Customer.CUSTOMER_KIND_RETAIL,
+            created_by=self.user,
+        )
+
+        wholesale_order = Order.objects.create(
+            code='DH-RP-EX-SI',
+            store=self.store,
+            customer=wholesale_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=120,
+            final_amount=120,
+            paid_amount=120,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=wholesale_order,
+            product=self.product,
+            quantity=1,
+            unit_price=120,
+            cost_price=70,
+            total_price=120,
+        )
+        retail_order = Order.objects.create(
+            code='DH-RP-EX-LE',
+            store=self.store,
+            customer=retail_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=80,
+            final_amount=80,
+            paid_amount=80,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=retail_order,
+            product=self.product,
+            quantity=1,
+            unit_price=80,
+            cost_price=40,
+            total_price=80,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'wholesale',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['order_details'][0]['code'], wholesale_order.code)
+        self.assertEqual(payload['order_details'][0]['customer_kind'], 'wholesale')
+        self.assertEqual(payload['filter_options']['customers'][0]['name'], wholesale_customer.name)
+
     def test_api_report_sales_root_category_filter_includes_child_type(self):
         today = date.today()
         root_category = ProductCategory.objects.create(name='Máy móc')
@@ -569,6 +647,125 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['order_details'][0]['code'], loss_order.code)
         self.assertTrue(payload['order_details'][0]['is_loss'])
         self.assertEqual(payload['summary']['loss_count'], 1)
+
+    def test_export_sales_excel_respects_filters_and_uses_readable_labels(self):
+        today = date.today()
+        wholesale_group = CustomerGroup.objects.create(name='Khách sỉ')
+        retail_group = CustomerGroup.objects.create(name='Khách lẻ')
+        wholesale_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-EX-SI',
+            name='Khách mua sỉ Excel',
+            group=wholesale_group,
+            created_by=self.user,
+        )
+        retail_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-EX-LE',
+            name='Khách mua lẻ Excel',
+            group=retail_group,
+            created_by=self.user,
+        )
+        beverage_root = ProductCategory.objects.create(name='Đồ uống')
+        coffee_type = ProductCategory.objects.create(name='Cà phê', parent=beverage_root)
+        other_root = ProductCategory.objects.create(name='Thiết bị')
+        exported_product = Product.objects.create(
+            store=self.store,
+            code='SP-EX-COFFEE',
+            name='Cà phê hạt',
+            category=coffee_type,
+            created_by=self.user,
+        )
+        excluded_product = Product.objects.create(
+            store=self.store,
+            code='SP-EX-DEVICE',
+            name='Máy xay',
+            category=other_root,
+            created_by=self.user,
+        )
+
+        loss_order = Order.objects.create(
+            code='DH-EX-LOSS',
+            store=self.store,
+            customer=wholesale_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            salesperson='Nhân viên Excel',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=loss_order,
+            product=exported_product,
+            quantity=1,
+            unit_price=100,
+            cost_price=130,
+            total_price=100,
+        )
+
+        profit_order = Order.objects.create(
+            code='DH-EX-PROFIT',
+            store=self.store,
+            customer=retail_customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=200,
+            final_amount=200,
+            paid_amount=200,
+            order_date=today,
+            salesperson='Nhân viên khác',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=profit_order,
+            product=excluded_product,
+            quantity=1,
+            unit_price=200,
+            cost_price=120,
+            total_price=200,
+        )
+
+        response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'wholesale',
+            'category_id': beverage_root.id,
+            'profit_filter': 'loss',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            response['Content-Type'],
+        )
+
+        workbook = load_workbook(BytesIO(response.content))
+        self.assertIn('Chi tiết đơn hàng', workbook.sheetnames)
+        self.assertEqual(
+            workbook.active['A3'].value,
+            'Bộ lọc: Xem theo: Ngày | Kiểu khách: Khách buôn / sỉ | Nhóm mặt hàng: Đồ uống | Lợi nhuận: Báo lỗ',
+        )
+
+        order_sheet = workbook['Chi tiết đơn hàng']
+        exported_order_codes = [
+            row[1]
+            for row in order_sheet.iter_rows(min_row=2, max_col=2, values_only=True)
+            if row[1] and row[1] != 'TỔNG'
+        ]
+        self.assertEqual(exported_order_codes, [loss_order.code])
+
+        product_sheet = workbook['Mặt hàng']
+        exported_product_names = [
+            row[1]
+            for row in product_sheet.iter_rows(min_row=2, max_col=2, values_only=True)
+            if row[1]
+        ]
+        self.assertEqual(exported_product_names, [exported_product.name])
 
     def test_api_report_staff_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()

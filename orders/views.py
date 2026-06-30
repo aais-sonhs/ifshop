@@ -150,6 +150,14 @@ def _get_sales_customers_queryset(request):
     ).exclude(code__startswith=GUEST_CUSTOMER_CODE_PREFIX)
 
 
+def _normalize_customer_kind(value, fallback=Customer.CUSTOMER_KIND_RETAIL):
+    normalized = str(value or '').strip()
+    valid_values = {choice[0] for choice in Customer.CUSTOMER_KIND_CHOICES}
+    if normalized in valid_values:
+        return normalized
+    return fallback if fallback in valid_values or fallback == '' else Customer.CUSTOMER_KIND_RETAIL
+
+
 def _is_guest_customer(customer):
     return bool(customer and customer.code and customer.code.startswith(GUEST_CUSTOMER_CODE_PREFIX))
 
@@ -224,6 +232,9 @@ def _get_or_create_guest_customer(request, store=None):
         if store and guest.store_id != store.id:
             guest.store = store
             update_fields.append('store')
+        if guest.customer_kind != Customer.CUSTOMER_KIND_RETAIL:
+            guest.customer_kind = Customer.CUSTOMER_KIND_RETAIL
+            update_fields.append('customer_kind')
         if update_fields:
             guest.save(update_fields=update_fields)
         return guest
@@ -232,6 +243,7 @@ def _get_or_create_guest_customer(request, store=None):
         code=guest_code,
         name=GUEST_CUSTOMER_NAME,
         customer_type=1,
+        customer_kind=Customer.CUSTOMER_KIND_RETAIL,
         store=store,
         is_active=True,
         created_by=request.user,
@@ -2080,6 +2092,10 @@ def api_quick_create_customer(request):
         c.email = data.get('email', '').strip()
         c.address = data.get('address', '').strip()
         c.company = data.get('company', '').strip()
+        c.customer_kind = _normalize_customer_kind(
+            data.get('customer_kind'),
+            fallback=Customer.CUSTOMER_KIND_RETAIL,
+        )
         c.created_by = request.user
         c.store = _get_default_store_for_request(request)
         group_id = data.get('group_id')
@@ -2098,6 +2114,7 @@ def api_quick_create_customer(request):
                 'code': c.code,
                 'name': c.name,
                 'phone': c.phone or '',
+                'customer_kind': c.customer_kind or '',
             }
         })
     except Exception as e:

@@ -24,6 +24,14 @@ def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'
     return JsonResponse({'status': 'error', 'message': message}, status=403)
 
 
+def _normalize_customer_kind(value, fallback=''):
+    normalized = str(value or '').strip()
+    valid_values = {choice[0] for choice in Customer.CUSTOMER_KIND_CHOICES}
+    if normalized in valid_values:
+        return normalized
+    return fallback if fallback in valid_values or fallback == '' else ''
+
+
 def _get_default_store_for_request(request):
     """Lấy store mặc định để gán cho bản ghi mới khi user không phải nhân viên một store cố định."""
     store = get_user_store(request)
@@ -296,6 +304,8 @@ def api_get_customers(request):
             'avatar_url': c.avatar.url if c.avatar else '',
             'customer_type': c.customer_type,
             'customer_type_display': c.get_customer_type_display(),
+            'customer_kind': c.customer_kind or '',
+            'customer_kind_display': c.get_customer_kind_label(),
             'phone': c.phone or '', 'email': c.email or '',
             'address': c.address or '',
             'id_number': c.id_number or '',
@@ -366,6 +376,7 @@ def api_save_customer(request):
         if not c.name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên khách hàng'})
         c.customer_type = data.get('customer_type', 1)
+        c.customer_kind = _normalize_customer_kind(data.get('customer_kind'), fallback=c.customer_kind or '')
         c.phone = data.get('phone', '')
         c.email = data.get('email', '')
         c.address = data.get('address', '')
@@ -990,6 +1001,7 @@ def export_customers_excel(request):
         {'key': 'code', 'label': 'Mã KH', 'width': 12},
         {'key': 'name', 'label': 'Tên khách hàng', 'width': 26},
         {'key': 'type', 'label': 'Loại', 'width': 10},
+        {'key': 'kind', 'label': 'Buôn/lẻ', 'width': 16},
         {'key': 'phone', 'label': 'SĐT', 'width': 14},
         {'key': 'email', 'label': 'Email', 'width': 22},
         {'key': 'company', 'label': 'Công ty', 'width': 24},
@@ -1014,6 +1026,7 @@ def export_customers_excel(request):
             'code': c.code,
             'name': c.name,
             'type': c.get_customer_type_display(),
+            'kind': c.get_customer_kind_label(),
             'phone': c.phone or '',
             'email': c.email or '',
             'company': c.company or '',

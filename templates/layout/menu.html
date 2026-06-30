@@ -823,6 +823,7 @@ $(document).ready(function(){
 <script>
 (function(){
     var MENU_STATE_STORAGE_KEY = 'ifshop_sidebar_sections_v1_{{ request.user.id|default:"anon" }}';
+    var persistTimer = null;
 
     function loadSidebarMenuStates(){
         try {
@@ -836,6 +837,11 @@ $(document).ready(function(){
         try {
             localStorage.setItem(MENU_STATE_STORAGE_KEY, JSON.stringify(states));
         } catch (error) {}
+    }
+
+    function getSidebarSectionKey($section){
+        if(!$section || !$section.length) return '';
+        return String($section.attr('data-menu-key') || '');
     }
 
     function setSidebarSectionOpen($section, shouldOpen){
@@ -874,10 +880,32 @@ $(document).ready(function(){
         saveSidebarMenuStates(states);
     }
 
+    function schedulePersistSidebarSectionStates(delay){
+        clearTimeout(persistTimer);
+        persistTimer = setTimeout(persistSidebarSectionStates, delay || 0);
+    }
+
     $(document).ready(function(){
         restoreSidebarSectionStates();
+        setTimeout(restoreSidebarSectionStates, 250);
+
+        $(document).on('expanded.lte.treeview', '[data-menu-key]', function(){
+            schedulePersistSidebarSectionStates(0);
+        });
+
+        $(document).on('collapsed.lte.treeview', '[data-menu-key]', function(){
+            schedulePersistSidebarSectionStates(0);
+        });
+
         $(document).on('click', '[data-menu-key] > .nav-link', function(){
-            setTimeout(persistSidebarSectionStates, 180);
+            var $section = $(this).closest('[data-menu-key]');
+            var key = getSidebarSectionKey($section);
+            if(!key) return;
+            schedulePersistSidebarSectionStates(350);
+        });
+
+        $(window).on('pagehide beforeunload', function(){
+            persistSidebarSectionStates();
         });
     });
 })();

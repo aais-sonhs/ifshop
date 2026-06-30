@@ -52,6 +52,32 @@
         border-radius: 4px;
     }
 
+    .nav-section > .nav-link {
+        margin: 4px 8px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.04);
+        font-weight: 600;
+    }
+
+    .nav-section > .nav-link:hover,
+    .nav-section.menu-open > .nav-link,
+    .nav-section > .nav-link.active {
+        background: rgba(14, 165, 233, 0.16);
+    }
+
+    .nav-section .nav-treeview {
+        padding: 4px 6px 8px;
+    }
+
+    .nav-section .nav-treeview .nav-link {
+        margin: 2px 10px 2px 20px;
+        border-radius: 8px;
+    }
+
+    .nav-section .nav-treeview .nav-icon {
+        font-size: 0.85rem;
+    }
+
     .app-navbar {
         display: flex;
         align-items: center;
@@ -383,7 +409,6 @@ $(document).ready(function(){
             <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
 
                 {% if not request.user.is_superuser %}
-                <!-- 0. DASHBOARD -->
                 <li class="nav-item">
                     <a href="{% url 'dashboard_page' %}" class="nav-link {% if active_tab == 'dashboard' %} active{% endif %}">
                         <i class="nav-icon fas fa-tachometer-alt"></i>
@@ -401,121 +426,137 @@ $(document).ready(function(){
                 </li>
                 {% endif %}
 
-                <!-- I. QUẢN LÝ ĐƠN HÀNG -->
                 {% if not biz or biz.mod_orders %}
-                <li class="nav-header">ĐƠN HÀNG</li>
-                {% comment %} Hidden menu item: dùng màn /order-tbl/ thay cho /quotation-tbl/ {% endcomment %}
-                <li class="nav-item">
-                    <a href="{% url 'order_tbl' %}" class="nav-link {% if active_tab == 'order_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-shopping-cart"></i>
-                        <p>Bán hàng / BG</p>
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'order_tbl' or active_tab == 'order_approvals' or active_tab == 'order_return_tbl' or active_tab == 'packaging_tbl' %}menu-open{% endif %}" data-menu-key="sales">
+                    <a href="#" class="nav-link {% if active_tab == 'order_tbl' or active_tab == 'order_approvals' or active_tab == 'order_return_tbl' or active_tab == 'packaging_tbl' %}active{% endif %}">
+                        <i class="nav-icon fas fa-shopping-bag"></i>
+                        <p>Bán hàng <i class="right fas fa-angle-left"></i></p>
                     </a>
+                    <ul class="nav nav-treeview">
+                        {% comment %} Hidden menu item: dùng màn /order-tbl/ thay cho /quotation-tbl/ {% endcomment %}
+                        <li class="nav-item">
+                            <a href="{% url 'order_tbl' %}" class="nav-link {% if active_tab == 'order_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Bán hàng / BG</p>
+                            </a>
+                        </li>
+                        {% if biz.opt_order_approver and pending_approval_count > 0 or active_tab == 'order_approvals' %}
+                        <li class="nav-item">
+                            <a href="{% url 'order_approvals' %}" class="nav-link {% if active_tab == 'order_approvals' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Duyệt đơn hàng
+                                    {% if pending_approval_count > 0 %}
+                                    <span class="badge badge-warning right">{{ pending_approval_count }}</span>
+                                    {% endif %}
+                                </p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if not biz or biz.mod_returns %}
+                        <li class="nav-item">
+                            <a href="{% url 'order_return_tbl' %}" class="nav-link {% if active_tab == 'order_return_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Trả hàng</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if not biz or biz.mod_packaging %}
+                        <li class="nav-item">
+                            <a href="{% url 'packaging_tbl' %}" class="nav-link {% if active_tab == 'packaging_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Đóng gói</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
                 </li>
-                {% if biz.opt_order_approver and pending_approval_count > 0 or active_tab == 'order_approvals' %}
-                <li class="nav-item">
-                    <a href="{% url 'order_approvals' %}" class="nav-link {% if active_tab == 'order_approvals' %} active{% endif %}">
-                        <i class="nav-icon fas fa-clipboard-check"></i>
-                        <p>Duyệt đơn hàng
-                            {% if pending_approval_count > 0 %}
-                            <span class="badge badge-warning right">{{ pending_approval_count }}</span>
-                            {% endif %}
-                        </p>
-                    </a>
-                </li>
-                {% endif %}
-                {% if not biz or biz.mod_returns %}
-                <li class="nav-item">
-                    <a href="{% url 'order_return_tbl' %}" class="nav-link {% if active_tab == 'order_return_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-undo-alt"></i>
-                        <p>Trả hàng</p>
-                    </a>
-                </li>
-                {% endif %}
-                {% if not biz or biz.mod_packaging %}
-                <li class="nav-item">
-                    <a href="{% url 'packaging_tbl' %}" class="nav-link {% if active_tab == 'packaging_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-box"></i>
-                        <p>Đóng gói</p>
-                    </a>
-                </li>
-                {% endif %}
                 {% endif %}
 
-                <!-- II. QUẢN LÝ SẢN PHẨM -->
                 {% if not biz or biz.mod_products %}
-                <li class="nav-header">SẢN PHẨM & KHO</li>
-                <li class="nav-item">
-                    <a href="{% url 'product_tbl' %}" class="nav-link {% if active_tab == 'product_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-tags"></i>
-                        <p>Sản phẩm</p>
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}menu-open{% endif %}" data-menu-key="inventory">
+                    <a href="#" class="nav-link {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}active{% endif %}">
+                        <i class="nav-icon fas fa-boxes"></i>
+                        <p>Kho & Sản phẩm <i class="right fas fa-angle-left"></i></p>
                     </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'warehouse_tbl' %}" class="nav-link {% if active_tab == 'warehouse_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-warehouse"></i>
-                        <p>Quản lý kho</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'purchase_order_tbl' %}" class="nav-link {% if active_tab == 'purchase_order_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-clipboard-list"></i>
-                        <p>Đặt hàng nhập</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'goods_receipt_tbl' %}" class="nav-link {% if active_tab == 'goods_receipt_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-truck-loading"></i>
-                        <p>Nhập hàng</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'stock_check_tbl' %}" class="nav-link {% if active_tab == 'stock_check_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-clipboard-check"></i>
-                        <p>Kiểm hàng</p>
-                    </a>
-                </li>
-                {% if warehouse_count > 1 %}
-                <li class="nav-item">
-                    <a href="{% url 'stock_transfer_tbl' %}" class="nav-link {% if active_tab == 'stock_transfer_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-exchange-alt"></i>
-                        <p>Chuyển hàng</p>
-                    </a>
-                </li>
-                {% endif %}
-                <li class="nav-item">
-                    <a href="{% url 'supplier_tbl' %}" class="nav-link {% if active_tab == 'supplier_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-truck"></i>
-                        <p>Nhà cung cấp</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'cost_adjustment_tbl' %}" class="nav-link {% if active_tab == 'cost_adjustment_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-dollar-sign"></i>
-                        <p>Điều chỉnh giá vốn</p>
-                    </a>
+                    <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'product_tbl' %}" class="nav-link {% if active_tab == 'product_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Sản phẩm</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'warehouse_tbl' %}" class="nav-link {% if active_tab == 'warehouse_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Quản lý kho</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'purchase_order_tbl' %}" class="nav-link {% if active_tab == 'purchase_order_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Đặt hàng nhập</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'goods_receipt_tbl' %}" class="nav-link {% if active_tab == 'goods_receipt_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Nhập hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'stock_check_tbl' %}" class="nav-link {% if active_tab == 'stock_check_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Kiểm hàng</p>
+                            </a>
+                        </li>
+                        {% if warehouse_count > 1 %}
+                        <li class="nav-item">
+                            <a href="{% url 'stock_transfer_tbl' %}" class="nav-link {% if active_tab == 'stock_transfer_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Chuyển hàng</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a href="{% url 'supplier_tbl' %}" class="nav-link {% if active_tab == 'supplier_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Nhà cung cấp</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'cost_adjustment_tbl' %}" class="nav-link {% if active_tab == 'cost_adjustment_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Điều chỉnh giá vốn</p>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 {% endif %}
 
-                <!-- III. KHÁCH HÀNG -->
                 {% if not biz or biz.mod_customers %}
-                <li class="nav-header">KHÁCH HÀNG</li>
-                <li class="nav-item">
-                    <a href="{% url 'customer_tbl' %}" class="nav-link {% if active_tab == 'customer_tbl' %} active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'customer_tbl' or active_tab == 'customer_group_tbl' %}menu-open{% endif %}" data-menu-key="customers">
+                    <a href="#" class="nav-link {% if active_tab == 'customer_tbl' or active_tab == 'customer_group_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-users"></i>
-                        <p>DS Khách hàng</p>
+                        <p>Khách hàng <i class="right fas fa-angle-left"></i></p>
                     </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'customer_group_tbl' %}" class="nav-link {% if active_tab == 'customer_group_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-tag"></i>
-                        <p>Nhóm khách hàng</p>
-                    </a>
+                    <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'customer_tbl' %}" class="nav-link {% if active_tab == 'customer_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>DS Khách hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'customer_group_tbl' %}" class="nav-link {% if active_tab == 'customer_group_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Nhóm khách hàng</p>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 {% endif %}
 
-                <!-- CAFE: QUẢN LÝ BÀN -->
                 {% if biz and biz.mod_cafe_tables %}
-                <li class="nav-header">☕ QUÁN CAFE</li>
                 <li class="nav-item">
                     <a href="{% url 'cafe_table_tbl' %}" class="nav-link {% if active_tab == 'cafe_table_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-th-large"></i>
@@ -524,221 +565,251 @@ $(document).ready(function(){
                 </li>
                 {% endif %}
 
-                <!-- IV. THU CHI -->
                 {% if not biz or biz.mod_finance %}
-                <li class="nav-header">THU CHI</li>
-                <li class="nav-item">
-                    <a href="{% url 'receipt_tbl' %}" class="nav-link {% if active_tab == 'receipt_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-hand-holding-usd"></i>
-                        <p>Phiếu thu</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'payment_tbl' %}" class="nav-link {% if active_tab == 'payment_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-money-bill-wave"></i>
-                        <p>Phiếu chi</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'finance_list_tbl' %}" class="nav-link {% if active_tab == 'finance_list_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-list-alt"></i>
-                        <p>DS Thu chi</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'cashbook_tbl' %}" class="nav-link {% if active_tab == 'cashbook_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-book"></i>
-                        <p>Sổ quỹ</p>
-                    </a>
-                </li>
-                {% endif %}
-
-                <!-- V. BÁO CÁO -->
-                {% if not biz or biz.mod_reports %}
-                <li class="nav-header">BÁO CÁO</li>
-                {% if can_view_sales_report %}
-                <li class="nav-item">
-                    <a href="{% url 'report_sales' %}" class="nav-link {% if active_tab == 'report_sales' %} active{% endif %}">
-                        <i class="nav-icon fas fa-chart-line"></i>
-                        <p>BC Bán hàng</p>
-                    </a>
-                </li>
-                {% endif %}
-                <li class="nav-item">
-                    <a href="{% url 'report_purchases' %}" class="nav-link {% if active_tab == 'report_purchases' %} active{% endif %}">
-                        <i class="nav-icon fas fa-chart-bar"></i>
-                        <p>BC Nhập hàng</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'report_inventory' %}" class="nav-link {% if active_tab == 'report_inventory' %} active{% endif %}">
-                        <i class="nav-icon fas fa-chart-pie"></i>
-                        <p>BC Kho</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'report_finance' %}" class="nav-link {% if active_tab == 'report_finance' %} active{% endif %}">
-                        <i class="nav-icon fas fa-coins"></i>
-                        <p>BC Tài chính</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'report_customers' %}" class="nav-link {% if active_tab == 'report_customers' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-friends"></i>
-                        <p>BC Khách hàng</p>
-                    </a>
-                </li>
-                {% if not biz or biz.opt_order_salesperson %}
-                <li class="nav-item">
-                    <a href="{% url 'report_staff_sales' %}" class="nav-link {% if active_tab == 'report_staff_sales' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-tie"></i>
-                        <p>BC Nhân viên BH</p>
-                    </a>
-                </li>
-                {% endif %}
-                {% endif %}
-
-                <!-- SPA / DỊCH VỤ -->
-                {% if biz and biz.mod_spa %}
-                <li class="nav-header">🧖 SPA & DỊCH VỤ</li>
-                <li class="nav-item">
-                    <a href="{% url 'spa_booking_calendar' %}" class="nav-link {% if active_tab == 'spa_booking_calendar' %} active{% endif %}">
-                        <i class="nav-icon fas fa-calendar-alt"></i>
-                        <p>Lịch hẹn (Lịch)</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'spa_booking_tbl' %}" class="nav-link {% if active_tab == 'spa_booking_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-calendar-check"></i>
-                        <p>Lịch hẹn (DS)</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'spa_service_tbl' %}" class="nav-link {% if active_tab == 'spa_service_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-spa"></i>
-                        <p>Dịch vụ</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'spa_staff_tbl' %}" class="nav-link {% if active_tab == 'spa_staff_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-md"></i>
-                        <p>Nhân viên / KTV</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'spa_room_tbl' %}" class="nav-link {% if active_tab == 'spa_room_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-door-open"></i>
-                        <p>Phòng</p>
-                    </a>
-                </li>
-                {% endif %}
-
-                <!-- QUẢN LÝ NHÂN SỰ (brand owner only — NOT superadmin) -->
-                {% if is_brand_owner %}
-                <li class="nav-header">QUẢN LÝ NHÂN SỰ</li>
-                <li class="nav-item">
-                    <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-users-cog"></i>
-                        <p>Quản lý người dùng</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'role_group_tbl' %}" class="nav-link {% if active_tab == 'role_group_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-user-shield"></i>
-                        <p>Nhóm vai trò</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'permission_tbl' %}" class="nav-link {% if active_tab == 'permission_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-key"></i>
-                        <p>Phân quyền</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-store-alt"></i>
-                        <p>Cửa hàng</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'business_config_tbl' %}" class="nav-link {% if active_tab == 'business_config_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-cog"></i>
-                        <p>Mô hình kinh doanh</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'category_tbl' %}" class="nav-link {% if active_tab == 'category_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-th-list"></i>
-                        <p>Danh mục</p>
-                    </a>
-                </li>
-                <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}menu-open{% endif %}">
-                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}active{% endif %}">
-                        <i class="nav-icon fas fa-sliders-h"></i>
-                        <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}menu-open{% endif %}" data-menu-key="finance">
+                    <a href="#" class="nav-link {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}active{% endif %}">
+                        <i class="nav-icon fas fa-wallet"></i>
+                        <p>Tài chính <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
                         <li class="nav-item">
-                            <a href="{% url 'setting_quotation' %}" class="nav-link {% if active_tab == 'setting_quotation' %}active{% endif %}">
+                            <a href="{% url 'receipt_tbl' %}" class="nav-link {% if active_tab == 'receipt_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Cài đặt báo giá</p>
+                                <p>Phiếu thu</p>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'setting_order' %}" class="nav-link {% if active_tab == 'setting_order' %}active{% endif %}">
+                            <a href="{% url 'payment_tbl' %}" class="nav-link {% if active_tab == 'payment_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Cài đặt đơn hàng</p>
+                                <p>Phiếu chi</p>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
+                            <a href="{% url 'finance_list_tbl' %}" class="nav-link {% if active_tab == 'finance_list_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Phương thức TT</p>
+                                <p>DS Thu chi</p>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %}active{% endif %}">
+                            <a href="{% url 'cashbook_tbl' %}" class="nav-link {% if active_tab == 'cashbook_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Giá dịch vụ</p>
+                                <p>Sổ quỹ</p>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+
+                {% if not biz or biz.mod_reports %}
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'report_sales' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}menu-open{% endif %}" data-menu-key="reports">
+                    <a href="#" class="nav-link {% if active_tab == 'report_sales' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}active{% endif %}">
+                        <i class="nav-icon fas fa-chart-line"></i>
+                        <p>Báo cáo <i class="right fas fa-angle-left"></i></p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        {% if can_view_sales_report %}
+                        <li class="nav-item">
+                            <a href="{% url 'report_sales' %}" class="nav-link {% if active_tab == 'report_sales' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>BC Bán hàng</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a href="{% url 'report_purchases' %}" class="nav-link {% if active_tab == 'report_purchases' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>BC Nhập hàng</p>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'printer_setting_tbl' %}" class="nav-link {% if active_tab == 'printer_setting_tbl' %}active{% endif %}">
+                            <a href="{% url 'report_inventory' %}" class="nav-link {% if active_tab == 'report_inventory' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Cài đặt máy in</p>
+                                <p>BC Kho</p>
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{% url 'print_template_setting' %}" class="nav-link {% if active_tab == 'print_template_setting' %}active{% endif %}">
+                            <a href="{% url 'report_finance' %}" class="nav-link {% if active_tab == 'report_finance' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
-                                <p>Mẫu in</p>
+                                <p>BC Tài chính</p>
                             </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'report_customers' %}" class="nav-link {% if active_tab == 'report_customers' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>BC Khách hàng</p>
+                            </a>
+                        </li>
+                        {% if not biz or biz.opt_order_salesperson %}
+                        <li class="nav-item">
+                            <a href="{% url 'report_staff_sales' %}" class="nav-link {% if active_tab == 'report_staff_sales' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>BC Nhân viên BH</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+
+                {% if biz and biz.mod_spa %}
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'spa_booking_calendar' or active_tab == 'spa_booking_tbl' or active_tab == 'spa_service_tbl' or active_tab == 'spa_staff_tbl' or active_tab == 'spa_room_tbl' %}menu-open{% endif %}" data-menu-key="spa">
+                    <a href="#" class="nav-link {% if active_tab == 'spa_booking_calendar' or active_tab == 'spa_booking_tbl' or active_tab == 'spa_service_tbl' or active_tab == 'spa_staff_tbl' or active_tab == 'spa_room_tbl' %}active{% endif %}">
+                        <i class="nav-icon fas fa-spa"></i>
+                        <p>Spa & Dịch vụ <i class="right fas fa-angle-left"></i></p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'spa_booking_calendar' %}" class="nav-link {% if active_tab == 'spa_booking_calendar' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Lịch hẹn (Lịch)</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'spa_booking_tbl' %}" class="nav-link {% if active_tab == 'spa_booking_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Lịch hẹn (DS)</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'spa_service_tbl' %}" class="nav-link {% if active_tab == 'spa_service_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Dịch vụ</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'spa_staff_tbl' %}" class="nav-link {% if active_tab == 'spa_staff_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Nhân viên / KTV</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'spa_room_tbl' %}" class="nav-link {% if active_tab == 'spa_room_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Phòng</p>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+
+                {% if is_brand_owner %}
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}menu-open{% endif %}" data-menu-key="admin">
+                    <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}active{% endif %}">
+                        <i class="nav-icon fas fa-tools"></i>
+                        <p>Quản trị <i class="right fas fa-angle-left"></i></p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Quản lý người dùng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'role_group_tbl' %}" class="nav-link {% if active_tab == 'role_group_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Nhóm vai trò</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'permission_tbl' %}" class="nav-link {% if active_tab == 'permission_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Phân quyền</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Cửa hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'business_config_tbl' %}" class="nav-link {% if active_tab == 'business_config_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Mô hình kinh doanh</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'category_tbl' %}" class="nav-link {% if active_tab == 'category_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Danh mục</p>
+                            </a>
+                        </li>
+                        <li class="nav-item has-treeview {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}menu-open{% endif %}" data-menu-key="admin_settings">
+                            <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' %}active{% endif %}">
+                                <i class="nav-icon fas fa-sliders-h"></i>
+                                <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
+                            </a>
+                            <ul class="nav nav-treeview">
+                                <li class="nav-item">
+                                    <a href="{% url 'setting_quotation' %}" class="nav-link {% if active_tab == 'setting_quotation' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Cài đặt báo giá</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{% url 'setting_order' %}" class="nav-link {% if active_tab == 'setting_order' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Cài đặt đơn hàng</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Phương thức TT</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Giá dịch vụ</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{% url 'printer_setting_tbl' %}" class="nav-link {% if active_tab == 'printer_setting_tbl' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Cài đặt máy in</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{% url 'print_template_setting' %}" class="nav-link {% if active_tab == 'print_template_setting' %}active{% endif %}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Mẫu in</p>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
                     </ul>
                 </li>
                 {% endif %}
                 {% endif %}{# end not superuser #}
 
-                <!-- HỆ THỐNG (superadmin only) -->
                 {% if request.user.is_superuser %}
-                <li class="nav-header">HỆ THỐNG</li>
-                <li class="nav-item">
-                    <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-trademark"></i>
-                        <p>Thương hiệu & CH</p>
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' %}menu-open{% endif %}" data-menu-key="superadmin_system">
+                    <a href="#" class="nav-link {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' %}active{% endif %}">
+                        <i class="nav-icon fas fa-server"></i>
+                        <p>Hệ thống <i class="right fas fa-angle-left"></i></p>
                     </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-users-cog"></i>
-                        <p>Quản lý tài khoản</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %} active{% endif %}">
-                        <i class="nav-icon fas fa-file-invoice-dollar"></i>
-                        <p>Giá dịch vụ</p>
-                    </a>
+                    <ul class="nav nav-treeview">
+                        <li class="nav-item">
+                            <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Thương hiệu & CH</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Quản lý tài khoản</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Giá dịch vụ</p>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
                 {% endif %}
 
@@ -748,3 +819,66 @@ $(document).ready(function(){
     </div>
     <!-- /.sidebar -->
 </aside>
+
+<script>
+(function(){
+    var MENU_STATE_STORAGE_KEY = 'ifshop_sidebar_sections_v1_{{ request.user.id|default:"anon" }}';
+
+    function loadSidebarMenuStates(){
+        try {
+            return JSON.parse(localStorage.getItem(MENU_STATE_STORAGE_KEY) || '{}');
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function saveSidebarMenuStates(states){
+        try {
+            localStorage.setItem(MENU_STATE_STORAGE_KEY, JSON.stringify(states));
+        } catch (error) {}
+    }
+
+    function setSidebarSectionOpen($section, shouldOpen){
+        var $tree = $section.children('.nav-treeview');
+        $section.toggleClass('menu-open', !!shouldOpen);
+        if(!$tree.length) return;
+        if(shouldOpen){
+            $tree.stop(true, true).show();
+        } else {
+            $tree.stop(true, true).hide();
+        }
+    }
+
+    function restoreSidebarSectionStates(){
+        var states = loadSidebarMenuStates();
+        $('[data-menu-key]').each(function(){
+            var $section = $(this);
+            var key = $section.data('menuKey');
+            if(!key) return;
+            if(Object.prototype.hasOwnProperty.call(states, key)){
+                setSidebarSectionOpen($section, !!states[key]);
+            } else {
+                setSidebarSectionOpen($section, $section.hasClass('menu-open'));
+            }
+        });
+    }
+
+    function persistSidebarSectionStates(){
+        var states = loadSidebarMenuStates();
+        $('[data-menu-key]').each(function(){
+            var $section = $(this);
+            var key = $section.data('menuKey');
+            if(!key) return;
+            states[key] = $section.hasClass('menu-open');
+        });
+        saveSidebarMenuStates(states);
+    }
+
+    $(document).ready(function(){
+        restoreSidebarSectionStates();
+        $(document).on('click', '[data-menu-key] > .nav-link', function(){
+            setTimeout(persistSidebarSectionStates, 180);
+        });
+    });
+})();
+</script>

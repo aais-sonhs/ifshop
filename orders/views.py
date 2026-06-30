@@ -15,7 +15,7 @@ from .models import (
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
 )
 from customers.models import Customer
-from products.models import Product, Warehouse, ProductStock, ProductVariant
+from products.models import Product, Warehouse, ProductStock, ProductVariant, ComboItem
 from finance.models import Receipt, FinanceCategory, CashBook, Payment, PaymentMethodOption
 from finance.services import (
     cancel_receipt_with_effect,
@@ -1882,7 +1882,14 @@ def packaging_tbl(request):
 @login_required(login_url="/login/")
 def api_get_products_for_select(request):
     """Lấy danh sách SP cho ô chọn sản phẩm, kèm tồn kho theo từng kho"""
-    products = Product.objects.filter(is_active=True).select_related('category').prefetch_related('stocks', 'variants', 'combo_items__product__stocks')
+    products = Product.objects.filter(is_active=True).select_related('category').prefetch_related(
+        'stocks',
+        Prefetch('variants', queryset=ProductVariant.objects.filter(is_active=True)),
+        Prefetch(
+            'combo_items',
+            queryset=ComboItem.objects.select_related('product').prefetch_related('product__stocks'),
+        ),
+    )
     products = filter_by_store(products, request)
     exclude_order_id = request.GET.get('exclude_order_id') or None
     reserved_by_product, total_reserved_by_product, pending_by_product, total_pending_by_product = _get_reserved_stock_maps(
@@ -1924,7 +1931,7 @@ def api_get_products_for_select(request):
             'cost_price': float(v.cost_price),
             'selling_price': float(v.selling_price),
             'retail_price': float(p.selling_price),
-        } for v in p.variants.filter(is_active=True)]
+        } for v in p.variants.all()]
 
         # Combo items
         combo_items = []

@@ -1369,6 +1369,8 @@
 <script src="/static/js/column_config.js"></script>
 <script>
 var allProducts = [];
+var ORDER_PRODUCT_SELECT_CACHE = {};
+var ORDER_PRODUCT_SELECT_OPTIONS_HTML = null;
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
@@ -1396,6 +1398,45 @@ var _suppressOrderWarehousePreferencePersist = false;
 window._activeProductSelect2 = null;
 window._quickProductCodeCheckInFlight = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function applyOrderProductDataset(products, cacheKey){
+    allProducts = Array.isArray(products) ? products : [];
+    if(cacheKey){
+        ORDER_PRODUCT_SELECT_CACHE[cacheKey] = allProducts;
+    }
+    ORDER_PRODUCT_SELECT_OPTIONS_HTML = null;
+    updateQuickSearchFilterLabels();
+}
+function getOrderProductSelectCacheKey(orderId){
+    return orderId ? ('exclude_order_' + String(orderId)) : 'default';
+}
+function getOrderProductOptionsHtml(){
+    if(ORDER_PRODUCT_SELECT_OPTIONS_HTML !== null){
+        return ORDER_PRODUCT_SELECT_OPTIONS_HTML;
+    }
+    var opts = '<option value="">-- Chọn SP --</option>';
+    allProducts.forEach(function(p){
+        if(p.variants && p.variants.length > 0){
+            p.variants.forEach(function(v){
+                opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (v.import_price || p.import_price || 0) + '" data-variant-price="' + (v.selling_price || 0) + '" data-cost="' + v.cost_price + '" data-variant-id="' + v.id + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '">' + p.code + ' - ' + p.name + ' [' + v.size_name + ']</option>';
+            });
+        } else {
+            opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (p.import_price || 0) + '" data-cost="' + p.cost_price + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '">' + p.code + ' - ' + p.name + '</option>';
+        }
+    });
+    ORDER_PRODUCT_SELECT_OPTIONS_HTML = opts;
+    return ORDER_PRODUCT_SELECT_OPTIONS_HTML;
+}
+function hasSelectableOrderProduct(productId, variantId){
+    var normalizedProductId = String(productId || '');
+    var normalizedVariantId = String(variantId || '');
+    return allProducts.some(function(product){
+        if(String(product.id) !== normalizedProductId) return false;
+        if(!normalizedVariantId) return true;
+        return !(product.variants && product.variants.length) || product.variants.some(function(variant){
+            return String(variant.id) === normalizedVariantId;
+        });
+    });
+}
 function isQuickProductEnterEvent(event){
     return event && (event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13 || event.which === 13);
 }
@@ -1489,8 +1530,7 @@ function submitQuickProductTerm(term, options){
                 return;
             }
             $.get('/api/products-select/', function(productRes){
-                allProducts = productRes.data || [];
-                updateQuickSearchFilterLabels();
+                applyOrderProductDataset(productRes.data || [], getOrderProductSelectCacheKey(null));
                 var reloadedProduct = allProducts.find(function(p){
                     return Number(p.id) === Number(res.product.id);
                 });
@@ -2226,19 +2266,36 @@ function syncDocumentTypeUI(){
 }
 
 function fetchProductsForOrderForm(orderId, callback){
+    var cacheKey = getOrderProductSelectCacheKey(orderId);
+    if(ORDER_PRODUCT_SELECT_CACHE[cacheKey] && ORDER_PRODUCT_SELECT_CACHE[cacheKey].length){
+        applyOrderProductDataset(ORDER_PRODUCT_SELECT_CACHE[cacheKey], cacheKey);
+        if(typeof callback === 'function'){
+            callback();
+        }
+        return;
+    }
+
+    var hadLocalProducts = Array.isArray(allProducts) && allProducts.length > 0;
+    if(hadLocalProducts && typeof callback === 'function'){
+        callback();
+        callback = null;
+    }
+
     var url = '/api/products-select/';
     if(orderId){
         url += '?exclude_order_id=' + encodeURIComponent(orderId);
     }
     $.get(url, function(prodRes){
-        allProducts = (prodRes && prodRes.data) || [];
-        updateQuickSearchFilterLabels();
+        applyOrderProductDataset((prodRes && prodRes.data) || [], cacheKey);
+        refreshRenderedOrderRows();
         if(typeof callback === 'function'){
             callback();
         }
     }).fail(function(){
         allProducts = allProducts || [];
-        updateQuickSearchFilterLabels();
+        if(!hadLocalProducts){
+            updateQuickSearchFilterLabels();
+        }
         if(typeof callback === 'function'){
             callback();
         }
@@ -3449,7 +3506,9 @@ $(document).ready(function(){
     syncStockInfoVisibility();
     $('#order_page_size').val(String(ORDER_PAGE_STATE.page_size));
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
-    $.get('/api/products-select/', function(res){ allProducts = res.data; updateQuickSearchFilterLabels(); });
+    $.get('/api/products-select/', function(res){
+        applyOrderProductDataset(res.data, getOrderProductSelectCacheKey(null));
+    });
     initCustomerPicker();
     $('#btn_toggle_payment').on('click', function(){
         if(isPaymentEntryActive()){
@@ -3860,8 +3919,7 @@ $(document).ready(function(){
                 if(r.status === 'ok'){
                     // Reload products and add to cart
                     $.get('/api/products-select/', function(res){
-                        allProducts = res.data;
-                        updateQuickSearchFilterLabels();
+                        applyOrderProductDataset(res.data, getOrderProductSelectCacheKey(null));
                         var newProductId = r.product ? r.product.id : null;
                         var newProductCode = r.product ? r.product.code : code;
                         var newProduct = allProducts.find(function(p){ return (newProductId && p.id === newProductId) || (newProductCode && p.code === newProductCode); });
@@ -4112,27 +4170,8 @@ $(document).on('click', '#btn_add_service_line', function(){
 
 function addItemRow(item){
     var isServiceLine = item && item.is_service_line && !item.product_id;
-    var opts='<option value="">-- Chọn SP --</option>';
-    var hasItemOption = false;
-    allProducts.forEach(function(p){
-        if(p.variants && p.variants.length > 0){
-            p.variants.forEach(function(v){
-                var sel=(item&&item.product_id==p.id&&item.variant_id==v.id)?'selected':'';
-                if(!sel) sel=(item&&item.product_id==p.id&&!item.variant_id&&p.variants.length==1)?'selected':'';
-                if(sel){
-                    hasItemOption = true;
-                }
-                opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+getProductRetailPrice(p)+'" data-retail="'+getProductRetailPrice(p)+'" data-import="'+(v.import_price||p.import_price||0)+'" data-variant-price="'+(v.selling_price||0)+'" data-cost="'+v.cost_price+'" data-variant-id="'+v.id+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
-            });
-        } else {
-            var sel=(item&&item.product_id==p.id)?'selected':'';
-            if(sel){
-                hasItemOption = true;
-            }
-            opts+='<option value="'+p.id+'" data-unit="'+p.unit+'" data-price="'+getProductRetailPrice(p)+'" data-retail="'+getProductRetailPrice(p)+'" data-import="'+(p.import_price||0)+'" data-cost="'+p.cost_price+'" data-weight="'+(p.is_weight_based?1:0)+'" data-img="'+(p.image_url||'')+'" '+sel+'>'+p.code+' - '+p.name+'</option>';
-        }
-    });
-    if(item && item.product_id && !hasItemOption){
+    var opts = getOrderProductOptionsHtml();
+    if(item && item.product_id && !hasSelectableOrderProduct(item.product_id, item.variant_id)){
         var fallbackLabel = (item.product_code || ('SP #' + item.product_id)) + ' - ' + (item.product_name || 'Sản phẩm không còn hoạt động');
         if(item.variant_name){
             fallbackLabel += ' [' + item.variant_name + ']';
@@ -4200,16 +4239,25 @@ function addItemRow(item){
 
     // Set value if editing
     if(item && item.product_id){
+        var matchedExistingOption = false;
         if(item.variant_id){
             // Tìm option đúng có cùng product_id + variant_id
-            $row.find('.sel_product option').each(function(){
-                if($(this).val() == item.product_id && $(this).data('variant-id') == item.variant_id){
-                    $(this).prop('selected', true);
-                }
-            });
-            $row.find('.sel_product').trigger('change.select2');
+            var $matchedVariantOption = $row.find('.sel_product option').filter(function(){
+                return $(this).val() == item.product_id && String($(this).data('variant-id') || '') === String(item.variant_id);
+            }).first();
+            if($matchedVariantOption.length){
+                $matchedVariantOption.prop('selected', true);
+                matchedExistingOption = true;
+            }
         } else {
-            $row.find('.sel_product').val(item.product_id).trigger('change.select2');
+            var $matchedProductOption = $row.find('.sel_product option[value="' + item.product_id + '"]').first();
+            if($matchedProductOption.length){
+                $matchedProductOption.prop('selected', true);
+                matchedExistingOption = true;
+            }
+        }
+        if(matchedExistingOption){
+            $row.find('.sel_product').trigger('change.select2');
         }
     }
 
@@ -5286,7 +5334,7 @@ $(document).on('click', '.btn-remove-quick-exchange', function(){
 $('#btn_add_quick_exchange_item').on('click', function(){
     if(!allProducts.length){
         $.get('/api/products-select/', function(res){
-            allProducts = res.data || [];
+            applyOrderProductDataset(res.data || [], getOrderProductSelectCacheKey(null));
             addQuickExchangeRow();
         });
         return;

@@ -1371,6 +1371,8 @@
 var allProducts = [];
 var ORDER_PRODUCT_SELECT_CACHE = {};
 var ORDER_PRODUCT_SELECT_OPTIONS_HTML = null;
+var ORDER_ROW_VISUAL_REFRESH_QUEUE = [];
+var ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
@@ -1436,6 +1438,61 @@ function hasSelectableOrderProduct(productId, variantId){
             return String(variant.id) === normalizedVariantId;
         });
     });
+}
+function queueOrderRowVisualRefresh(rows, options){
+    options = options || {};
+    var rowElements = [];
+    if(rows && rows.jquery){
+        rows.each(function(){ rowElements.push(this); });
+    } else if(Array.isArray(rows)){
+        rowElements = rows;
+    } else if(rows){
+        rowElements = [rows];
+    }
+
+    rowElements.forEach(function(rowEl){
+        if(!rowEl || rowEl.nodeType !== 1 || rowEl.classList.contains('order-items-loading-row') || rowEl.classList.contains('service-line-row')){
+            return;
+        }
+        if(options.preservePrice){
+            rowEl._orderRowRefreshPreservePrice = true;
+        }
+        if(rowEl._orderRowRefreshQueued){
+            return;
+        }
+        rowEl._orderRowRefreshQueued = true;
+        ORDER_ROW_VISUAL_REFRESH_QUEUE.push(rowEl);
+    });
+
+    if(ORDER_ROW_VISUAL_REFRESH_HANDLE){
+        return;
+    }
+
+    var scheduleFrame = window.requestAnimationFrame || function(callback){
+        return window.setTimeout(callback, 16);
+    };
+    ORDER_ROW_VISUAL_REFRESH_HANDLE = scheduleFrame(processQueuedOrderRowVisualRefresh);
+}
+
+function processQueuedOrderRowVisualRefresh(){
+    ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
+    var processed = 0;
+    while(ORDER_ROW_VISUAL_REFRESH_QUEUE.length && processed < 6){
+        var rowEl = ORDER_ROW_VISUAL_REFRESH_QUEUE.shift();
+        if(!rowEl){
+            continue;
+        }
+        rowEl._orderRowRefreshQueued = false;
+        if(!document.body.contains(rowEl)){
+            continue;
+        }
+        syncOrderRowProductVisuals($(rowEl), !!rowEl._orderRowRefreshPreservePrice);
+        rowEl._orderRowRefreshPreservePrice = false;
+        processed += 1;
+    }
+    if(ORDER_ROW_VISUAL_REFRESH_QUEUE.length){
+        queueOrderRowVisualRefresh([]);
+    }
 }
 function isQuickProductEnterEvent(event){
     return event && (event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13 || event.which === 13);
@@ -1743,6 +1800,13 @@ function getOrderProductById(productId){
     return (allProducts || []).find(function(product){ return product.id === id; }) || null;
 }
 
+function getOrderProductVariant(product, variantId){
+    if(!product || !variantId || !(product.variants && product.variants.length)) return null;
+    return product.variants.find(function(variant){
+        return String(variant.id) === String(variantId);
+    }) || null;
+}
+
 function renderOrderComboComponents(product, limit){
     var items = product && product.is_combo ? (product.combo_items || []) : [];
     if(!items.length) return '';
@@ -1762,6 +1826,141 @@ function renderOrderComboComponents(product, limit){
 function updateOrderRowComboComponents($row){
     var product = getOrderProductById($row.find('.sel_product').val());
     $row.find('.order-combo-components').html(renderOrderComboComponents(product, 6));
+}
+
+function buildOrderSelectedProductOption(item){
+    if(!item || !item.product_id){
+        return '<option value="">-- Chọn SP --</option>';
+    }
+    var product = getOrderProductById(item.product_id);
+    var variant = getOrderProductVariant(product, item.variant_id);
+    var productCode = (product && product.code) || item.product_code || ('SP #' + item.product_id);
+    var productName = (product && product.name) || item.product_name || 'Sản phẩm không còn hoạt động';
+    var variantLabel = variant ? variant.size_name : (item.variant_name || '');
+    var optionLabel = productCode + ' - ' + productName + (variantLabel ? ' [' + variantLabel + ']' : '');
+    var unit = item.unit || (product ? product.unit : '');
+    var price = item.unit_price !== undefined && item.unit_price !== null
+        ? item.unit_price
+        : (product ? getProductRetailPrice(product) : 0);
+    var retail = product ? getProductRetailPrice(product) : price;
+    var importPrice = variant ? (variant.import_price || product.import_price || 0) : ((product && product.import_price) || 0);
+    var costPrice = variant ? (variant.cost_price || 0) : ((product && product.cost_price) || 0);
+    var imageUrl = item.image_url || (product ? (product.image_url || product.image || '') : '');
+    return '<option value="' + item.product_id + '" data-unit="' + escapeAttr(unit || '') + '" data-price="' + price + '" data-retail="' + retail + '" data-import="' + importPrice + '" data-cost="' + costPrice + '" data-variant-id="' + (item.variant_id || '') + '" data-weight="' + ((product && product.is_weight_based) ? 1 : 0) + '" data-img="' + escapeAttr(imageUrl || '') + '" selected>' + escapeHtml(optionLabel) + '</option>';
+}
+
+function hydrateOrderRowProductSelectOptions($row){
+    var $select = $row.find('.sel_product');
+    if(String($select.data('lazySelect') || '0') !== '1'){
+        return $select;
+    }
+    var currentProductId = $select.data('currentProductId') || '';
+    var currentVariantId = $select.data('currentVariantId') || '';
+    var existingSelectedHtml = $select.html();
+    var opts = getOrderProductOptionsHtml();
+    if(currentProductId && !hasSelectableOrderProduct(currentProductId, currentVariantId)){
+        opts += existingSelectedHtml;
+    }
+    $select.html(opts);
+    if(currentProductId){
+        if(currentVariantId){
+            $select.find('option').filter(function(){
+                return $(this).val() == currentProductId && String($(this).data('variant-id') || '') === String(currentVariantId);
+            }).first().prop('selected', true);
+        } else {
+            $select.val(String(currentProductId));
+        }
+    }
+    $select.data('lazySelect', 0);
+    return $select;
+}
+
+function initializeOrderProductSelect($row){
+    var $select = $row.find('.sel_product');
+    if($select.hasClass('select2-hidden-accessible')){
+        return $select;
+    }
+    $select.select2({
+        width:'100%',
+        theme:'bootstrap4',
+        placeholder:'-- Chọn SP --',
+        allowClear:true,
+        dropdownParent:$('#modal_form'),
+        templateResult: formatOrderProductOption
+    });
+    $select
+        .off('select2:open.orderRow select2:close.orderRow')
+        .on('select2:open.orderRow', function(){ window._activeProductSelect2 = this; })
+        .on('select2:close.orderRow', function(){
+            var selectEl = this;
+            setTimeout(function(){
+                if(window._activeProductSelect2 === selectEl) window._activeProductSelect2 = null;
+            }, 0);
+        });
+    return $select;
+}
+
+function ensureOrderProductSelectReady($row, openAfterInit){
+    var $select = hydrateOrderRowProductSelectOptions($row);
+    initializeOrderProductSelect($row);
+    if(openAfterInit){
+        setTimeout(function(){
+            try { $select.select2('open'); } catch(err) {}
+        }, 0);
+    }
+    return $select;
+}
+
+function syncOrderRowProductVisuals($row, preservePrice){
+    if($row.hasClass('service-line-row') || $row.data('service-line') == 1){
+        return;
+    }
+    var $opt = $row.find('.sel_product option:selected');
+    var pid = $row.find('.sel_product').val();
+    $row.find('.lbl_unit').text($opt.data('unit') || '');
+    if(!preservePrice){
+        setMoneyValue($row.find('.inp_price'), $opt.data('price') || 0);
+    }
+    var imgUrl = $opt.data('img');
+    if(imgUrl){
+        $row.find('.lbl_img').html('<img src="'+imgUrl+'" class="order-item-img" alt="">');
+    } else {
+        $row.find('.lbl_img').html('<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>');
+    }
+    if(pid){
+        renderStockCellForRow($row);
+    } else {
+        $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
+    }
+    updateOrderRowComboComponents($row);
+    $row.find('.inp_qty').attr('step', '1');
+}
+
+function selectInitialOrderProductOption($row, item){
+    if(!(item && item.product_id)){
+        return false;
+    }
+    var $select = $row.find('.sel_product');
+    var matched = false;
+    if(item.variant_id){
+        var $matchedVariantOption = $select.find('option').filter(function(){
+            return $(this).val() == item.product_id && String($(this).data('variant-id') || '') === String(item.variant_id);
+        }).first();
+        if($matchedVariantOption.length){
+            $matchedVariantOption.prop('selected', true);
+            matched = true;
+        }
+    } else {
+        var $matchedProductOption = $select.find('option[value="' + item.product_id + '"]').first();
+        if($matchedProductOption.length){
+            $matchedProductOption.prop('selected', true);
+            matched = true;
+        }
+    }
+    if(matched && $select.hasClass('select2-hidden-accessible')){
+        $select.trigger('change.select2');
+    }
+    return matched;
 }
 
 function renderOrderReturnBadges(order){
@@ -2314,12 +2513,7 @@ function renderOrderItemsLoading(message){
 }
 
 function refreshRenderedOrderRows(){
-    $('#items_tbl tbody tr').each(function(){
-        var $row = $(this);
-        if($row.hasClass('order-items-loading-row')) return;
-        renderStockCellForRow($row);
-        updateOrderRowComboComponents($row);
-    });
+    queueOrderRowVisualRefresh($('#items_tbl tbody tr'), {preservePrice: true});
 }
 
 function populateOrderFormItems(items, options){
@@ -2337,12 +2531,18 @@ function populateOrderFormItems(items, options){
         rendered = true;
         $('#items_tbl tbody').html('');
         normalizedItems.forEach(function(item){
-            addItemRow(item);
+            addItemRow(item, {deferEnhancement: true});
         });
         calcTotal();
-        if(typeof options.afterRender === 'function'){
-            options.afterRender();
-        }
+        var scheduleFrame = window.requestAnimationFrame || function(callback){
+            return window.setTimeout(callback, 16);
+        };
+        scheduleFrame(function(){
+            refreshRenderedOrderRows();
+            if(typeof options.afterRender === 'function'){
+                options.afterRender();
+            }
+        });
     }
 
     renderOrderItemsLoading(options.loadingText);
@@ -3509,6 +3709,32 @@ $(document).ready(function(){
     $.get('/api/products-select/', function(res){
         applyOrderProductDataset(res.data, getOrderProductSelectCacheKey(null));
     });
+    $('#items_tbl')
+        .on('mousedown', '.sel_product', function(event){
+            var $select = $(this);
+            if(String($select.data('lazySelect') || '0') !== '1' && $select.hasClass('select2-hidden-accessible')){
+                return;
+            }
+            event.preventDefault();
+            ensureOrderProductSelectReady($select.closest('tr'), true);
+        })
+        .on('focus', '.sel_product', function(){
+            var $select = $(this);
+            if(String($select.data('lazySelect') || '0') !== '1' && $select.hasClass('select2-hidden-accessible')){
+                return;
+            }
+            ensureOrderProductSelectReady($select.closest('tr'), false);
+        })
+        .on('keydown', '.sel_product', function(event){
+            var $select = $(this);
+            if(String($select.data('lazySelect') || '0') !== '1' && $select.hasClass('select2-hidden-accessible')){
+                return;
+            }
+            if(event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown'){
+                event.preventDefault();
+                ensureOrderProductSelectReady($select.closest('tr'), true);
+            }
+        });
     initCustomerPicker();
     $('#btn_toggle_payment').on('click', function(){
         if(isPaymentEntryActive()){
@@ -4123,9 +4349,7 @@ function getStockForProduct(productId){
 }
 
 function updateAllStockDisplay(){
-    $('#items_tbl tbody tr').each(function(){
-        renderStockCellForRow($(this));
-    });
+    queueOrderRowVisualRefresh($('#items_tbl tbody tr'), {preservePrice: true});
 }
 
 // Thêm SP nhanh từ object product (từ thanh search)
@@ -4168,18 +4392,23 @@ $(document).on('click', '#btn_add_service_line', function(){
     addServiceLine();
 });
 
-function addItemRow(item){
+function addItemRow(item, options){
+    options = options || {};
     var isServiceLine = item && item.is_service_line && !item.product_id;
-    var opts = getOrderProductOptionsHtml();
-    if(item && item.product_id && !hasSelectableOrderProduct(item.product_id, item.variant_id)){
-        var fallbackLabel = (item.product_code || ('SP #' + item.product_id)) + ' - ' + (item.product_name || 'Sản phẩm không còn hoạt động');
-        if(item.variant_name){
-            fallbackLabel += ' [' + item.variant_name + ']';
-        }
-        opts += '<option value="' + item.product_id + '" data-unit="' + escapeHtml(item.unit || '') + '" data-price="' + (item.unit_price || 0) + '" data-retail="' + (item.unit_price || 0) + '" data-import="0" data-cost="0" data-variant-id="' + (item.variant_id || '') + '" data-weight="0" data-img="' + escapeHtml(item.image_url || '') + '" selected>' + escapeHtml(fallbackLabel) + '</option>';
+    var deferEnhancement = !!options.deferEnhancement;
+    var hasSelectedProduct = !!(item && item.product_id);
+    var useLazySelect = deferEnhancement && hasSelectedProduct;
+    var opts = useLazySelect ? buildOrderSelectedProductOption(item) : getOrderProductOptionsHtml();
+    if(!useLazySelect && item && item.product_id && !hasSelectableOrderProduct(item.product_id, item.variant_id)){
+        opts += buildOrderSelectedProductOption(item);
     }
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
-    var unit=item?item.unit:'',lineTotal=qty*price*(1-disc/100);
+    var selectedProduct = hasSelectedProduct ? getOrderProductById(item.product_id) : null;
+    var unit=item?item.unit:'';
+    if(!unit && selectedProduct){
+        unit = selectedProduct.unit || '';
+    }
+    var lineTotal=qty*price*(1-disc/100);
 
 	    if(isServiceLine){
 	        var serviceName = item && item.item_name ? item.item_name : '';
@@ -4203,16 +4432,21 @@ function addItemRow(item){
         return;
     }
 
-    // Get image
-	    var imgHtml = '<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>';
-	    if(item && item.product_id){
-	        var prod = allProducts.find(function(p){return p.id==item.product_id;});
-	        if(prod && prod.image_url) imgHtml = '<img src="'+prod.image_url+'" class="order-item-img" alt="">';
-	    }
+    var imageUrl = item && item.image_url ? item.image_url : (selectedProduct ? (selectedProduct.image_url || selectedProduct.image || '') : '');
+    var imgHtml = imageUrl
+        ? '<img src="'+escapeAttr(imageUrl)+'" class="order-item-img" alt="">'
+        : '<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>';
+    var selectAttrs = '';
+    if(useLazySelect){
+        selectAttrs += ' data-lazy-select="1"';
+        selectAttrs += ' data-current-product-id="' + escapeAttr(item.product_id || '') + '"';
+        selectAttrs += ' data-current-variant-id="' + escapeAttr(item.variant_id || '') + '"';
+    }
+    var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center lbl_img">'+imgHtml+'</td><td><select class="form-control form-control-sm sel_product">'+opts+'</select><div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center lbl_img">'+imgHtml+'</td><td><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
-        '<td class="lbl_stock stock-info-col align-middle">-</td>'+
+        '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
@@ -4220,78 +4454,24 @@ function addItemRow(item){
         '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
     $('#items_tbl tbody').append(html);
     var $row=$('#items_tbl tbody tr:last');
-    $row.find('.sel_product').select2({
-        width:'100%',
-        theme:'bootstrap4',
-        placeholder:'-- Chọn SP --',
-        allowClear:true,
-        dropdownParent:$('#modal_form'),
-        templateResult: formatOrderProductOption
-    });
-    $row.find('.sel_product')
-        .on('select2:open', function(){ window._activeProductSelect2 = this; })
-        .on('select2:close', function(){
-            var selectEl = this;
-            setTimeout(function(){
-                if(window._activeProductSelect2 === selectEl) window._activeProductSelect2 = null;
-            }, 0);
-        });
+    if(!useLazySelect){
+        initializeOrderProductSelect($row);
+    }
 
-    // Set value if editing
-    if(item && item.product_id){
-        var matchedExistingOption = false;
-        if(item.variant_id){
-            // Tìm option đúng có cùng product_id + variant_id
-            var $matchedVariantOption = $row.find('.sel_product option').filter(function(){
-                return $(this).val() == item.product_id && String($(this).data('variant-id') || '') === String(item.variant_id);
-            }).first();
-            if($matchedVariantOption.length){
-                $matchedVariantOption.prop('selected', true);
-                matchedExistingOption = true;
-            }
-        } else {
-            var $matchedProductOption = $row.find('.sel_product option[value="' + item.product_id + '"]').first();
-            if($matchedProductOption.length){
-                $matchedProductOption.prop('selected', true);
-                matchedExistingOption = true;
-            }
-        }
-        if(matchedExistingOption){
-            $row.find('.sel_product').trigger('change.select2');
-        }
+    if(item && item.product_id && !useLazySelect){
+        selectInitialOrderProductOption($row, item);
     }
 
     $row.find('.sel_product').on('change', function(){
         var $opt=$(this).find('option:selected');
-        var pid = $(this).val();
-        $row.find('.lbl_unit').text($opt.data('unit')||'');
-        setMoneyValue($row.find('.inp_price'), $opt.data('price')||0);
-
-        // Update image
-	        var imgUrl = $opt.data('img');
-	        if(imgUrl){
-	            $row.find('.lbl_img').html('<img src="'+imgUrl+'" class="order-item-img" alt="">');
-	        } else {
-	            $row.find('.lbl_img').html('<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>');
-	        }
-
-        // Update stock display
-        if(pid){
-            renderStockCellForRow($row);
-        } else {
-            $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
-        }
-        updateOrderRowComboComponents($row);
-        $row.find('.inp_qty').attr('step', '1');
+        syncOrderRowProductVisuals($row);
         var productKey = getSelectedProductKey($row);
         var $duplicateRow = findDuplicateRowForKey(productKey, $row);
         if(productKey && $duplicateRow.length){
-            // Offer to merge instead of just blocking
             var existingQty = parseFloat($duplicateRow.find('.inp_qty').val()) || 0;
             var newQty = parseFloat($row.find('.inp_qty').val()) || 1;
             var productName = $opt.text();
             if(confirm('⚠️ Sản phẩm "' + productName + '" đã có trong đơn (SL: ' + existingQty + ').\n\nBạn muốn gộp thêm ' + newQty + ' vào dòng cũ?')){
-                // Merge: add qty to existing row
                 $duplicateRow.find('.inp_qty').val(existingQty + newQty);
                 calcLine($duplicateRow);
                 flashExistingRow($duplicateRow);
@@ -4299,10 +4479,13 @@ function addItemRow(item){
                 calcTotal();
                 toastr ? toastr.success('Đã gộp +'+ newQty +' vào dòng cũ (tổng: '+ (existingQty+newQty) +')') : null;
             } else {
-                // User declined merge — clear this row's selection
-                $(this).val('').trigger('change.select2');
-                $row.find('.lbl_unit').text('');
-                $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
+                if($(this).hasClass('select2-hidden-accessible')){
+                    $(this).val('').trigger('change.select2');
+                } else {
+                    $(this).val('');
+                }
+                syncOrderRowProductVisuals($row);
+                calcLine($row);
             }
             syncDuplicateWarnings();
             return;
@@ -4312,12 +4495,15 @@ function addItemRow(item){
     });
     $row.find('.inp_qty').on('input',function(){
         calcLine($row);
-        renderStockCellForRow($row);
+        queueOrderRowVisualRefresh($row, {preservePrice: true});
     });
     $row.find('.inp_price,.inp_disc').on('input',function(){calcLine($row);});
     $row.find('.btn_remove_item').click(function(){$row.remove();calcTotal();syncDuplicateWarnings();});
-    renderStockCellForRow($row);
-    updateOrderRowComboComponents($row);
+    if(useLazySelect){
+        queueOrderRowVisualRefresh($row, {preservePrice: true});
+    } else {
+        syncOrderRowProductVisuals($row, hasSelectedProduct);
+    }
 }
 
 function calcLine($row){

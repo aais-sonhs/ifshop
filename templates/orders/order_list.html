@@ -2235,6 +2235,68 @@ function fetchProductsForOrderForm(orderId, callback){
     });
 }
 
+function renderOrderItemsLoading(message){
+    $('#items_tbl tbody').html(
+        '<tr class="order-items-loading-row">' +
+            '<td colspan="9" class="text-center text-muted py-4">' +
+                '<i class="fas fa-spinner fa-spin mr-2"></i>' + escapeHtml(message || 'Đang tải sản phẩm...') +
+            '</td>' +
+        '</tr>'
+    );
+    calcTotal();
+}
+
+function refreshRenderedOrderRows(){
+    $('#items_tbl tbody tr').each(function(){
+        var $row = $(this);
+        if($row.hasClass('order-items-loading-row')) return;
+        renderStockCellForRow($row);
+        updateOrderRowComboComponents($row);
+    });
+}
+
+function populateOrderFormItems(items, options){
+    options = options || {};
+    var normalizedItems = Array.isArray(items) ? items : [];
+    var modalShown = $('#modal_form').hasClass('show');
+    var productsReady = false;
+    var rendered = false;
+    var loadProducts = typeof options.loadProducts === 'function'
+        ? options.loadProducts
+        : function(done){ done(); };
+
+    function renderItems(){
+        if(rendered || !modalShown || !productsReady) return;
+        rendered = true;
+        $('#items_tbl tbody').html('');
+        normalizedItems.forEach(function(item){
+            addItemRow(item);
+        });
+        calcTotal();
+        if(typeof options.afterRender === 'function'){
+            options.afterRender();
+        }
+    }
+
+    renderOrderItemsLoading(options.loadingText);
+
+    if(!modalShown){
+        $('#modal_form')
+            .off('shown.bs.modal.orderFormItems')
+            .one('shown.bs.modal.orderFormItems', function(){
+                modalShown = true;
+                renderItems();
+            });
+    }
+
+    loadProducts(function(){
+        productsReady = true;
+        renderItems();
+    });
+
+    renderItems();
+}
+
 // Column Config
 var orderColConfig = new ColumnConfig({
 	    storageKey: 'ifshop_order_columns_v2',
@@ -4737,54 +4799,55 @@ function rejectOrder(id, code){
 	    $.get('/api/quotations/detail/?id=' + id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
         var q = res.quotation;
-        fetchProductsForOrderForm(null, function(){
-            $('#edit_id').val(copyMode ? '' : q.id);
-            if(q.customer_id){
-                var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
-                if(cust) selectCustomer(cust.id, cust.name, cust.phone);
-                else { $('#inp_customer_id').val(q.customer_id); $('#inp_customer_search').val(q.customer_label || ''); }
-            } else {
-                clearCustomer();
-            }
-            setOrderWarehouseValue(getStoredOrderWarehouseId());
-            setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
-            setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
-            $('#inp_quotation_status').val(copyMode ? '0' : String(q.status || 0));
-            $('#inp_valid_until').val(copyMode ? '' : (q.valid_until || ''));
-            $('#inp_tags').val(q.tags || '');
-            $('#inp_note').val(copyMode ? ('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : '')) : (q.note || ''));
-            if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson || '').trigger('change');
-            $('#items_tbl tbody').html('');
-            $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
-            $('#btn_save').show();
-            $('#btn_save_note').hide();
-            $('#btn_print_current').toggle(!copyMode);
-            $('#payment_history_section, #order_history_card').hide();
-            $('#lock_warning,#order_return_summary_box').remove();
-            $('#document_type_section').toggle(!!copyMode);
-            setDocumentType('quotation');
-            $('#quotation_section').hide();
-            _timelineReadonly = false;
-            _orderFormReadonly = false;
-            clearPaymentLines();
-            _existingPaidAmount = 0;
+        $('#edit_id').val(copyMode ? '' : q.id);
+        if(q.customer_id){
+            var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
+            if(cust) selectCustomer(cust.id, cust.name, cust.phone);
+            else { $('#inp_customer_id').val(q.customer_id); $('#inp_customer_search').val(q.customer_label || ''); }
+        } else {
+            clearCustomer();
+        }
+        setOrderWarehouseValue(getStoredOrderWarehouseId());
+        setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
+        setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
+        $('#inp_quotation_status').val(copyMode ? '0' : String(q.status || 0));
+        $('#inp_valid_until').val(copyMode ? '' : (q.valid_until || ''));
+        $('#inp_tags').val(q.tags || '');
+        $('#inp_note').val(copyMode ? ('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : '')) : (q.note || ''));
+        if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson || '').trigger('change');
+        $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+        $('#btn_save').show();
+        $('#btn_save_note').hide();
+        $('#btn_print_current').toggle(!copyMode);
+        $('#payment_history_section, #order_history_card').hide();
+        $('#lock_warning,#order_return_summary_box').remove();
+        $('#document_type_section').toggle(!!copyMode);
+        setDocumentType('quotation');
+        $('#quotation_section').hide();
+        _timelineReadonly = false;
+        _orderFormReadonly = false;
+        clearPaymentLines();
+        _existingPaidAmount = 0;
 
-            if(copyMode){
-                fetchNextDocumentCode('quotation');
-                $('#inp_order_date').val(new Date().toISOString().split('T')[0]);
-            } else {
-                $('#inp_code').val(q.code);
-                $('#inp_order_date').val(q.quotation_date);
-            }
+        if(copyMode){
+            fetchNextDocumentCode('quotation');
+            $('#inp_order_date').val(new Date().toISOString().split('T')[0]);
+        } else {
+            $('#inp_code').val(q.code);
+            $('#inp_order_date').val(q.quotation_date);
+        }
 
-            $('#modal_title').text(copyMode ? 'Sao chép báo giá (từ ' + q.code + ')' : 'Sửa báo giá');
-            $('#modal_form').modal('show');
-            $('#modal_form').one('shown.bs.modal', function(){
-                res.items.forEach(function(it){ addItemRow(it); });
-                calcTotal();
+        populateOrderFormItems(res.items, {
+            loadProducts: function(done){
+                fetchProductsForOrderForm(null, done);
+            },
+            loadingText: 'Đang tải sản phẩm báo giá...',
+            afterRender: function(){
                 setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-            });
+            }
         });
+        $('#modal_title').text(copyMode ? 'Sao chép báo giá (từ ' + q.code + ')' : 'Sửa báo giá');
+        $('#modal_form').modal('show');
 	    });
 	}
 
@@ -4898,16 +4961,16 @@ function rejectOrder(id, code){
         });
         $('#quotation_section').hide();
         loadOrderHistory(o.id);
-        fetchProductsForOrderForm(o.id, function(){
-            $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
-
-            // Load items AFTER modal is fully shown so Select2 renders correctly
-            $('#modal_form').one('shown.bs.modal', function(){
-                res.items.forEach(function(it){addItemRow(it);});
-                calcTotal();
+        populateOrderFormItems(res.items, {
+            loadProducts: function(done){
+                fetchProductsForOrderForm(o.id, done);
+            },
+            loadingText: 'Đang tải sản phẩm đơn hàng...',
+            afterRender: function(){
                 setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-            });
+            }
         });
+        $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
     });
 }
 
@@ -4982,23 +5045,22 @@ function viewItem(id){
 	        }
 	        loadOrderHistory(o.id);
         loadPaymentHistory(o.id, o.paid_amount, o.final_amount);
-	        $('#modal_title').html(o.status === 5 ? 'Xem đơn hàng / sửa ghi chú' : '<i class="fas fa-lock mr-1"></i> Xem đơn hàng (Chỉ đọc)');
-        fetchProductsForOrderForm(o.id, function(){
-            $('#modal_form').modal('show');
-
-            // Load items AFTER modal is fully shown so Select2 renders correctly
-            $('#modal_form').one('shown.bs.modal', function(){
-                res.items.forEach(function(it){addItemRow(it);});
-                calcTotal();
-                // Re-disable after items loaded
-	                $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
-	                if(o.status === 5){
-	                    $('#inp_note').prop('disabled', false);
-	                }
-	                $('.btn_remove_item').hide();
-	                $('.order-workflow-btn').hide();
-            });
+	        populateOrderFormItems(res.items, {
+            loadProducts: function(done){
+                fetchProductsForOrderForm(o.id, done);
+            },
+            loadingText: 'Đang tải chi tiết đơn hàng...',
+            afterRender: function(){
+                $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
+                if(o.status === 5){
+                    $('#inp_note').prop('disabled', false);
+                }
+                $('.btn_remove_item').hide();
+                $('.order-workflow-btn').hide();
+            }
         });
+	        $('#modal_title').html(o.status === 5 ? 'Xem đơn hàng / sửa ghi chú' : '<i class="fas fa-lock mr-1"></i> Xem đơn hàng (Chỉ đọc)');
+            $('#modal_form').modal('show');
     });
 }
 
@@ -5347,7 +5409,6 @@ function downloadOrderPDF(id){
 function copyOrder(id){
     $.get('/api/orders/detail/?id='+id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
-        $.get('/api/products-select/', function(prodRes){ allProducts = prodRes.data; updateQuickSearchFilterLabels(); });
         var o = res.order;
         // Reset form cho tạo mới
         $('#edit_id').val('');
@@ -5391,15 +5452,17 @@ function copyOrder(id){
         $('#btn_print_current').hide();
         $('#btn_toggle_payment').prop('disabled', false);
         $('#lock_warning,#order_return_summary_box').remove();
-        $('#items_tbl tbody').html('');
+        populateOrderFormItems(res.items, {
+            loadProducts: function(done){
+                fetchProductsForOrderForm(null, done);
+            },
+            loadingText: 'Đang tải sản phẩm đơn sao chép...',
+            afterRender: function(){
+                setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
+            }
+        });
         $('#modal_title').text('Sao chép đơn hàng (từ ' + o.code + ')');
         $('#modal_form').modal('show');
-        // Load items sau khi modal hiện
-        $('#modal_form').one('shown.bs.modal', function(){
-            res.items.forEach(function(it){ addItemRow(it); });
-            calcTotal();
-            setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-        });
     });
 }
 

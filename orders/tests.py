@@ -1883,4 +1883,4 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn('Sản phẩm test đơn hàng', content)
-        self.assertIn('Tặng kèm dây nguồn', content)
+        self.assertIn('(Tặng kèm dây nguồn)', content)

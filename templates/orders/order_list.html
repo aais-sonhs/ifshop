@@ -5390,7 +5390,7 @@ function downloadOrderPDF(id){
             var itemLabel = escapeHtml((it.product_code ? it.product_code + ' - ' : '') + (it.product_name || it.item_name || ''));
             var itemNote = (it.note || it.product_note || '');
             if(itemNote){
-                itemLabel += '<div style="font-size:11px;color:#6c757d;margin-top:3px;">' + escapeHtml(itemNote) + '</div>';
+                itemLabel += '<div style="font-size:11px;color:#6c757d;margin-top:3px;">(' + escapeHtml(itemNote) + ')</div>';
             }
             itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td><td>'+itemLabel+'</td>'+
                 '<td class="text-center">'+(it.unit||'')+'</td><td class="text-center">'+it.quantity+'</td>'+

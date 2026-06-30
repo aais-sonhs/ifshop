@@ -869,6 +869,7 @@ def _serialize_product_list(products):
             'stock_by_warehouse': stock_by_warehouse,
             'image': p.image.url if p.image else '',
             'description': p.description or '',
+            'note': p.note or '',
             'is_active': p.is_active,
             'is_weight_based': p.is_weight_based,
             'is_service': p.is_service,
@@ -1269,6 +1270,7 @@ def api_save_product(request):
             product.min_stock = request.POST.get('min_stock', 0) or 0
             product.max_stock = request.POST.get('max_stock', 0) or 0
             product.description = request.POST.get('description', '')
+            product.note = request.POST.get('note', '')
             product.is_weight_based = request.POST.get('is_weight_based', '0') == '1'
             product.is_service = request.POST.get('is_service', '0') == '1'
             product.is_combo = request.POST.get('is_combo', '0') == '1'
@@ -1353,6 +1355,26 @@ def api_save_product(request):
         return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
     except ValueError as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_update_product_note(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        product = _product_queryset_for_request(request).get(id=data.get('id'))
+        product.note = (data.get('note', '') or '').strip()
+        product.save(update_fields=['note'])
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã lưu ghi chú sản phẩm',
+            'note': product.note or '',
+        })
+    except Product.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

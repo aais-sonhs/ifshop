@@ -102,10 +102,8 @@
                 {% endif %}
                 <td>
                     {% if print_template.show_product_code %}<strong>{{ item.display_code }}</strong> — {% endif %}{{ item.display_name }}
-                    {% if print_template.show_item_note %}
-                        {% if item.note %}<div class="item-note">{{ item.note }}</div>
-                        {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
-                    {% endif %}
+                    {% if item.note %}<div class="item-note">{{ item.note }}</div>
+                    {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
                     {% include "orders/print/_combo_components.html" %}
                 </td>
                 <td class="text-center">{{ item.display_unit }}</td>

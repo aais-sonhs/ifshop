@@ -143,6 +143,32 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['product_type_id'], product_type.id)
         self.assertEqual(row['category_record_id'], product_type.id)
 
+    def test_product_list_exposes_and_updates_inline_note(self):
+        self.product.note = 'In kem phu kien'
+        self.product.save(update_fields=['note'])
+
+        response = self.client.get(reverse('api_get_products'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['note'], 'In kem phu kien')
+
+        update_response = self.client.post(
+            reverse('api_update_product_note'),
+            data=json.dumps({
+                'id': self.product.id,
+                'note': 'Hien note duoi ten san pham',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        payload = update_response.json()
+        self.assertEqual(payload['status'], 'ok', msg=update_response.content.decode())
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.note, 'Hien note duoi ten san pham')
+
     def test_product_list_keeps_zero_and_negative_stock_by_warehouse(self):
         ProductStock.objects.create(
             product=self.product,

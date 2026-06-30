@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/products/combo-source/', views.api_get_combo_source_products, name='api_get_combo_source_products'),
     path('api/products/check-code/', views.api_check_product_code, name='api_check_product_code'),
     path('api/products/save/', views.api_save_product, name='api_save_product'),
+    path('api/products/update-note/', views.api_update_product_note, name='api_update_product_note'),
     path('api/products/delete/', views.api_delete_product, name='api_delete_product'),
     path('api/warehouses/', views.api_get_warehouses, name='api_get_warehouses'),
     path('api/warehouses/save/', views.api_save_warehouse, name='api_save_warehouse'),

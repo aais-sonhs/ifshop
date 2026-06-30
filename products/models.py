@@ -103,6 +103,7 @@ class Product(SoftDeleteModel):
                                  related_name='products', verbose_name='Danh mục')
     unit = models.CharField(max_length=50, default='Cái', verbose_name='Đơn vị tính')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
+    note = models.TextField(blank=True, null=True, verbose_name='Ghi chú in đơn / báo giá')
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name='Hình ảnh')
 
     # Giá

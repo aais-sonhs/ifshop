@@ -86,10 +86,8 @@
                     {% if print_template.show_discount and item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}
                 </small>
                 {% endif %}
-                {% if print_template.show_item_note %}
-                    {% if item.note %}<div class="item-note">{{ item.note }}</div>
-                    {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
-                {% endif %}
+                {% if item.note %}<div class="item-note">{{ item.note }}</div>
+                {% elif item.product.note %}<div class="item-note">{{ item.product.note }}</div>{% endif %}
                 {% include "orders/print/_combo_components.html" %}
             </td>
             <td class="text-right">{{ item.quantity|qty_vn }}</td>

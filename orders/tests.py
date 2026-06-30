@@ -1865,3 +1865,22 @@ class OrderRiskFlowTests(TestCase):
         hidden_content = hidden_response.content.decode()
         self.assertIn('Combo in đơn', hidden_content)
         self.assertNotIn('SP-ORDER-001 - Sản phẩm test đơn hàng', hidden_content)
+
+    def test_print_order_shows_product_note_below_item_name(self):
+        self.product.note = 'Tặng kèm dây nguồn'
+        self.product.save(update_fields=['note'])
+        order = self._create_order(code='DH-PRINT-NOTE', status=5)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_print_order'), {'id': order.id, 'type': 'a4', 'source': 'order'})
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('Sản phẩm test đơn hàng', content)
+        self.assertIn('Tặng kèm dây nguồn', content)

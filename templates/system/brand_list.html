@@ -2,15 +2,25 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-trademark mr-2"></i>Thương hiệu & Cửa hàng</h3>
-        <div class="card-tools"><button type="button" class="btn btn-sm btn-primary" id="btn_add_brand"><i class="fas fa-plus"></i> Thêm thương hiệu</button></div>
+        <h3 class="card-title"><i class="fas fa-trademark mr-2"></i>Thông tin cty & Cửa hàng</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add_brand"><i class="fas fa-plus"></i> Thêm nhãn hiệu</button>
+        </div>
     </div>
     <div class="card-body">
+        <div class="alert alert-light border mb-3 py-2 px-3">
+            <i class="fas fa-info-circle text-primary mr-1"></i>
+            {% if request.user.is_superuser %}
+            Nhãn hiệu là công ty dùng để in chứng từ. Bạn có thể tạo mới và gán chủ sở hữu ngay tại đây.
+            {% else %}
+            Tài khoản quản trị công ty có thể tự tạo nhiều nhãn hiệu cho doanh nghiệp của mình ngay trên màn hình này.
+            {% endif %}
+        </div>
         <!-- Filter bar -->
         <div class="row mb-3">
             <div class="col-md-3">
                 <select class="form-control form-control-sm" id="filter_brand" onchange="renderBrands()">
-                    <option value="">-- Tất cả thương hiệu --</option>
+                    <option value="">-- Tất cả nhãn hiệu --</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -38,13 +48,13 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="brand_modal_title">Thêm thương hiệu</h5>
+                <h5 class="modal-title" id="brand_modal_title">Thêm nhãn hiệu</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="brand_id">
                 <div class="row">
-                    <div class="col-md-5"><div class="form-group"><label>Tên thương hiệu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_brand_name"></div></div>
+                    <div class="col-md-5"><div class="form-group"><label>Tên nhãn hiệu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_brand_name"></div></div>
                     <div class="col-md-4" id="wrap_brand_btype"><div class="form-group"><label>Mô hình kinh doanh</label><select class="form-control form-control-sm" id="inp_brand_btype"><option value="retail">🛒 Bán lẻ</option><option value="restaurant">🍜 Quán ăn</option><option value="cafe">☕ Cafe</option><option value="spa">💆 Spa</option></select></div></div>
                     <div class="col-md-3"><div class="form-group"><label>MST</label><input type="text" class="form-control form-control-sm" id="inp_brand_tax"></div></div>
                 </div>
@@ -108,13 +118,12 @@ var allUsers = [];
 var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
 
 $(document).ready(function(){
-    // Superadmin: ẩn chọn mô hình (để chủ TH tự chọn), hiện chủ sở hữu
-    // Brand owner: hiện mô hình, ẩn chủ sở hữu, ẩn nút thêm TH
+    // Superadmin: ẩn chọn mô hình, hiện chủ sở hữu.
+    // Brand owner: hiện mô hình, ẩn chủ sở hữu.
     if(isSuperAdmin){
         $('#wrap_brand_btype').hide();
     } else {
         $('#wrap_brand_owner').hide();
-        $('#btn_add_brand').hide();
     }
     loadData();
 
@@ -122,12 +131,12 @@ $(document).ready(function(){
         $('#brand_id').val('');
         $('#inp_brand_name,#inp_brand_phone,#inp_brand_email,#inp_brand_website,#inp_brand_address,#inp_brand_tax,#inp_brand_desc').val('');
         $('#inp_brand_owner').val('');$('#inp_brand_btype').val('retail');
-        $('#brand_modal_title').text('Thêm thương hiệu');
+        $('#brand_modal_title').text('Thêm nhãn hiệu');
         $('#modal_brand').modal('show');
     });
 
     $('#btn_save_brand').click(function(){
-        if(!$('#inp_brand_name').val()){alert('Nhập tên thương hiệu');return;}
+        if(!$('#inp_brand_name').val()){alert('Nhập tên nhãn hiệu');return;}
         $.ajax({url:'/api/brands/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},
             data:JSON.stringify({
@@ -168,7 +177,7 @@ function loadData(){
         $('#inp_brand_owner,#inp_store_manager').html(uOpts);
 
         // Populate brand filter dropdown
-        var fOpts = '<option value="">-- Tất cả thương hiệu --</option>';
+        var fOpts = '<option value="">-- Tất cả nhãn hiệu --</option>';
         res.data.forEach(function(b){ fOpts+='<option value="'+b.id+'">'+b.name+'</option>'; });
         var prevFilter = $('#filter_brand').val();
         $('#filter_brand').html(fOpts).val(prevFilter);
@@ -192,7 +201,7 @@ function renderBrands(){
 
     var h = '';
     if(!filtered.length){
-        h = '<div class="text-center text-muted py-5"><i class="fas fa-search fa-3x mb-3 d-block"></i>Không tìm thấy thương hiệu nào.</div>';
+        h = '<div class="text-center text-muted py-5"><i class="fas fa-search fa-3x mb-3 d-block"></i>Không tìm thấy nhãn hiệu nào.</div>';
     }
     var btypeEmoji = {'retail':'🛒','restaurant':'🍜','cafe':'☕','spa':'💆'};
     var btypeLabel = {'retail':'Bán lẻ','restaurant':'Quán ăn','cafe':'Cafe','spa':'Spa'};
@@ -241,9 +250,7 @@ function renderBrands(){
         h += '</div>';
         h += '<span class="badge badge-warning mr-2" style="font-size:12px;">'+filteredStores.length+' cửa hàng</span>';
         h += '<button class="btn btn-xs btn-outline-primary mr-2" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')">Sửa</button>';
-        if(isSuperAdmin){
-            h += '<button class="btn btn-xs btn-outline-danger mr-2" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa</button>';
-        }
+        h += '<button class="btn btn-xs btn-outline-danger mr-2" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa</button>';
         h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')"><i class="fas fa-plus"></i> Cửa hàng</button>';
         h += '</div>';
         h += '</div>';
@@ -269,9 +276,7 @@ function renderBrands(){
                 h += '<td class="text-center">'+statusBadge+'</td>';
                 h += '<td class="text-center"><div class="btn-action-group">';
                 h += '<button class="btn btn-xs btn-info" onclick=\'editStore('+b.id+','+JSON.stringify(s).replace(/'/g,"\\\'")+')\'>Sửa</button> ';
-                if(isSuperAdmin){
-                    h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteStore('+s.id+')">Xóa</button>';
-                }
+                h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteStore('+s.id+')">Xóa</button>';
                 h += '</div>';
                 h += '</td></tr>';
             });
@@ -283,7 +288,7 @@ function renderBrands(){
     });
 
     $('#brand_container').html(h);
-    $('#brand_count').text(filtered.length+' thương hiệu · '+totalStores+' cửa hàng');
+    $('#brand_count').text(filtered.length+' nhãn hiệu · '+totalStores+' cửa hàng');
 
     // Toggle chevron icon
     $('.collapse').on('show.bs.collapse',function(){ $(this).prev().find('.collapse-icon').css('transform','rotate(90deg)'); });
@@ -295,11 +300,11 @@ function editBrand(b){
     $('#inp_brand_phone').val(b.phone);
     $('#inp_brand_email').val(b.email);$('#inp_brand_website').val(b.website);$('#inp_brand_address').val(b.address);
     $('#inp_brand_tax').val(b.tax_code);$('#inp_brand_desc').val(b.description);$('#inp_brand_owner').val(b.owner_id);
-    $('#brand_modal_title').text('Sửa thương hiệu');$('#modal_brand').modal('show');
+    $('#brand_modal_title').text('Sửa nhãn hiệu');$('#modal_brand').modal('show');
 }
 
 function deleteBrand(id){
-    if(!confirm('Xóa thương hiệu này (sẽ xóa tất cả cửa hàng)?'))return;
+    if(!confirm('Xóa nhãn hiệu này (sẽ xóa tất cả cửa hàng)?'))return;
     $.ajax({url:'/api/brands/delete/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
         success:function(r){loadData();alert(r.message);}});

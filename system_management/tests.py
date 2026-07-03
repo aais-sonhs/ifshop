@@ -158,17 +158,21 @@ class SystemManagementScopeTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertEqual(payload['message'], 'Không tìm thấy cửa hàng')
 
-    def test_brand_owner_cannot_delete_store(self):
+    def test_brand_owner_can_delete_store(self):
         response = self.client.post(
             reverse('api_delete_store'),
             data=json.dumps({'id': self.store.id}),
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertTrue(Store.objects.filter(id=self.store.id).exists())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertFalse(Store.objects.filter(id=self.store.id).exists())
 
     def test_superadmin_can_create_brand_for_specific_owner(self):
         self.client.force_login(self.superuser)
@@ -189,7 +193,7 @@ class SystemManagementScopeTests(TestCase):
         brand = Brand.objects.get(name='Superadmin Created Brand')
         self.assertEqual(brand.owner_id, self.other_owner.id)
 
-    def test_brand_owner_cannot_create_brand(self):
+    def test_save_brand_forces_owner_to_current_brand_owner(self):
         response = self.client.post(
             reverse('api_save_brand'),
             data=json.dumps({
@@ -200,18 +204,22 @@ class SystemManagementScopeTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertFalse(Brand.objects.filter(name='Brand Owner Created').exists())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
 
-    def test_brand_owner_cannot_delete_brand(self):
+        brand = Brand.objects.get(name='Brand Owner Created')
+        self.assertEqual(brand.owner_id, self.owner.id)
+
+    def test_brand_owner_can_delete_brand(self):
         response = self.client.post(
             reverse('api_delete_brand'),
             data=json.dumps({'id': self.brand.id}),
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertTrue(Brand.objects.filter(id=self.brand.id).exists())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertFalse(Brand.objects.filter(id=self.brand.id).exists())
 
     def test_regular_staff_cannot_create_brand(self):
         self.client.force_login(self.staff_a)

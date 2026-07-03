@@ -139,6 +139,8 @@ def _forbid_json(message='Bạn không có quyền quản lý hệ thống'):
 
 def _redirect_no_system_access(request, message='Bạn không có quyền quản lý hệ thống'):
     messages.error(request, message)
+    if getattr(request.user, 'is_authenticated', False) and request.user.is_superuser:
+        return redirect('/brand-tbl/')
     return redirect('/dashboard/')
 
 
@@ -636,31 +638,22 @@ def api_assign_role_group(request):
 
 @login_required(login_url="/login/")
 def business_config_tbl(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
-        from django.contrib import messages
-        messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/dashboard/')
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
     return render(request, "system/business_config.html", {'active_tab': 'business_config_tbl'})
 
 
 @login_required(login_url="/login/")
 def setting_quotation(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
-        from django.contrib import messages
-        messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/dashboard/')
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
     return render(request, "system/setting_quotation.html", {'active_tab': 'setting_quotation'})
 
 
 @login_required(login_url="/login/")
 def setting_order(request):
-    from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
-        from django.contrib import messages
-        messages.error(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
-        return redirect('/dashboard/')
+        return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu mới được phép cài đặt.')
     return render(request, "system/setting_order.html", {'active_tab': 'setting_order'})
 
 
@@ -668,6 +661,8 @@ def setting_order(request):
 
 @login_required(login_url="/login/")
 def api_get_business_config(request):
+    if request.user.is_superuser:
+        return _forbid_json('Super Admin không có quyền xem cấu hình kinh doanh')
     # Load per-brand config
     brand = None
     try:
@@ -1740,12 +1735,10 @@ def api_save_brand(request):
     try:
         data = json.loads(request.body)
         bid = data.get('id')
-        if not bid and not request.user.is_superuser:
-            return _forbid_json('Chỉ Super Admin mới được tạo thương hiệu')
         if bid:
             b = _get_brand_for_user(request, bid)
             if not b:
-                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu'})
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu'})
         else:
             b = Brand()
         b.name = data.get('name', '')
@@ -1760,7 +1753,7 @@ def api_save_brand(request):
         b.owner_id = (data.get('owner_id') or None) if request.user.is_superuser else request.user.id
         b.is_active = data.get('is_active', True)
         b.save()
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thương hiệu thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Lưu nhãn hiệu thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1771,15 +1764,13 @@ def api_delete_brand(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin mới được xóa thương hiệu')
     try:
         data = json.loads(request.body)
         brand = _get_brand_for_user(request, data.get('id'))
         if not brand:
-            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu'})
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu'})
         brand.delete()
-        return JsonResponse({'status': 'ok', 'message': 'Xóa thương hiệu thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Xóa nhãn hiệu thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1833,8 +1824,6 @@ def api_delete_store(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
-    if not request.user.is_superuser:
-        return _forbid_json('Chỉ Super Admin mới được xóa cửa hàng')
     try:
         data = json.loads(request.body)
         store = _get_store_for_user(request, data.get('id'))

@@ -230,7 +230,7 @@ def _get_request_brand(request):
 
 
 def _get_print_label_queryset_for_user(request):
-    """Danh sách nhãn hiệu in mà chủ công ty được phép quản lý."""
+    """Danh sách nhãn hàng mà chủ công ty được phép quản lý."""
     if request.user.is_superuser:
         return Brand.objects.none()
     return Brand.objects.filter(
@@ -246,14 +246,16 @@ def _get_print_label_for_user(request, brand_id):
 
 
 def _get_print_brand_queryset_for_request(request, store=None):
-    """Danh sách nhãn hiệu được phép dùng trong các luồng in."""
+    """Danh sách nhãn hàng được phép chọn trong các luồng in."""
     if request.user.is_superuser:
         return Brand.objects.none()
-    return get_related_brands_for_user(request.user, store=store)
+    return get_related_brands_for_user(request.user, store=store).filter(
+        brand_type=Brand.TYPE_PRINT_LABEL
+    )
 
 
 def _get_selected_print_brand(request, brand_id=None, store=None, fallback_brand=None):
-    """Resolve nhãn hiệu in dựa trên lựa chọn explicit hoặc ngữ cảnh hiện tại."""
+    """Resolve nhãn hàng dựa trên lựa chọn explicit hoặc ngữ cảnh hiện tại."""
     queryset = _get_print_brand_queryset_for_request(request, store=store)
     if brand_id:
         selected = queryset.filter(id=brand_id).first()
@@ -1129,17 +1131,18 @@ def api_get_stores_for_user(request):
 @login_required(login_url="/login/")
 def print_brand_tbl(request):
     if not is_brand_owner(request.user):
-        return _redirect_no_system_access(request, 'Chỉ chủ công ty mới được quản lý nhãn hiệu in')
+        return _redirect_no_system_access(request, 'Chỉ chủ công ty mới được quản lý nhãn hàng')
     return render(request, "system/print_brand_list.html", {'active_tab': 'print_brand_tbl'})
 
 
 @login_required(login_url="/login/")
 def api_get_print_brands(request):
     if not is_brand_owner(request.user):
-        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hiệu in')
+        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hàng')
     data = [{
         'id': item.id,
         'name': item.name,
+        'logo': item.logo.url if item.logo else '',
         'tax_code': item.tax_code or '',
         'phone': item.phone or '',
         'email': item.email or '',
@@ -1156,18 +1159,21 @@ def api_save_print_brand(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not is_brand_owner(request.user):
-        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hiệu in')
+        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hàng')
     try:
-        data = json.loads(request.body)
+        if request.content_type and 'application/json' in request.content_type:
+            data = json.loads(request.body or '{}')
+        else:
+            data = request.POST
         bid = data.get('id')
         if bid:
             brand = _get_print_label_for_user(request, bid)
             if not brand:
-                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu in'})
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hàng'})
         else:
             company_brand = _get_owner_target_brand(request)
             if not company_brand:
-                return JsonResponse({'status': 'error', 'message': 'Chưa có công ty gốc để tạo nhãn hiệu in'})
+                return JsonResponse({'status': 'error', 'message': 'Chưa có công ty gốc để tạo nhãn hàng'})
             brand = Brand(
                 owner=request.user,
                 brand_type=Brand.TYPE_PRINT_LABEL,
@@ -1182,11 +1188,18 @@ def api_save_print_brand(request):
         brand.website = data.get('website', '')
         brand.address = data.get('address', '')
         brand.tax_code = data.get('tax_code', '')
-        brand.is_active = data.get('is_active', True)
+        brand.is_active = _to_bool(data.get('is_active'), True)
         if not brand.name:
-            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên nhãn hiệu in'})
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên nhãn hàng'})
+        if _to_bool(data.get('clear_logo'), False):
+            if brand.logo:
+                brand.logo.delete(save=False)
+            brand.logo = None
+        uploaded_logo = request.FILES.get('logo')
+        if uploaded_logo:
+            brand.logo = uploaded_logo
         brand.save()
-        return JsonResponse({'status': 'ok', 'message': 'Lưu nhãn hiệu in thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Lưu nhãn hàng thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1196,14 +1209,14 @@ def api_delete_print_brand(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not is_brand_owner(request.user):
-        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hiệu in')
+        return _forbid_json('Chỉ chủ công ty mới được quản lý nhãn hàng')
     try:
         data = json.loads(request.body)
         brand = _get_print_label_for_user(request, data.get('id'))
         if not brand:
-            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu in'})
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hàng'})
         brand.delete()
-        return JsonResponse({'status': 'ok', 'message': 'Xóa nhãn hiệu in thành công'})
+        return JsonResponse({'status': 'ok', 'message': 'Xóa nhãn hàng thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1226,13 +1239,15 @@ def printer_setting_tbl(request):
 def print_template_setting(request):
     if not is_brand_owner(request.user):
         return _redirect_no_system_access(request, 'Chỉ chủ công ty mới được phép cấu hình mẫu in')
-    brands = list(_get_brand_queryset_for_user(request).order_by('name'))
-    default_brand = brands[0] if brands else None
+    company_brand = _get_owner_target_brand(request)
+    preview_brands = list(_get_print_brand_queryset_for_request(request))
+    default_preview_brand = preview_brands[0] if preview_brands else company_brand
     context = {
         'active_tab': 'print_template_setting',
         'template_types': PrintTemplate.TEMPLATE_TYPE_CHOICES,
-        'brands': brands,
-        'default_brand_id': default_brand.id if default_brand else '',
+        'template_brand_id': company_brand.id if company_brand else '',
+        'preview_brands': preview_brands,
+        'default_preview_brand_id': default_preview_brand.id if default_preview_brand else '',
     }
     return render(request, "system/print_template_setting.html", context)
 
@@ -1480,9 +1495,14 @@ def api_preview_print_template(request):
         return _forbid_json('Chỉ chủ công ty mới được phép xem trước mẫu in')
     try:
         data = json.loads(request.body)
-        brand = _get_owner_target_brand(request, data.get('brand_id'))
-        if not brand:
+        company_brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not company_brand:
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy công ty cần xem trước'})
+        preview_brand = _get_selected_print_brand(
+            request,
+            brand_id=data.get('preview_brand_id'),
+            fallback_brand=company_brand,
+        ) or company_brand
         template_type = data.get('template_type')
         templates = {
             'k80': 'orders/print/receipt_k80.html',
@@ -1495,7 +1515,7 @@ def api_preview_print_template(request):
         if template_type not in templates:
             return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})
 
-        current = _get_or_create_print_template(brand, template_type)
+        current = _get_or_create_print_template(company_brand, template_type)
         snapshot = _print_template_snapshot(current)
         for field in PRINT_TEMPLATE_EDITABLE_FIELDS:
             if field in data:
@@ -1508,7 +1528,7 @@ def api_preview_print_template(request):
         preview_template = SimpleNamespace(**snapshot)
         html = render_to_string(
             templates[template_type],
-            _build_print_template_preview_context(request, template_type, preview_template, brand=brand),
+            _build_print_template_preview_context(request, template_type, preview_template, brand=preview_brand),
             request=request,
         )
         return JsonResponse({'status': 'ok', 'html': html})

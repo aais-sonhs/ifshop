@@ -23,7 +23,7 @@ from finance.services import (
     save_receipt_with_effect,
     update_order_payment_status,
 )
-from system_management.models import PrintTemplate
+from system_management.models import Brand, PrintTemplate
 from core.store_utils import (
     brand_owner_required,
     filter_by_store,
@@ -189,6 +189,13 @@ def _serialize_print_brand(brand):
 def _get_print_brand_queryset(request, record=None, store=None):
     current_store = store or getattr(record, 'store', None) or _get_default_store_for_request(request)
     return get_related_brands_for_user(request.user, store=current_store).order_by('name')
+
+
+def _get_print_brand_selection_queryset(request, record=None, store=None):
+    """Danh sách nhãn hàng hiển thị cho user chọn khi in."""
+    return _get_print_brand_queryset(request, record=record, store=store).filter(
+        brand_type=Brand.TYPE_PRINT_LABEL
+    )
 
 
 def _resolve_issuing_brand(
@@ -2510,7 +2517,7 @@ def api_get_order_detail(request):
             'items': items,
             'available_print_brands': [
                 _serialize_print_brand(brand)
-                for brand in _get_print_brand_queryset(request, record=o)
+                for brand in _get_print_brand_selection_queryset(request, record=o)
             ],
         })
     except Order.DoesNotExist:
@@ -2764,7 +2771,7 @@ def api_save_order(request):
             if 'issuing_brand_id' in data and requested_issuing_brand_id not in (None, '') and not issuing_brand:
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.'
+                    'message': 'Nhãn hàng không thuộc phạm vi được phép sử dụng.'
                 })
             o.issuing_brand = issuing_brand
 
@@ -3755,7 +3762,7 @@ def api_get_quotation_detail(request):
             'items': items,
             'available_print_brands': [
                 _serialize_print_brand(brand)
-                for brand in _get_print_brand_queryset(request, record=q)
+                for brand in _get_print_brand_selection_queryset(request, record=q)
             ],
         })
     except Quotation.DoesNotExist:
@@ -3874,7 +3881,7 @@ def api_save_quotation(request):
             if 'issuing_brand_id' in data and requested_issuing_brand_id not in (None, '') and not issuing_brand:
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.'
+                    'message': 'Nhãn hàng không thuộc phạm vi được phép sử dụng.'
                 })
             q.issuing_brand = issuing_brand
 
@@ -4887,7 +4894,7 @@ def api_print_order(request):
         'print_record_id': order_id,
         'selected_brand_id': brand.id if brand else '',
         'printer_brand_id': template_brand.id if template_brand else '',
-        'available_print_brands': list(_get_print_brand_queryset(request, record=print_record)),
+        'available_print_brands': list(_get_print_brand_selection_queryset(request, record=print_record)),
         'warranty_items_payload': warranty_items_payload or '',
     }
     return render(request, template, context)

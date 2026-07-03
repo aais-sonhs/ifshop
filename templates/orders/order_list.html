@@ -775,11 +775,11 @@
                         <span style="font-size:14px;">Chứng từ <strong id="print_order_code"></strong>. Chọn loại phiếu để in:</span>
                     </div>
                     <div class="mt-3 mx-auto" style="max-width:420px;">
-                        <label class="mb-1 font-weight-bold">Nhãn hiệu in</label>
+                        <label class="mb-1 font-weight-bold">Nhãn hàng</label>
                         <select class="form-control" id="sel_print_brand">
-                            <option value="">Đang tải nhãn hiệu...</option>
+                            <option value="">Đang tải nhãn hàng...</option>
                         </select>
-                        <small class="text-muted" id="print_brand_hint">Logo, tên công ty và mẫu in sẽ lấy theo nhãn hiệu đã chọn.</small>
+                        <small class="text-muted" id="print_brand_hint">Logo và thông tin nhãn hàng sẽ lấy theo lựa chọn bên dưới. Mẫu in và máy in vẫn theo công ty.</small>
                     </div>
                     <div class="mt-2">
                         <a href="{% url 'print_template_setting' %}" target="_blank" class="btn btn-sm btn-outline-secondary">
@@ -2429,17 +2429,17 @@ function getSelectedPrintBrandId(){
 
 function updatePrintBrandHint(){
     var label = $('#sel_print_brand option:selected').text() || '';
-    $('#print_brand_hint').text(label ? 'Thông tin in sẽ lấy theo: ' + label : 'Logo, tên công ty và mẫu in sẽ lấy theo nhãn hiệu đã chọn.');
+    $('#print_brand_hint').text(label ? 'Thông tin in sẽ lấy theo: ' + label : 'Logo và thông tin nhãn hàng sẽ lấy theo lựa chọn bên dưới. Mẫu in và máy in vẫn theo công ty.');
 }
 
 function loadPrintBrandOptions(source, id){
     var $select = $('#sel_print_brand');
-    $select.prop('disabled', true).html('<option value="">Đang tải nhãn hiệu...</option>');
-    $('#print_brand_hint').text('Đang tải nhãn hiệu áp dụng cho chứng từ...');
+    $select.prop('disabled', true).html('<option value="">Đang tải nhãn hàng...</option>');
+    $('#print_brand_hint').text('Đang tải nhãn hàng áp dụng cho chứng từ...');
     $.get(getPrintDetailUrl(source, id), function(res){
         if(res.status !== 'ok'){
-            $select.html('<option value="">Không tải được nhãn hiệu</option>');
-            $('#print_brand_hint').text(res.message || 'Không tải được nhãn hiệu in.');
+            $select.html('<option value="">Không tải được nhãn hàng</option>');
+            $('#print_brand_hint').text(res.message || 'Không tải được nhãn hàng.');
             return;
         }
         var payload = res.order || res.quotation || {};
@@ -2450,7 +2450,7 @@ function loadPrintBrandOptions(source, id){
             html += '<option value="' + brand.id + '">' + escapeHtml(brand.name) + '</option>';
         });
         if(!html){
-            html = '<option value="">Không có nhãn hiệu khả dụng</option>';
+            html = '<option value="">Không có nhãn hàng khả dụng</option>';
         }
         $select.html(html).val(String(selectedId || ''));
         if(!$select.val() && brands.length){
@@ -2459,8 +2459,8 @@ function loadPrintBrandOptions(source, id){
         $select.prop('disabled', !brands.length);
         updatePrintBrandHint();
     }).fail(function(){
-        $select.html('<option value="">Không tải được nhãn hiệu</option>').prop('disabled', true);
-        $('#print_brand_hint').text('Không tải được nhãn hiệu in.');
+        $select.html('<option value="">Không tải được nhãn hàng</option>').prop('disabled', true);
+        $('#print_brand_hint').text('Không tải được nhãn hàng.');
     });
 }
 

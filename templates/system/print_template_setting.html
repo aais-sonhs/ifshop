@@ -22,20 +22,20 @@
         <h3 class="card-title"><i class="fas fa-file-alt mr-2"></i>Mẫu in</h3>
         <div class="card-tools">
             <a href="{% url 'print_brand_tbl' %}" class="btn btn-sm btn-outline-primary">
-                <i class="fas fa-tags mr-1"></i> Nhãn hiệu
+                <i class="fas fa-tags mr-1"></i> Nhãn hàng
             </a>
         </div>
     </div>
     <div class="card-body">
         <div class="row mb-3">
             <div class="col-lg-5">
-                <label class="mb-1">Công ty đang cấu hình</label>
-                <select class="form-control" id="sel_template_brand">
-                    {% for brand in brands %}
-                    <option value="{{ brand.id }}" {% if brand.id == default_brand_id %}selected{% endif %}>{{ brand.name }}</option>
+                <label class="mb-1">Chọn Nhãn hàng</label>
+                <select class="form-control" id="sel_preview_brand">
+                    {% for brand in preview_brands %}
+                    <option value="{{ brand.id }}" {% if brand.id == default_preview_brand_id %}selected{% endif %}>{{ brand.name }}</option>
                     {% endfor %}
                 </select>
-                <small class="text-muted">Mẫu in áp dụng theo công ty gốc. Nhãn hiệu chỉ đổi thông tin hiển thị khi in phiếu.</small>
+                <small class="text-muted">Mẫu in vẫn lưu theo công ty gốc. Nhãn hàng chỉ đổi logo và thông tin hiển thị khi in phiếu.</small>
             </div>
         </div>
         <div class="row">
@@ -77,11 +77,11 @@
                         <div class="template-options">
                             <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_brand_logo">
-                                <label class="custom-control-label" for="inp_show_brand_logo">Logo thương hiệu</label>
+                                <label class="custom-control-label" for="inp_show_brand_logo">Logo nhãn hàng</label>
                             </div>
                             <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_brand_info">
-                                <label class="custom-control-label" for="inp_show_brand_info">Thông tin thương hiệu</label>
+                                <label class="custom-control-label" for="inp_show_brand_info">Thông tin nhãn hàng</label>
                             </div>
                             <div class="custom-control custom-switch">
                                 <input type="checkbox" class="custom-control-input" id="inp_show_customer_info">
@@ -175,7 +175,8 @@
 var printTemplates = [];
 var currentTemplateType = '';
 var previewTimer = null;
-var currentTemplateBrandId = $('#sel_template_brand').val() || '{{ default_brand_id }}';
+var templateBrandId = '{{ template_brand_id }}';
+var currentPreviewBrandId = $('#sel_preview_brand').val() || '{{ default_preview_brand_id }}';
 
 var SWITCH_FIELDS = [
     'show_brand_logo',
@@ -206,7 +207,8 @@ function setSwitch(field, value){
 
 function getTemplateFormData(){
     var data = {
-        brand_id: currentTemplateBrandId,
+        brand_id: templateBrandId,
+        preview_brand_id: currentPreviewBrandId,
         template_type: $('#inp_template_type').val(),
         title: $('#inp_title').val(),
         header_note: $('#inp_header_note').val(),
@@ -232,7 +234,7 @@ function applyTemplateToForm(t){
 }
 
 function loadTemplates(selectType){
-    $.get('/api/print-templates/', {brand_id: currentTemplateBrandId}, function(res){
+    $.get('/api/print-templates/', {brand_id: templateBrandId}, function(res){
         printTemplates = res.data || [];
         renderTemplateList();
         var firstType = selectType || currentTemplateType || (printTemplates[0] ? printTemplates[0].template_type : '');
@@ -283,7 +285,7 @@ function renderHistories(histories){
 function loadHistories(templateType){
     if(!templateType) return;
     $('#history_list').html('<div class="text-muted p-3">Đang tải lịch sử...</div>');
-    $.get('/api/print-templates/histories/', {template_type: templateType, brand_id: currentTemplateBrandId}, function(res){
+    $.get('/api/print-templates/histories/', {template_type: templateType, brand_id: templateBrandId}, function(res){
         renderHistories(res.data || []);
     });
 }
@@ -320,13 +322,9 @@ function loadPreview(){
 $(document).ready(function(){
     loadTemplates();
 
-    $('#sel_template_brand').change(function(){
-        currentTemplateBrandId = $(this).val() || '';
-        currentTemplateType = '';
-        printTemplates = [];
-        $('#template_preview').attr('srcdoc', '');
-        $('#preview_status').text('');
-        loadTemplates();
+    $('#sel_preview_brand').change(function(){
+        currentPreviewBrandId = $(this).val() || '';
+        schedulePreview();
     });
 
     $(document).on('click', '#template_list .list-group-item', function(){
@@ -353,7 +351,7 @@ $(document).ready(function(){
             type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
-            data: JSON.stringify({history_id: historyId, brand_id: currentTemplateBrandId}),
+            data: JSON.stringify({history_id: historyId, brand_id: templateBrandId}),
             success: function(r){
                 if(r.status === 'ok'){
                     if(typeof toastr !== 'undefined') toastr.success(r.message); else alert(r.message);

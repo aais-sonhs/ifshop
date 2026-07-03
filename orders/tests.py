@@ -124,8 +124,8 @@ class OrderRiskFlowTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
         brand_ids = {item['id'] for item in payload['available_print_brands']}
-        self.assertIn(self.brand.id, brand_ids)
         self.assertIn(print_label.id, brand_ids)
+        self.assertNotIn(self.brand.id, brand_ids)
         self.assertEqual(payload['order']['store_brand_id'], self.brand.id)
 
     def test_print_order_can_switch_brand_and_persist_issuing_brand(self):
@@ -204,7 +204,7 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'error')
-        self.assertEqual(response.json()['message'], 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.')
+        self.assertEqual(response.json()['message'], 'Nhãn hàng không thuộc phạm vi được phép sử dụng.')
 
     def test_save_order_allows_status_change_when_draft_receipt_exists(self):
         order = self._create_order(code='DH-PAID-001', status=0)

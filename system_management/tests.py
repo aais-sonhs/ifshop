@@ -329,6 +329,73 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data'][0]['name'], 'LAN Printer')
 
+    def test_regular_staff_can_read_printers_by_selected_brand(self):
+        sibling_brand = Brand.objects.create(name='Z Brand Child', owner=self.owner)
+        PrinterSetting.objects.create(
+            brand=self.brand,
+            name='Brand A Printer',
+            printer_type='lan',
+            ip_address='192.168.1.10',
+        )
+        PrinterSetting.objects.create(
+            brand=sibling_brand,
+            name='Brand Child Printer',
+            printer_type='lan',
+            ip_address='192.168.1.11',
+        )
+        PrinterSetting.objects.create(
+            name='Global Printer',
+            printer_type='lan',
+            ip_address='192.168.1.12',
+        )
+        self.client.force_login(self.staff_a)
+
+        response = self.client.get(reverse('api_get_printers'), {'brand_id': sibling_brand.id})
+
+        self.assertEqual(response.status_code, 200)
+        names = {row['name'] for row in response.json()['data']}
+        self.assertIn('Brand Child Printer', names)
+        self.assertIn('Global Printer', names)
+        self.assertNotIn('Brand A Printer', names)
+
+    def test_save_print_template_supports_explicit_brand_selection(self):
+        sibling_brand = Brand.objects.create(name='Z Brand Template', owner=self.owner)
+        payload = {
+            'brand_id': sibling_brand.id,
+            'template_type': 'a4',
+            'title': 'Hoa don cong ty con',
+            'header_note': '',
+            'terms': '',
+            'footer_note': '',
+            'show_brand_logo': True,
+            'show_brand_info': True,
+            'show_customer_info': True,
+            'show_signatures': True,
+            'show_product_images': False,
+            'show_product_code': True,
+            'show_unit_price': True,
+            'show_discount': True,
+            'show_tax': True,
+            'show_shipping_fee': True,
+            'show_payment_info': True,
+            'show_order_note': True,
+            'show_item_note': False,
+            'show_terms': True,
+            'show_print_time': True,
+            'show_combo_components': True,
+        }
+
+        response = self.client.post(
+            reverse('api_save_print_template'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        template = PrintTemplate.objects.get(brand=sibling_brand, template_type='a4')
+        self.assertEqual(template.title, 'Hoa don cong ty con')
+
     def test_save_print_template_creates_history_and_restores_snapshot(self):
         payload = {
             'template_type': 'a4',

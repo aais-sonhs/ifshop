@@ -13,6 +13,17 @@
             <strong>Hướng dẫn:</strong> Thêm máy in LAN bằng cách nhập địa chỉ IP và Port của máy in (mặc định port 9100).
             Bạn có thể test kết nối trước khi lưu. Máy in mặc định sẽ được tự động chọn khi in phiếu.
         </div>
+        <div class="row mb-3">
+            <div class="col-lg-5">
+                <label class="mb-1">Nhãn hiệu đang cấu hình</label>
+                <select class="form-control" id="sel_printer_brand">
+                    {% for brand in brands %}
+                    <option value="{{ brand.id }}" {% if brand.id == default_brand_id %}selected{% endif %}>{{ brand.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">Mỗi nhãn hiệu có danh sách máy in riêng.</small>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead>
@@ -115,8 +126,15 @@
 
 {% block extra_js %}
 <script>
+var currentPrinterBrandId = $('#sel_printer_brand').val() || '{{ default_brand_id }}';
+
 $(document).ready(function(){
     loadData();
+
+    $('#sel_printer_brand').change(function(){
+        currentPrinterBrandId = $(this).val() || '';
+        loadData();
+    });
 
     // Show/hide LAN fields
     $('#inp_printer_type').change(function(){
@@ -171,6 +189,7 @@ $(document).ready(function(){
     $('#btn_save').click(function(){
         var data = {
             id: $('#edit_id').val() || null,
+            brand_id: currentPrinterBrandId,
             name: $('#inp_name').val(),
             printer_type: $('#inp_printer_type').val(),
             ip_address: $('#inp_ip_address').val(),
@@ -197,7 +216,7 @@ $(document).ready(function(){
 });
 
 function loadData(){
-    $.get('/api/printers/', function(res){
+    $.get('/api/printers/', {brand_id: currentPrinterBrandId}, function(res){
         var h = '';
         res.data.forEach(function(d, i){
             var defaultBadge = d.is_default ? '<span class="badge badge-warning"><i class="fas fa-star"></i> Mặc định</span>' : '';
@@ -256,7 +275,7 @@ function deleteItem(id){
         url: '/api/printers/delete/', type: 'POST',
         contentType: 'application/json',
         headers: {'X-CSRFToken': '{{csrf_token}}'},
-        data: JSON.stringify({id: id}),
+        data: JSON.stringify({id: id, brand_id: currentPrinterBrandId}),
         success: function(r){ loadData(); alert(r.message); }
     });
 }

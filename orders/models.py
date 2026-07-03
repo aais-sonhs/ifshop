@@ -17,6 +17,10 @@ class Quotation(SoftDeleteModel):
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã báo giá')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='quotations', verbose_name='Cửa hàng')
+    issuing_brand = models.ForeignKey(
+        'system_management.Brand', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='quotations_issued', verbose_name='Nhãn hiệu in'
+    )
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='quotations',
                                  verbose_name='Khách hàng')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
@@ -97,6 +101,10 @@ class Order(SoftDeleteModel):
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã đơn hàng')
     store = models.ForeignKey('system_management.Store', on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='orders', verbose_name='Cửa hàng')
+    issuing_brand = models.ForeignKey(
+        'system_management.Brand', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='orders_issued', verbose_name='Nhãn hiệu in'
+    )
     quotation = models.ForeignKey(Quotation, on_delete=models.SET_NULL, null=True, blank=True,
                                   related_name='orders', verbose_name='Báo giá')
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='orders',

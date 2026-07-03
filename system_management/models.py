@@ -168,6 +168,10 @@ class PrinterSetting(models.Model):
         ('58mm', 'Giấy nhiệt 58mm'),
         ('letter', 'Letter (216 x 279 mm)'),
     ]
+    brand = models.ForeignKey(
+        'Brand', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='printer_settings', verbose_name='Nhãn hiệu / thương hiệu'
+    )
     name = models.CharField(max_length=255, verbose_name='Tên máy in')
     printer_type = models.CharField(max_length=20, choices=PRINTER_TYPE_CHOICES, default='lan',
                                     verbose_name='Loại kết nối')
@@ -188,7 +192,8 @@ class PrinterSetting(models.Model):
         ordering = ['-is_default', 'name']
 
     def __str__(self):
-        return f"{self.name} ({self.ip_address}:{self.port})"
+        prefix = f"{self.brand.name} - " if self.brand_id else ''
+        return f"{prefix}{self.name} ({self.ip_address}:{self.port})"
 
 
 class PrintTemplate(models.Model):

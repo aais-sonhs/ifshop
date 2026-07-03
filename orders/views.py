@@ -28,6 +28,7 @@ from core.store_utils import (
     brand_owner_required,
     filter_by_store,
     get_managed_store_ids,
+    get_related_brands_for_user,
     get_user_store,
 )
 
@@ -176,22 +177,59 @@ def _get_default_store_for_request(request):
     return _Store.objects.filter(id__in=store_ids).order_by('id').first()
 
 
-def _get_brand_for_print(request, record=None):
-    store = getattr(record, 'store', None)
-    if store and getattr(store, 'brand_id', None):
-        return store.brand
-    try:
-        profile = request.user.profile
-        if profile.store and profile.store.brand_id:
-            return profile.store.brand
-    except Exception:
-        pass
-    try:
-        from core.store_utils import get_owned_brands
-        brands = get_owned_brands(request.user)
-        return brands.first() if brands.exists() else None
-    except Exception:
-        return None
+def _serialize_print_brand(brand):
+    return {
+        'id': brand.id,
+        'name': brand.name,
+        'tax_code': brand.tax_code or '',
+    }
+
+
+def _get_print_brand_queryset(request, record=None, store=None):
+    current_store = store or getattr(record, 'store', None) or _get_default_store_for_request(request)
+    return get_related_brands_for_user(request.user, store=current_store).order_by('name')
+
+
+def _resolve_issuing_brand(
+    request,
+    record=None,
+    store=None,
+    requested_brand_id=None,
+    current_brand=None,
+    fallback_brand=None,
+    strict=False,
+):
+    queryset = _get_print_brand_queryset(request, record=record, store=store)
+    if requested_brand_id not in (None, ''):
+        selected = queryset.filter(id=requested_brand_id).first()
+        if selected:
+            return selected
+        if strict:
+            return None
+
+    candidates = [
+        current_brand,
+        getattr(record, 'issuing_brand', None) if record is not None else None,
+        fallback_brand,
+    ]
+    current_store = store or getattr(record, 'store', None)
+    if current_store and getattr(current_store, 'brand_id', None):
+        candidates.append(current_store.brand)
+
+    for candidate in candidates:
+        if candidate and queryset.filter(id=candidate.id).exists():
+            return candidate
+    return queryset.first()
+
+
+def _get_brand_for_print(request, record=None, brand_id=None):
+    return _resolve_issuing_brand(
+        request,
+        record=record,
+        requested_brand_id=brand_id,
+        current_brand=getattr(record, 'issuing_brand', None) if record else None,
+        fallback_brand=getattr(getattr(record, 'quotation', None), 'issuing_brand', None) if record else None,
+    )
 
 
 def _get_print_template(template_type, brand=None):
@@ -2385,7 +2423,7 @@ def api_get_order_detail(request):
             request,
             oid,
             queryset=Order.objects.select_related(
-                'customer', 'warehouse',
+                'customer', 'warehouse', 'store', 'store__brand', 'issuing_brand',
                 'source_return_exchange', 'source_return_exchange__order',
             ).prefetch_related(
                 Prefetch(
@@ -2450,6 +2488,9 @@ def api_get_order_detail(request):
                 'approval_status_display': o.get_approval_status_display(),
                 'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
                 'bonus_amount': float(o.bonus_amount),
+                'issuing_brand_id': o.issuing_brand_id,
+                'issuing_brand_name': o.issuing_brand.name if o.issuing_brand else '',
+                'store_brand_id': o.store.brand_id if o.store and o.store.brand_id else None,
                 'returns': return_summaries,
                 'return_count': len(return_summaries),
                 'has_returns': bool(return_summaries),
@@ -2461,6 +2502,10 @@ def api_get_order_detail(request):
                 'exchange_original_order_code': source_return.order.code if source_return and source_return.order else '',
             },
             'items': items,
+            'available_print_brands': [
+                _serialize_print_brand(brand)
+                for brand in _get_print_brand_queryset(request, record=o)
+            ],
         })
     except Order.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Không tìm thấy'})
@@ -2699,6 +2744,23 @@ def api_save_order(request):
                 )
             except ValueError as e:
                 return JsonResponse({'status': 'error', 'message': str(e)})
+
+            requested_issuing_brand_id = data.get('issuing_brand_id') if 'issuing_brand_id' in data else None
+            issuing_brand = _resolve_issuing_brand(
+                request,
+                record=o if oid else None,
+                store=o.store,
+                requested_brand_id=requested_issuing_brand_id,
+                current_brand=o.issuing_brand if oid else None,
+                fallback_brand=quotation.issuing_brand if quotation else None,
+                strict=('issuing_brand_id' in data and requested_issuing_brand_id not in (None, '')),
+            )
+            if 'issuing_brand_id' in data and requested_issuing_brand_id not in (None, '') and not issuing_brand:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.'
+                })
+            o.issuing_brand = issuing_brand
 
             total = Decimal('0')
             for item_data in items_data:
@@ -3640,7 +3702,10 @@ def api_get_quotation_detail(request):
     if not qid:
         return JsonResponse({'status': 'error', 'message': 'Missing id'})
     try:
-        q = _get_quotation_for_user(request, qid)
+        q = filter_by_store(
+            Quotation.objects.select_related('customer', 'store', 'store__brand', 'issuing_brand'),
+            request,
+        ).filter(id=qid).first()
         if not q:
             raise Quotation.DoesNotExist
         items = []
@@ -3677,8 +3742,15 @@ def api_get_quotation_detail(request):
                 'status': q.status, 'note': q.note or '',
                 'tags': q.tags or '',
                 'salesperson': q.salesperson or '',
+                'issuing_brand_id': q.issuing_brand_id,
+                'issuing_brand_name': q.issuing_brand.name if q.issuing_brand else '',
+                'store_brand_id': q.store.brand_id if q.store and q.store.brand_id else None,
             },
             'items': items,
+            'available_print_brands': [
+                _serialize_print_brand(brand)
+                for brand in _get_print_brand_queryset(request, record=q)
+            ],
         })
     except Quotation.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Không tìm thấy'})
@@ -3783,6 +3855,22 @@ def api_save_quotation(request):
                 )
             except ValueError as e:
                 return JsonResponse({'status': 'error', 'message': str(e)})
+
+            requested_issuing_brand_id = data.get('issuing_brand_id') if 'issuing_brand_id' in data else None
+            issuing_brand = _resolve_issuing_brand(
+                request,
+                record=q if qid else None,
+                store=q.store,
+                requested_brand_id=requested_issuing_brand_id,
+                current_brand=q.issuing_brand if qid else None,
+                strict=('issuing_brand_id' in data and requested_issuing_brand_id not in (None, '')),
+            )
+            if 'issuing_brand_id' in data and requested_issuing_brand_id not in (None, '') and not issuing_brand:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.'
+                })
+            q.issuing_brand = issuing_brand
 
             total = Decimal('0')
             for it in items_data:
@@ -4444,6 +4532,7 @@ def api_pos_checkout(request):
             order = Order(
                 code=code,
                 store=store,
+                issuing_brand=store.brand if store and getattr(store, 'brand_id', None) else None,
                 warehouse=warehouse,
                 customer=customer,
                 status=initial_status,
@@ -4688,6 +4777,8 @@ def api_print_order(request):
     order_id = request.GET.get('id')
     print_type = request.GET.get('type', 'a4')
     source = request.GET.get('source', 'order')  # 'order' or 'quotation'
+    requested_brand_id = request.GET.get('brand_id')
+    warranty_items_payload = request.GET.get('warranty_items')
 
     TEMPLATES = {
         'k80': 'orders/print/receipt_k80.html',
@@ -4701,7 +4792,10 @@ def api_print_order(request):
 
     if source == 'quotation':
         try:
-            quotation = _get_quotation_for_user(request, order_id)
+            quotation = filter_by_store(
+                Quotation.objects.select_related('customer', 'created_by', 'store', 'store__brand', 'issuing_brand'),
+                request,
+            ).filter(id=order_id).first()
             if not quotation:
                 raise Quotation.DoesNotExist
         except Quotation.DoesNotExist:
@@ -4725,6 +4819,7 @@ def api_print_order(request):
                 self.salesperson = q.salesperson
                 self.status = q.status
                 self.store = q.store
+                self.issuing_brand = q.issuing_brand
                 self.warehouse = None
                 self.shipping_address = None
                 self.created_by = q.created_by
@@ -4736,13 +4831,20 @@ def api_print_order(request):
         order = QuotationWrapper(quotation)
         remaining = 0
         valid_until = quotation.valid_until
-        brand = _get_brand_for_print(request, quotation)
+        brand = _get_brand_for_print(request, quotation, brand_id=requested_brand_id)
+        if brand and quotation.issuing_brand_id != brand.id:
+            quotation.issuing_brand = brand
+            quotation.save(update_fields=['issuing_brand'])
+            order.issuing_brand = brand
+        print_record = quotation
     else:
         try:
             order = _get_order_for_user(
                 request,
                 order_id,
-                queryset=Order.objects.select_related('customer', 'warehouse', 'created_by', 'store', 'store__brand'),
+                queryset=Order.objects.select_related(
+                    'customer', 'warehouse', 'created_by', 'store', 'store__brand', 'issuing_brand',
+                ),
             )
             if not order:
                 raise Order.DoesNotExist
@@ -4751,13 +4853,17 @@ def api_print_order(request):
         items = order.items.select_related('product').prefetch_related('product__combo_items__product').all()
         remaining = max(0, float(order.final_amount) - float(order.paid_amount))
         valid_until = None
-        brand = _get_brand_for_print(request, order)
+        brand = _get_brand_for_print(request, order, brand_id=requested_brand_id)
+        if brand and order.issuing_brand_id != brand.id:
+            order.issuing_brand = brand
+            order.save(update_fields=['issuing_brand'])
+        print_record = order
 
     template_type = print_type if print_type in dict(PrintTemplate.TEMPLATE_TYPE_CHOICES) else 'a4'
     print_template = _get_print_template(template_type, brand)
     warranty_items = None
     if print_type == 'warranty':
-        warranty_items = _parse_warranty_items_payload(request.GET.get('warranty_items'))
+        warranty_items = _parse_warranty_items_payload(warranty_items_payload)
         if warranty_items is None:
             warranty_items = _build_default_warranty_items(items)
 
@@ -4770,5 +4876,10 @@ def api_print_order(request):
         'valid_until': valid_until,
         'print_type': print_type,
         'print_template': print_template,
+        'print_source': source,
+        'print_record_id': order_id,
+        'selected_brand_id': brand.id if brand else '',
+        'available_print_brands': list(_get_print_brand_queryset(request, record=print_record)),
+        'warranty_items_payload': warranty_items_payload or '',
     }
     return render(request, template, context)

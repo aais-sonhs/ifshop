@@ -75,6 +75,41 @@ def get_owned_brands(user):
     return Brand.objects.filter(owner=user, is_active=True)
 
 
+def get_related_brands_for_user(user, store=None):
+    """Trả danh sách brand/ngãn hiệu user có thể dùng trong ngữ cảnh hiện tại.
+
+    - Nếu có store và brand của store có owner, trả toàn bộ brand cùng owner đó.
+    - Nếu user có store trên profile và brand đó có owner, trả toàn bộ brand cùng owner đó.
+    - Nếu user là brand owner, trả toàn bộ brand họ sở hữu.
+    - Nếu không tìm được owner nhưng có brand gốc, fallback về chính brand đó.
+    """
+    from system_management.models import Brand
+
+    base_brand = None
+    if store and getattr(store, 'brand_id', None):
+        base_brand = store.brand
+
+    if not base_brand:
+        try:
+            profile_store = user.profile.store
+            if profile_store and profile_store.brand_id:
+                base_brand = profile_store.brand
+        except Exception:
+            base_brand = None
+
+    if base_brand and getattr(base_brand, 'owner_id', None):
+        return Brand.objects.filter(owner_id=base_brand.owner_id, is_active=True)
+
+    owned_brands = get_owned_brands(user)
+    if owned_brands.exists():
+        return owned_brands
+
+    if base_brand and getattr(base_brand, 'is_active', False):
+        return Brand.objects.filter(id=base_brand.id, is_active=True)
+
+    return Brand.objects.none()
+
+
 def get_managed_store_ids(user):
     """Trả danh sách store_id user có thể quản lý.
 

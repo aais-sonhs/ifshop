@@ -22,6 +22,17 @@
         <h3 class="card-title"><i class="fas fa-file-alt mr-2"></i>Mẫu in</h3>
     </div>
     <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-lg-5">
+                <label class="mb-1">Nhãn hiệu đang cấu hình</label>
+                <select class="form-control" id="sel_template_brand">
+                    {% for brand in brands %}
+                    <option value="{{ brand.id }}" {% if brand.id == default_brand_id %}selected{% endif %}>{{ brand.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">Mỗi nhãn hiệu có bộ mẫu in riêng.</small>
+            </div>
+        </div>
         <div class="row">
             <div class="col-lg-3 mb-3">
                 <div class="list-group mb-3" id="template_list"></div>
@@ -159,6 +170,7 @@
 var printTemplates = [];
 var currentTemplateType = '';
 var previewTimer = null;
+var currentTemplateBrandId = $('#sel_template_brand').val() || '{{ default_brand_id }}';
 
 var SWITCH_FIELDS = [
     'show_brand_logo',
@@ -189,6 +201,7 @@ function setSwitch(field, value){
 
 function getTemplateFormData(){
     var data = {
+        brand_id: currentTemplateBrandId,
         template_type: $('#inp_template_type').val(),
         title: $('#inp_title').val(),
         header_note: $('#inp_header_note').val(),
@@ -214,7 +227,7 @@ function applyTemplateToForm(t){
 }
 
 function loadTemplates(selectType){
-    $.get('/api/print-templates/', function(res){
+    $.get('/api/print-templates/', {brand_id: currentTemplateBrandId}, function(res){
         printTemplates = res.data || [];
         renderTemplateList();
         var firstType = selectType || currentTemplateType || (printTemplates[0] ? printTemplates[0].template_type : '');
@@ -265,7 +278,7 @@ function renderHistories(histories){
 function loadHistories(templateType){
     if(!templateType) return;
     $('#history_list').html('<div class="text-muted p-3">Đang tải lịch sử...</div>');
-    $.get('/api/print-templates/histories/', {template_type: templateType}, function(res){
+    $.get('/api/print-templates/histories/', {template_type: templateType, brand_id: currentTemplateBrandId}, function(res){
         renderHistories(res.data || []);
     });
 }
@@ -302,6 +315,15 @@ function loadPreview(){
 $(document).ready(function(){
     loadTemplates();
 
+    $('#sel_template_brand').change(function(){
+        currentTemplateBrandId = $(this).val() || '';
+        currentTemplateType = '';
+        printTemplates = [];
+        $('#template_preview').attr('srcdoc', '');
+        $('#preview_status').text('');
+        loadTemplates();
+    });
+
     $(document).on('click', '#template_list .list-group-item', function(){
         selectTemplate($(this).data('template-type'));
     });
@@ -326,7 +348,7 @@ $(document).ready(function(){
             type: 'POST',
             contentType: 'application/json',
             headers: {'X-CSRFToken': '{{csrf_token}}'},
-            data: JSON.stringify({history_id: historyId}),
+            data: JSON.stringify({history_id: historyId, brand_id: currentTemplateBrandId}),
             success: function(r){
                 if(r.status === 'ok'){
                     if(typeof toastr !== 'undefined') toastr.success(r.message); else alert(r.message);

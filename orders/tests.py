@@ -110,6 +110,63 @@ class OrderRiskFlowTests(TestCase):
             created_by=created_by or self.user,
         )
 
+    def test_order_detail_exposes_related_print_brands(self):
+        sibling_brand = Brand.objects.create(name='Z Brand Print', owner=self.owner)
+        order = self._create_order(code='DH-BRAND-001')
+
+        response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        brand_ids = {item['id'] for item in payload['available_print_brands']}
+        self.assertIn(self.brand.id, brand_ids)
+        self.assertIn(sibling_brand.id, brand_ids)
+        self.assertEqual(payload['order']['store_brand_id'], self.brand.id)
+
+    def test_print_order_can_switch_brand_and_persist_issuing_brand(self):
+        sibling_brand = Brand.objects.create(name='Z Brand Invoice', owner=self.owner)
+        order = self._create_order(code='DH-BRAND-002')
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order', 'brand_id': sibling_brand.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, sibling_brand.name)
+        order.refresh_from_db()
+        self.assertEqual(order.issuing_brand_id, sibling_brand.id)
+
+    def test_print_quotation_can_switch_brand_and_persist_issuing_brand(self):
+        sibling_brand = Brand.objects.create(name='Z Brand Quote', owner=self.owner)
+        quotation = self._create_quotation(code='BG-BRAND-001', status=1)
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': quotation.id, 'type': 'quotation', 'source': 'quotation', 'brand_id': sibling_brand.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, sibling_brand.name)
+        quotation.refresh_from_db()
+        self.assertEqual(quotation.issuing_brand_id, sibling_brand.id)
+
+    def test_save_order_rejects_foreign_issuing_brand(self):
+        other_owner = User.objects.create_user(username='foreign_brand_owner', password='pass123')
+        foreign_brand = Brand.objects.create(name='Foreign Invoice Brand', owner=other_owner)
+        order = self._create_order(code='DH-BRAND-003')
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({'id': order.id, 'issuing_brand_id': foreign_brand.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertEqual(response.json()['message'], 'Nhãn hiệu in không thuộc phạm vi được phép sử dụng.')
+
     def test_save_order_allows_status_change_when_draft_receipt_exists(self):
         order = self._create_order(code='DH-PAID-001', status=0)
         OrderItem.objects.create(

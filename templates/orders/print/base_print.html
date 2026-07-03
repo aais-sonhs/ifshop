@@ -68,6 +68,13 @@
             <strong>{% block toolbar_title %}Xem trước phiếu in{% endblock %}</strong>
         </div>
         <div class="toolbar-actions">
+            {% if available_print_brands %}
+            <select id="print_brand_select" aria-label="Chọn nhãn hiệu in">
+                {% for item in available_print_brands %}
+                <option value="{{ item.id }}" {% if item.id == selected_brand_id %}selected{% endif %}>{{ item.name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
             <select id="print_printer_select" aria-label="Chọn máy in LAN">
                 <option value="">Đang tải máy in...</option>
             </select>
@@ -85,6 +92,7 @@
     <script>
         (function(){
             var printerList = [];
+            var brandSelect = document.getElementById('print_brand_select');
             var select = document.getElementById('print_printer_select');
             var status = document.getElementById('printer_status');
             var directButton = document.getElementById('btn_direct_print');
@@ -119,7 +127,8 @@
             }
 
             function loadPrinters(){
-                fetch('/api/printers/', {credentials: 'same-origin'})
+                var printerUrl = '/api/printers/?brand_id={{ selected_brand_id|default_if_none:""|escapejs }}';
+                fetch(printerUrl, {credentials: 'same-origin'})
                     .then(function(response){ return response.json(); })
                     .then(function(payload){ renderPrinters(payload.data || []); })
                     .catch(function(){
@@ -148,6 +157,7 @@
                     },
                     body: JSON.stringify({
                         printer_id: parseInt(printerId, 10),
+                        brand_id: '{{ selected_brand_id|default_if_none:""|escapejs }}',
                         html_content: content
                     })
                 })
@@ -165,6 +175,18 @@
                     directButton.textContent = 'In qua máy LAN';
                 });
             });
+
+            if(brandSelect){
+                brandSelect.addEventListener('change', function(){
+                    var url = new URL(window.location.href);
+                    if(this.value){
+                        url.searchParams.set('brand_id', this.value);
+                    } else {
+                        url.searchParams.delete('brand_id');
+                    }
+                    window.location.href = url.toString();
+                });
+            }
 
             loadPrinters();
         })();

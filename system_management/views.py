@@ -29,7 +29,12 @@ from .product_docs import (
     get_product_document,
     normalize_document_key,
 )
-from core.store_utils import can_manage_users, get_managed_store_ids, is_brand_owner
+from core.store_utils import (
+    can_manage_users,
+    get_managed_store_ids,
+    get_related_brands_for_user,
+    is_brand_owner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +224,34 @@ def _get_request_brand(request):
     if not brand:
         brand = Brand.objects.filter(owner=request.user).first()
     return brand
+
+
+def _get_print_brand_queryset_for_request(request, store=None):
+    """Danh sách nhãn hiệu được phép dùng trong các luồng in."""
+    if request.user.is_superuser:
+        return Brand.objects.none()
+    return get_related_brands_for_user(request.user, store=store).order_by('name')
+
+
+def _get_selected_print_brand(request, brand_id=None, store=None, fallback_brand=None):
+    """Resolve nhãn hiệu in dựa trên lựa chọn explicit hoặc ngữ cảnh hiện tại."""
+    queryset = _get_print_brand_queryset_for_request(request, store=store)
+    if brand_id:
+        selected = queryset.filter(id=brand_id).first()
+        if selected:
+            return selected
+    if fallback_brand and getattr(fallback_brand, 'id', None):
+        selected = queryset.filter(id=fallback_brand.id).first()
+        if selected:
+            return selected
+    return queryset.first()
+
+
+def _get_owner_target_brand(request, brand_id=None):
+    """Lấy brand mục tiêu cho các màn hình owner-only như mẫu in, máy in."""
+    if brand_id:
+        return _get_brand_for_user(request, brand_id)
+    return _get_brand_queryset_for_user(request).order_by('name').first()
 
 
 def _get_role_group_queryset_for_request(request, include_inactive=True):
@@ -1085,7 +1118,13 @@ def api_get_stores_for_user(request):
 def printer_setting_tbl(request):
     if request.user.is_superuser or not can_manage_users(request.user):
         return _redirect_no_system_access(request, 'Super Admin không quản lý máy in ở cấp cửa hàng')
-    context = {'active_tab': 'printer_setting_tbl'}
+    brands = list(_get_brand_queryset_for_user(request).order_by('name'))
+    default_brand = brands[0] if brands else None
+    context = {
+        'active_tab': 'printer_setting_tbl',
+        'brands': brands,
+        'default_brand_id': default_brand.id if default_brand else '',
+    }
     return render(request, "system/printer_setting.html", context)
 
 
@@ -1094,9 +1133,13 @@ def print_template_setting(request):
     from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         return _redirect_no_system_access(request, 'Chỉ chủ thương hiệu mới được phép cấu hình mẫu in')
+    brands = list(_get_brand_queryset_for_user(request).order_by('name'))
+    default_brand = brands[0] if brands else None
     context = {
         'active_tab': 'print_template_setting',
         'template_types': PrintTemplate.TEMPLATE_TYPE_CHOICES,
+        'brands': brands,
+        'default_brand_id': default_brand.id if default_brand else '',
     }
     return render(request, "system/print_template_setting.html", context)
 
@@ -1132,7 +1175,9 @@ def api_get_print_templates(request):
     from core.store_utils import is_brand_owner
     if not is_brand_owner(request.user):
         return _forbid_json('Chỉ chủ thương hiệu mới được phép xem cấu hình mẫu in')
-    brand = _get_request_brand(request)
+    brand = _get_owner_target_brand(request, request.GET.get('brand_id'))
+    if not brand:
+        return JsonResponse({'data': []})
     templates = [
         _serialize_print_template(_get_or_create_print_template(brand, template_type))
         for template_type, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES
@@ -1149,12 +1194,14 @@ def api_save_print_template(request):
         return _forbid_json('Chỉ chủ thương hiệu mới được phép cấu hình mẫu in')
     try:
         data = json.loads(request.body)
+        brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu cần cấu hình'})
         template_type = data.get('template_type')
         valid_types = [value for value, _ in PrintTemplate.TEMPLATE_TYPE_CHOICES]
         if template_type not in valid_types:
             return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})
 
-        brand = _get_request_brand(request)
         template = _get_or_create_print_template(brand, template_type)
         title = (data.get('title') or '').strip()
         if not title:
@@ -1182,7 +1229,9 @@ def api_get_print_template_histories(request):
     if template_type not in valid_types:
         return JsonResponse({'data': []})
 
-    brand = _get_request_brand(request)
+    brand = _get_owner_target_brand(request, request.GET.get('brand_id'))
+    if not brand:
+        return JsonResponse({'data': []})
     template = _get_or_create_print_template(brand, template_type)
     histories = template.histories.select_related('created_by')[:30]
     return JsonResponse({'data': [_serialize_print_template_history(item) for item in histories]})
@@ -1197,7 +1246,9 @@ def api_restore_print_template_history(request):
         return _forbid_json('Chỉ chủ thương hiệu mới được phép khôi phục mẫu in')
     try:
         data = json.loads(request.body)
-        brand = _get_request_brand(request)
+        brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu cần khôi phục'})
         history = PrintTemplateHistory.objects.select_related('template').get(id=data.get('history_id'))
         if history.template.brand_id != (brand.id if brand else None):
             return JsonResponse({'status': 'error', 'message': 'Không tìm thấy lịch sử mẫu in'}, status=404)
@@ -1246,8 +1297,8 @@ def _make_preview_item(product, quantity, unit_price, discount_percent=0, note='
     )
 
 
-def _build_print_template_preview_context(request, template_type, print_template):
-    brand = _get_request_brand(request) or SimpleNamespace(
+def _build_print_template_preview_context(request, template_type, print_template, brand=None):
+    brand = brand or _get_request_brand(request) or SimpleNamespace(
         name='CỬA HÀNG MẪU',
         logo=None,
         address='123 Nguyễn Huệ, Quận 1, TP.HCM',
@@ -1341,6 +1392,9 @@ def api_preview_print_template(request):
         return _forbid_json('Chỉ chủ thương hiệu mới được phép xem trước mẫu in')
     try:
         data = json.loads(request.body)
+        brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu cần xem trước'})
         template_type = data.get('template_type')
         templates = {
             'k80': 'orders/print/receipt_k80.html',
@@ -1353,7 +1407,6 @@ def api_preview_print_template(request):
         if template_type not in templates:
             return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})
 
-        brand = _get_request_brand(request)
         current = _get_or_create_print_template(brand, template_type)
         snapshot = _print_template_snapshot(current)
         for field in PRINT_TEMPLATE_EDITABLE_FIELDS:
@@ -1367,12 +1420,35 @@ def api_preview_print_template(request):
         preview_template = SimpleNamespace(**snapshot)
         html = render_to_string(
             templates[template_type],
-            _build_print_template_preview_context(request, template_type, preview_template),
+            _build_print_template_preview_context(request, template_type, preview_template, brand=brand),
             request=request,
         )
         return JsonResponse({'status': 'ok', 'html': html})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+def _get_printer_target_brand(request, brand_id=None):
+    if can_manage_users(request.user):
+        return _get_owner_target_brand(request, brand_id)
+    store = None
+    try:
+        store = request.user.profile.store
+    except Exception:
+        store = None
+    fallback_brand = store.brand if store and getattr(store, 'brand_id', None) else None
+    return _get_selected_print_brand(request, brand_id=brand_id, store=store, fallback_brand=fallback_brand)
+
+
+def _get_printer_queryset_for_request(request, brand=None, include_inactive=False):
+    queryset = PrinterSetting.objects.select_related('brand').all()
+    if not include_inactive:
+        queryset = queryset.filter(is_active=True)
+    if brand:
+        return queryset.filter(
+            db_models.Q(brand=brand) | db_models.Q(brand__isnull=True)
+        ).order_by('-is_default', 'name')
+    return queryset.filter(brand__isnull=True).order_by('-is_default', 'name')
 
 
 @login_required(login_url="/login/")
@@ -1381,8 +1457,10 @@ def api_get_printers(request):
         return _forbid_json('Super Admin không có quyền xem cấu hình máy in ở cấp cửa hàng')
     printer_type_map = dict(PrinterSetting.PRINTER_TYPE_CHOICES)
     paper_size_map = dict(PrinterSetting.PAPER_SIZE_CHOICES)
-    printers = list(PrinterSetting.objects.filter(is_active=True).values(
+    brand = _get_printer_target_brand(request, request.GET.get('brand_id'))
+    printers = list(_get_printer_queryset_for_request(request, brand=brand).values(
         'id',
+        'brand_id',
         'name',
         'printer_type',
         'ip_address',
@@ -1394,6 +1472,7 @@ def api_get_printers(request):
     ))
     data = [{
         'id': row['id'],
+        'brand_id': row['brand_id'],
         'name': row['name'],
         'printer_type': row['printer_type'],
         'printer_type_display': printer_type_map.get(row['printer_type'], ''),
@@ -1418,11 +1497,17 @@ def api_save_printer(request):
         return _forbid_json()
     try:
         data = json.loads(request.body)
+        brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu cần cấu hình máy in'})
         pid = data.get('id')
         if pid:
-            p = PrinterSetting.objects.get(id=pid)
+            p = _get_printer_queryset_for_request(request, brand=brand, include_inactive=True).filter(id=pid).first()
+            if not p:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy máy in'})
         else:
             p = PrinterSetting()
+        p.brand = brand
         p.name = data.get('name', '')
         p.printer_type = data.get('printer_type', 'lan')
         p.ip_address = data.get('ip_address') or None
@@ -1434,7 +1519,7 @@ def api_save_printer(request):
 
         # Nếu đặt làm mặc định → bỏ mặc định của các máy in khác
         if p.is_default:
-            PrinterSetting.objects.exclude(id=p.id if p.id else 0).update(is_default=False)
+            PrinterSetting.objects.filter(brand=brand).exclude(id=p.id if p.id else 0).update(is_default=False)
 
         p.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
@@ -1452,7 +1537,13 @@ def api_delete_printer(request):
         return _forbid_json()
     try:
         data = json.loads(request.body)
-        PrinterSetting.objects.filter(id=data.get('id')).delete()
+        brand = _get_owner_target_brand(request, data.get('brand_id'))
+        if not brand:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy nhãn hiệu cần xóa máy in'})
+        printer = _get_printer_queryset_for_request(request, brand=brand, include_inactive=True).filter(id=data.get('id')).first()
+        if not printer:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy máy in'})
+        printer.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -1503,11 +1594,14 @@ def api_direct_print(request):
         data = json.loads(request.body)
         printer_id = data.get('printer_id')
         html_content = data.get('html_content', '')
+        brand = _get_printer_target_brand(request, data.get('brand_id'))
 
         if not printer_id:
             return JsonResponse({'status': 'error', 'message': 'Chưa chọn máy in'})
 
-        printer = PrinterSetting.objects.get(id=printer_id)
+        printer = _get_printer_queryset_for_request(request, brand=brand, include_inactive=True).filter(id=printer_id).first()
+        if not printer:
+            raise PrinterSetting.DoesNotExist
 
         if not printer.ip_address:
             return JsonResponse({'status': 'error', 'message': 'Máy in chưa có địa chỉ IP'})

@@ -163,7 +163,26 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy cửa hàng')
 
-    def test_save_brand_forces_owner_to_current_brand_owner(self):
+    def test_superadmin_can_create_brand_for_specific_owner(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.post(
+            reverse('api_save_brand'),
+            data=json.dumps({
+                'name': 'Superadmin Created Brand',
+                'owner_id': self.other_owner.id,
+                'business_type': 'retail',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        brand = Brand.objects.get(name='Superadmin Created Brand')
+        self.assertEqual(brand.owner_id, self.other_owner.id)
+
+    def test_brand_owner_cannot_create_brand(self):
         response = self.client.post(
             reverse('api_save_brand'),
             data=json.dumps({
@@ -174,11 +193,18 @@ class SystemManagementScopeTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Brand.objects.filter(name='Brand Owner Created').exists())
 
-        brand = Brand.objects.get(name='Brand Owner Created')
-        self.assertEqual(brand.owner_id, self.owner.id)
+    def test_brand_owner_cannot_delete_brand(self):
+        response = self.client.post(
+            reverse('api_delete_brand'),
+            data=json.dumps({'id': self.brand.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Brand.objects.filter(id=self.brand.id).exists())
 
     def test_regular_staff_cannot_create_brand(self):
         self.client.force_login(self.staff_a)

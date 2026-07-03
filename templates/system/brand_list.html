@@ -241,7 +241,9 @@ function renderBrands(){
         h += '</div>';
         h += '<span class="badge badge-warning mr-2" style="font-size:12px;">'+filteredStores.length+' cửa hàng</span>';
         h += '<button class="btn btn-xs btn-outline-primary mr-2" onclick="event.stopPropagation();editBrand('+JSON.stringify(b).replace(/'/g,"\\\\'")+')">Sửa</button>';
-        h += '<button class="btn btn-xs btn-outline-danger mr-2" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa</button>';
+        if(isSuperAdmin){
+            h += '<button class="btn btn-xs btn-outline-danger mr-2" onclick="event.stopPropagation();deleteBrand('+b.id+')">Xóa</button>';
+        }
         h += '<button class="btn btn-xs btn-success" onclick="event.stopPropagation();addStore('+b.id+')"><i class="fas fa-plus"></i> Cửa hàng</button>';
         h += '</div>';
         h += '</div>';

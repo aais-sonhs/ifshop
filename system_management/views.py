@@ -1740,6 +1740,8 @@ def api_save_brand(request):
     try:
         data = json.loads(request.body)
         bid = data.get('id')
+        if not bid and not request.user.is_superuser:
+            return _forbid_json('Chỉ Super Admin mới được tạo thương hiệu')
         if bid:
             b = _get_brand_for_user(request, bid)
             if not b:
@@ -1769,6 +1771,8 @@ def api_delete_brand(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin mới được xóa thương hiệu')
     try:
         data = json.loads(request.body)
         brand = _get_brand_for_user(request, data.get('id'))

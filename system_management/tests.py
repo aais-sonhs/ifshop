@@ -158,10 +158,17 @@ class SystemManagementScopeTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload['status'], 'error')
-        self.assertEqual(payload['message'], 'Không tìm thấy cửa hàng')
+        self.assertEqual(response.status_code, 403)
+
+    def test_brand_owner_cannot_delete_store(self):
+        response = self.client.post(
+            reverse('api_delete_store'),
+            data=json.dumps({'id': self.store.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Store.objects.filter(id=self.store.id).exists())
 
     def test_superadmin_can_create_brand_for_specific_owner(self):
         self.client.force_login(self.superuser)

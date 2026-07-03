@@ -269,7 +269,10 @@ function renderBrands(){
                 h += '<td class="text-center">'+statusBadge+'</td>';
                 h += '<td class="text-center"><div class="btn-action-group">';
                 h += '<button class="btn btn-xs btn-info" onclick=\'editStore('+b.id+','+JSON.stringify(s).replace(/'/g,"\\\'")+')\'>Sửa</button> ';
-                h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteStore('+s.id+')">Xóa</button></div>';
+                if(isSuperAdmin){
+                    h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteStore('+s.id+')">Xóa</button>';
+                }
+                h += '</div>';
                 h += '</td></tr>';
             });
             h += '</tbody></table>';

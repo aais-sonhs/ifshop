@@ -1833,6 +1833,8 @@ def api_delete_store(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin mới được xóa cửa hàng')
     try:
         data = json.loads(request.body)
         store = _get_store_for_user(request, data.get('id'))

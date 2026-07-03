@@ -335,13 +335,22 @@ class BusinessConfig(models.Model):
 
 class Brand(models.Model):
     """Thương hiệu"""
+    TYPE_COMPANY = 'company'
+    TYPE_PRINT_LABEL = 'print_label'
+    BRAND_TYPE_CHOICES = (
+        (TYPE_COMPANY, 'Công ty'),
+        (TYPE_PRINT_LABEL, 'Nhãn hiệu in'),
+    )
     BUSINESS_TYPE_CHOICES = (
         ('retail', 'Bán lẻ'),
         ('restaurant', 'Quán ăn'),
         ('cafe', 'Cafe'),
         ('spa', 'Spa'),
     )
-    name = models.CharField(max_length=255, unique=True, verbose_name='Tên thương hiệu')
+    name = models.CharField(max_length=255, verbose_name='Tên thương hiệu')
+    brand_type = models.CharField(
+        max_length=20, choices=BRAND_TYPE_CHOICES, default=TYPE_COMPANY, verbose_name='Loại thương hiệu'
+    )
     business_type = models.CharField(max_length=20, choices=BUSINESS_TYPE_CHOICES, default='retail',
                                      verbose_name='Mô hình kinh doanh')
     logo = models.ImageField(upload_to='brands/', blank=True, null=True, verbose_name='Logo')
@@ -362,6 +371,12 @@ class Brand(models.Model):
         verbose_name = 'Thương hiệu'
         verbose_name_plural = 'Thương hiệu'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['owner', 'brand_type', 'name'],
+                name='uniq_brand_owner_type_name',
+            ),
+        ]
 
     def __str__(self):
         return self.name

@@ -1,5 +1,5 @@
 from .models import BusinessConfig
-from core.store_utils import is_brand_owner, can_view_sales_report
+from core.store_utils import can_view_sales_report, get_company_brand_for_user, is_brand_owner
 
 
 def business_config(request):
@@ -23,8 +23,7 @@ def business_config(request):
             ctx['is_brand_owner'] = is_brand_owner(request.user)
             ctx['can_view_sales_report'] = can_view_sales_report(request.user)
             if not brand and ctx['is_brand_owner']:
-                from .models import Brand
-                brand = Brand.objects.filter(owner=request.user).first()
+                brand = get_company_brand_for_user(request.user)
 
             # Load config per-brand (fallback to default if no brand config)
             config = BusinessConfig.get_config(brand=brand)

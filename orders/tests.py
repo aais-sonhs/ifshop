@@ -111,7 +111,11 @@ class OrderRiskFlowTests(TestCase):
         )
 
     def test_order_detail_exposes_related_print_brands(self):
-        sibling_brand = Brand.objects.create(name='Z Brand Print', owner=self.owner)
+        print_label = Brand.objects.create(
+            name='Z Brand Print',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
         order = self._create_order(code='DH-BRAND-001')
 
         response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
@@ -121,36 +125,71 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(payload['status'], 'ok')
         brand_ids = {item['id'] for item in payload['available_print_brands']}
         self.assertIn(self.brand.id, brand_ids)
-        self.assertIn(sibling_brand.id, brand_ids)
+        self.assertIn(print_label.id, brand_ids)
         self.assertEqual(payload['order']['store_brand_id'], self.brand.id)
 
     def test_print_order_can_switch_brand_and_persist_issuing_brand(self):
-        sibling_brand = Brand.objects.create(name='Z Brand Invoice', owner=self.owner)
+        print_label = Brand.objects.create(
+            name='Z Brand Invoice',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
         order = self._create_order(code='DH-BRAND-002')
 
         response = self.client.get(
             reverse('api_print_order'),
-            {'id': order.id, 'type': 'a4', 'source': 'order', 'brand_id': sibling_brand.id},
+            {'id': order.id, 'type': 'a4', 'source': 'order', 'brand_id': print_label.id},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, sibling_brand.name)
+        self.assertContains(response, print_label.name)
         order.refresh_from_db()
-        self.assertEqual(order.issuing_brand_id, sibling_brand.id)
+        self.assertEqual(order.issuing_brand_id, print_label.id)
 
     def test_print_quotation_can_switch_brand_and_persist_issuing_brand(self):
-        sibling_brand = Brand.objects.create(name='Z Brand Quote', owner=self.owner)
+        print_label = Brand.objects.create(
+            name='Z Brand Quote',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
         quotation = self._create_quotation(code='BG-BRAND-001', status=1)
 
         response = self.client.get(
             reverse('api_print_order'),
-            {'id': quotation.id, 'type': 'quotation', 'source': 'quotation', 'brand_id': sibling_brand.id},
+            {'id': quotation.id, 'type': 'quotation', 'source': 'quotation', 'brand_id': print_label.id},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, sibling_brand.name)
+        self.assertContains(response, print_label.name)
         quotation.refresh_from_db()
-        self.assertEqual(quotation.issuing_brand_id, sibling_brand.id)
+        self.assertEqual(quotation.issuing_brand_id, print_label.id)
+
+    def test_print_order_keeps_company_template_when_switching_print_label(self):
+        print_label = Brand.objects.create(
+            name='Z Brand Header',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
+        PrintTemplate.objects.update_or_create(
+            brand=self.brand,
+            template_type='a4',
+            defaults={'title': 'Mau cong ty goc'},
+        )
+        PrintTemplate.objects.update_or_create(
+            brand=print_label,
+            template_type='a4',
+            defaults={'title': 'Mau nhan hieu khong duoc dung'},
+        )
+        order = self._create_order(code='DH-BRAND-004')
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order', 'brand_id': print_label.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Mau cong ty goc')
+        self.assertNotContains(response, 'Mau nhan hieu khong duoc dung')
 
     def test_save_order_rejects_foreign_issuing_brand(self):
         other_owner = User.objects.create_user(username='foreign_brand_owner', password='pass123')

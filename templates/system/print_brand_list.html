@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-tags mr-2"></i>Nhãn hiệu</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add_print_brand">
+                <i class="fas fa-plus"></i> Thêm nhãn hiệu
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle mr-1"></i>
+            Danh sách này chỉ dùng để đổi tên đơn vị hiển thị trên phiếu in. Không tạo thêm công ty, không ảnh hưởng cửa hàng, máy in hay mẫu in.
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-sm" id="print_brand_tbl">
+                <thead>
+                    <tr>
+                        <th style="width:60px;">STT</th>
+                        <th>Tên nhãn hiệu</th>
+                        <th>MST</th>
+                        <th>Liên hệ</th>
+                        <th>Địa chỉ</th>
+                        <th style="width:140px;">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_print_brand" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="print_brand_modal_title">Thêm nhãn hiệu</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="print_brand_id">
+                <div class="form-group">
+                    <label>Tên nhãn hiệu <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="inp_print_brand_name">
+                </div>
+                <div class="form-group">
+                    <label>Mã số thuế</label>
+                    <input type="text" class="form-control" id="inp_print_brand_tax">
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label>Hotline</label>
+                        <input type="text" class="form-control" id="inp_print_brand_phone">
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label>Email</label>
+                        <input type="email" class="form-control" id="inp_print_brand_email">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Website</label>
+                    <input type="url" class="form-control" id="inp_print_brand_website" placeholder="https://">
+                </div>
+                <div class="form-group">
+                    <label>Địa chỉ hiển thị</label>
+                    <input type="text" class="form-control" id="inp_print_brand_address">
+                </div>
+                <div class="form-group mb-0">
+                    <label>Ghi chú</label>
+                    <textarea class="form-control" id="inp_print_brand_desc" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save_print_brand">
+                    <i class="fas fa-save"></i> Lưu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var printBrandRows = [];
+
+function escapeHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
+function resetPrintBrandForm(){
+    $('#print_brand_id').val('');
+    $('#inp_print_brand_name,#inp_print_brand_tax,#inp_print_brand_phone,#inp_print_brand_email,#inp_print_brand_website,#inp_print_brand_address,#inp_print_brand_desc').val('');
+}
+
+function renderPrintBrands(){
+    var html = '';
+    printBrandRows.forEach(function(item, index){
+        var contacts = [item.phone, item.email, item.website].filter(Boolean).map(escapeHtml).join('<br>');
+        html += '<tr>' +
+            '<td class="text-center">' + (index + 1) + '</td>' +
+            '<td><strong>' + escapeHtml(item.name) + '</strong>' + (item.description ? '<br><small class="text-muted">' + escapeHtml(item.description) + '</small>' : '') + '</td>' +
+            '<td>' + escapeHtml(item.tax_code || '') + '</td>' +
+            '<td><small>' + (contacts || '<span class="text-muted">Chưa có</span>') + '</small></td>' +
+            '<td><small>' + escapeHtml(item.address || '') + '</small></td>' +
+            '<td class="text-center">' +
+                '<button type="button" class="btn btn-xs btn-info mr-1" onclick="editPrintBrandById(' + item.id + ')">Sửa</button>' +
+                '<button type="button" class="btn btn-xs btn-outline-danger" onclick="deletePrintBrand(' + item.id + ')">Xóa</button>' +
+            '</td>' +
+        '</tr>';
+    });
+    $('#print_brand_tbl tbody').html(
+        html || '<tr><td colspan="6" class="text-center text-muted">Chưa có nhãn hiệu nào. Bấm "Thêm nhãn hiệu" để bắt đầu.</td></tr>'
+    );
+}
+
+function loadPrintBrands(){
+    $.get('/api/print-brands/', function(res){
+        printBrandRows = res.data || [];
+        renderPrintBrands();
+    });
+}
+
+function editPrintBrandById(id){
+    var item = printBrandRows.find(function(row){ return row.id === id; });
+    if(item){
+        editPrintBrand(item);
+    }
+}
+
+function editPrintBrand(item){
+    $('#print_brand_id').val(item.id);
+    $('#inp_print_brand_name').val(item.name || '');
+    $('#inp_print_brand_tax').val(item.tax_code || '');
+    $('#inp_print_brand_phone').val(item.phone || '');
+    $('#inp_print_brand_email').val(item.email || '');
+    $('#inp_print_brand_website').val(item.website || '');
+    $('#inp_print_brand_address').val(item.address || '');
+    $('#inp_print_brand_desc').val(item.description || '');
+        $('#print_brand_modal_title').text('Sửa nhãn hiệu');
+    $('#modal_print_brand').modal('show');
+}
+
+function deletePrintBrand(id){
+    if(!confirm('Xóa nhãn hiệu này?')) return;
+    $.ajax({
+        url: '/api/print-brands/delete/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({id: id}),
+        success: function(r){
+            if(r.status === 'ok'){
+                loadPrintBrands();
+            }
+            alert(r.message);
+        }
+    });
+}
+
+$(document).ready(function(){
+    loadPrintBrands();
+
+    $('#btn_add_print_brand').click(function(){
+        resetPrintBrandForm();
+        $('#print_brand_modal_title').text('Thêm nhãn hiệu');
+        $('#modal_print_brand').modal('show');
+    });
+
+    $('#btn_save_print_brand').click(function(){
+        var data = {
+            id: $('#print_brand_id').val() || null,
+            name: $('#inp_print_brand_name').val(),
+            tax_code: $('#inp_print_brand_tax').val(),
+            phone: $('#inp_print_brand_phone').val(),
+            email: $('#inp_print_brand_email').val(),
+            website: $('#inp_print_brand_website').val(),
+            address: $('#inp_print_brand_address').val(),
+            description: $('#inp_print_brand_desc').val(),
+            is_active: true
+        };
+        if(!data.name.trim()){
+            alert('Vui lòng nhập tên nhãn hiệu in');
+            return;
+        }
+        $.ajax({
+            url: '/api/print-brands/save/',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify(data),
+            success: function(r){
+                if(r.status === 'ok'){
+                    $('#modal_print_brand').modal('hide');
+                    loadPrintBrands();
+                }
+                alert(r.message);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

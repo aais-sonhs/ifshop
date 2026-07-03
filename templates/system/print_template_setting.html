@@ -20,17 +20,22 @@
 <div class="card print-template-shell">
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-file-alt mr-2"></i>Mẫu in</h3>
+        <div class="card-tools">
+            <a href="{% url 'print_brand_tbl' %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-tags mr-1"></i> Nhãn hiệu
+            </a>
+        </div>
     </div>
     <div class="card-body">
         <div class="row mb-3">
             <div class="col-lg-5">
-                <label class="mb-1">Nhãn hiệu đang cấu hình</label>
+                <label class="mb-1">Công ty đang cấu hình</label>
                 <select class="form-control" id="sel_template_brand">
                     {% for brand in brands %}
                     <option value="{{ brand.id }}" {% if brand.id == default_brand_id %}selected{% endif %}>{{ brand.name }}</option>
                     {% endfor %}
                 </select>
-                <small class="text-muted">Mỗi nhãn hiệu có bộ mẫu in riêng.</small>
+                <small class="text-muted">Mẫu in áp dụng theo công ty gốc. Nhãn hiệu chỉ đổi thông tin hiển thị khi in phiếu.</small>
             </div>
         </div>
         <div class="row">

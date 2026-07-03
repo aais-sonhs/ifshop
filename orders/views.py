@@ -27,6 +27,7 @@ from system_management.models import PrintTemplate
 from core.store_utils import (
     brand_owner_required,
     filter_by_store,
+    get_company_brand_for_user,
     get_managed_store_ids,
     get_related_brands_for_user,
     get_user_store,
@@ -230,6 +231,11 @@ def _get_brand_for_print(request, record=None, brand_id=None):
         current_brand=getattr(record, 'issuing_brand', None) if record else None,
         fallback_brand=getattr(getattr(record, 'quotation', None), 'issuing_brand', None) if record else None,
     )
+
+
+def _get_template_brand_for_print(request, record=None):
+    store = getattr(record, 'store', None) if record else None
+    return get_company_brand_for_user(request.user, store=store)
 
 
 def _get_print_template(template_type, brand=None):
@@ -4860,7 +4866,8 @@ def api_print_order(request):
         print_record = order
 
     template_type = print_type if print_type in dict(PrintTemplate.TEMPLATE_TYPE_CHOICES) else 'a4'
-    print_template = _get_print_template(template_type, brand)
+    template_brand = _get_template_brand_for_print(request, record=print_record)
+    print_template = _get_print_template(template_type, template_brand)
     warranty_items = None
     if print_type == 'warranty':
         warranty_items = _parse_warranty_items_payload(warranty_items_payload)
@@ -4879,6 +4886,7 @@ def api_print_order(request):
         'print_source': source,
         'print_record_id': order_id,
         'selected_brand_id': brand.id if brand else '',
+        'printer_brand_id': template_brand.id if template_brand else '',
         'available_print_brands': list(_get_print_brand_queryset(request, record=print_record)),
         'warranty_items_payload': warranty_items_payload or '',
     }

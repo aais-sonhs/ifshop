@@ -15,13 +15,13 @@
         </div>
         <div class="row mb-3">
             <div class="col-lg-5">
-                <label class="mb-1">Nhãn hiệu đang cấu hình</label>
+                <label class="mb-1">Công ty đang cấu hình</label>
                 <select class="form-control" id="sel_printer_brand">
                     {% for brand in brands %}
                     <option value="{{ brand.id }}" {% if brand.id == default_brand_id %}selected{% endif %}>{{ brand.name }}</option>
                     {% endfor %}
                 </select>
-                <small class="text-muted">Mỗi nhãn hiệu có danh sách máy in riêng.</small>
+                <small class="text-muted">Máy in được cấu hình theo công ty gốc, không tách riêng theo nhãn hiệu in.</small>
             </div>
         </div>
         <div class="table-responsive">

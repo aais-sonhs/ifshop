@@ -64,50 +64,66 @@ def filter_by_store(queryset, request, field_name='store'):
 def is_brand_owner(user):
     """Kiểm tra user có đang sở hữu brand đang hoạt động hay không."""
     from system_management.models import Brand
-    return Brand.objects.filter(owner=user, is_active=True).exists()
+    return Brand.objects.filter(
+        owner=user,
+        is_active=True,
+        brand_type=Brand.TYPE_COMPANY,
+    ).exists()
 
 
 def get_owned_brands(user):
-    """Trả danh sách brand user được quyền quản trị."""
+    """Trả danh sách công ty user được quyền quản trị."""
     from system_management.models import Brand
     if user.is_superuser:
-        return Brand.objects.filter(is_active=True)
-    return Brand.objects.filter(owner=user, is_active=True)
+        return Brand.objects.filter(is_active=True, brand_type=Brand.TYPE_COMPANY)
+    return Brand.objects.filter(owner=user, is_active=True, brand_type=Brand.TYPE_COMPANY)
+
+
+def get_company_brand_for_user(user, store=None):
+    """Trả về công ty gốc trong ngữ cảnh hiện tại."""
+    from system_management.models import Brand
+
+    if store and getattr(store, 'brand_id', None):
+        brand = store.brand
+        if getattr(brand, 'brand_type', Brand.TYPE_COMPANY) == Brand.TYPE_COMPANY:
+            return brand
+
+    owned_brands = get_owned_brands(user)
+    return owned_brands.order_by('name').first()
 
 
 def get_related_brands_for_user(user, store=None):
-    """Trả danh sách brand/ngãn hiệu user có thể dùng trong ngữ cảnh hiện tại.
+    """Trả danh sách nhãn hiệu in user có thể dùng trong ngữ cảnh hiện tại.
 
-    - Nếu có store và brand của store có owner, trả toàn bộ brand cùng owner đó.
-    - Nếu user có store trên profile và brand đó có owner, trả toàn bộ brand cùng owner đó.
-    - Nếu user là brand owner, trả toàn bộ brand họ sở hữu.
-    - Nếu không tìm được owner nhưng có brand gốc, fallback về chính brand đó.
+    - Luôn ưu tiên công ty của store hiện tại làm brand mặc định để in.
+    - Các nhãn hiệu phụ chỉ là thông tin hiển thị trên chứng từ.
     """
     from system_management.models import Brand
 
-    base_brand = None
-    if store and getattr(store, 'brand_id', None):
-        base_brand = store.brand
-
-    if not base_brand:
+    company_brand = get_company_brand_for_user(user, store=store)
+    if not company_brand:
         try:
             profile_store = user.profile.store
-            if profile_store and profile_store.brand_id:
-                base_brand = profile_store.brand
+            company_brand = get_company_brand_for_user(user, store=profile_store)
         except Exception:
-            base_brand = None
+            company_brand = None
 
-    if base_brand and getattr(base_brand, 'owner_id', None):
-        return Brand.objects.filter(owner_id=base_brand.owner_id, is_active=True)
+    if not company_brand:
+        return Brand.objects.none()
 
-    owned_brands = get_owned_brands(user)
-    if owned_brands.exists():
-        return owned_brands
+    allowed_ids = []
+    if getattr(company_brand, 'is_active', False):
+        allowed_ids.append(company_brand.id)
 
-    if base_brand and getattr(base_brand, 'is_active', False):
-        return Brand.objects.filter(id=base_brand.id, is_active=True)
-
-    return Brand.objects.none()
+    if getattr(company_brand, 'owner_id', None):
+        allowed_ids.extend(
+            Brand.objects.filter(
+                owner_id=company_brand.owner_id,
+                is_active=True,
+                brand_type=Brand.TYPE_PRINT_LABEL,
+            ).values_list('id', flat=True)
+        )
+    return Brand.objects.filter(id__in=allowed_ids).order_by('brand_type', 'name')
 
 
 def get_managed_store_ids(user):

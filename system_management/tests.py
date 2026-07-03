@@ -193,7 +193,7 @@ class SystemManagementScopeTests(TestCase):
         brand = Brand.objects.get(name='Superadmin Created Brand')
         self.assertEqual(brand.owner_id, self.other_owner.id)
 
-    def test_save_brand_forces_owner_to_current_brand_owner(self):
+    def test_brand_owner_cannot_create_company_brand(self):
         response = self.client.post(
             reverse('api_save_brand'),
             data=json.dumps({
@@ -204,22 +204,35 @@ class SystemManagementScopeTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Brand.objects.filter(name='Brand Owner Created').exists())
 
-        brand = Brand.objects.get(name='Brand Owner Created')
-        self.assertEqual(brand.owner_id, self.owner.id)
-
-    def test_brand_owner_can_delete_brand(self):
+    def test_brand_owner_cannot_delete_company_brand(self):
         response = self.client.post(
             reverse('api_delete_brand'),
             data=json.dumps({'id': self.brand.id}),
             content_type='application/json',
         )
 
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Brand.objects.filter(id=self.brand.id).exists())
+
+    def test_brand_owner_can_create_print_brand(self):
+        response = self.client.post(
+            reverse('api_save_print_brand'),
+            data=json.dumps({
+                'name': 'Nhãn hiệu hóa đơn',
+                'tax_code': '0312345678',
+                'phone': '0900000000',
+            }),
+            content_type='application/json',
+        )
+
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
-        self.assertFalse(Brand.objects.filter(id=self.brand.id).exists())
+        label = Brand.objects.get(name='Nhãn hiệu hóa đơn')
+        self.assertEqual(label.owner_id, self.owner.id)
+        self.assertEqual(label.brand_type, Brand.TYPE_PRINT_LABEL)
 
     def test_regular_staff_cannot_create_brand(self):
         self.client.force_login(self.staff_a)
@@ -370,8 +383,12 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data'][0]['name'], 'LAN Printer')
 
-    def test_regular_staff_can_read_printers_by_selected_brand(self):
-        sibling_brand = Brand.objects.create(name='Z Brand Child', owner=self.owner)
+    def test_regular_staff_printers_do_not_follow_print_label(self):
+        print_label = Brand.objects.create(
+            name='Z Print Label',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
         PrinterSetting.objects.create(
             brand=self.brand,
             name='Brand A Printer',
@@ -379,8 +396,8 @@ class SystemManagementScopeTests(TestCase):
             ip_address='192.168.1.10',
         )
         PrinterSetting.objects.create(
-            brand=sibling_brand,
-            name='Brand Child Printer',
+            brand=print_label,
+            name='Print Label Printer',
             printer_type='lan',
             ip_address='192.168.1.11',
         )
@@ -391,18 +408,22 @@ class SystemManagementScopeTests(TestCase):
         )
         self.client.force_login(self.staff_a)
 
-        response = self.client.get(reverse('api_get_printers'), {'brand_id': sibling_brand.id})
+        response = self.client.get(reverse('api_get_printers'), {'brand_id': print_label.id})
 
         self.assertEqual(response.status_code, 200)
         names = {row['name'] for row in response.json()['data']}
-        self.assertIn('Brand Child Printer', names)
+        self.assertIn('Brand A Printer', names)
         self.assertIn('Global Printer', names)
-        self.assertNotIn('Brand A Printer', names)
+        self.assertNotIn('Print Label Printer', names)
 
-    def test_save_print_template_supports_explicit_brand_selection(self):
-        sibling_brand = Brand.objects.create(name='Z Brand Template', owner=self.owner)
+    def test_save_print_template_falls_back_to_company_when_given_print_label(self):
+        print_label = Brand.objects.create(
+            name='Z Brand Template',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+        )
         payload = {
-            'brand_id': sibling_brand.id,
+            'brand_id': print_label.id,
             'template_type': 'a4',
             'title': 'Hoa don cong ty con',
             'header_note': '',
@@ -434,7 +455,7 @@ class SystemManagementScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
-        template = PrintTemplate.objects.get(brand=sibling_brand, template_type='a4')
+        template = PrintTemplate.objects.get(brand=self.brand, template_type='a4')
         self.assertEqual(template.title, 'Hoa don cong ty con')
 
     def test_save_print_template_creates_history_and_restores_snapshot(self):
@@ -629,12 +650,12 @@ class SystemManagementScopeTests(TestCase):
     def test_superadmin_is_redirected_from_brand_owned_system_settings(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'printer_setting_tbl', 'print_template_setting'):
+        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'printer_setting_tbl', 'print_template_setting', 'print_brand_tbl'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 302, msg=route_name)
             self.assertEqual(response.url, '/brand-tbl/')
 
-        for route_name in ('api_get_role_group_permissions', 'api_get_printers', 'api_get_print_templates'):
+        for route_name in ('api_get_role_group_permissions', 'api_get_printers', 'api_get_print_templates', 'api_get_print_brands'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 403, msg=route_name)
 

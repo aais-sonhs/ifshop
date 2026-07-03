@@ -23,8 +23,12 @@ urlpatterns = [
     path('api/permissions/role-group/', views.api_get_role_group_permissions, name='api_get_role_group_permissions'),
     path('api/permissions/role-group/save/', views.api_save_role_group_permissions, name='api_save_role_group_permissions'),
     # Printer settings
+    path('print-brand-tbl/', views.print_brand_tbl, name='print_brand_tbl'),
     path('printer-setting-tbl/', views.printer_setting_tbl, name='printer_setting_tbl'),
     path('print-template-setting/', views.print_template_setting, name='print_template_setting'),
+    path('api/print-brands/', views.api_get_print_brands, name='api_get_print_brands'),
+    path('api/print-brands/save/', views.api_save_print_brand, name='api_save_print_brand'),
+    path('api/print-brands/delete/', views.api_delete_print_brand, name='api_delete_print_brand'),
     path('api/printers/', views.api_get_printers, name='api_get_printers'),
     path('api/printers/save/', views.api_save_printer, name='api_save_printer'),
     path('api/printers/delete/', views.api_delete_printer, name='api_delete_printer'),

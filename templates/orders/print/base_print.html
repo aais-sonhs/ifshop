@@ -127,7 +127,10 @@
             }
 
             function loadPrinters(){
-                var printerUrl = '/api/printers/?brand_id={{ selected_brand_id|default_if_none:""|escapejs }}';
+                var printerUrl = '/api/printers/';
+                {% if printer_brand_id %}
+                printerUrl += '?brand_id={{ printer_brand_id|escapejs }}';
+                {% endif %}
                 fetch(printerUrl, {credentials: 'same-origin'})
                     .then(function(response){ return response.json(); })
                     .then(function(payload){ renderPrinters(payload.data || []); })
@@ -157,7 +160,7 @@
                     },
                     body: JSON.stringify({
                         printer_id: parseInt(printerId, 10),
-                        brand_id: '{{ selected_brand_id|default_if_none:""|escapejs }}',
+                        brand_id: '{{ printer_brand_id|default_if_none:""|escapejs }}',
                         html_content: content
                     })
                 })

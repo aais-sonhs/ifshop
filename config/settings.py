@@ -130,6 +130,9 @@ TEMPLATES = [
         'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
+            'libraries': {
+                'order_format': 'orders.templatetags.order_format',
+            },
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',

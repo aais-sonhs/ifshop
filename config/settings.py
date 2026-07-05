@@ -20,22 +20,11 @@ os.makedirs(os.path.join(LOG_DIR, 'server'), exist_ok=True)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.0/howto/deployment/checklist/
 
-def _env_bool(name, default=False):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in ('1', 'true', 'yes', 'on')
-
-
-def _env_list(name, default):
-    raw_value = os.getenv(name, default)
-    return [item.strip() for item in raw_value.split(',') if item.strip()]
-
 
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = _env_bool('DJANGO_DEBUG', DJANGO_ENV != 'production')
+DEBUG = DJANGO_ENV != 'production'
 
 # SECURITY WARNING: keep the secret key used in production secret.
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
@@ -50,26 +39,31 @@ if not SECRET_KEY:
     else:
         raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set when DJANGO_ENV is production.')
 
-ALLOWED_HOSTS = _env_list(
-    'DJANGO_ALLOWED_HOSTS',
-    'localhost, 127.0.0.1,113.160.218.241, 192.168.21.21, ifshop.ipchello.com, .ipchello.com',
-)
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '113.160.218.241',
+    '192.168.21.21',
+    'ifshop.aaistech.com',
+    '.aaistech.com',
+]
+
 CSRF_TRUSTED_ORIGINS = [
     'https://*.127.0.0.1',
     'http://113.160.218.241:8020',
     'http://192.168.21.21:4005',
-    'https://*.ipchello.com',
-    'https://ifshop.ipchello.com'
+    'https://*.aaistech.com',
+    'https://ifshop.aaistech.com'
 ]
 
 # Đảm bảo Django hiểu là đang giao tiếp qua HTTPS (nếu deploy qua Nginx)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = _env_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
-SESSION_COOKIE_SECURE = _env_bool('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
-CSRF_COOKIE_SECURE = _env_bool('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
-SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '31536000' if not DEBUG else '0'))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
-SECURE_HSTS_PRELOAD = _env_bool('DJANGO_SECURE_HSTS_PRELOAD', not DEBUG)
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

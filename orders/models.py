@@ -81,6 +81,12 @@ class QuotationItem(models.Model):
     def display_unit(self):
         return self.product.unit if self.product else (self.unit or '')
 
+    @property
+    def display_note(self):
+        if self.note is not None:
+            return self.note
+        return self.product.note if self.product else ''
+
 
 class Order(SoftDeleteModel):
     """Đơn hàng"""
@@ -176,6 +182,7 @@ class OrderItem(models.Model):
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
     is_below_listed = models.BooleanField(default=False, verbose_name='Dưới giá niêm yết')
+    note = models.TextField(blank=True, null=True, default=None, verbose_name='Ghi chú theo đơn')
 
     class Meta:
         db_table = 'order_items'
@@ -193,6 +200,12 @@ class OrderItem(models.Model):
     @property
     def display_unit(self):
         return self.product.unit if self.product else (self.unit or '')
+
+    @property
+    def display_note(self):
+        if self.note is not None:
+            return self.note
+        return self.product.note if self.product else ''
 
 
 class OrderEditHistory(models.Model):

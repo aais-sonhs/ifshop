@@ -1337,6 +1337,14 @@
     font-size: 11px;
     line-height: 1.3;
 }
+.order-item-note-editor .input-group-text {
+    color: #6c757d;
+    font-size: 11px;
+    background: #f8f9fa;
+}
+.order-item-note-editor .inp_item_note {
+    font-size: 12px;
+}
 #quick_search_results .quick-search-stock-breakdown {
     margin-top: 4px;
     padding-top: 4px;
@@ -1895,22 +1903,28 @@ function renderOrderProductNote(note, extraClass){
 
 function setOrderRowProductNote($row, note){
     var normalizedNote = normalizeOrderProductNote(note);
-    var $note = $row.find('.order-item-product-note');
     $row.attr('data-product-note', normalizedNote);
-    if(normalizedNote){
-        if(!$note.length){
-            $note = $('<div class="order-item-product-note"></div>');
-            var $combo = $row.find('.order-combo-components');
-            if($combo.length){
-                $combo.before($note);
-            } else {
-                $row.find('.order-item-product-cell').append($note);
-            }
-        }
-        $note.html('(' + escapeHtml(normalizedNote) + ')').show();
-    } else {
-        $note.remove();
+    $row.find('.inp_item_note').val(normalizedNote);
+}
+
+function getOrderItemDisplayNote(item, product){
+    if(item && Object.prototype.hasOwnProperty.call(item, 'note') && item.note !== null && item.note !== undefined){
+        return item.note;
     }
+    if(item && item.effective_note !== null && item.effective_note !== undefined){
+        return item.effective_note;
+    }
+    if(item && item.product_note){
+        return item.product_note;
+    }
+    return product && product.note ? product.note : '';
+}
+
+function renderOrderItemNoteEditor(note){
+    return '<div class="input-group input-group-sm mt-1 order-item-note-editor">' +
+        '<div class="input-group-prepend"><span class="input-group-text"><i class="far fa-sticky-note mr-1"></i>Ghi chú</span></div>' +
+        '<input type="text" class="form-control inp_item_note" value="' + escapeAttr(note || '') + '" placeholder="Chỉ áp dụng cho sản phẩm trong đơn này">' +
+        '</div>';
 }
 
 function renderOrderComboComponents(product, limit){
@@ -2018,7 +2032,7 @@ function ensureOrderProductSelectReady($row, openAfterInit){
     return $select;
 }
 
-function syncOrderRowProductVisuals($row, preservePrice){
+function syncOrderRowProductVisuals($row, preservePrice, resetItemNote){
     if($row.hasClass('service-line-row') || $row.data('service-line') == 1){
         return;
     }
@@ -2040,13 +2054,15 @@ function syncOrderRowProductVisuals($row, preservePrice){
     } else {
         $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
     }
-    var productNote = '';
-    if(pid){
-        productNote = product && Object.prototype.hasOwnProperty.call(product, 'note')
-            ? product.note
-            : ($opt.attr('data-note') || $row.attr('data-product-note') || '');
+    if(resetItemNote){
+        var productNote = '';
+        if(pid){
+            productNote = product && Object.prototype.hasOwnProperty.call(product, 'note')
+                ? product.note
+                : ($opt.attr('data-note') || '');
+        }
+        setOrderRowProductNote($row, productNote);
     }
-    setOrderRowProductNote($row, productNote);
     updateOrderRowComboComponents($row);
     $row.find('.inp_qty').attr('step', '1');
 }
@@ -4366,7 +4382,8 @@ $(document).ready(function(){
                     unit: ($(this).find('.inp_service_unit').val() || '').trim(),
                     quantity: qty,
                     unit_price: price,
-                    discount_percent: disc
+                    discount_percent: disc,
+                    note: ($(this).find('.inp_item_note').val() || '').trim()
                 });
                 return;
             }
@@ -4382,7 +4399,14 @@ $(document).ready(function(){
             }
 
             var variantId = $(this).find('.sel_product option:selected').data('variant-id') || null;
-            items.push({product_id:pid,variant_id:variantId,quantity:qty,unit_price:price,discount_percent:disc});
+            items.push({
+                product_id:pid,
+                variant_id:variantId,
+                quantity:qty,
+                unit_price:price,
+                discount_percent:disc,
+                note:($(this).find('.inp_item_note').val() || '').trim()
+            });
         });
         if(hasError){alert('Vui lòng chọn SP hoặc nhập tên dịch vụ cho tất cả dòng');return;}
         if(items.length===0){alert('Vui lòng thêm ít nhất 1 SP');return;}
@@ -4563,6 +4587,7 @@ function addItemFromProduct(product){
         product_id: product.id,
         variant_id: null,
         product_note: product.note || '',
+        note: product.note || '',
         unit: product.unit,
         quantity: 1,
         unit_price: getProductRetailPrice(product),
@@ -4601,9 +4626,7 @@ function addItemRow(item, options){
     }
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
     var selectedProduct = hasSelectedProduct ? getOrderProductById(item.product_id) : null;
-    var productNote = item && item.product_note
-        ? item.product_note
-        : (selectedProduct ? selectedProduct.note : '');
+    var productNote = getOrderItemDisplayNote(item, selectedProduct);
     var unit=item?item.unit:'';
     if(!unit && selectedProduct){
         unit = selectedProduct.unit || '';
@@ -4615,7 +4638,7 @@ function addItemRow(item, options){
 	        var htmlService = '<tr class="service-line-row" data-service-line="1">' +
 	            '<td class="text-center order-item-sequence"></td>' +
 	            '<td class="text-center lbl_img"><span class="order-item-img-placeholder"><i class="fas fa-clipboard-list"></i></span></td>' +
-            '<td class="order-item-product-cell"><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
+            '<td class="order-item-product-cell"><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống">' + renderOrderItemNoteEditor(productNote) + '</td>' +
             '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
             '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
@@ -4645,7 +4668,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductNote(productNote)+'<div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -4670,7 +4693,7 @@ function addItemRow(item, options){
 
     $row.find('.sel_product').on('change', function(){
         var $opt=$(this).find('option:selected');
-        syncOrderRowProductVisuals($row);
+        syncOrderRowProductVisuals($row, false, true);
         var productKey = getSelectedProductKey($row);
         var $duplicateRow = findDuplicateRowForKey(productKey, $row);
         if(productKey && $duplicateRow.length){
@@ -4690,7 +4713,7 @@ function addItemRow(item, options){
                 } else {
                     $(this).val('');
                 }
-                syncOrderRowProductVisuals($row);
+                syncOrderRowProductVisuals($row, false, true);
                 calcLine($row);
             }
             syncDuplicateWarnings();
@@ -5331,7 +5354,7 @@ function rejectOrder(id, code){
 	                : '<span class="quick-view-product-placeholder"><i class="fas fa-image"></i></span>';
 	            itemsHtml += '<tr>' +
 	                '<td class="text-center">' + img + '</td>' +
-	                '<td><strong>' + escapeHtml(it.product_code || 'DV') + '</strong><br><span>' + escapeHtml(it.product_name || it.item_name || '') + '</span>' + renderOrderProductNote(it.product_note, 'quick-view-product-note') + '</td>' +
+	                '<td><strong>' + escapeHtml(it.product_code || 'DV') + '</strong><br><span>' + escapeHtml(it.product_name || it.item_name || '') + '</span>' + renderOrderProductNote(getOrderItemDisplayNote(it), 'quick-view-product-note') + '</td>' +
 	                '<td class="text-center">' + escapeHtml(it.unit || '') + '</td>' +
 	                '<td class="text-right">' + fmt(it.quantity || 0) + '</td>' +
 	                '<td class="text-right">' + fmt(it.unit_price || 0) + '</td>' +
@@ -5844,7 +5867,7 @@ function downloadOrderPDF(id){
             var lineTotal = it.quantity * it.unit_price * (1 - it.discount_percent/100);
             total += lineTotal;
             var itemLabel = escapeHtml((it.product_code ? it.product_code + ' - ' : '') + (it.product_name || it.item_name || ''));
-            var itemNote = (it.note || it.product_note || '');
+            var itemNote = getOrderItemDisplayNote(it);
             if(itemNote){
                 itemLabel += '<div style="font-size:11px;color:#6c757d;margin-top:3px;">(' + escapeHtml(itemNote) + ')</div>';
             }

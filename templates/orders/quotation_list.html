@@ -2442,7 +2442,7 @@ function buildQuotationHTML(res){
             }
         }
         var itemLabel = escapeHtml((it.product_code ? it.product_code + ' - ' : '') + (it.product_name || it.item_name || ''));
-        var itemNote = (it.note || it.product_note || '');
+        var itemNote = (it.note !== null && it.note !== undefined) ? it.note : (it.product_note || '');
         if(itemNote){
             itemLabel += '<div style="font-size:11px;color:#6c757d;margin-top:3px;">(' + escapeHtml(itemNote) + ')</div>';
         }

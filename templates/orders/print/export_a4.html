@@ -97,8 +97,7 @@
                 {% if print_template.show_product_code %}<td>{{ item.display_code }}</td>{% endif %}
                 <td>
                     <strong>{{ item.display_name }}</strong>
-                    {% if item.note %}<div class="item-note">({{ item.note }})</div>
-                    {% elif item.product.note %}<div class="item-note">({{ item.product.note }})</div>{% endif %}
+                    {% if item.display_note %}<div class="item-note">({{ item.display_note }})</div>{% endif %}
                     {% include "orders/print/_combo_components.html" %}
                 </td>
                 <td class="text-center">{{ item.display_unit }}</td>

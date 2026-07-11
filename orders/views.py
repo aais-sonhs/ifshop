@@ -1085,7 +1085,50 @@ def _order_items_payload_from_order(order):
         'quantity': item.quantity,
         'unit_price': item.unit_price,
         'discount_percent': item.discount_percent,
+        'note': item.note,
     } for item in order.items.all()]
+
+
+def _payload_item_note(item_data, product=None):
+    """Ghi chú dòng: payload là bản riêng; thiếu key thì lấy mặc định từ sản phẩm."""
+    if 'note' in item_data:
+        value = item_data.get('note')
+        return None if value is None else str(value).strip()
+    if product and product.note:
+        return product.note.strip()
+    return None
+
+
+def _update_order_item_notes_from_payload(order, items_data):
+    current_items = {
+        _history_item_key(
+            item.product_id,
+            item.variant_id,
+            item.item_name or '',
+            item.unit or '',
+            bool(item.is_service_line or not item.product_id),
+        ): item
+        for item in order.items.select_related('product').all()
+    }
+    changed = False
+    for row in items_data or []:
+        is_service = _payload_is_service_line(row)
+        key = _history_item_key(
+            _normalize_optional_int(row.get('product_id')),
+            _normalize_optional_int(row.get('variant_id')),
+            _payload_service_name(row) if is_service else '',
+            _payload_service_unit(row) if is_service else '',
+            is_service,
+        )
+        item = current_items.get(key)
+        if not item:
+            continue
+        new_note = _payload_item_note(row, item.product)
+        if item.note != new_note:
+            item.note = new_note
+            item.save(update_fields=['note'])
+            changed = True
+    return changed
 
 
 def _format_money_for_history(value):
@@ -1146,6 +1189,7 @@ def _history_item_from_model(item):
         'unit_price': _to_decimal(item.unit_price),
         'discount_percent': _to_decimal(item.discount_percent),
         'total_price': _to_decimal(item.total_price),
+        'note': item.note,
     }
 
 
@@ -1162,6 +1206,7 @@ def _history_item_from_payload(item_data, product, variant):
         'unit_price': price,
         'discount_percent': discount,
         'total_price': _calculate_line_total(qty, price, discount),
+        'note': _payload_item_note(item_data, product),
     }
 
 
@@ -1207,6 +1252,7 @@ def _history_normalized_items_from_order(order):
             'quantity': item.quantity,
             'unit_price': item.unit_price,
             'discount_percent': item.discount_percent,
+            'note': item.note,
         }, item.product, item.variant))
     return rows
 
@@ -1250,6 +1296,10 @@ def _describe_item_history_changes(before_items, after_items):
         if before['discount_percent'] != after['discount_percent']:
             changes.append(
                 f'CK {_format_percent_for_history(before["discount_percent"])} → {_format_percent_for_history(after["discount_percent"])}'
+            )
+        if before.get('note') != after.get('note'):
+            changes.append(
+                f'ghi chú "{before.get("note") or "(trống)"}" → "{after.get("note") or "(trống)"}"'
             )
         if before['total_price'] != after['total_price'] and not changes:
             changes.append(
@@ -1439,6 +1489,7 @@ def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
             cost_price=cost,
             discount_percent=item.discount_percent,
             total_price=item.total_price,
+            note=item.product.note if item.product and item.product.note else None,
         )
 
     if due_receipt and not getattr(due_receipt, 'is_deleted', False) and due_receipt.status == 1:
@@ -1605,6 +1656,9 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
 
     if update_fields:
         order.save(update_fields=update_fields)
+    item_notes_changed = False
+    if 'items' in data:
+        item_notes_changed = _update_order_item_notes_from_payload(order, data.get('items') or [])
 
     _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
     _refresh_order_payment(order)
@@ -1612,7 +1666,11 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         _describe_order_history_changes(history_before, order, _history_normalized_items_from_order(order))
     )
     if not history_parts:
-        history_parts = ['Cập nhật trạng thái/ghi chú/địa chỉ giao của đơn đã có phiếu thu; không thay đổi tiền hàng.']
+        history_parts = [
+            'Cập nhật ghi chú sản phẩm theo đơn; không thay đổi tiền hàng.'
+            if item_notes_changed else
+            'Cập nhật trạng thái/ghi chú/địa chỉ giao của đơn đã có phiếu thu; không thay đổi tiền hàng.'
+        ]
     _log_order_history(
         order=order,
         actor=request.user,
@@ -2515,6 +2573,8 @@ def api_get_order_detail(request):
                 'unit': _item_display_unit(it),
                 'image_url': product.image.url if product and product.image else '',
                 'product_note': product.note if product else '',
+                'note': it.note,
+                'effective_note': it.display_note,
                 'is_service_line': bool(it.is_service_line or not product),
                 'item_name': it.item_name or '',
                 'quantity': float(it.quantity),
@@ -2943,6 +3003,7 @@ def api_save_order(request):
                     discount_percent=disc,
                     total_price=line_total,
                     is_below_listed=is_below_cost,
+                    note=_payload_item_note(item_data, product),
                 )
             o.below_listed_price_warning = bool(loss_warnings)
             o.save(update_fields=['below_listed_price_warning'])
@@ -3799,7 +3860,8 @@ def api_get_quotation_detail(request):
                 'unit_price': float(it.unit_price),
                 'discount_percent': float(it.discount_percent),
                 'total_price': float(it.total_price),
-                'note': it.note or '',
+                'note': it.note,
+                'effective_note': it.display_note,
             })
         return JsonResponse({
             'status': 'ok',
@@ -3994,7 +4056,7 @@ def api_save_quotation(request):
                     unit_price=price,
                     discount_percent=disc,
                     total_price=line_total,
-                    note=it.get('note', ''),
+                    note=_payload_item_note(it, product),
                 )
 
         message = 'Lưu thành công'
@@ -4646,6 +4708,7 @@ def api_pos_checkout(request):
                     total_price=item_data.get('total_price', 0),
                     discount_percent=item_data.get('discount_percent', 0),
                     cost_price=float(product.cost_price or 0),
+                    note=_payload_item_note(item_data, product),
                 )
                 oi.save()
 

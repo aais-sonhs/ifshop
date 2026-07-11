@@ -84,7 +84,7 @@
                 <td>{{ item.quantity|qty_vn }}</td>
                 <td>{{ item.serial|default:"—" }}</td>
                 <td>{{ item.warranty_term|default:"—" }}</td>
-                <td>{{ item.note|default:"" }}</td>
+                <td>{{ item.display_note|default:"" }}</td>
             </tr>
         {% empty %}
             <tr>

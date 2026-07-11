@@ -386,6 +386,124 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['items'][0]['product_note'], 'Tặng kèm dây nguồn')
 
+    def test_order_item_note_defaults_from_product_then_can_be_customized_per_order(self):
+        self.product.note = 'Ghi chú mặc định của sản phẩm'
+        self.product.save(update_fields=['note'])
+
+        def create_order(code):
+            response = self.client.post(
+                reverse('api_save_order'),
+                data=json.dumps({
+                    'code': code,
+                    'customer_id': self.customer.id,
+                    'warehouse_id': self.warehouse.id,
+                    'order_date': date.today().isoformat(),
+                    'discount_amount': 0,
+                    'shipping_fee': 0,
+                    'status': 1,
+                    'note': '',
+                    'tags': '',
+                    'pay_mode': 'none',
+                    'payment_amount': 0,
+                    'payment_lines': [],
+                    'items': [{
+                        'product_id': self.product.id,
+                        'variant_id': None,
+                        'quantity': 1,
+                        'unit_price': 100,
+                        'discount_percent': 0,
+                    }],
+                }),
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+            return Order.objects.get(id=response.json()['order_id'])
+
+        first_order = create_order('DH-ITEM-NOTE-FIRST')
+        second_order = create_order('DH-ITEM-NOTE-SECOND')
+        self.assertEqual(first_order.items.get().note, 'Ghi chú mặc định của sản phẩm')
+        self.assertEqual(second_order.items.get().note, 'Ghi chú mặc định của sản phẩm')
+
+        edit_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': first_order.id,
+                'code': first_order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': first_order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                    'note': 'Ghi chú chỉ dành cho đơn thứ nhất',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        first_order.refresh_from_db()
+        second_order.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(first_order.items.get().note, 'Ghi chú chỉ dành cho đơn thứ nhất')
+        self.assertEqual(second_order.items.get().note, 'Ghi chú mặc định của sản phẩm')
+        self.assertEqual(self.product.note, 'Ghi chú mặc định của sản phẩm')
+
+        first_detail = self.client.get(reverse('api_get_order_detail'), {'id': first_order.id}).json()
+        second_detail = self.client.get(reverse('api_get_order_detail'), {'id': second_order.id}).json()
+        self.assertEqual(first_detail['items'][0]['note'], 'Ghi chú chỉ dành cho đơn thứ nhất')
+        self.assertEqual(second_detail['items'][0]['note'], 'Ghi chú mặc định của sản phẩm')
+        first_print = self.client.get(
+            reverse('api_print_order'),
+            {'id': first_order.id, 'type': 'a4', 'source': 'order'},
+        )
+        second_print = self.client.get(
+            reverse('api_print_order'),
+            {'id': second_order.id, 'type': 'a4', 'source': 'order'},
+        )
+        self.assertContains(first_print, '(Ghi chú chỉ dành cho đơn thứ nhất)')
+        self.assertNotContains(first_print, '(Ghi chú mặc định của sản phẩm)')
+        self.assertContains(second_print, '(Ghi chú mặc định của sản phẩm)')
+
+    def test_order_item_note_can_be_cleared_without_falling_back_to_product_note(self):
+        self.product.note = 'Ghi chú gốc không được hiện lại'
+        self.product.save(update_fields=['note'])
+        order = self._create_order(code='DH-ITEM-NOTE-CLEAR', status=1)
+        item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+            note='',
+        )
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()['items'][0]['note'], '')
+        self.assertEqual(detail_response.json()['items'][0]['effective_note'], '')
+        self.assertNotContains(print_response, 'Ghi chú gốc không được hiện lại')
+        item.refresh_from_db()
+        self.assertEqual(item.note, '')
+
     def test_order_detail_and_prints_show_customer_delivery_address(self):
         self.customer.address = '123 Nguyễn Huệ, Quận 1, TP.HCM'
         self.customer.save(update_fields=['address'])

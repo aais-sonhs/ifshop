@@ -4501,7 +4501,11 @@ $(document).ready(function(){
                     if(parseInt(r.order_status, 10) !== parseInt(data.status, 10)){
                         savedMessage += '. Hệ thống đã tự đồng bộ theo thanh toán/xuất kho.';
                     }
-                    if(typeof toastr !== 'undefined') toastr.success(savedMessage);
+                    if(r.stock_export_deferred){
+                        savedMessage += '. ' + (r.stock_export_warning || 'Đơn chưa xuất kho do tồn kho không đủ.');
+                        if(typeof toastr !== 'undefined') toastr.warning(savedMessage);
+                        else alert(savedMessage);
+                    } else if(typeof toastr !== 'undefined') toastr.success(savedMessage);
                     else alert(savedMessage);
                     if(r.message && r.message.indexOf('Cảnh báo') >= 0){
                         toastr ? toastr.warning(r.message) : alert(r.message);

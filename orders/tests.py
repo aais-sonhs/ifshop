@@ -1699,7 +1699,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('sản phẩm', payload['message'].lower())
         self.assertFalse(Order.objects.filter(code='DH-FOREIGN-PRODUCT').exists())
 
-    def test_save_exported_order_rejects_negative_stock_when_disabled(self):
+    def test_new_exported_order_is_saved_without_export_when_negative_stock_disabled(self):
         BusinessConfig.objects.create(
             brand=self.brand,
             business_name='Negative stock disabled',
@@ -1727,9 +1727,13 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['status'], 'error')
-        self.assertIn('Tồn kho không đủ', payload['message'])
-        self.assertFalse(Order.objects.filter(code='DH-NEG-STOCK').exists())
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(payload['stock_export_deferred'])
+        self.assertIn('Tồn kho không đủ', payload['stock_export_warning'])
+        order = Order.objects.get(code='DH-NEG-STOCK')
+        self.assertEqual(order.status, 3)
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
+        self.assertEqual(float(stock.quantity), 0.0)
 
     def test_save_exported_order_allows_negative_stock_when_enabled(self):
         BusinessConfig.objects.create(

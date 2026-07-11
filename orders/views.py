@@ -2648,6 +2648,7 @@ def api_save_order(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        stock_export_warning = ''
         with transaction.atomic():
             # 1. Xác định đây là luồng tạo mới hay cập nhật đơn hiện có.
             oid = data.get('id')
@@ -3010,7 +3011,19 @@ def api_save_order(request):
 
             # 9. Trừ tồn tại bước xuất kho. Nếu vừa thanh toán đủ, service có thể tự chốt Hoàn thành.
             if _order_exports_stock_status(o.status) and o.warehouse_id:
-                _apply_order_stock_adjustment(o, direction=-1)
+                try:
+                    # Savepoint riêng để thiếu tồn không làm rollback luôn đơn hàng mới.
+                    with transaction.atomic():
+                        _apply_order_stock_adjustment(o, direction=-1)
+                except ValueError as stock_error:
+                    if oid or not str(stock_error).startswith('Tồn kho không đủ'):
+                        raise
+                    stock_export_warning = (
+                        f'{stock_error}. Đơn hàng vẫn được lưu nhưng chưa xuất kho; '
+                        'hãy bổ sung tồn hoặc bật cấu hình cho phép tồn âm rồi xuất kho lại.'
+                    )
+                    o.status = 3
+                    o.save(update_fields=['status'])
 
             # 9b. Tự động chuyển Hoàn thành nếu đủ điều kiện (xuất kho + thanh toán đủ + duyệt).
             if o.status == 4 and _order_can_complete(o):
@@ -3043,6 +3056,8 @@ def api_save_order(request):
                 summary_parts.append(f'đã thu {int(float(o.paid_amount)):,}đ')
             if loss_warnings:
                 summary_parts.append('cảnh báo bán lỗ: ' + '; '.join(loss_warnings[:5]))
+            if stock_export_warning:
+                summary_parts.append(stock_export_warning)
             _log_order_history(
                 order=o,
                 actor=request.user,
@@ -3059,6 +3074,8 @@ def api_save_order(request):
             msg += f'. ⏳ Đơn hàng cần được {approver_name} duyệt trước khi hoàn thành.'
         if loss_warnings:
             msg += '. Cảnh báo bán dưới giá vốn: ' + '; '.join(loss_warnings[:5])
+        if stock_export_warning:
+            msg += '. ' + stock_export_warning
         return JsonResponse({
             'status': 'ok',
             'message': msg,
@@ -3069,6 +3086,8 @@ def api_save_order(request):
             'payment_status': o.payment_status,
             'payment_status_display': o.get_payment_status_display(),
             'paid_amount': float(o.paid_amount or 0),
+            'stock_export_deferred': bool(stock_export_warning),
+            'stock_export_warning': stock_export_warning,
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

@@ -356,7 +356,7 @@
                                     placeholder="🔍 Tìm & thêm sản phẩm — gõ tên, mã SP hoặc quét barcode... (↑↓ chọn, Enter thêm)"
                                     autocomplete="off"
                                     style="font-size:14px; border:2px solid #42a5f5; border-left:none; background:#fff;">
-                                <div class="input-group-append">
+                                <div class="quick-product-action-buttons d-flex ml-2">
                                     <button class="btn btn-outline-secondary" type="button" tabindex="-1" title="Thêm dòng dịch vụ/thẻ trống" id="btn_add_service_line">
                                         <i class="fas fa-clipboard-list"></i> <span class="d-none d-md-inline">Dịch vụ</span>
                                     </button>
@@ -982,6 +982,13 @@
 }
 #items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
     padding-left: 0;
+}
+#quick_product_search_form .quick-product-action-buttons {
+    gap: 7px;
+    flex: 0 0 auto;
+}
+#quick_product_search_form .quick-product-action-buttons .btn {
+    border-radius: .25rem !important;
 }
 .order-item-product-note,
 .quick-view-product-note {
@@ -1867,9 +1874,18 @@ function setOrderRowProductNote($row, note){
     var $note = $row.find('.order-item-product-note');
     $row.attr('data-product-note', normalizedNote);
     if(normalizedNote){
+        if(!$note.length){
+            $note = $('<div class="order-item-product-note"></div>');
+            var $combo = $row.find('.order-combo-components');
+            if($combo.length){
+                $combo.before($note);
+            } else {
+                $row.find('.order-item-product-cell').append($note);
+            }
+        }
         $note.html('(' + escapeHtml(normalizedNote) + ')').show();
     } else {
-        $note.empty().hide();
+        $note.remove();
     }
 }
 
@@ -2587,8 +2603,8 @@ function fetchProductsForOrderForm(orderId, callback){
         applyOrderProductDataset(ORDER_PRODUCT_SELECT_CACHE[cacheKey], cacheKey);
         if(typeof callback === 'function'){
             callback();
+            callback = null;
         }
-        return;
     }
 
     var hadLocalProducts = Array.isArray(allProducts) && allProducts.length > 0;
@@ -2601,7 +2617,9 @@ function fetchProductsForOrderForm(orderId, callback){
     if(orderId){
         url += '?exclude_order_id=' + encodeURIComponent(orderId);
     }
-    $.get(url, function(prodRes){
+    // Luôn làm mới ngầm để ghi chú vừa sửa ở màn hình Sản phẩm xuất hiện ngay,
+    // kể cả khi trình duyệt khôi phục trang từ cache hoặc form đã mở trước đó.
+    $.ajax({url: url, type: 'GET', cache: false}).done(function(prodRes){
         applyOrderProductDataset((prodRes && prodRes.data) || [], cacheKey);
         refreshRenderedOrderRows();
         if(typeof callback === 'function'){
@@ -4507,6 +4525,7 @@ function addItemFromProduct(product){
     var item = {
         product_id: product.id,
         variant_id: null,
+        product_note: product.note || '',
         unit: product.unit,
         quantity: 1,
         unit_price: getProductRetailPrice(product),
@@ -4589,7 +4608,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-item-product-note" style="display:none;"></div><div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductNote(productNote)+'<div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -4604,7 +4623,6 @@ function addItemRow(item, options){
         $tbody.append(html);
     }
     var $row = options.prepend ? $tbody.children('tr').first() : $tbody.children('tr').last();
-    setOrderRowProductNote($row, productNote);
     if(!useLazySelect){
         initializeOrderProductSelect($row);
     }

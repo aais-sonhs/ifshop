@@ -377,26 +377,28 @@
                             </div>
                             <div id="quick_search_results" style="display:none; position:absolute; left:0; right:0; z-index:9999; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #42a5f5; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 6px 20px rgba(0,0,0,0.18);"></div>
                         </div>
-                        <table class="table table-sm table-bordered mb-0" id="items_tbl">
+                        <table class="table table-sm mb-0" id="items_tbl">
                             <thead class="bg-light"><tr>
+	                                <th style="width:4%" class="text-center">STT</th>
 	                                <th style="width:5%" class="text-center">Ảnh</th>
-	                                <th style="width:23%">Sản phẩm</th>
+	                                <th style="width:20%">Sản phẩm</th>
                                 <th style="width:6%">ĐVT</th>
-                                <th style="width:18%" class="stock-info-col">Tồn theo kho</th>
+                                <th style="width:17%" class="stock-info-col">Tồn theo kho</th>
                                 <th style="width:9%">Số lượng</th>
-                                <th style="width:14%">Đơn giá</th>
+                                <th style="width:13%">Đơn giá</th>
                                 <th style="width:8%">CK (%)</th>
-                                <th style="width:17%">Thành tiền</th>
+                                <th style="width:13%">Thành tiền</th>
                                 <th style="width:5%"></th>
                             </tr></thead>
                             <tbody></tbody>
                             <tfoot>
-                                <tr class="bg-light font-weight-bold"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
-                                <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
-                                <tr><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
-                                <tr class="font-weight-bold order-final-total-row"><td colspan="7" class="text-right order-total-label" data-stock-colspan="7" data-compact-colspan="6">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td><td></td></tr>
-                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
-	                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu nhưng cần kiểm tra lại giá bán.</div></td></tr>
+                                <tr class="font-weight-bold order-total-quantity-row"><td colspan="5" class="text-right order-total-label" data-stock-colspan="5" data-compact-colspan="4">Tổng số lượng sản phẩm:</td><td class="text-center" id="lbl_total_quantity">0</td><td colspan="4"></td></tr>
+                                <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
+                                <tr class="font-weight-bold order-final-total-row"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td><td></td></tr>
+                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
+	                                <tr id="cost_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu nhưng cần kiểm tra lại giá bán.</div></td></tr>
                             </tfoot>
                         </table>
                     </div>
@@ -965,6 +967,33 @@
     min-height: 31px;
     height: auto;
 }
+#items_tbl tbody td {
+    border-left: 0;
+    border-right: 0;
+    border-top: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+#items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single,
+#items_tbl .order-item-product-cell .sel_product,
+#items_tbl .order-item-product-cell .inp_service_name {
+    border: 0 !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+}
+#items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
+    padding-left: 0;
+}
+#items_tbl .order-item-sequence {
+    color: #6c757d;
+    font-weight: 600;
+}
+#items_tbl .order-total-quantity-row td {
+    background: #f8fafc;
+}
+#items_tbl #lbl_total_quantity {
+    color: #1565c0;
+    font-size: 15px;
+}
 #items_tbl .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered,
 #items_tbl .select2-results__option {
     white-space: normal;
@@ -1137,7 +1166,7 @@
     box-shadow: 0 0 0 4px rgba(66,153,225,0.25);
 }
 /* Product name wrap fix — ensures long names display fully */
-	#items_tbl td:nth-child(2) {
+	#items_tbl .order-item-product-cell {
 	    max-width: 0;
 	    white-space: normal;
 	    word-break: break-word;
@@ -1544,7 +1573,7 @@ function getQuickProductMatches(searchTerm){
     return matches;
 }
 function resetQuickProductSearchAfterAdd(product){
-    $('#quick_search_product').val('').focus();
+    $('#quick_search_product').val('');
     $('#quick_search_results').hide();
     if(product && typeof setQuickSearchStatusHint === 'function'){
         setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + product.name + '</b>');
@@ -2553,7 +2582,7 @@ function fetchProductsForOrderForm(orderId, callback){
 function renderOrderItemsLoading(message){
     $('#items_tbl tbody').html(
         '<tr class="order-items-loading-row">' +
-            '<td colspan="9" class="text-center text-muted py-4">' +
+            '<td colspan="10" class="text-center text-muted py-4">' +
                 '<i class="fas fa-spinner fa-spin mr-2"></i>' + escapeHtml(message || 'Đang tải sản phẩm...') +
             '</td>' +
         '</tr>'
@@ -4005,7 +4034,7 @@ $(document).ready(function(){
     function addQuickSearchProduct(product){
         if(!product) return;
         addItemFromProduct(product);
-        $('#quick_search_product').val('').focus();
+        $('#quick_search_product').val('');
         $('#quick_search_results').hide();
         setQuickSearchStatusHint('<i class="fas fa-check-circle text-success mr-1"></i>Đã thêm <b>' + product.name + '</b>');
         setTimeout(function(){ setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay'); }, 2000);
@@ -4201,7 +4230,6 @@ $(document).ready(function(){
                         if(newProduct) addItemFromProduct(newProduct);
                     });
                     $('#modal_quick_product').modal('hide');
-                    setTimeout(function(){ $('#quick_search_product').focus(); }, 200);
                     toastr ? toastr.success('Tạo SP "'+name+'" thành công!') : alert('Tạo SP thành công!');
                 } else { alert(r.message); }
             }
@@ -4401,6 +4429,27 @@ function updateAllStockDisplay(){
     queueOrderRowVisualRefresh($('#items_tbl tbody tr'), {preservePrice: true});
 }
 
+function promoteOrderItemRow($row){
+    if(!$row || !$row.length) return;
+    var $tbody = $('#items_tbl tbody');
+    if(!$row.is($tbody.children('tr').first())){
+        $row.detach().prependTo($tbody);
+    }
+}
+
+function focusOrderItemQuantity($row){
+    if(!$row || !$row.length) return;
+    setTimeout(function(){
+        if(!$row[0] || !document.body.contains($row[0])) return;
+        var $qty = $row.find('.inp_qty').first();
+        if(!$qty.length) return;
+        $qty.focus();
+        if(typeof $qty[0].select === 'function'){
+            $qty[0].select();
+        }
+    }, 0);
+}
+
 // Thêm SP nhanh từ object product (từ thanh search)
 function addItemFromProduct(product){
     var existingKey = product.id + ':';
@@ -4408,8 +4457,10 @@ function addItemFromProduct(product){
     if($existingRow.length){
         var $qty = $existingRow.find('.inp_qty');
         $qty.val((parseFloat($qty.val()) || 0) + 1);
+        promoteOrderItemRow($existingRow);
         calcLine($existingRow);
         flashExistingRow($existingRow);
+        focusOrderItemQuantity($existingRow);
         toastr ? toastr.info('Sản phẩm đã có trong đơn, đã tăng số lượng thêm 1.') : alert('Sản phẩm đã có trong đơn, đã tăng số lượng thêm 1.');
         return;
     }
@@ -4422,8 +4473,9 @@ function addItemFromProduct(product){
         discount_percent: 0,
         image_url: product.image_url || '',
     };
-    addItemRow(item);
+    var $row = addItemRow(item, {prepend: true});
     calcTotal();
+    focusOrderItemQuantity($row);
 }
 
 function addServiceLine(item){
@@ -4462,8 +4514,9 @@ function addItemRow(item, options){
 	    if(isServiceLine){
 	        var serviceName = item && item.item_name ? item.item_name : '';
 	        var htmlService = '<tr class="service-line-row" data-service-line="1">' +
+	            '<td class="text-center order-item-sequence"></td>' +
 	            '<td class="text-center lbl_img"><span class="order-item-img-placeholder"><i class="fas fa-clipboard-list"></i></span></td>' +
-            '<td><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
+            '<td class="order-item-product-cell"><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống"></td>' +
             '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
             '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
@@ -4493,7 +4546,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center lbl_img">'+imgHtml+'</td><td><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -4501,8 +4554,13 @@ function addItemRow(item, options){
         '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
         '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
         '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
-    $('#items_tbl tbody').append(html);
-    var $row=$('#items_tbl tbody tr:last');
+    var $tbody = $('#items_tbl tbody');
+    if(options.prepend){
+        $tbody.prepend(html);
+    } else {
+        $tbody.append(html);
+    }
+    var $row = options.prepend ? $tbody.children('tr').first() : $tbody.children('tr').last();
     if(!useLazySelect){
         initializeOrderProductSelect($row);
     }
@@ -4553,6 +4611,7 @@ function addItemRow(item, options){
     } else {
         syncOrderRowProductVisuals($row, hasSelectedProduct);
     }
+    return $row;
 }
 
 function calcLine($row){
@@ -4565,11 +4624,17 @@ function calcLine($row){
 
 function calcTotal(){
     var total=0;
+    var totalQuantity=0;
+    var itemSequence=0;
     var hasLossItem = false;
     $('#items_tbl tbody tr').each(function(){
+        if($(this).hasClass('order-items-loading-row')) return;
+        itemSequence += 1;
+        $(this).find('.order-item-sequence').text(itemSequence);
         var qty=parseFloat($(this).find('.inp_qty').val())||0;
         var price=getMoneyValue($(this).find('.inp_price'))||0;
         var disc=parseFloat($(this).find('.inp_disc').val())||0;
+        totalQuantity+=qty;
         total+=qty*price*(1-disc/100);
         // Check selling below cost price
         var costPrice = parseFloat($(this).find('.sel_product option:selected').data('cost')) || 0;
@@ -4584,6 +4649,7 @@ function calcTotal(){
     var discount=getMoneyValue('#inp_discount_amount');
     var shippingFee=getMoneyValue('#inp_shipping_fee');
     var finalAmount = Math.max(total-discount+shippingFee, 0);
+    $('#lbl_total_quantity').text(fmt(totalQuantity));
     $('#lbl_total').text(fmt(total) + 'đ');
     $('#lbl_final').text(fmt(finalAmount) + 'đ');
     // Show/hide cost warning

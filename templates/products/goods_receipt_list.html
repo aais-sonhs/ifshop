@@ -540,7 +540,7 @@ function loadData(){
 }
 
 function createPurchaseReturn(receiptId){
-    window.location.href = '{% url "purchase_return_tbl" %}?receipt_id=' + encodeURIComponent(receiptId);
+    window.location.href = '/purchase-return-tbl/?receipt_id=' + encodeURIComponent(receiptId);
 }
 
 function editItem(d){

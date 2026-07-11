@@ -357,6 +357,68 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(row['variants'][0]['selling_price'], 10990000.0)
         self.assertEqual(row['variants'][0]['retail_price'], 12000000.0)
 
+    def test_products_select_exposes_product_note_for_order_form(self):
+        self.product.note = 'Tặng kèm dây nguồn'
+        self.product.save(update_fields=['note'])
+
+        response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['note'], 'Tặng kèm dây nguồn')
+
+    def test_order_detail_exposes_product_note_for_view(self):
+        self.product.note = 'Tặng kèm dây nguồn'
+        self.product.save(update_fields=['note'])
+        order = self._create_order(code='DH-VIEW-NOTE')
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['items'][0]['product_note'], 'Tặng kèm dây nguồn')
+
+    def test_order_detail_and_prints_show_customer_delivery_address(self):
+        self.customer.address = '123 Nguyễn Huệ, Quận 1, TP.HCM'
+        self.customer.save(update_fields=['address'])
+        order = self._create_order(code='DH-SHIP-ADDRESS')
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        k80_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'k80', 'source': 'order'},
+        )
+        a4_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+
+        self.assertEqual(detail_response.json()['order']['customer_address'], self.customer.address)
+        self.assertContains(k80_response, 'ĐC giao:')
+        self.assertContains(k80_response, self.customer.address)
+        self.assertContains(a4_response, 'Địa chỉ giao:')
+        self.assertContains(a4_response, self.customer.address)
+
+    def test_quotation_prints_show_customer_address(self):
+        self.customer.address = '456 Lê Lợi, Quận 3, TP.HCM'
+        self.customer.save(update_fields=['address'])
+        quotation = self._create_quotation(code='BG-SHIP-ADDRESS', status=1)
+
+        for print_type in ('quotation', 'quotation_a4'):
+            with self.subTest(print_type=print_type):
+                response = self.client.get(
+                    reverse('api_print_order'),
+                    {'id': quotation.id, 'type': print_type, 'source': 'quotation'},
+                )
+                self.assertContains(response, 'Địa chỉ giao:')
+                self.assertContains(response, self.customer.address)
+
     def test_products_select_exposes_combo_components_and_component_based_stock(self):
         self.product.cost_price = 100
         self.product.selling_price = 150

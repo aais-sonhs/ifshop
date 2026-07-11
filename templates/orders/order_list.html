@@ -983,6 +983,15 @@
 #items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
     padding-left: 0;
 }
+.order-item-product-note,
+.quick-view-product-note {
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.3;
+    margin-top: 2px;
+    white-space: pre-line;
+    word-break: break-word;
+}
 #items_tbl .order-item-sequence {
     color: #6c757d;
     font-weight: 600;
@@ -1455,10 +1464,10 @@ function getOrderProductOptionsHtml(){
     allProducts.forEach(function(p){
         if(p.variants && p.variants.length > 0){
             p.variants.forEach(function(v){
-                opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (v.import_price || p.import_price || 0) + '" data-variant-price="' + (v.selling_price || 0) + '" data-cost="' + v.cost_price + '" data-variant-id="' + v.id + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '">' + p.code + ' - ' + p.name + ' [' + v.size_name + ']</option>';
+                opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (v.import_price || p.import_price || 0) + '" data-variant-price="' + (v.selling_price || 0) + '" data-cost="' + v.cost_price + '" data-variant-id="' + v.id + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '">' + p.code + ' - ' + p.name + ' [' + v.size_name + ']</option>';
             });
         } else {
-            opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (p.import_price || 0) + '" data-cost="' + p.cost_price + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '">' + p.code + ' - ' + p.name + '</option>';
+            opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (p.import_price || 0) + '" data-cost="' + p.cost_price + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '">' + p.code + ' - ' + p.name + '</option>';
         }
     });
     ORDER_PRODUCT_SELECT_OPTIONS_HTML = opts;
@@ -1843,6 +1852,27 @@ function getOrderProductVariant(product, variantId){
     }) || null;
 }
 
+function normalizeOrderProductNote(note){
+    return String(note == null ? '' : note).trim();
+}
+
+function renderOrderProductNote(note, extraClass){
+    var normalizedNote = normalizeOrderProductNote(note);
+    if(!normalizedNote) return '';
+    return '<div class="' + (extraClass || 'order-item-product-note') + '">(' + escapeHtml(normalizedNote) + ')</div>';
+}
+
+function setOrderRowProductNote($row, note){
+    var normalizedNote = normalizeOrderProductNote(note);
+    var $note = $row.find('.order-item-product-note');
+    $row.attr('data-product-note', normalizedNote);
+    if(normalizedNote){
+        $note.html('(' + escapeHtml(normalizedNote) + ')').show();
+    } else {
+        $note.empty().hide();
+    }
+}
+
 function renderOrderComboComponents(product, limit){
     var items = product && product.is_combo ? (product.combo_items || []) : [];
     if(!items.length) return '';
@@ -1882,7 +1912,8 @@ function buildOrderSelectedProductOption(item){
     var importPrice = variant ? (variant.import_price || product.import_price || 0) : ((product && product.import_price) || 0);
     var costPrice = variant ? (variant.cost_price || 0) : ((product && product.cost_price) || 0);
     var imageUrl = item.image_url || (product ? (product.image_url || product.image || '') : '');
-    return '<option value="' + item.product_id + '" data-unit="' + escapeAttr(unit || '') + '" data-price="' + price + '" data-retail="' + retail + '" data-import="' + importPrice + '" data-cost="' + costPrice + '" data-variant-id="' + (item.variant_id || '') + '" data-weight="' + ((product && product.is_weight_based) ? 1 : 0) + '" data-img="' + escapeAttr(imageUrl || '') + '" selected>' + escapeHtml(optionLabel) + '</option>';
+    var productNote = item.product_note || (product ? product.note : '') || '';
+    return '<option value="' + item.product_id + '" data-unit="' + escapeAttr(unit || '') + '" data-price="' + price + '" data-retail="' + retail + '" data-import="' + importPrice + '" data-cost="' + costPrice + '" data-variant-id="' + (item.variant_id || '') + '" data-weight="' + ((product && product.is_weight_based) ? 1 : 0) + '" data-img="' + escapeAttr(imageUrl || '') + '" data-note="' + escapeAttr(productNote) + '" selected>' + escapeHtml(optionLabel) + '</option>';
 }
 
 function hydrateOrderRowProductSelectOptions($row){
@@ -1953,6 +1984,7 @@ function syncOrderRowProductVisuals($row, preservePrice){
     }
     var $opt = $row.find('.sel_product option:selected');
     var pid = $row.find('.sel_product').val();
+    var product = getOrderProductById(pid);
     $row.find('.lbl_unit').text($opt.data('unit') || '');
     if(!preservePrice){
         setMoneyValue($row.find('.inp_price'), $opt.data('price') || 0);
@@ -1968,6 +2000,13 @@ function syncOrderRowProductVisuals($row, preservePrice){
     } else {
         $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
     }
+    var productNote = '';
+    if(pid){
+        productNote = product && Object.prototype.hasOwnProperty.call(product, 'note')
+            ? product.note
+            : ($opt.attr('data-note') || $row.attr('data-product-note') || '');
+    }
+    setOrderRowProductNote($row, productNote);
     updateOrderRowComboComponents($row);
     $row.find('.inp_qty').attr('step', '1');
 }
@@ -4094,6 +4133,7 @@ $(document).ready(function(){
                 imgHtml +
                 '<div class="flex-grow-1">' +
                 '<div class="quick-search-title"><strong>' + p.code + '</strong> — ' + p.name + alertBadgesHtml + '</div>' +
+                renderOrderProductNote(p.note, 'order-item-product-note') +
                 '<div class="small mt-1">' + priceHtml + ' · <span class="text-muted">' + p.unit + '</span></div>' +
                 comboHtml +
                 stockHtml +
@@ -4505,6 +4545,9 @@ function addItemRow(item, options){
     }
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
     var selectedProduct = hasSelectedProduct ? getOrderProductById(item.product_id) : null;
+    var productNote = item && item.product_note
+        ? item.product_note
+        : (selectedProduct ? selectedProduct.note : '');
     var unit=item?item.unit:'';
     if(!unit && selectedProduct){
         unit = selectedProduct.unit || '';
@@ -4546,7 +4589,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-item-product-note" style="display:none;"></div><div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -4561,6 +4604,7 @@ function addItemRow(item, options){
         $tbody.append(html);
     }
     var $row = options.prepend ? $tbody.children('tr').first() : $tbody.children('tr').last();
+    setOrderRowProductNote($row, productNote);
     if(!useLazySelect){
         initializeOrderProductSelect($row);
     }
@@ -5230,7 +5274,7 @@ function rejectOrder(id, code){
 	                : '<span class="quick-view-product-placeholder"><i class="fas fa-image"></i></span>';
 	            itemsHtml += '<tr>' +
 	                '<td class="text-center">' + img + '</td>' +
-	                '<td><strong>' + escapeHtml(it.product_code || 'DV') + '</strong><br><span>' + escapeHtml(it.product_name || it.item_name || '') + '</span></td>' +
+	                '<td><strong>' + escapeHtml(it.product_code || 'DV') + '</strong><br><span>' + escapeHtml(it.product_name || it.item_name || '') + '</span>' + renderOrderProductNote(it.product_note, 'quick-view-product-note') + '</td>' +
 	                '<td class="text-center">' + escapeHtml(it.unit || '') + '</td>' +
 	                '<td class="text-right">' + fmt(it.quantity || 0) + '</td>' +
 	                '<td class="text-right">' + fmt(it.unit_price || 0) + '</td>' +
@@ -5244,7 +5288,11 @@ function rejectOrder(id, code){
 	        var html = relationPanel + '<div class="row">' +
 	            '<div class="col-md-7">' +
 	            '<div class="mb-2"><strong>' + escapeHtml(o.code || '') + '</strong> · ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</div>' +
-	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' + escapeHtml(o.customer_label || '') + '</div>' +
+	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' +
+	                escapeHtml(o.customer_label || '') +
+	                (o.customer_phone ? '<br><small>SĐT: ' + escapeHtml(o.customer_phone) + '</small>' : '') +
+	                (o.customer_address ? '<br><small><strong>Địa chỉ giao:</strong> ' + escapeHtml(o.customer_address) + '</small>' : '') +
+	            '</div>' +
 	            '<div class="small text-muted">Ghi chú</div><div class="border rounded p-2 mb-2" style="min-height:44px;">' + escapeHtml(o.note || 'Không có ghi chú') + '</div>' +
 	            '</div>' +
 	            '<div class="col-md-5">' +

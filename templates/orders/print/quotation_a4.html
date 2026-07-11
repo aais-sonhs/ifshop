@@ -29,7 +29,9 @@
             <div class="label">Khách hàng</div>
             <div class="value"><strong>{{ order.customer.name|default:"Khách lẻ" }}</strong></div>
             {% if order.customer.phone %}<div class="value">SĐT: {{ order.customer.phone }}</div>{% endif %}
-            {% if order.customer.address %}<div class="value">ĐC: {{ order.customer.address }}</div>{% endif %}
+            {% if order.shipping_address %}<div class="value"><strong>Địa chỉ giao:</strong> {{ order.shipping_address }}</div>
+            {% elif order.customer.address %}<div class="value"><strong>Địa chỉ giao:</strong> {{ order.customer.address }}</div>
+            {% elif order.customer.company_address %}<div class="value"><strong>Địa chỉ giao:</strong> {{ order.customer.company_address }}</div>{% endif %}
             {% if order.customer.company %}<div class="value">Cty: {{ order.customer.company }}</div>{% endif %}
         </div>
         <div class="col">

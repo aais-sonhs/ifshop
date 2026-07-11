@@ -26,6 +26,8 @@
 .receipt .title { text-align: center; font-size: 15px; font-weight: 800; margin: 5px 0; }
 .receipt .info-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; }
 .receipt .info-row .label { font-weight: 700; }
+.receipt .info-row.address-row { align-items: flex-start; }
+.receipt .info-row.address-row span:last-child { flex: 1; text-align: right; overflow-wrap: anywhere; }
 .receipt table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 12px; font-weight: 700; }
 .receipt table th { text-align: left; border-bottom: 1px solid #000; padding: 3px 0; font-size: 11px; font-weight: 800; }
 .receipt table td { padding: 3px 0; vertical-align: top; }
@@ -69,6 +71,9 @@
     {% if print_template.show_customer_info %}
     <div class="info-row"><span class="label">KH:</span><span>{{ order.customer.name|default:"Khách lẻ" }}</span></div>
     {% if order.customer.phone %}<div class="info-row"><span class="label">SĐT:</span><span>{{ order.customer.phone }}</span></div>{% endif %}
+    {% if order.shipping_address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.shipping_address }}</span></div>
+    {% elif order.customer.address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.customer.address }}</span></div>
+    {% elif order.customer.company_address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.customer.company_address }}</span></div>{% endif %}
     {% endif %}
     {% if order.salesperson %}<div class="info-row"><span class="label">NV:</span><span>{{ order.salesperson }}</span></div>{% endif %}
     <div class="divider"></div>

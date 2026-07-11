@@ -2026,6 +2026,7 @@ def api_get_products_for_select(request):
             'code': p.code,
             'barcode': p.barcode or '',
             'name': p.name,
+            'note': p.note or '',
             'unit': p.unit,
             'image': p.image.url if p.image else '',
             'image_url': p.image.url if p.image else '',
@@ -2479,6 +2480,14 @@ def api_get_order_detail(request):
                 'code': o.code,
                 'customer_id': None if _is_guest_customer(o.customer) else o.customer_id,
                 'customer_label': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
+                'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
+                'customer_address': (
+                    o.shipping_address
+                    or (o.customer.address if o.customer else '')
+                    or (o.customer.company_address if o.customer else '')
+                    or ''
+                ),
+                'shipping_address': o.shipping_address or '',
                 'warehouse_id': o.warehouse_id,
                 'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
                 'total_amount': float(o.total_amount),
@@ -3748,6 +3757,12 @@ def api_get_quotation_detail(request):
                 'code': q.code,
                 'customer_id': None if _is_guest_customer(q.customer) else q.customer_id,
                 'customer_label': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
+                'customer_phone': q.customer.phone if q.customer and q.customer.phone else '',
+                'customer_address': (
+                    (q.customer.address if q.customer else '')
+                    or (q.customer.company_address if q.customer else '')
+                    or ''
+                ),
                 'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
                 'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
                 'discount_amount': float(q.discount_amount),

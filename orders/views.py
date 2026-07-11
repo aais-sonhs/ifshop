@@ -131,6 +131,22 @@ def _allow_negative_stock_for_store(store):
         return False
 
 
+def _allow_negative_stock_for_warehouse_id(warehouse_id, fallback_store=None):
+    """Đọc cấu hình tồn âm theo đúng kho đang phát sinh biến động.
+
+    `order.store` có thể là dữ liệu cũ hoặc không còn khớp kho sau khi chuyển
+    chi nhánh. Kho mới là nguồn xác định chính xác thương hiệu/cấu hình tồn.
+    """
+    if warehouse_id:
+        try:
+            warehouse = Warehouse.objects.select_related('store__brand').filter(id=warehouse_id).first()
+            if warehouse and warehouse.store:
+                return _allow_negative_stock_for_store(warehouse.store)
+        except Exception:
+            pass
+    return _allow_negative_stock_for_store(fallback_store)
+
+
 def _adjust_locked_stock(stock, delta, allow_negative=True):
     delta = _to_decimal(delta)
     new_quantity = _to_decimal(stock.quantity) + delta
@@ -1625,7 +1641,10 @@ def _apply_order_stock_adjustment(order, direction, warehouse_id=None):
     from products.models import ComboItem
     allow_negative = True
     if _to_decimal(direction) < 0:
-        allow_negative = _allow_negative_stock_for_store(order.store)
+        allow_negative = _allow_negative_stock_for_warehouse_id(
+            warehouse_id,
+            fallback_store=order.store,
+        )
 
     for item in order.items.select_related('product').all():
         product = item.product
@@ -1667,8 +1686,11 @@ def _apply_order_return_stock_adjustment(order_return, direction, warehouse_id=N
 
     from products.models import ComboItem
     allow_negative = True
-    if _to_decimal(direction) < 0 and order_return.order:
-        allow_negative = _allow_negative_stock_for_store(order_return.order.store)
+    if _to_decimal(direction) < 0:
+        allow_negative = _allow_negative_stock_for_warehouse_id(
+            warehouse_id,
+            fallback_store=order_return.order.store if order_return.order else None,
+        )
 
     for item in order_return.items.select_related('product').all():
         product = item.product
@@ -1703,8 +1725,11 @@ def _apply_order_return_exchange_stock_adjustment(order_return, direction, wareh
 
     from products.models import ComboItem
     allow_negative = True
-    if _to_decimal(direction) < 0 and order_return.order:
-        allow_negative = _allow_negative_stock_for_store(order_return.order.store)
+    if _to_decimal(direction) < 0:
+        allow_negative = _allow_negative_stock_for_warehouse_id(
+            warehouse_id,
+            fallback_store=order_return.order.store if order_return.order else None,
+        )
 
     for item in order_return.exchange_items.select_related('product').all():
         product = item.product
@@ -4577,7 +4602,10 @@ def api_pos_checkout(request):
             order.save()
 
             # Create items + deduct stock
-            allow_negative_stock = _allow_negative_stock_for_store(store)
+            allow_negative_stock = _allow_negative_stock_for_warehouse_id(
+                warehouse.id if warehouse else None,
+                fallback_store=store,
+            )
             for item_data in normalized_items:
                 product = _get_product_for_user(request, item_data['product_id'])
                 if not product:

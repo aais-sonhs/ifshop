@@ -1432,6 +1432,83 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('Tồn kho không đủ', payload['message'])
         self.assertFalse(Order.objects.filter(code='DH-NEG-STOCK').exists())
 
+    def test_save_exported_order_allows_negative_stock_when_enabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Negative stock enabled',
+            opt_allow_negative_stock=True,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse,
+            quantity=0,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-ALLOW-NEG-STOCK',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 4,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock.refresh_from_db()
+        self.assertEqual(float(stock.quantity), -1.0)
+
+    def test_stock_export_uses_warehouse_brand_negative_stock_config(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Warehouse negative stock enabled',
+            opt_allow_negative_stock=True,
+        )
+        mismatched_brand = Brand.objects.create(name='Legacy Order Brand', owner=self.owner)
+        mismatched_store = Store.objects.create(
+            brand=mismatched_brand,
+            name='Legacy Order Store',
+            code='LEGACY-STOCK',
+        )
+        BusinessConfig.objects.create(
+            brand=mismatched_brand,
+            business_name='Legacy negative stock disabled',
+            opt_allow_negative_stock=False,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse,
+            quantity=0,
+        )
+        order = self._create_order(
+            code='DH-WAREHOUSE-CONFIG',
+            store=mismatched_store,
+            warehouse=self.warehouse,
+            status=1,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        from orders.views import _apply_order_stock_adjustment
+        _apply_order_stock_adjustment(order, direction=-1)
+
+        stock.refresh_from_db()
+        self.assertEqual(float(stock.quantity), -1.0)
+
     def test_pos_checkout_rejects_negative_stock_when_disabled(self):
         BusinessConfig.objects.create(
             brand=self.brand,

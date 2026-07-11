@@ -1,11 +1,12 @@
 import json
 from io import BytesIO
-from datetime import date
+from datetime import date, timedelta
 
 import openpyxl
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from customers.models import Customer
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
@@ -648,6 +649,19 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(len(payload['data']), 2)
         expected_ids = [order.id for order in list(reversed(created_orders))[10:12]]
         self.assertEqual([row['id'] for row in payload['data']], expected_ids)
+
+    def test_get_orders_sorts_by_latest_update(self):
+        first_created = self._create_order(code='DH-UPDATED-FIRST', status=1)
+        second_created = self._create_order(code='DH-UPDATED-SECOND', status=1)
+        now = timezone.now()
+        Order.objects.filter(id=first_created.id).update(updated_at=now)
+        Order.objects.filter(id=second_created.id).update(updated_at=now - timedelta(hours=1))
+
+        response = self.client.get(reverse('api_get_orders'))
+
+        self.assertEqual(response.status_code, 200)
+        returned_ids = [row['id'] for row in response.json()['data']]
+        self.assertEqual(returned_ids[:2], [first_created.id, second_created.id])
 
     def test_get_orders_filters_by_product_on_server(self):
         other_same_store_product = Product.objects.create(

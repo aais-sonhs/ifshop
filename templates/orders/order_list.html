@@ -4495,6 +4495,7 @@ $(document).ready(function(){
             success:function(r){
                 if(r.status==='ok'){
                     $('#modal_form').modal('hide');
+                    resetOrderPage();
                     loadData();
                     var statusLabel = r.order_status_display || STATUS_LABELS[r.order_status] || '';
                     var savedMessage = 'Đã lưu đơn hàng' + (statusLabel ? ' — trạng thái: ' + statusLabel : '');
@@ -5530,6 +5531,7 @@ function viewItem(id){
 	                    data: JSON.stringify({id: o.id, note: $('#inp_note').val()}),
 	                    success: function(r){
 	                        if(r.status === 'ok'){
+	                            resetOrderPage();
 	                            loadData();
 	                            loadOrderHistory(o.id);
 	                            toastr ? toastr.success(r.message) : alert(r.message);

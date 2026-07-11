@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Prefetch, Q
+from django.utils import timezone
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
@@ -1655,10 +1656,15 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
             update_fields.append('server_staff')
 
     if update_fields:
+        order.updated_at = timezone.now()
+        update_fields.append('updated_at')
         order.save(update_fields=update_fields)
     item_notes_changed = False
     if 'items' in data:
         item_notes_changed = _update_order_item_notes_from_payload(order, data.get('items') or [])
+    if item_notes_changed and not update_fields:
+        order.updated_at = timezone.now()
+        order.save(update_fields=['updated_at'])
 
     _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
     _refresh_order_payment(order)
@@ -2513,7 +2519,7 @@ def api_get_orders(request):
     status_scope_queryset = _apply_order_list_filters(base_queryset, filters, include_status=False)
     status_counts = _build_order_status_counts(status_scope_queryset)
 
-    filtered_queryset = _apply_order_list_filters(base_queryset, filters, include_status=True).order_by('-order_date', '-id')
+    filtered_queryset = _apply_order_list_filters(base_queryset, filters, include_status=True).order_by('-updated_at', '-id')
     list_queryset = _prefetch_order_list_queryset(filtered_queryset)
     paginator = Paginator(list_queryset, page_size)
     page_obj = paginator.get_page(page)
@@ -3119,7 +3125,8 @@ def api_update_order_note(request):
             })
         old_note = order.note or ''
         order.note = data.get('note', '')
-        order.save(update_fields=['note'])
+        order.updated_at = timezone.now()
+        order.save(update_fields=['note', 'updated_at'])
         _log_order_history(
             order=order,
             actor=request.user,

@@ -2227,6 +2227,8 @@ def _get_order_list_filters(request):
     params = request.GET
     return {
         'status': (params.get('status') or '').strip(),
+        'customer': (params.get('customer_id') or params.get('customer') or '').strip(),
+        'export_status': (params.get('export_status') or params.get('stock_status') or '').strip(),
         'payment_status': (params.get('payment_status') or '').strip(),
         'customer_group': (params.get('customer_group') or '').strip(),
         'payment_method': (params.get('payment_method') or '').strip(),
@@ -2254,6 +2256,12 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
 
     if include_status and filters.get('status') not in ('', None):
         queryset = queryset.filter(status=filters['status'])
+    if filters.get('customer'):
+        queryset = queryset.filter(customer_id=filters['customer'])
+    if filters.get('export_status') in ('pending', 'not_exported'):
+        queryset = queryset.filter(status__in=(1, 2, 3))
+    elif filters.get('export_status') == 'exported':
+        queryset = queryset.filter(status__in=(4, 5))
     if filters.get('payment_status') not in ('', None):
         queryset = queryset.filter(payment_status=filters['payment_status'])
     if filters.get('customer_group'):
@@ -4725,40 +4733,10 @@ def export_orders_excel(request):
     ).all().order_by('-order_date', '-id')
     orders = filter_by_store(orders, request)
 
-    date_from = request.GET.get('date_from') or request.GET.get('from_date')
-    date_to = request.GET.get('date_to') or request.GET.get('to_date')
-    created_from = request.GET.get('created_from')
-    created_to = request.GET.get('created_to')
-    status = request.GET.get('status')
-    payment_status = request.GET.get('payment_status')
-    payment_method = request.GET.get('payment_method')
-    creator = request.GET.get('creator')
-    product = (request.GET.get('product') or '').strip()
-    if date_from:
-        orders = orders.filter(order_date__gte=date_from)
-    if date_to:
-        orders = orders.filter(order_date__lte=date_to)
-    if created_from:
-        orders = orders.filter(created_at__date__gte=created_from)
-    if created_to:
-        orders = orders.filter(created_at__date__lte=created_to)
-    if status not in [None, '']:
-        orders = orders.filter(status=int(status))
-    if payment_status not in [None, '']:
-        orders = orders.filter(payment_status=int(payment_status))
-    if payment_method:
-        orders = orders.filter(receipts__status=1, receipts__payment_method_option_id=payment_method)
-    if creator:
-        orders = orders.filter(created_by_id=creator)
-    if product:
-        orders = orders.filter(
-            Q(items__product__code__icontains=product) |
-            Q(items__product__name__icontains=product) |
-            Q(items__product__barcode__icontains=product) |
-            Q(items__item_name__icontains=product)
-        )
-    if payment_method or product:
-        orders = orders.distinct()
+    filters = _get_order_list_filters(request)
+    orders = _apply_order_list_filters(orders, filters)
+    date_from = filters.get('from_date')
+    date_to = filters.get('to_date')
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},

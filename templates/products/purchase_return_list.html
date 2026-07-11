@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-undo-alt mr-2"></i>Trả hàng nhập</h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu trả</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-light border py-2">
+            Dùng khi nhà cung cấp giao nhầm, hàng lỗi/kém chất lượng hoặc cần trả lại một phần hàng đã nhập.
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-sm" id="data_tbl">
+                <thead><tr><th>STT</th><th>Mã phiếu trả</th><th>Phiếu nhập gốc</th><th>Nhà cung cấp</th><th>Kho</th><th>Ngày trả</th><th>SL trả</th><th>Tiền trả</th><th>Trạng thái</th><th>Lý do</th><th>Thao tác</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_form" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modal_title">Tạo phiếu trả hàng nhập</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_id">
+                <input type="hidden" id="inp_code">
+                <div class="row">
+                    <div class="col-md-5"><div class="form-group"><label>Phiếu nhập gốc <span class="text-danger">*</span></label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Chọn phiếu nhập --</option>{% for r in receipts %}<option value="{{ r.id }}">{{ r.code }} — {{ r.supplier__name|default:'Không NCC' }} — {{ r.warehouse__name }} — {{ r.receipt_date|date:'d/m/Y' }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-2"><div class="form-group"><label>Ngày trả</label><input type="date" class="form-control form-control-sm" id="inp_return_date"></div></div>
+                    <div class="col-md-2"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Hoàn thành</option><option value="2">Hủy</option></select></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Lý do trả <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_reason" placeholder="Giao nhầm, hàng lỗi..."></div></div>
+                </div>
+                <div class="alert alert-info py-2" id="receipt_summary" style="display:none;"></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm" id="items_tbl">
+                        <thead class="bg-light"><tr><th>Sản phẩm</th><th class="text-right">Đã nhập</th><th class="text-right">Đã trả khác</th><th class="text-right">Còn được trả</th><th style="width:130px;">SL trả</th><th style="width:150px;">Đơn giá trả</th><th class="text-right">Thành tiền</th><th style="width:180px;">Ghi chú</th></tr></thead>
+                        <tbody><tr><td colspan="8" class="text-center text-muted">Chọn phiếu nhập để tải sản phẩm</td></tr></tbody>
+                        <tfoot><tr class="font-weight-bold"><td colspan="6" class="text-right">Tổng tiền trả:</td><td class="text-right" id="return_total">0đ</td><td></td></tr></tfoot>
+                    </table>
+                </div>
+                <div class="form-group mb-0"><label>Ghi chú chung</label><textarea class="form-control form-control-sm" id="inp_note" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save mr-1"></i>Lưu phiếu trả</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var PURCHASE_RETURNS = [];
+var CURRENT_RETURN = null;
+function esc(value){ return $('<div>').text(value == null ? '' : String(value)).html(); }
+function num(value){ return Number(value || 0); }
+function qty(value){ return num(value).toLocaleString('vi-VN', {maximumFractionDigits:2}); }
+function money(value){ return Math.round(num(value)).toLocaleString('vi-VN'); }
+function localDate(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+$(function(){
+    $('.select2').select2({theme:'bootstrap4', width:'100%', dropdownParent:$('#modal_form')});
+    loadData();
+    $('#btn_add').click(function(){
+        CURRENT_RETURN = null;
+        $('#edit_id,#inp_code,#inp_reason,#inp_note').val('');
+        $('#inp_goods_receipt_id').val('').trigger('change.select2');
+        $('#inp_return_date').val(localDate());
+        $('#inp_status').val('0');
+        $('#receipt_summary').hide();
+        $('#items_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted">Chọn phiếu nhập để tải sản phẩm</td></tr>');
+        $('#return_total').text('0đ');
+        $('#modal_title').text('Tạo phiếu trả hàng nhập');
+        $('#modal_form').modal('show');
+    });
+    $('#inp_goods_receipt_id').change(function(){ loadReceiptItems(); });
+    $(document).on('input', '.return-qty,.return-price', calcTotal);
+    $('#btn_save').click(saveReturn);
+
+    var receiptId = new URLSearchParams(window.location.search).get('receipt_id');
+    if(receiptId && $('#inp_goods_receipt_id option[value="'+receiptId+'"]').length){
+        $('#btn_add').trigger('click');
+        $('#inp_goods_receipt_id').val(receiptId).trigger('change.select2');
+        loadReceiptItems();
+    }
+});
+
+function loadData(){
+    $.get('/api/purchase-returns/', function(res){
+        PURCHASE_RETURNS = res.data || [];
+        var html='';
+        PURCHASE_RETURNS.forEach(function(row,index){
+            var badge = row.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' : (row.status===2 ? '<span class="badge badge-danger">Hủy</span>' : '<span class="badge badge-warning">Nháp</span>');
+            html += '<tr><td>'+(index+1)+'</td><td>'+esc(row.code)+'</td><td>'+esc(row.goods_receipt_code)+'</td><td>'+esc(row.supplier)+'</td><td>'+esc(row.warehouse)+'</td><td>'+esc(row.return_date)+'</td><td class="text-right">'+qty(row.total_quantity)+'</td><td class="text-right">'+money(row.total_amount)+'đ</td><td>'+badge+'</td><td>'+esc(row.reason)+'</td><td class="text-center"><button class="btn btn-xs btn-info" onclick="editReturn('+row.id+')">Sửa</button> <button class="btn btn-xs btn-outline-danger" onclick="deleteReturn('+row.id+')">Xóa</button></td></tr>';
+        });
+        $('#data_tbl tbody').html(html || '<tr><td colspan="11" class="text-center text-muted">Chưa có phiếu trả hàng nhập</td></tr>');
+    });
+}
+
+function loadReceiptItems(done){
+    var receiptId = $('#inp_goods_receipt_id').val();
+    if(!receiptId){
+        $('#receipt_summary').hide();
+        $('#items_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted">Chọn phiếu nhập để tải sản phẩm</td></tr>');
+        $('#return_total').text('0đ');
+        return;
+    }
+    var params = {receipt_id:receiptId};
+    if($('#edit_id').val()) params.exclude_return_id=$('#edit_id').val();
+    $('#items_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Đang tải...</td></tr>');
+    $.get('/api/purchase-returns/receipt-detail/', params, function(res){
+        if(res.status!=='ok'){ alert(res.message); return; }
+        $('#receipt_summary').html('<strong>'+esc(res.receipt.code)+'</strong> · NCC: '+esc(res.receipt.supplier)+' · Kho: '+esc(res.receipt.warehouse)).show();
+        var existing={};
+        if(CURRENT_RETURN && CURRENT_RETURN.items){ CURRENT_RETURN.items.forEach(function(item){existing[item.goods_receipt_item_id]=item;}); }
+        var html='';
+        (res.items||[]).forEach(function(item){
+            var old=existing[item.goods_receipt_item_id]||{};
+            var label=(item.product_code ? item.product_code+' - ' : '')+item.product_name+(item.variant_name?' ['+item.variant_name+']':'');
+            html+='<tr data-item-id="'+item.goods_receipt_item_id+'" data-max="'+item.returnable_quantity+'"><td>'+esc(label)+'</td><td class="text-right">'+qty(item.received_quantity)+'</td><td class="text-right">'+qty(item.returned_quantity)+'</td><td class="text-right font-weight-bold">'+qty(item.returnable_quantity)+'</td><td><input type="number" min="0" max="'+item.returnable_quantity+'" step="0.01" class="form-control form-control-sm return-qty" value="'+(old.quantity||0)+'"></td><td><input type="number" min="0" step="1" class="form-control form-control-sm return-price text-right" value="'+(old.unit_price!==undefined?old.unit_price:item.unit_price)+'"></td><td class="text-right return-line-total">0đ</td><td><input type="text" class="form-control form-control-sm return-item-note" value="'+esc(old.note||'')+'"></td></tr>';
+        });
+        $('#items_tbl tbody').html(html || '<tr><td colspan="8" class="text-center text-muted">Phiếu nhập không còn hàng có thể trả</td></tr>');
+        calcTotal(); if(done) done();
+    });
+}
+
+function calcTotal(){
+    var total=0;
+    $('#items_tbl tbody tr[data-item-id]').each(function(){
+        var line=num($(this).find('.return-qty').val())*num($(this).find('.return-price').val()); total+=line;
+        $(this).find('.return-line-total').text(money(line)+'đ');
+    });
+    $('#return_total').text(money(total)+'đ');
+}
+
+function getItems(){
+    var items=[];
+    $('#items_tbl tbody tr[data-item-id]').each(function(){
+        var quantity=num($(this).find('.return-qty').val());
+        if(quantity>0) items.push({goods_receipt_item_id:num($(this).data('item-id')),quantity:quantity,unit_price:num($(this).find('.return-price').val()),note:$(this).find('.return-item-note').val()||''});
+    });
+    return items;
+}
+
+function saveReturn(){
+    var items=getItems(), reason=($('#inp_reason').val()||'').trim();
+    if(!$('#inp_goods_receipt_id').val()){alert('Vui lòng chọn phiếu nhập gốc');return;}
+    if(!reason){alert('Vui lòng nhập lý do trả hàng');return;}
+    if(!items.length){alert('Vui lòng nhập số lượng trả cho ít nhất một sản phẩm');return;}
+    if($('#inp_status').val()==='1' && !confirm('Hoàn thành phiếu trả sẽ trừ tồn kho. Bạn xác nhận tiếp tục?')) return;
+    var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),goods_receipt_id:$('#inp_goods_receipt_id').val(),return_date:$('#inp_return_date').val(),status:num($('#inp_status').val()),reason:reason,note:$('#inp_note').val(),items:items};
+    $.ajax({url:'/api/purchase-returns/save/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),success:function(res){if(res.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(res.message);}});
+}
+
+function editReturn(id){
+    CURRENT_RETURN=PURCHASE_RETURNS.find(function(row){return row.id===id;}); if(!CURRENT_RETURN)return;
+    $('#edit_id').val(CURRENT_RETURN.id);$('#inp_code').val(CURRENT_RETURN.code);$('#inp_goods_receipt_id').val(String(CURRENT_RETURN.goods_receipt_id)).trigger('change.select2');$('#inp_return_date').val(CURRENT_RETURN.return_date);$('#inp_status').val(String(CURRENT_RETURN.status));$('#inp_reason').val(CURRENT_RETURN.reason);$('#inp_note').val(CURRENT_RETURN.note);$('#modal_title').text('Sửa phiếu trả '+CURRENT_RETURN.code);$('#modal_form').modal('show');loadReceiptItems();
+}
+
+function deleteReturn(id){
+    if(!confirm('Xóa phiếu trả? Nếu đã hoàn thành, tồn kho sẽ được cộng lại.'))return;
+    $.ajax({url:'/api/purchase-returns/delete/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),success:function(res){if(res.status==='ok')loadData();alert(res.message);}});
+}
+</script>
+{% endblock %}

@@ -62,6 +62,8 @@
     };
 
     ColumnConfig.prototype.isVisible = function(key){
+        var column = this.columns.find(function(item){ return item.key === key; });
+        if(column && column.alwaysOn) return true;
         if(this.state[key] === undefined) return true;
         return !!this.state[key];
     };

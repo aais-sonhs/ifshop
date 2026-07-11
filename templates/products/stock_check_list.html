@@ -109,6 +109,9 @@ $(document).ready(function(){
         if(items.length === 0){
             alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;
         }
+        if($('#inp_status').val() === '1' && !confirm('Hoàn thành phiếu kiểm sẽ cập nhật tồn kho đúng bằng số “Tồn thực tế”. Bạn xác nhận tiếp tục?')){
+            return;
+        }
 
         var data = {
             id: $('#edit_id').val() || null,
@@ -142,11 +145,13 @@ $(document).ready(function(){
 
     $('#inp_warehouse_id').on('change', function(){
         $('#items_body tr').each(function(){
+            $(this).find('.item-actual-qty').data('manual', false).val('');
             updateRowSystemQuantity($(this));
         });
     });
 
     $(document).on('input change', '.item-actual-qty', function(){
+        $(this).data('manual', true);
         updateRowDifference($(this).closest('tr'));
     });
 
@@ -211,6 +216,10 @@ function updateRowSystemQuantity(row){
     }
     var sysQty = getProductSystemStock(product, $('#inp_warehouse_id').val());
     row.find('.item-sys-qty').val(sysQty);
+    var actualInput = row.find('.item-actual-qty');
+    if(!actualInput.data('manual') && String(actualInput.val() || '').trim() === ''){
+        actualInput.val(sysQty);
+    }
     updateRowDifference(row);
 }
 
@@ -218,6 +227,7 @@ function addItemRow(data){
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
     PRODUCTS.forEach(function(p){
+        if(p.is_combo || p.is_service) return;
         if(p.variants && p.variants.length > 0){
             p.variants.forEach(function(v){
                 var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
@@ -237,7 +247,7 @@ function addItemRow(data){
     }
 
     var sysQty = data ? (data.system_quantity || 0) : 0;
-    var actualQty = data ? (data.actual_quantity || 0) : 0;
+    var actualQty = data ? data.actual_quantity : '';
     var diff = actualQty - sysQty;
     var diffClass = diff > 0 ? 'text-success' : (diff < 0 ? 'text-danger' : '');
     var itemNote = data ? (data.note || '') : '';
@@ -247,7 +257,7 @@ function addItemRow(data){
         '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
         '<td class="text-center item-unit">' + unit + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-sys-qty" value="' + sysQty + '" readonly style="background:#f0f0f0;"></td>' +
-        '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" min="0" step="0.01"></td>' +
+        '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" step="0.01"></td>' +
         '<td class="text-center font-weight-bold item-diff ' + diffClass + '">' + fmtQty(diff) + '</td>' +
         '<td><input type="text" class="form-control form-control-sm item-note" value="' + itemNote + '"></td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
@@ -256,6 +266,7 @@ function addItemRow(data){
 
     // Init Select2 for the new row
     var lastRow = $('#items_body tr:last');
+    lastRow.find('.item-actual-qty').data('manual', !!data);
     lastRow.find('.select2-item').select2({
         dropdownParent: $('#modal_form'),
         width: '100%',

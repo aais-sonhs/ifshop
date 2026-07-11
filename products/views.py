@@ -29,7 +29,7 @@ from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
     GoodsReceipt, GoodsReceiptItem, PurchaseOrder, PurchaseOrderItem,
     StockCheck, StockCheckItem, StockTransfer, StockTransferItem, CostAdjustment,
-    ComboItem, ProductLocation
+    ComboItem, ProductLocation, PurchaseReturn, PurchaseReturnItem
 )
 
 from core.store_utils import (
@@ -119,6 +119,21 @@ def _generate_next_supplier_code():
     while True:
         candidate = f'{prefix}{next_number:03d}'
         if not Supplier.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_number += 1
+
+
+def _generate_next_purchase_return_code():
+    prefix = 'THN'
+    max_number = 0
+    for code in PurchaseReturn.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.match(r'^THN-?(\d+)$', code or '', re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
+    next_number = max_number + 1
+    while True:
+        candidate = f'{prefix}{next_number:05d}'
+        if not PurchaseReturn.all_objects.filter(code=candidate).exists():
             return candidate
         next_number += 1
 
@@ -224,6 +239,13 @@ def _get_goods_receipt_for_user(request, receipt_id, queryset=None):
         return None
     base_queryset = queryset if queryset is not None else GoodsReceipt.objects.all()
     return filter_by_store(base_queryset, request, field_name='warehouse__store').filter(id=receipt_id).first()
+
+
+def _get_purchase_return_for_user(request, return_id, queryset=None):
+    if not return_id:
+        return None
+    base_queryset = queryset if queryset is not None else PurchaseReturn.objects.all()
+    return filter_by_store(base_queryset, request, field_name='warehouse__store').filter(id=return_id).first()
 
 
 def _get_warehouse_for_user(request, warehouse_id):
@@ -849,6 +871,7 @@ def _serialize_product_list(products):
 
         data.append({
             'id': p.id, 'code': p.code, 'name': p.name, 'barcode': p.barcode or '',
+            'store_id': p.store_id,
             'category': root_category.name if root_category else '',
             'category_id': root_category.id if root_category else None,
             'category_record_id': p.category_id,
@@ -1060,7 +1083,7 @@ def product_tbl(request):
         'product_types': [category for category in categories if category['parent_id']],
         'suppliers': list(Supplier.objects.filter(is_active=True).values('id', 'name')),
         'locations': list(ProductLocation.objects.filter(is_active=True).values('id', 'name')),
-        'warehouses': list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name')),
+        'warehouses': list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name', 'store_id')),
         'creators': creators,
     }
     return render(request, "products/product_list.html", context)
@@ -1097,6 +1120,21 @@ def goods_receipt_tbl(request):
         'products': list(Product.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'code', 'name', 'cost_price', 'unit')),
     }
     return render(request, "products/goods_receipt_list.html", context)
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def purchase_return_tbl(request):
+    receipts = filter_by_store(
+        GoodsReceipt.objects.filter(status=1).select_related('supplier', 'warehouse'),
+        request,
+        field_name='warehouse__store',
+    ).order_by('-receipt_date', '-id')
+    context = {
+        'active_tab': 'purchase_return_tbl',
+        'receipts': list(receipts.values('id', 'code', 'supplier__name', 'warehouse__name', 'receipt_date')),
+    }
+    return render(request, "products/purchase_return_list.html", context)
 
 
 @login_required(login_url="/login/")
@@ -1288,6 +1326,9 @@ def api_save_product(request):
             skip_variants = request.POST.get('skip_variants', '0') == '1'
             variants_data = json.loads(request.POST.get('variants', '[]') or '[]')
             combo_data = json.loads(request.POST.get('combo_items', '[]') or '[]')
+            stocks_data = json.loads(request.POST.get('stocks', '[]') or '[]')
+            if not isinstance(stocks_data, list):
+                return JsonResponse({'status': 'error', 'message': 'Dữ liệu tồn kho không hợp lệ.'})
             normalized_combo_items = _validate_combo_items(product, combo_data, request) if product.is_combo else []
             if was_combo and existing_combo_signature and not product.is_combo:
                 return JsonResponse({
@@ -1341,6 +1382,51 @@ def api_save_product(request):
                 product.save(update_fields=['cost_price'])
             else:
                 product.combo_items.all().delete()
+
+            if stocks_data:
+                if not product_id:
+                    return JsonResponse({'status': 'error', 'message': 'Chỉ cập nhật tồn kho sau khi sản phẩm đã được tạo.'})
+                if product.is_combo or product.is_service:
+                    return JsonResponse({'status': 'error', 'message': 'Combo/dịch vụ không được sửa tồn kho trực tiếp.'})
+
+                normalized_stocks = []
+                warehouse_ids = []
+                for row in stocks_data:
+                    if not isinstance(row, dict) or not row.get('warehouse_id'):
+                        continue
+                    warehouse_id = int(row['warehouse_id'])
+                    quantity = _to_decimal(row.get('quantity', 0))
+                    normalized_stocks.append((warehouse_id, quantity))
+                    warehouse_ids.append(warehouse_id)
+
+                allowed_warehouses = {
+                    warehouse.id: warehouse
+                    for warehouse in filter_by_store(
+                        Warehouse.objects.select_related('store__brand').filter(
+                            id__in=warehouse_ids,
+                            store_id=product.store_id,
+                        ),
+                        request,
+                    )
+                }
+                if len(allowed_warehouses) != len(set(warehouse_ids)):
+                    return JsonResponse({'status': 'error', 'message': 'Có kho không thuộc cửa hàng của sản phẩm.'})
+
+                for warehouse_id, quantity in normalized_stocks:
+                    if quantity < 0 and not _allow_negative_stock_for_warehouse_id(warehouse_id):
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': f'Kho "{allowed_warehouses[warehouse_id].name}" chưa bật cấu hình cho phép tồn âm.'
+                        })
+
+                for warehouse_id, quantity in normalized_stocks:
+                    stock, _ = ProductStock.objects.select_for_update().get_or_create(
+                        product=product,
+                        warehouse_id=warehouse_id,
+                        defaults={'quantity': 0},
+                    )
+                    stock.quantity = quantity
+                    stock.save(update_fields=['quantity'])
 
         return JsonResponse({
             'status': 'ok',
@@ -1558,6 +1644,46 @@ def api_save_supplier(request):
 
 
 @login_required(login_url="/login/")
+def api_quick_create_supplier(request):
+    """Tạo nhanh NCC ngay trong phiếu nhập hàng."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        name = (data.get('name') or '').strip()
+        phone = (data.get('phone') or '').strip()
+        if not name:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên nhà cung cấp.'})
+        duplicate = Supplier.objects.filter(name__iexact=name).first()
+        if not duplicate and phone:
+            duplicate = Supplier.objects.filter(phone=phone).first()
+        if duplicate:
+            return JsonResponse({
+                'status': 'ok',
+                'message': 'Nhà cung cấp đã tồn tại, hệ thống đã chọn lại.',
+                'supplier': {'id': duplicate.id, 'code': duplicate.code, 'name': duplicate.name},
+            })
+        supplier = Supplier.objects.create(
+            code=_generate_next_supplier_code(),
+            name=name,
+            phone=phone,
+            email=(data.get('email') or '').strip(),
+            address=(data.get('address') or '').strip(),
+            tax_code=(data.get('tax_code') or '').strip(),
+            contact_person=(data.get('contact_person') or '').strip(),
+            note=(data.get('note') or '').strip(),
+            created_by=request.user,
+        )
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã tạo nhà cung cấp mới.',
+            'supplier': {'id': supplier.id, 'code': supplier.code, 'name': supplier.name},
+        })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
 def api_delete_supplier(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -1738,6 +1864,11 @@ def api_save_goods_receipt(request):
                 )
                 if not gr:
                     return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập'})
+                if PurchaseReturn.all_objects.filter(goods_receipt=gr).exists():
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Phiếu nhập đã phát sinh lịch sử trả hàng nên không thể sửa để đảm bảo đối soát.'
+                    })
                 old_status = gr.status
                 old_warehouse_id = gr.warehouse_id
             else:
@@ -1827,6 +1958,11 @@ def api_delete_goods_receipt(request):
             )
             if not receipt:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập'})
+            if PurchaseReturn.all_objects.filter(goods_receipt=receipt).exists():
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Phiếu nhập đã phát sinh trả hàng nên không thể xóa.'
+                })
 
             # Phiếu nhập đã hoàn thành thì xóa phải hoàn tác phần tồn đã cộng trước đó.
             if receipt.status == 1 and receipt.warehouse_id:
@@ -1834,6 +1970,249 @@ def api_delete_goods_receipt(request):
 
             receipt.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+# ============ API: PURCHASE RETURN ============
+
+def _reverse_purchase_return_stock(purchase_return):
+    if not purchase_return.stock_applied or not purchase_return.warehouse_id:
+        return
+    for item in purchase_return.items.all():
+        stock = _get_locked_stock(item.product_id, purchase_return.warehouse_id)
+        _adjust_locked_stock(stock, item.quantity, allow_negative=True)
+    purchase_return.stock_applied = False
+    purchase_return.save(update_fields=['stock_applied'])
+
+
+def _serialize_purchase_return(purchase_return):
+    items = list(purchase_return.items.select_related('product', 'variant').all())
+    return {
+        'id': purchase_return.id,
+        'code': purchase_return.code,
+        'goods_receipt_id': purchase_return.goods_receipt_id,
+        'goods_receipt_code': purchase_return.goods_receipt.code if purchase_return.goods_receipt else '',
+        'supplier': purchase_return.supplier.name if purchase_return.supplier else '',
+        'warehouse': purchase_return.warehouse.name if purchase_return.warehouse else '',
+        'return_date': purchase_return.return_date.strftime('%Y-%m-%d') if purchase_return.return_date else '',
+        'status': purchase_return.status,
+        'status_display': purchase_return.get_status_display(),
+        'stock_applied': purchase_return.stock_applied,
+        'reason': purchase_return.reason or '',
+        'note': purchase_return.note or '',
+        'total_amount': float(purchase_return.total_amount or 0),
+        'total_quantity': float(sum((_to_decimal(item.quantity) for item in items), Decimal('0'))),
+        'items': [{
+            'goods_receipt_item_id': item.goods_receipt_item_id,
+            'product_id': item.product_id,
+            'product_code': item.product.code if item.product else '',
+            'product_name': item.product.name if item.product else '',
+            'variant_name': item.variant.size_name if item.variant else '',
+            'quantity': float(item.quantity),
+            'unit_price': float(item.unit_price),
+            'total_price': float(item.total_price),
+            'note': item.note or '',
+        } for item in items],
+    }
+
+
+@login_required(login_url="/login/")
+def api_get_purchase_returns(request):
+    returns = filter_by_store(
+        PurchaseReturn.objects.select_related(
+            'goods_receipt', 'supplier', 'warehouse'
+        ).prefetch_related('items__product', 'items__variant'),
+        request,
+        field_name='warehouse__store',
+    ).order_by('-return_date', '-created_at', '-id')
+    return JsonResponse({'data': [_serialize_purchase_return(row) for row in returns]})
+
+
+@login_required(login_url="/login/")
+def api_get_purchase_return_receipt_detail(request):
+    receipt = _get_goods_receipt_for_user(
+        request,
+        request.GET.get('receipt_id'),
+        queryset=GoodsReceipt.objects.select_related('supplier', 'warehouse').prefetch_related(
+            'items__product', 'items__variant'
+        ),
+    )
+    if not receipt or receipt.status != 1:
+        return JsonResponse({'status': 'error', 'message': 'Phiếu nhập không tồn tại hoặc chưa hoàn thành.'})
+
+    exclude_return_id = request.GET.get('exclude_return_id') or None
+    returned_rows = PurchaseReturnItem.objects.filter(
+        purchase_return__goods_receipt=receipt,
+        purchase_return__status=1,
+        purchase_return__is_deleted=False,
+    )
+    if exclude_return_id:
+        returned_rows = returned_rows.exclude(purchase_return_id=exclude_return_id)
+    returned_map = {
+        row['goods_receipt_item_id']: _to_decimal(row['total'])
+        for row in returned_rows.values('goods_receipt_item_id').annotate(total=Sum('quantity'))
+    }
+    return JsonResponse({
+        'status': 'ok',
+        'receipt': {
+            'id': receipt.id,
+            'code': receipt.code,
+            'supplier': receipt.supplier.name if receipt.supplier else '',
+            'warehouse': receipt.warehouse.name if receipt.warehouse else '',
+            'receipt_date': receipt.receipt_date.strftime('%Y-%m-%d') if receipt.receipt_date else '',
+        },
+        'items': [{
+            'goods_receipt_item_id': item.id,
+            'product_id': item.product_id,
+            'product_code': item.product.code if item.product else '',
+            'product_name': item.product.name if item.product else '',
+            'variant_name': item.variant.size_name if item.variant else '',
+            'received_quantity': float(item.quantity),
+            'returned_quantity': float(returned_map.get(item.id, Decimal('0'))),
+            'returnable_quantity': float(max(_to_decimal(item.quantity) - returned_map.get(item.id, Decimal('0')), Decimal('0'))),
+            'unit_price': float(item.unit_price),
+        } for item in receipt.items.all()],
+    })
+
+
+@login_required(login_url="/login/")
+def api_save_purchase_return(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        with transaction.atomic():
+            return_id = data.get('id')
+            if return_id:
+                purchase_return = _get_purchase_return_for_user(
+                    request,
+                    return_id,
+                    queryset=PurchaseReturn.objects.select_for_update().prefetch_related('items'),
+                )
+                if not purchase_return:
+                    return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng nhập.'})
+            else:
+                purchase_return = PurchaseReturn(created_by=request.user)
+
+            receipt = _get_goods_receipt_for_user(
+                request,
+                data.get('goods_receipt_id'),
+                queryset=(
+                    GoodsReceipt.objects
+                    .select_for_update(of=('self',))
+                    .select_related('supplier', 'warehouse')
+                    .prefetch_related('items')
+                ),
+            )
+            if not receipt or receipt.status != 1 or not receipt.warehouse_id:
+                return JsonResponse({'status': 'error', 'message': 'Chỉ được trả từ phiếu nhập đã hoàn thành.'})
+
+            status = int(data.get('status', 0))
+            if status not in dict(PurchaseReturn.STATUS_CHOICES):
+                return JsonResponse({'status': 'error', 'message': 'Trạng thái phiếu trả không hợp lệ.'})
+            reason = (data.get('reason') or '').strip()
+            if not reason:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập lý do trả hàng.'})
+            items_data = data.get('items') or []
+            if not isinstance(items_data, list) or not items_data:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một sản phẩm trả.'})
+
+            receipt_items = {item.id: item for item in receipt.items.all()}
+            other_returns = PurchaseReturnItem.objects.filter(
+                purchase_return__goods_receipt=receipt,
+                purchase_return__status=1,
+                purchase_return__is_deleted=False,
+            )
+            if return_id:
+                other_returns = other_returns.exclude(purchase_return_id=return_id)
+            returned_map = {
+                row['goods_receipt_item_id']: _to_decimal(row['total'])
+                for row in other_returns.values('goods_receipt_item_id').annotate(total=Sum('quantity'))
+            }
+
+            normalized_items = []
+            seen = set()
+            total_amount = Decimal('0')
+            for row in items_data:
+                receipt_item_id = int(row.get('goods_receipt_item_id') or 0)
+                receipt_item = receipt_items.get(receipt_item_id)
+                if not receipt_item or receipt_item_id in seen:
+                    return JsonResponse({'status': 'error', 'message': 'Dòng sản phẩm trả không hợp lệ hoặc bị trùng.'})
+                seen.add(receipt_item_id)
+                quantity = _to_decimal(row.get('quantity', 0))
+                if quantity <= 0:
+                    return JsonResponse({'status': 'error', 'message': 'Số lượng trả phải lớn hơn 0.'})
+                remaining = _to_decimal(receipt_item.quantity) - returned_map.get(receipt_item_id, Decimal('0'))
+                if quantity > remaining:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Số lượng trả của "{receipt_item.product.name}" vượt số còn có thể trả ({remaining}).'
+                    })
+                unit_price = _to_decimal(row.get('unit_price', receipt_item.unit_price))
+                line_total = quantity * unit_price
+                total_amount += line_total
+                normalized_items.append((receipt_item, quantity, unit_price, line_total, row.get('note', '')))
+
+            if return_id and purchase_return.stock_applied:
+                _reverse_purchase_return_stock(purchase_return)
+
+            code = (data.get('code') or '').strip() or purchase_return.code or _generate_next_purchase_return_code()
+            purchase_return.code = code
+            purchase_return.goods_receipt = receipt
+            purchase_return.supplier = receipt.supplier
+            purchase_return.warehouse = receipt.warehouse
+            purchase_return.return_date = (data.get('return_date') or '').strip() or timezone.now().date()
+            purchase_return.status = status
+            purchase_return.reason = reason
+            purchase_return.note = (data.get('note') or '').strip()
+            purchase_return.total_amount = total_amount
+            purchase_return.stock_applied = False
+            purchase_return.save()
+            purchase_return.items.all().delete()
+            for receipt_item, quantity, unit_price, line_total, note in normalized_items:
+                PurchaseReturnItem.objects.create(
+                    purchase_return=purchase_return,
+                    goods_receipt_item=receipt_item,
+                    product=receipt_item.product,
+                    variant=receipt_item.variant,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    total_price=line_total,
+                    note=note,
+                )
+
+            if status == 1:
+                allow_negative = _allow_negative_stock_for_warehouse_id(receipt.warehouse_id)
+                for receipt_item, quantity, _, _, _ in normalized_items:
+                    stock = _get_locked_stock(receipt_item.product_id, receipt.warehouse_id)
+                    _adjust_locked_stock(stock, -quantity, allow_negative=allow_negative)
+                purchase_return.stock_applied = True
+                purchase_return.save(update_fields=['stock_applied'])
+
+        message = 'Đã hoàn thành phiếu trả và trừ tồn kho.' if status == 1 else 'Đã lưu phiếu trả hàng nhập.'
+        return JsonResponse({'status': 'ok', 'message': message, 'id': purchase_return.id, 'code': purchase_return.code})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_delete_purchase_return(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        with transaction.atomic():
+            purchase_return = _get_purchase_return_for_user(
+                request,
+                data.get('id'),
+                queryset=PurchaseReturn.objects.select_for_update().prefetch_related('items'),
+            )
+            if not purchase_return:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng nhập.'})
+            _reverse_purchase_return_stock(purchase_return)
+            purchase_return.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Đã xóa phiếu trả và hoàn tác tồn kho.'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1995,6 +2374,18 @@ def api_delete_stock_transfer(request):
 
 # ============ API: STOCK CHECK ============
 
+def _reverse_applied_stock_check(stock_check):
+    """Hoàn tác phần chênh lệch của một phiếu kiểm đã áp dụng tồn kho."""
+    if not stock_check.stock_applied or not stock_check.warehouse_id:
+        return
+    for item in stock_check.items.select_related('product').all():
+        stock = _get_locked_stock(item.product_id, stock_check.warehouse_id)
+        stock.quantity = _to_decimal(stock.quantity) - _to_decimal(item.difference)
+        stock.save(update_fields=['quantity'])
+    stock_check.stock_applied = False
+    stock_check.save(update_fields=['stock_applied'])
+
+
 @login_required(login_url="/login/")
 def api_get_stock_checks(request):
     checks = (
@@ -2024,6 +2415,7 @@ def api_get_stock_checks(request):
             'check_date': c.check_date.strftime('%Y-%m-%d') if c.check_date else '',
             'created_at': c.created_at.strftime('%d/%m/%Y %H:%M:%S') if c.created_at else '',
             'status': c.status, 'status_display': c.get_status_display(),
+            'stock_applied': c.stock_applied,
             'note': c.note or '',
             'items': items,
         })
@@ -2039,7 +2431,11 @@ def api_save_stock_check(request):
         with transaction.atomic():
             sc_id = data.get('id')
             if sc_id:
-                sc = _get_stock_check_for_user(request, sc_id)
+                sc = _get_stock_check_for_user(
+                    request,
+                    sc_id,
+                    queryset=StockCheck.objects.select_for_update().prefetch_related('items__product'),
+                )
                 if not sc:
                     return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu kiểm'})
             else:
@@ -2053,11 +2449,19 @@ def api_save_stock_check(request):
 
             warehouse_id = data.get('warehouse_id') or None
             warehouse = _get_warehouse_for_user(request, warehouse_id) if warehouse_id else None
-            if warehouse_id and not warehouse:
+            if not warehouse:
                 return JsonResponse({'status': 'error', 'message': 'Kho kiểm không thuộc phạm vi cửa hàng của bạn.'})
             sc.warehouse = warehouse
             items_data = data.get('items', [])
+            if not isinstance(items_data, list) or not items_data:
+                return JsonResponse({'status': 'error', 'message': 'Vui lòng thêm ít nhất một sản phẩm kiểm.'})
+
+            new_status = int(data.get('status', 0))
+            if new_status not in dict(StockCheck.STATUS_CHOICES):
+                return JsonResponse({'status': 'error', 'message': 'Trạng thái phiếu kiểm không hợp lệ.'})
+
             normalized_items = []
+            seen_product_ids = set()
             for item in items_data:
                 product_id = item.get('product_id')
                 product = _get_product_for_user(request, product_id)
@@ -2067,6 +2471,17 @@ def api_save_stock_check(request):
                         'message': 'Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.'
                     })
                 _ensure_product_matches_store(product, warehouse.store_id if warehouse else None, 'kho kiểm')
+                if product.is_combo or product.is_service:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Không thể kiểm tồn trực tiếp cho combo/dịch vụ "{product.name}".'
+                    })
+                if product.id in seen_product_ids:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Sản phẩm "{product.name}" đang bị nhập trùng trong phiếu kiểm.'
+                    })
+                seen_product_ids.add(product.id)
                 variant_id = item.get('variant_id') or None
                 if variant_id and not _get_variant_for_product(product, variant_id):
                     return JsonResponse({
@@ -2074,14 +2489,21 @@ def api_save_stock_check(request):
                         'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
                     })
                 actual_qty = _to_decimal(item.get('actual_quantity', 0))
-                sys_qty = Decimal('0')
-                if warehouse and product_id:
-                    try:
-                        ps = ProductStock.objects.get(product_id=product_id, warehouse=warehouse)
-                        sys_qty = _to_decimal(ps.quantity)
-                    except ProductStock.DoesNotExist:
-                        sys_qty = Decimal('0')
-                normalized_items.append((item, product, variant_id, actual_qty, sys_qty))
+                if actual_qty < 0 and not _allow_negative_stock_for_warehouse_id(warehouse.id):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Kho "{warehouse.name}" chưa bật cấu hình cho phép tồn âm.'
+                    })
+                normalized_items.append((item, product, variant_id, actual_qty))
+
+            if sc_id and sc.stock_applied:
+                _reverse_applied_stock_check(sc)
+
+            inventory_rows = []
+            for item, product, variant_id, actual_qty in normalized_items:
+                stock = _get_locked_stock(product.id, warehouse.id)
+                sys_qty = _to_decimal(stock.quantity)
+                inventory_rows.append((item, product, variant_id, actual_qty, sys_qty, stock))
 
             check_date = (data.get('check_date', '') or '').strip()
             if not check_date:
@@ -2090,13 +2512,14 @@ def api_save_stock_check(request):
                 else:
                     check_date = date.today().strftime('%Y-%m-%d')
             sc.check_date = check_date
-            sc.status = data.get('status', 0)
+            sc.status = new_status
             sc.note = data.get('note', '')
+            sc.stock_applied = False
             sc.save()
 
             # Save items
             sc.items.all().delete()
-            for item, product, variant_id, actual_qty, sys_qty in normalized_items:
+            for item, product, variant_id, actual_qty, sys_qty, stock in inventory_rows:
                 StockCheckItem.objects.create(
                     stock_check=sc,
                     product=product,
@@ -2107,7 +2530,16 @@ def api_save_stock_check(request):
                     note=item.get('note', ''),
                 )
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+                if new_status == 1:
+                    stock.quantity = actual_qty
+                    stock.save(update_fields=['quantity'])
+
+            if new_status == 1:
+                sc.stock_applied = True
+                sc.save(update_fields=['stock_applied'])
+
+        message = 'Hoàn thành kiểm hàng và đã cập nhật tồn kho.' if new_status == 1 else 'Lưu phiếu kiểm thành công.'
+        return JsonResponse({'status': 'ok', 'message': message})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -2118,10 +2550,16 @@ def api_delete_stock_check(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        stock_check = _get_stock_check_for_user(request, data.get('id'))
-        if not stock_check:
-            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu kiểm'})
-        stock_check.delete()
+        with transaction.atomic():
+            stock_check = _get_stock_check_for_user(
+                request,
+                data.get('id'),
+                queryset=StockCheck.objects.select_for_update().prefetch_related('items__product'),
+            )
+            if not stock_check:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu kiểm'})
+            _reverse_applied_stock_check(stock_check)
+            stock_check.delete()
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

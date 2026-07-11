@@ -14,6 +14,8 @@ from products.models import (
     ComboItem,
     GoodsReceipt,
     GoodsReceiptItem,
+    PurchaseReturn,
+    PurchaseReturnItem,
     Product,
     ProductCategory,
     ProductLocation,
@@ -102,6 +104,66 @@ class ProductInventoryFlowTests(TestCase):
             'products.xlsx',
             stream.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def _create_completed_goods_receipt(
+        self,
+        code='P-RETURN-SOURCE',
+        quantity=Decimal('10'),
+        unit_price=Decimal('100'),
+        product=None,
+        warehouse=None,
+        supplier=None,
+        created_by=None,
+    ):
+        product = product or self.product
+        warehouse = warehouse or self.warehouse_a
+        supplier = supplier or self.supplier
+        created_by = created_by or self.user
+        receipt = GoodsReceipt.objects.create(
+            code=code,
+            supplier=supplier,
+            warehouse=warehouse,
+            receipt_date=date.today(),
+            status=1,
+            total_amount=quantity * unit_price,
+            created_by=created_by,
+        )
+        item = GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=product,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_price=quantity * unit_price,
+        )
+        return receipt, item
+
+    def _post_purchase_return(
+        self,
+        receipt,
+        receipt_item,
+        quantity,
+        status=1,
+        return_id=None,
+        code='',
+    ):
+        return self.client.post(
+            reverse('api_save_purchase_return'),
+            data=json.dumps({
+                'id': return_id,
+                'code': code,
+                'goods_receipt_id': receipt.id,
+                'return_date': date.today().isoformat(),
+                'status': status,
+                'reason': 'Nha cung cap giao nham hang',
+                'note': 'Theo doi tra hang nhap',
+                'items': [{
+                    'goods_receipt_item_id': receipt_item.id,
+                    'quantity': str(quantity),
+                    'unit_price': str(receipt_item.unit_price),
+                }],
+            }),
+            content_type='application/json',
         )
 
     def test_save_product_auto_generates_code_when_blank(self):
@@ -193,6 +255,96 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock_by_warehouse[self.warehouse_b.id], -2.0)
         self.assertEqual(row['total_stock'], -2.0)
 
+    def test_edit_product_allows_negative_stock_when_enabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Allow negative product edit',
+            opt_allow_negative_stock=True,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('2'))
+
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'id': self.product.id,
+                'code': self.product.code,
+                'name': self.product.name,
+                'unit': self.product.unit,
+                'skip_variants': '1',
+                'combo_items': '[]',
+                'stocks': json.dumps([
+                    {'warehouse_id': self.warehouse_a.id, 'quantity': '-5'},
+                    {'warehouse_id': self.warehouse_b.id, 'quantity': '1.5'},
+                ]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stocks = {
+            stock.warehouse_id: stock.quantity
+            for stock in ProductStock.objects.filter(product=self.product)
+        }
+        self.assertEqual(stocks[self.warehouse_a.id], Decimal('-5'))
+        self.assertEqual(stocks[self.warehouse_b.id], Decimal('1.5'))
+
+    def test_edit_product_rejects_negative_stock_when_disabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Reject negative product edit',
+            opt_allow_negative_stock=False,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('2'),
+        )
+
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'id': self.product.id,
+                'code': self.product.code,
+                'name': self.product.name,
+                'unit': self.product.unit,
+                'skip_variants': '1',
+                'combo_items': '[]',
+                'stocks': json.dumps([
+                    {'warehouse_id': self.warehouse_a.id, 'quantity': '-1'},
+                ]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('chưa bật cấu hình cho phép tồn âm', response.json()['message'])
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('2'))
+
+    def test_edit_product_rejects_stock_from_another_store(self):
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'id': self.product.id,
+                'code': self.product.code,
+                'name': self.product.name,
+                'unit': self.product.unit,
+                'skip_variants': '1',
+                'combo_items': '[]',
+                'stocks': json.dumps([
+                    {'warehouse_id': self.other_warehouse.id, 'quantity': '10'},
+                ]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('không thuộc cửa hàng của sản phẩm', response.json()['message'])
+        self.assertFalse(ProductStock.objects.filter(
+            product=self.product,
+            warehouse=self.other_warehouse,
+        ).exists())
+
     def test_brand_owner_can_create_product_type_under_category(self):
         category = ProductCategory.objects.create(name='Linh kien may moc')
         self.client.force_login(self.owner)
@@ -234,6 +386,29 @@ class ProductInventoryFlowTests(TestCase):
         self.assertRegex(supplier.code, r'^NCC\d{3}$')
         self.assertEqual(payload['supplier']['id'], supplier.id)
         self.assertEqual(payload['supplier']['code'], supplier.code)
+
+    def test_inventory_user_can_quick_create_supplier_from_goods_receipt(self):
+        response = self.client.post(
+            reverse('api_quick_create_supplier'),
+            data=json.dumps({
+                'name': 'NCC tao tai phieu nhap',
+                'phone': '0909000111',
+                'contact_person': 'Anh Minh',
+                'address': '12 Nguyen Trai',
+                'note': 'Tao nhanh khi nhap hang',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        supplier = Supplier.objects.get(id=payload['supplier']['id'])
+        self.assertRegex(supplier.code, r'^NCC\d{3}$')
+        self.assertEqual(supplier.created_by_id, self.user.id)
+        self.assertEqual(supplier.phone, '0909000111')
+        self.assertEqual(supplier.contact_person, 'Anh Minh')
+        self.assertEqual(supplier.address, '12 Nguyen Trai')
 
     def test_brand_owner_can_quick_create_product_location(self):
         self.client.force_login(self.owner)
@@ -829,6 +1004,176 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock_a.quantity, Decimal('0'))
         self.assertEqual(stock_b.quantity, Decimal('5'))
 
+    def test_completed_purchase_return_deducts_inventory(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-COMPLETE')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+
+        response = self._post_purchase_return(receipt, receipt_item, Decimal('3'), status=1)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        purchase_return = PurchaseReturn.objects.get(id=response.json()['id'])
+        self.assertEqual(stock.quantity, Decimal('7'))
+        self.assertTrue(purchase_return.stock_applied)
+        self.assertEqual(purchase_return.total_amount, Decimal('300'))
+
+    def test_draft_purchase_return_does_not_change_inventory(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-DRAFT')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+
+        response = self._post_purchase_return(receipt, receipt_item, Decimal('3'), status=0)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        purchase_return = PurchaseReturn.objects.get(id=response.json()['id'])
+        self.assertEqual(stock.quantity, Decimal('10'))
+        self.assertFalse(purchase_return.stock_applied)
+
+    def test_purchase_return_cannot_exceed_remaining_received_quantity(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-LIMIT')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        first_response = self._post_purchase_return(receipt, receipt_item, Decimal('4'), status=1)
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+
+        response = self._post_purchase_return(receipt, receipt_item, Decimal('7'), status=1)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('vượt số còn có thể trả', response.json()['message'])
+        self.assertEqual(PurchaseReturn.objects.count(), 1)
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        self.assertEqual(stock.quantity, Decimal('6'))
+
+    def test_edit_completed_purchase_return_reverses_and_reapplies_inventory(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-EDIT')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        create_response = self._post_purchase_return(receipt, receipt_item, Decimal('3'), status=1)
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        purchase_return = PurchaseReturn.objects.get(id=create_response.json()['id'])
+
+        response = self._post_purchase_return(
+            receipt,
+            receipt_item,
+            Decimal('5'),
+            status=1,
+            return_id=purchase_return.id,
+            code=purchase_return.code,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        purchase_return.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('5'))
+        self.assertEqual(purchase_return.items.get().quantity, Decimal('5'))
+        self.assertTrue(purchase_return.stock_applied)
+
+    def test_delete_completed_purchase_return_restores_inventory(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-DELETE')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        create_response = self._post_purchase_return(receipt, receipt_item, Decimal('3'), status=1)
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        return_id = create_response.json()['id']
+
+        response = self.client.post(
+            reverse('api_delete_purchase_return'),
+            data=json.dumps({'id': return_id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        deleted_return = PurchaseReturn.all_objects.get(id=return_id)
+        self.assertEqual(stock.quantity, Decimal('10'))
+        self.assertTrue(deleted_return.is_deleted)
+        self.assertFalse(deleted_return.stock_applied)
+
+    def test_goods_receipt_with_deleted_return_history_cannot_be_edited_or_deleted(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-AUDIT')
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        create_response = self._post_purchase_return(receipt, receipt_item, Decimal('2'), status=0)
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        return_id = create_response.json()['id']
+        delete_return_response = self.client.post(
+            reverse('api_delete_purchase_return'),
+            data=json.dumps({'id': return_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_return_response.json()['status'], 'ok', msg=delete_return_response.content.decode())
+
+        edit_response = self.client.post(
+            reverse('api_save_goods_receipt'),
+            data=json.dumps({
+                'id': receipt.id,
+                'code': receipt.code,
+                'supplier_id': self.supplier.id,
+                'warehouse_id': self.warehouse_a.id,
+                'receipt_date': date.today().isoformat(),
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': '9',
+                    'unit_price': '100',
+                }],
+            }),
+            content_type='application/json',
+        )
+        delete_response = self.client.post(
+            reverse('api_delete_goods_receipt'),
+            data=json.dumps({'id': receipt.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'error')
+        self.assertIn('đã phát sinh trả hàng', edit_response.json()['message'])
+        self.assertEqual(delete_response.json()['status'], 'error')
+        self.assertIn('đã phát sinh trả hàng', delete_response.json()['message'])
+        self.assertTrue(GoodsReceipt.objects.filter(id=receipt.id).exists())
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        self.assertEqual(stock.quantity, Decimal('10'))
+
+    def test_purchase_return_rejects_goods_receipt_from_another_store(self):
+        receipt, receipt_item = self._create_completed_goods_receipt(
+            code='P-RETURN-FOREIGN',
+            product=self.other_product,
+            warehouse=self.other_warehouse,
+            created_by=self.other_user,
+        )
+
+        response = self._post_purchase_return(receipt, receipt_item, Decimal('1'), status=1)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Chỉ được trả từ phiếu nhập đã hoàn thành', response.json()['message'])
+        self.assertFalse(PurchaseReturn.objects.exists())
+
     def test_goods_receipt_list_uses_total_item_quantity(self):
         receipt = GoodsReceipt.objects.create(
             code='P00003',
@@ -1069,6 +1414,11 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(item.system_quantity, Decimal('5.00'))
         self.assertEqual(item.actual_quantity, Decimal('3.50'))
         self.assertEqual(item.difference, Decimal('-1.50'))
+        self.assertTrue(stock_check.stock_applied)
+        self.assertEqual(
+            ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a).quantity,
+            Decimal('3.50'),
+        )
 
     def test_save_stock_check_auto_generates_code_and_date(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5.5'))
@@ -1094,6 +1444,119 @@ class ProductInventoryFlowTests(TestCase):
         item = StockCheckItem.objects.get(stock_check=stock_check)
         self.assertEqual(item.system_quantity, Decimal('5.50'))
         self.assertEqual(item.difference, Decimal('1.75'))
+        self.assertEqual(
+            ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a).quantity,
+            Decimal('7.25'),
+        )
+
+    def test_draft_stock_check_does_not_change_inventory(self):
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('5'),
+        )
+
+        response = self.client.post(
+            reverse('api_save_stock_check'),
+            data=json.dumps({
+                'warehouse_id': self.warehouse_a.id,
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'actual_quantity': '2',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('5'))
+        self.assertFalse(StockCheck.objects.get().stock_applied)
+
+    def test_edit_completed_stock_check_reapplies_inventory(self):
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        create_response = self.client.post(
+            reverse('api_save_stock_check'),
+            data=json.dumps({
+                'code': 'KK-REAPPLY',
+                'warehouse_id': self.warehouse_a.id,
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'actual_quantity': '7',
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('7'))
+
+        stock.quantity = Decimal('5')  # Phát sinh bán thêm 2 sau lần kiểm đầu.
+        stock.save(update_fields=['quantity'])
+        stock_check = StockCheck.objects.get(code='KK-REAPPLY')
+        edit_response = self.client.post(
+            reverse('api_save_stock_check'),
+            data=json.dumps({
+                'id': stock_check.id,
+                'code': stock_check.code,
+                'warehouse_id': self.warehouse_a.id,
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'actual_quantity': '8',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('8'))
+        item = StockCheckItem.objects.get(stock_check=stock_check)
+        self.assertEqual(item.system_quantity, Decimal('8'))  # 5 hiện tại - chênh lệch cũ (-3).
+        self.assertEqual(item.difference, Decimal('0'))
+
+    def test_delete_completed_stock_check_restores_its_adjustment(self):
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        self.client.post(
+            reverse('api_save_stock_check'),
+            data=json.dumps({
+                'code': 'KK-DELETE-APPLIED',
+                'warehouse_id': self.warehouse_a.id,
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'actual_quantity': '6',
+                }],
+            }),
+            content_type='application/json',
+        )
+        stock_check = StockCheck.objects.get(code='KK-DELETE-APPLIED')
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('6'))
+
+        delete_response = self.client.post(
+            reverse('api_delete_stock_check'),
+            data=json.dumps({'id': stock_check.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(delete_response.json()['status'], 'ok', msg=delete_response.content.decode())
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('10'))
+        deleted_check = StockCheck.all_objects.get(id=stock_check.id)
+        self.assertFalse(deleted_check.stock_applied)
 
     def test_get_stock_checks_returns_newest_created_first_for_same_date(self):
         StockCheck.objects.create(

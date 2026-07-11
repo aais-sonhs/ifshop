@@ -473,8 +473,8 @@ $(document).ready(function(){
                 {% endif %}
 
                 {% if not biz or biz.mod_products %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}menu-open{% endif %}" data-menu-key="inventory">
-                    <a href="#" class="nav-link {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'purchase_return_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}menu-open{% endif %}" data-menu-key="inventory">
+                    <a href="#" class="nav-link {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'purchase_return_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' or active_tab == 'cost_adjustment_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-boxes"></i>
                         <p>Kho & Sản phẩm <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -501,6 +501,12 @@ $(document).ready(function(){
                             <a href="{% url 'goods_receipt_tbl' %}" class="nav-link {% if active_tab == 'goods_receipt_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhập hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'purchase_return_tbl' %}" class="nav-link {% if active_tab == 'purchase_return_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Trả hàng nhập</p>
                             </a>
                         </li>
                         <li class="nav-item">

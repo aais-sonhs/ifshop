@@ -5,7 +5,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-shopping-cart mr-2"></i>Danh sách đơn hàng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/orders/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_orders_top" title="Xuất Excel theo bộ lọc"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo bán hàng / báo giá</button>
         </div>
     </div>
@@ -25,18 +25,32 @@
         </div>
         <div class="row mb-2" style="gap:6px 0;">
             <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Tìm mã đơn, KH, SĐT, sản phẩm, tag...">
+                <input type="text" class="form-control form-control-sm" id="filter_text" placeholder="🔍 Mã đơn, SĐT, ghi chú, tag...">
             </div>
-            <div class="col-md-2"><select class="form-control form-control-sm" id="filter_payment_status"><option value="">-- Thanh toán --</option><option value="0">Chưa TT</option><option value="1">TT một phần</option><option value="2">Đã TT đủ</option></select></div>
-            <div class="col-md-2"><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Nhóm KH</option>{% for g in customer_groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date" title="Từ ngày"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date" title="Đến ngày"></div>
+            <div class="col-md-3">
+                <select class="form-control form-control-sm select2" id="filter_customer" data-placeholder="-- Khách hàng --" style="width:100%;">
+                    <option value="">-- Tất cả khách hàng --</option>
+                    {% for c in customers %}<option value="{{ c.id }}">{{ c.code }} - {{ c.name }}{% if c.phone %} - {{ c.phone }}{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" id="filter_product" placeholder="🔍 Mã hoặc tên sản phẩm đã mua...">
+            </div>
+            <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_export_status">
+                    <option value="">-- Xuất kho --</option>
+                    <option value="pending">Chưa xuất kho</option>
+                    <option value="exported">Đã xuất kho</option>
+                </select>
+            </div>
             <div class="col-md-1 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Tìm</button>
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
         </div>
         <div class="row mb-2" style="gap:6px 0;">
+            <div class="col-md-2"><select class="form-control form-control-sm" id="filter_payment_status"><option value="">-- Thanh toán --</option><option value="0">Chưa TT</option><option value="1">TT một phần</option><option value="2">Đã TT đủ</option></select></div>
+            <div class="col-md-2"><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Nhóm KH</option>{% for g in customer_groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div>
             <div class="col-md-2">
                 <select class="form-control form-control-sm select2" id="filter_payment_method" data-placeholder="-- Phương thức TT --" style="width:100%;">
                     <option value="">-- Phương thức TT --</option>
@@ -49,11 +63,12 @@
                     {% for u in system_users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" id="filter_product" placeholder="Tìm sản phẩm trong đơn...">
-            </div>
             <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày" aria-label="Tạo từ ngày"></div>
             <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày" aria-label="Tạo đến ngày"></div>
+        </div>
+        <div class="row mb-2" style="gap:6px 0;">
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date" title="Ngày đặt từ" aria-label="Ngày đặt từ"></div>
+            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date" title="Ngày đặt đến" aria-label="Ngày đặt đến"></div>
         </div>
         <div class="mb-2" id="active_order_filter_summary"></div>
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
@@ -4756,6 +4771,8 @@ function getCurrentOrderFilters(){
     if(activeStatus === undefined || activeStatus === null) activeStatus = '';
     return {
         status: String(activeStatus),
+        customer: $('#filter_customer').val() || '',
+        export_status: $('#filter_export_status').val() || '',
         payment_status: $('#filter_payment_status').val() || '',
         customer_group: $('#filter_customer_group').val() || '',
         payment_method: $('#filter_payment_method').val() || '',
@@ -4800,6 +4817,12 @@ function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
     var activeStatus = getCurrentOrderFilters().status || '';
     if(activeStatus !== ''){
         chips.push({key:'status', label:'Trạng thái', value:getOrderStatusFilterText(activeStatus)});
+    }
+    if($('#filter_customer').val()){
+        chips.push({key:'customer', label:'Khách hàng', value:$('#filter_customer option:selected').text()});
+    }
+    if($('#filter_export_status').val()){
+        chips.push({key:'export_status', label:'Xuất kho', value:$('#filter_export_status option:selected').text()});
     }
     if($('#filter_payment_status').val()){
         chips.push({key:'payment', label:'Thanh toán', value:$('#filter_payment_status option:selected').text()});
@@ -5021,27 +5044,15 @@ function loadData(){
 }
 
 // Export orders to Excel
-$('#btn_export_orders').click(function(){
-    var url = '/api/export-orders-excel/?';
+$('#btn_export_orders, #btn_export_orders_top').click(function(){
+    var url = '/api/orders/export-excel/?';
     var params = [];
-    var from = $('#filter_from_date').val();
-    var to = $('#filter_to_date').val();
-    var createdFrom = $('#filter_created_from').val();
-    var createdTo = $('#filter_created_to').val();
-    var status = $('.filter-tab.active').data('status');
-    var ps = $('#filter_payment_status').val();
-    var paymentMethod = $('#filter_payment_method').val();
-    var creator = $('#filter_creator').val();
-    var product = ($('#filter_product').val() || '').trim();
-    if(from) params.push('from_date='+from);
-    if(to) params.push('to_date='+to);
-    if(createdFrom) params.push('created_from='+createdFrom);
-    if(createdTo) params.push('created_to='+createdTo);
-    if(status !== '' && status !== undefined) params.push('status='+status);
-    if(ps !== '') params.push('payment_status='+ps);
-    if(paymentMethod) params.push('payment_method='+encodeURIComponent(paymentMethod));
-    if(creator) params.push('creator='+encodeURIComponent(creator));
-    if(product) params.push('product='+encodeURIComponent(product));
+    var filters = getCurrentOrderFilters();
+    Object.keys(filters).forEach(function(key){
+        if(filters[key] !== '' && filters[key] !== null && filters[key] !== undefined){
+            params.push(encodeURIComponent(key) + '=' + encodeURIComponent(filters[key]));
+        }
+    });
     window.location.href = url + params.join('&');
 });
 
@@ -5056,6 +5067,8 @@ $(document).on('click', '.filter-tab', function(){
 // Clear all filters
 $('#btn_clear_filter').click(function(){
     $('#filter_text').val('');
+    $('#filter_customer').val('').trigger('change.select2');
+    $('#filter_export_status').val('');
     $('#filter_payment_status').val('');
     $('#filter_customer_group').val('');
     $('#filter_payment_method, #filter_creator').val('').trigger('change.select2');
@@ -5077,6 +5090,10 @@ $(document).on('click', '.order-filter-chip-remove', function(){
     if(key === 'status'){
         $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
         $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    } else if(key === 'customer'){
+        $('#filter_customer').val('').trigger('change.select2');
+    } else if(key === 'export_status'){
+        $('#filter_export_status').val('');
     } else if(key === 'payment'){
         $('#filter_payment_status').val('');
     } else if(key === 'customer_group'){
@@ -5116,7 +5133,7 @@ $('#filter_text, #filter_product').on('keydown', function(e){
         loadData();
     }
 });
-$('#filter_customer_group, #filter_payment_status, #filter_payment_method, #filter_creator').on('change', function(){
+$('#filter_customer, #filter_export_status, #filter_customer_group, #filter_payment_status, #filter_payment_method, #filter_creator').on('change', function(){
     resetOrderPage();
     loadData();
 });
@@ -5943,6 +5960,8 @@ function renderSavedFiltersMenu(){
         var desc = [];
         if(f.text) desc.push('"' + f.text + '"');
         if(f.status !== undefined && f.status !== '') desc.push($('.filter-tab[data-status="'+f.status+'"]').contents().first().text().trim() || 'Trạng thái');
+        if(f.customer_text) desc.push(f.customer_text);
+        if(f.export_status) desc.push($('#filter_export_status option[value="'+f.export_status+'"]').text() || 'Xuất kho');
         if(f.payment_status) desc.push($('#filter_payment_status option[value="'+f.payment_status+'"]').text() || 'Thanh toán');
         if(f.customer_group_text) desc.push(f.customer_group_text);
         if(f.payment_method_text) desc.push(f.payment_method_text);
@@ -5966,6 +5985,9 @@ $('#btn_save_filter').click(function(){
     var preset = {
         name: name,
         status: String(activeStatus),
+        customer: $('#filter_customer').val(),
+        customer_text: $('#filter_customer').val() ? ($('#filter_customer option:selected').text() || '') : '',
+        export_status: $('#filter_export_status').val(),
         payment_status: $('#filter_payment_status').val(),
         customer_group: $('#filter_customer_group').val(),
         customer_group_text: $('#filter_customer_group').val() ? ($('#filter_customer_group option:selected').text() || '') : '',
@@ -5995,6 +6017,8 @@ $(document).on('click', '.filter-load-btn', function(){
     if(statusValue === undefined || statusValue === null) statusValue = '';
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status="'+statusValue+'"]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    $('#filter_customer').val(f.customer || '').trigger('change.select2');
+    $('#filter_export_status').val(f.export_status || '');
     $('#filter_payment_status').val(f.payment_status || '');
     $('#filter_customer_group').val(f.customer_group || '');
     $('#filter_payment_method').val(f.payment_method || '').trigger('change.select2');

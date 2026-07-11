@@ -1,6 +1,8 @@
 import json
+from io import BytesIO
 from datetime import date
 
+import openpyxl
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -547,6 +549,124 @@ class OrderRiskFlowTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['meta']['total_filtered_count'], 1)
         self.assertEqual([row['id'] for row in payload['data']], [second_order.id])
+
+    def test_get_orders_combines_customer_product_and_pending_export_filters(self):
+        selected_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-ORDER-FILTER',
+            name='Khách cần lọc đơn',
+            phone='0909123456',
+            created_by=self.user,
+        )
+        selected_product = Product.objects.create(
+            store=self.store,
+            code='SP-CUSTOMER-FILTER',
+            name='Sản phẩm khách đã mua',
+            created_by=self.user,
+        )
+        matching_order = self._create_order(
+            code='DH-COMBINED-MATCH',
+            customer=selected_customer,
+            status=2,
+        )
+        wrong_customer_order = self._create_order(code='DH-COMBINED-WRONG-CUSTOMER', status=2)
+        wrong_product_order = self._create_order(
+            code='DH-COMBINED-WRONG-PRODUCT',
+            customer=selected_customer,
+            status=3,
+        )
+        exported_order = self._create_order(
+            code='DH-COMBINED-EXPORTED',
+            customer=selected_customer,
+            status=4,
+        )
+        for order, product in (
+            (matching_order, selected_product),
+            (wrong_customer_order, selected_product),
+            (wrong_product_order, self.product),
+            (exported_order, selected_product),
+        ):
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=1,
+                unit_price=100,
+                total_price=100,
+            )
+
+        response = self.client.get(reverse('api_get_orders'), {
+            'customer': selected_customer.id,
+            'product': 'CUSTOMER-FILTER',
+            'export_status': 'pending',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual([row['id'] for row in payload['data']], [matching_order.id])
+
+    def test_get_orders_exported_filter_includes_exported_and_completed_only(self):
+        pending_order = self._create_order(code='DH-EXPORT-FILTER-PENDING', status=3)
+        exported_order = self._create_order(code='DH-EXPORT-FILTER-DONE', status=4)
+        completed_order = self._create_order(code='DH-EXPORT-FILTER-COMPLETE', status=5)
+        canceled_order = self._create_order(code='DH-EXPORT-FILTER-CANCELED', status=6)
+
+        response = self.client.get(reverse('api_get_orders'), {'export_status': 'exported'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        returned_ids = {row['id'] for row in payload['data']}
+        self.assertEqual(returned_ids, {exported_order.id, completed_order.id})
+        self.assertNotIn(pending_order.id, returned_ids)
+        self.assertNotIn(canceled_order.id, returned_ids)
+
+    def test_export_orders_excel_uses_customer_product_and_export_filters(self):
+        selected_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-EXPORT-FILTER',
+            name='Khách xuất file lọc',
+            created_by=self.user,
+        )
+        selected_product = Product.objects.create(
+            store=self.store,
+            code='SP-EXPORT-FILTER',
+            name='Sản phẩm xuất file lọc',
+            created_by=self.user,
+        )
+        matching_order = self._create_order(
+            code='DH-EXCEL-FILTER-MATCH',
+            customer=selected_customer,
+            status=2,
+        )
+        exported_order = self._create_order(
+            code='DH-EXCEL-FILTER-EXPORTED',
+            customer=selected_customer,
+            status=4,
+        )
+        for order in (matching_order, exported_order):
+            OrderItem.objects.create(
+                order=order,
+                product=selected_product,
+                quantity=1,
+                unit_price=100,
+                total_price=100,
+            )
+
+        response = self.client.get('/api/orders/export-excel/', {
+            'customer': selected_customer.id,
+            'product': 'SP-EXPORT-FILTER',
+            'export_status': 'pending',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        workbook = openpyxl.load_workbook(BytesIO(response.content), data_only=True)
+        worksheet = workbook.active
+        exported_codes = {
+            worksheet.cell(row=row_index, column=2).value
+            for row_index in range(2, worksheet.max_row + 1)
+        }
+        self.assertIn(matching_order.code, exported_codes)
+        self.assertNotIn(exported_order.code, exported_codes)
 
     def test_get_orders_status_counts_ignore_active_status_filter(self):
         self._create_order(code='DH-COUNT-001', status=1)

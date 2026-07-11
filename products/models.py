@@ -307,6 +307,69 @@ class GoodsReceiptItem(models.Model):
         verbose_name_plural = 'Chi tiết phiếu nhập'
 
 
+class PurchaseReturn(SoftDeleteModel):
+    """Phiếu trả hàng đã nhập về nhà cung cấp."""
+    STATUS_CHOICES = [
+        (0, 'Nháp'),
+        (1, 'Hoàn thành'),
+        (2, 'Hủy'),
+    ]
+    code = models.CharField(max_length=50, unique=True, verbose_name='Mã phiếu trả nhập')
+    goods_receipt = models.ForeignKey(
+        GoodsReceipt, on_delete=models.PROTECT, related_name='purchase_returns', verbose_name='Phiếu nhập gốc'
+    )
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.SET_NULL, null=True, related_name='purchase_returns', verbose_name='Nhà cung cấp'
+    )
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.SET_NULL, null=True, related_name='purchase_returns', verbose_name='Kho trả'
+    )
+    status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
+    stock_applied = models.BooleanField(default=False, verbose_name='Đã trừ tồn kho')
+    total_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Tổng tiền trả')
+    reason = models.TextField(blank=True, null=True, verbose_name='Lý do trả')
+    note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
+    return_date = models.DateField(verbose_name='Ngày trả')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='purchase_returns_created'
+    )
+
+    class Meta:
+        db_table = 'purchase_returns'
+        verbose_name = 'Phiếu trả hàng nhập'
+        verbose_name_plural = 'Phiếu trả hàng nhập'
+        ordering = ['-return_date', '-id']
+
+    def __str__(self):
+        return self.code
+
+
+class PurchaseReturnItem(models.Model):
+    purchase_return = models.ForeignKey(
+        PurchaseReturn, on_delete=models.CASCADE, related_name='items', verbose_name='Phiếu trả nhập'
+    )
+    goods_receipt_item = models.ForeignKey(
+        GoodsReceiptItem, on_delete=models.PROTECT, related_name='purchase_return_items', verbose_name='Dòng phiếu nhập'
+    )
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='purchase_return_items')
+    variant = models.ForeignKey(
+        ProductVariant, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='purchase_return_items', verbose_name='Biến thể'
+    )
+    quantity = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Số lượng trả')
+    unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá trả')
+    total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
+    note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
+
+    class Meta:
+        db_table = 'purchase_return_items'
+        verbose_name = 'Chi tiết trả hàng nhập'
+        verbose_name_plural = 'Chi tiết trả hàng nhập'
+        unique_together = ['purchase_return', 'goods_receipt_item']
+
+
 class StockCheck(SoftDeleteModel):
     """Kiểm hàng (Kiểm kê kho)"""
     STATUS_CHOICES = [
@@ -318,6 +381,7 @@ class StockCheck(SoftDeleteModel):
     warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, related_name='stock_checks',
                                   verbose_name='Kho')
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
+    stock_applied = models.BooleanField(default=False, verbose_name='Đã cập nhật tồn kho')
     check_date = models.DateField(verbose_name='Ngày kiểm')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     created_at = models.DateTimeField(auto_now_add=True)

@@ -289,6 +289,7 @@
                         <!-- Tồn kho chi tiết theo kho -->
                         <div id="stock_detail_section" style="display:none;" class="mt-2">
                             <label><i class="fas fa-warehouse text-info mr-1"></i>Tồn kho chi tiết</label>
+                            <small class="d-block text-muted mb-1">Có thể nhập số âm nếu cửa hàng đã bật “Cho phép tồn âm”.</small>
                             <div class="border rounded p-2" style="background:#f8f9fa;max-height:160px;overflow-y:auto;">
                                 <table class="table table-sm table-borderless mb-0" id="stock_detail_tbl">
                                     <thead class="small text-muted"><tr><th>Kho</th><th class="text-right">Tồn</th><th class="text-right">Trạng thái</th></tr></thead>
@@ -560,7 +561,7 @@ var PRODUCT_LIST_XHR = null;
 var PRODUCT_COMBO_SOURCE_XHR = null;
 var PRODUCT_WAREHOUSES = [
     {% for w in warehouses %}
-    {id: {{ w.id }}, name: "{{ w.name|escapejs }}"}{% if not forloop.last %},{% endif %}
+    {id: {{ w.id }}, name: "{{ w.name|escapejs }}", store_id: {{ w.store_id }}}{% if not forloop.last %},{% endif %}
     {% endfor %}
 ];
 var PRODUCT_CREATOR_OPTIONS = [
@@ -596,7 +597,7 @@ var productColConfig = new ColumnConfig({
         {key: 'selling_price',    label: 'Giá bán lẻ',      default: true},
         {key: 'ws_no_warranty',   label: 'Giá sỉ KBH',      default: true},
         {key: 'ws_warranty',      label: 'Giá sỉ BH',       default: true},
-        {key: 'stock',            label: 'Tồn kho',         default: true},
+        {key: 'stock',            label: 'Tồn kho',         default: true,  alwaysOn: true},
         {key: 'created_at',       label: 'Ngày tạo',        default: false},
         {key: 'creator',          label: 'Người tạo',       default: false},
         {key: 'actions',          label: 'Thao tác',        default: true},
@@ -1316,6 +1317,15 @@ $(document).ready(function(){
         fd.append('is_service', $('#inp_is_service').is(':checked') ? '1' : '0');
         fd.append('is_combo', $('#inp_is_combo').is(':checked') ? '1' : '0');
 
+        var stocks = [];
+        $('.product-stock-input').each(function(){
+            stocks.push({
+                warehouse_id: Number($(this).data('warehouse-id')),
+                quantity: Number($(this).val() || 0)
+            });
+        });
+        fd.append('stocks', JSON.stringify(stocks));
+
         // Đính kèm file ảnh nếu có chọn
         var imageFile = $('#inp_image')[0].files[0];
         if(imageFile){
@@ -1824,7 +1834,10 @@ function getProductStockRows(product){
         });
     }
 
-    var rows = PRODUCT_WAREHOUSES.map(function(warehouse){
+    var applicableWarehouses = PRODUCT_WAREHOUSES.filter(function(warehouse){
+        return !product || !product.store_id || String(warehouse.store_id) === String(product.store_id);
+    });
+    var rows = applicableWarehouses.map(function(warehouse){
         var existing = stockMap[String(warehouse.id)];
         return existing || {
             warehouse_id: warehouse.id,
@@ -1867,16 +1880,22 @@ function renderInlineStockBreakdown(product, productNameJs){
         '</div>';
     }).join('');
 
+    var negativeBadge = totalStock < 0
+        ? '<span class="badge badge-danger ml-1">Âm kho</span>'
+        : '';
+
     return '<div style="min-width:180px;text-align:left;">' +
         '<div class="d-flex justify-content-between align-items-center">' +
             '<span class="small text-muted">Tổng</span>' +
-            '<span class="' + getStockValueClass(totalStock) + '" style="cursor:pointer;" title="' + stockTooltip + '" onclick="viewPurchaseHistory(' + product.id + ',' + productNameJs + ')">' + fmt(totalStock) + '</span>' +
+            '<span style="cursor:pointer;" title="' + stockTooltip + '" onclick="viewPurchaseHistory(' + product.id + ',' + productNameJs + ')">' +
+                '<span class="' + getStockValueClass(totalStock) + '">' + fmt(totalStock) + '</span>' + negativeBadge +
+            '</span>' +
         '</div>' +
         '<div class="mt-1">' + detailHtml + '</div>' +
     '</div>';
 }
 
-function renderStockDetailTable(product){
+function renderStockDetailTable(product, editable){
     if(!product){
         $('#stock_detail_tbl tbody').html('');
         $('#stock_detail_total').attr('class', 'text-right text-muted').text('0');
@@ -1886,10 +1905,13 @@ function renderStockDetailTable(product){
 
     var rows = getProductStockRows(product);
     var html = rows.map(function(row){
+        var quantityCell = editable
+            ? '<input type="number" step="0.01" class="form-control form-control-sm text-right product-stock-input ' + getStockValueClass(row.quantity) + '" data-warehouse-id="' + row.warehouse_id + '" value="' + row.quantity + '">'
+            : '<span class="' + getStockValueClass(row.quantity) + '">' + fmt(row.quantity) + '</span>';
         return '<tr>' +
             '<td><i class="fas fa-box-open text-muted mr-1"></i>' + escapeHtml(row.warehouse) + '</td>' +
-            '<td class="text-right ' + getStockValueClass(row.quantity) + '">' + fmt(row.quantity) + '</td>' +
-            '<td class="text-right">' + getStockStatusBadge(row.quantity) + '</td>' +
+            '<td class="text-right">' + quantityCell + '</td>' +
+            '<td class="text-right product-stock-status">' + getStockStatusBadge(row.quantity) + '</td>' +
         '</tr>';
     }).join('');
 
@@ -1899,6 +1921,21 @@ function renderStockDetailTable(product){
         .text(fmt(product.total_stock || 0));
     $('#stock_detail_section').show();
 }
+
+$(document).on('input', '.product-stock-input', function(){
+    var total = 0;
+    $('.product-stock-input').each(function(){
+        var quantity = Number($(this).val() || 0);
+        total += quantity;
+        $(this)
+            .removeClass('text-danger text-success text-muted font-weight-bold')
+            .addClass(getStockValueClass(quantity));
+        $(this).closest('tr').find('.product-stock-status').html(getStockStatusBadge(quantity));
+    });
+    $('#stock_detail_total')
+        .attr('class', 'text-right ' + getStockValueClass(total))
+        .text(fmt(total));
+});
 
 function renderProductStockSnapshot(product){
     if(!product){
@@ -2193,7 +2230,7 @@ function editItem(d){
     togglePriceRow();
 
     // === Tồn kho chi tiết theo kho ===
-    renderStockDetailTable(d);
+    renderStockDetailTable(d, !d.is_combo && !d.is_service);
     $('#btn_view_current_purchase_history')
         .show()
         .data('product-id', d.id)

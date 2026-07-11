@@ -1489,6 +1489,39 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(stock.quantity), 3.0)
         self.assertFalse(Receipt.objects.filter(order=order).exists())
 
+    def test_explicit_order_stock_export_allows_negative_stock(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Negative stock disabled for automatic flows',
+            opt_allow_negative_stock=False,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse,
+            quantity=0,
+        )
+        order = self._create_order(code='DH-EXPLICIT-NEGATIVE-STOCK', status=1)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=50,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_export_order_stock'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        order.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(order.status, 4)
+        self.assertEqual(float(stock.quantity), -2.0)
+
     def test_update_order_status_api_moves_steps_without_full_order_save(self):
         order = self._create_order(code='DH-STATUS-FAST-001', status=1)
 

@@ -3385,7 +3385,7 @@ function exportCurrentOrderStock(){
         alert('Vui lòng lưu đơn hàng trước khi xuất kho.');
         return;
     }
-    if(!confirm('Xuất kho đơn hàng này? Tồn kho sẽ được trừ ngay, thanh toán vẫn có thể xử lý riêng.')) return;
+    if(!confirm('Xuất kho đơn hàng này? Tồn kho sẽ được trừ ngay; nếu thiếu hàng hệ thống sẽ ghi nhận tồn âm. Thanh toán vẫn có thể xử lý riêng.')) return;
     var $btn = $('#btn_order_export_stock,#btn_status_next');
     $btn.prop('disabled', true);
     $.ajax({

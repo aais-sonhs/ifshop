@@ -1696,7 +1696,7 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
     })
 
 
-def _apply_order_stock_adjustment(order, direction, warehouse_id=None):
+def _apply_order_stock_adjustment(order, direction, warehouse_id=None, allow_negative_override=None):
     """Áp biến động tồn kho cho toàn bộ item của đơn.
 
     - `direction = 1`: hoàn lại tồn kho
@@ -1709,9 +1709,13 @@ def _apply_order_stock_adjustment(order, direction, warehouse_id=None):
     from products.models import ComboItem
     allow_negative = True
     if _to_decimal(direction) < 0:
-        allow_negative = _allow_negative_stock_for_warehouse_id(
-            warehouse_id,
-            fallback_store=order.store,
+        allow_negative = (
+            bool(allow_negative_override)
+            if allow_negative_override is not None
+            else _allow_negative_stock_for_warehouse_id(
+                warehouse_id,
+                fallback_store=order.store,
+            )
         )
 
     for item in order.items.select_related('product').all():
@@ -3698,7 +3702,13 @@ def api_export_order_stock(request):
                 return JsonResponse({'status': 'error', 'message': 'Đơn hàng chưa có sản phẩm để xuất kho.'})
 
             old_status = order.status
-            _apply_order_stock_adjustment(order, direction=-1)
+            # Người dùng đã xác nhận thao tác xuất kho riêng; nếu thiếu hàng thì
+            # vẫn ghi nhận tồn âm để đơn không bị kẹt ở bước xuất kho.
+            _apply_order_stock_adjustment(
+                order,
+                direction=-1,
+                allow_negative_override=True,
+            )
             order.status = 4
             order.save(update_fields=['status'])
             _refresh_order_payment(order)

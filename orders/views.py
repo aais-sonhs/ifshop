@@ -1176,6 +1176,7 @@ def _capture_order_history_snapshot(order):
         'status': order.status,
         'discount_amount': _to_decimal(order.discount_amount),
         'shipping_fee': _to_decimal(order.shipping_fee),
+        'shipping_address': order.shipping_address or '',
         'final_amount': _to_decimal(order.final_amount),
         'tags': order.tags or '',
         'note': order.note or '',
@@ -1287,6 +1288,7 @@ def _describe_order_history_changes(before, order, normalized_items):
                                  lambda value: status_labels.get(value, value))
     _append_history_field_change(money_parts, before['discount_amount'], _to_decimal(order.discount_amount), 'Chiết khấu', _format_money_for_history)
     _append_history_field_change(money_parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
+    _append_history_field_change(field_parts, before['shipping_address'], order.shipping_address or '', 'Địa chỉ giao hàng')
     _append_history_field_change(field_parts, before['tags'], order.tags or '', 'Tags')
     _append_history_field_change(field_parts, before['note'], order.note or '', 'Ghi chú')
     _append_history_field_change(field_parts, before['salesperson'], order.salesperson or '', 'NV bán hàng')
@@ -1518,6 +1520,9 @@ def _get_exported_order_blocking_changes(order, data):
     if 'tags' in data and ((data.get('tags') or '').strip() or None) != (order.tags or None):
         changes.append('tag')
 
+    if 'shipping_address' in data and ((data.get('shipping_address') or '').strip() or None) != (order.shipping_address or None):
+        changes.append('địa chỉ giao hàng')
+
     if 'salesperson' in data and (data.get('salesperson') or None) != (order.salesperson or None):
         changes.append('nhân viên bán hàng')
 
@@ -1562,7 +1567,7 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
     if blocking_changes:
         return JsonResponse({
             'status': 'error',
-            'message': 'Đơn hàng đã có phiếu thu, chỉ được đổi trạng thái/ghi chú. Không thể thay đổi: '
+            'message': 'Đơn hàng đã có phiếu thu, chỉ được đổi trạng thái/ghi chú/địa chỉ giao. Không thể thay đổi: '
             + ', '.join(blocking_changes) + '.'
         })
 
@@ -1582,6 +1587,11 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         if order.tags != tags:
             order.tags = tags
             update_fields.append('tags')
+    if 'shipping_address' in data:
+        shipping_address = (data.get('shipping_address', '') or '').strip() or None
+        if order.shipping_address != shipping_address:
+            order.shipping_address = shipping_address
+            update_fields.append('shipping_address')
     if 'salesperson' in data:
         salesperson = data.get('salesperson', '') or None
         if order.salesperson != salesperson:
@@ -1602,7 +1612,7 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         _describe_order_history_changes(history_before, order, _history_normalized_items_from_order(order))
     )
     if not history_parts:
-        history_parts = ['Cập nhật trạng thái/ghi chú đơn đã có phiếu thu; không thay đổi tiền hàng.']
+        history_parts = ['Cập nhật trạng thái/ghi chú/địa chỉ giao của đơn đã có phiếu thu; không thay đổi tiền hàng.']
     _log_order_history(
         order=order,
         actor=request.user,
@@ -1784,7 +1794,9 @@ def _sync_order_quotation_status(order, old_quotation_id=None):
 def order_tbl(request):
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
-    customers = list(_get_sales_customers_queryset(request).values('id', 'code', 'name', 'phone'))
+    customers = list(_get_sales_customers_queryset(request).values(
+        'id', 'code', 'name', 'phone', 'address', 'company_address'
+    ))
     warehouses = list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name'))
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
     payment_methods = list(PaymentMethodOption.objects.filter(is_active=True).values(
@@ -2149,6 +2161,8 @@ def api_quick_create_customer(request):
                     'code': existing_customer.code,
                     'name': existing_customer.name,
                     'phone': existing_customer.phone or '',
+                    'address': existing_customer.address or '',
+                    'company_address': existing_customer.company_address or '',
                 }
             })
 
@@ -2198,6 +2212,8 @@ def api_quick_create_customer(request):
                 'code': c.code,
                 'name': c.name,
                 'phone': c.phone or '',
+                'address': c.address or '',
+                'company_address': c.company_address or '',
                 'customer_kind': c.customer_kind or '',
             }
         })
@@ -2698,6 +2714,8 @@ def api_save_order(request):
                 o.order_date = data.get('order_date')
             o.discount_amount = _non_negative_decimal(data.get('discount_amount', o.discount_amount if oid else 0))
             o.shipping_fee = _non_negative_decimal(data.get('shipping_fee', o.shipping_fee if oid else 0))
+            if 'shipping_address' in data or not oid:
+                o.shipping_address = (data.get('shipping_address', '') or '').strip() or None
             if 'tags' in data or not oid:
                 o.tags = (data.get('tags', '') or '').strip() or None
             new_status = int(data.get('status', o.status if oid else 0))

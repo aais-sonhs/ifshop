@@ -217,6 +217,15 @@
                     <!-- Hidden select for form value -->
                     <select class="d-none" id="inp_status"><option value="0">Báo giá</option><option value="1">Đơn hàng</option><option value="2">Đang xử lý</option><option value="3">Đang đóng gói</option><option value="4">Đã xuất kho</option><option value="5">Hoàn thành</option><option value="6">Hủy</option></select>
                 </div>
+                <div class="row" id="shipping_address_section">
+                    <div class="col-md-12">
+                        <div class="form-group mb-2">
+                            <label for="inp_shipping_address"><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ giao hàng</label>
+                            <input type="text" class="form-control form-control-sm" id="inp_shipping_address" placeholder="Nhập địa chỉ giao thực tế của đơn hàng">
+                            <small class="form-text text-muted">Tự lấy địa chỉ mặc định khi chọn khách; có thể sửa riêng cho đơn này mà không thay đổi hồ sơ khách hàng.</small>
+                        </div>
+                    </div>
+                </div>
                 <div class="row mt-1" id="quotation_fields" style="display:none;">
                     <div class="col-md-3">
                         <div class="form-group">
@@ -2578,6 +2587,7 @@ function syncDocumentTypeUI(){
     var isQuotation = docType === 'quotation';
     var isExisting = !!$('#edit_id').val();
     $('#quotation_fields').toggle(isQuotation);
+    $('#shipping_address_section').toggle(!isQuotation);
     $('#quotation_section').toggle(!isQuotation && !isExisting);
     $('#payment_section').toggle(!isQuotation);
     $('#lbl_order_date').html((isQuotation ? 'Ngày báo giá' : 'Ngày đặt') + ' <span class="text-danger">*</span>');
@@ -3671,7 +3681,7 @@ function customerMatcher(params, data){ return data; }
 // ============ CUSTOMER AUTOCOMPLETE (Sapo-style) ============
 var allCustomers = [
     {% for c in customers %}
-    {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}"},
+    {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}", address:"{{ c.address|default:''|escapejs }}", company_address:"{{ c.company_address|default:''|escapejs }}"},
     {% endfor %}
 ];
 
@@ -3741,6 +3751,8 @@ function selectCustomer(id, name, phone){
     $('#btn_quick_customer_inline').hide();
     $('#btn_clear_customer').show();
     $('#customer_dropdown').hide();
+    var customer = allCustomers.find(function(item){ return String(item.id) === String(id); });
+    $('#inp_shipping_address').val(customer ? (customer.address || customer.company_address || '') : '');
 }
 
 function clearCustomer(){
@@ -3749,6 +3761,7 @@ function clearCustomer(){
     $('#btn_quick_customer_inline').hide();
     $('#btn_clear_customer').hide();
     $('#customer_dropdown').hide();
+    $('#inp_shipping_address').val('');
 }
 
 function initCustomerPicker(){
@@ -4002,6 +4015,7 @@ $(document).ready(function(){
                 var cust = allCustomers.find(function(c){ return c.id == q.customer_id; });
                 if(cust) selectCustomer(cust.id, cust.name, cust.phone);
             } else { clearCustomer(); }
+            $('#inp_shipping_address').val(q.customer_address || $('#inp_shipping_address').val() || '');
             // Fill chiết khấu
             setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
             setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
@@ -4051,7 +4065,14 @@ $(document).ready(function(){
                     // Thêm option mới vào select và chọn nó
                     var c = r.customer;
                     // Thêm vào allCustomers và chọn
-                    allCustomers.push({id: c.id, name: c.name, phone: c.phone || '', code: c.code});
+                    allCustomers.push({
+                        id: c.id,
+                        name: c.name,
+                        phone: c.phone || '',
+                        code: c.code,
+                        address: c.address || '',
+                        company_address: c.company_address || ''
+                    });
                     selectCustomer(c.id, c.name, c.phone || '');
                     $('#modal_quick_customer').modal('hide');
                     toastr ? toastr.success(r.message) : alert(r.message);
@@ -4412,6 +4433,7 @@ $(document).ready(function(){
         var data={id:$('#edit_id').val()||null,code:code,customer_id:$('#inp_customer_id').val(),
             warehouse_id:$('#inp_warehouse_id').val(),order_date:date,
             quotation_id:quotationId,
+            shipping_address:$('#inp_shipping_address').val(),
             discount_amount:getMoneyValue('#inp_discount_amount'),
             shipping_fee:getMoneyValue('#inp_shipping_fee'),
             status:parseInt($('#inp_status').val()),note:$('#inp_note').val(),
@@ -5352,6 +5374,7 @@ function rejectOrder(id, code){
             if(cust) selectCustomer(cust.id, cust.name, cust.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
+        $('#inp_shipping_address').val(o.shipping_address || o.customer_address || '');
         setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         _timelineReadonly = false;
         _orderFormReadonly = false;
@@ -5413,6 +5436,7 @@ function viewItem(id){
             if(cust2) selectCustomer(cust2.id, cust2.name, cust2.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
+        $('#inp_shipping_address').val(o.shipping_address || o.customer_address || '');
         setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
         $('#items_tbl tbody').html('');
@@ -5851,6 +5875,7 @@ function copyOrder(id){
             var cust3 = allCustomers.find(function(c){ return c.id == o.customer_id; });
             if(cust3) selectCustomer(cust3.id, cust3.name, cust3.phone);
         } else { clearCustomer(); }
+        $('#inp_shipping_address').val(o.shipping_address || o.customer_address || '');
         setOrderWarehouseValue(o.warehouse_id);
         setMoneyValue('#inp_discount_amount', o.discount_amount);
         setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);

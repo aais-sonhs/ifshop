@@ -405,6 +405,67 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(a4_response, 'Địa chỉ giao:')
         self.assertContains(a4_response, self.customer.address)
 
+    def test_create_and_edit_order_persist_custom_shipping_address(self):
+        self.customer.address = 'Địa chỉ mặc định của khách'
+        self.customer.save(update_fields=['address'])
+        create_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-CUSTOM-SHIPPING',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'shipping_address': 'Kho nhận hàng số 1',
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        order = Order.objects.get(code='DH-CUSTOM-SHIPPING')
+        self.assertEqual(order.shipping_address, 'Kho nhận hàng số 1')
+
+        edit_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'shipping_address': 'Nhà người thân, hẻm 12',
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(order.shipping_address, 'Nhà người thân, hẻm 12')
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        self.assertEqual(detail_response.json()['order']['shipping_address'], 'Nhà người thân, hẻm 12')
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+        self.assertContains(print_response, 'Nhà người thân, hẻm 12')
+        self.assertNotContains(print_response, 'Địa chỉ mặc định của khách')
+
     def test_quotation_prints_show_customer_address(self):
         self.customer.address = '456 Lê Lợi, Quận 3, TP.HCM'
         self.customer.save(update_fields=['address'])

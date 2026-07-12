@@ -650,18 +650,24 @@ class OrderRiskFlowTests(TestCase):
         expected_ids = [order.id for order in list(reversed(created_orders))[10:12]]
         self.assertEqual([row['id'] for row in payload['data']], expected_ids)
 
-    def test_get_orders_sorts_by_latest_update(self):
-        first_created = self._create_order(code='DH-UPDATED-FIRST', status=1)
-        second_created = self._create_order(code='DH-UPDATED-SECOND', status=1)
+    def test_get_orders_sorts_by_created_at_not_latest_update(self):
+        first_created = self._create_order(code='DH-CREATED-FIRST', status=1)
+        second_created = self._create_order(code='DH-CREATED-SECOND', status=1)
         now = timezone.now()
-        Order.objects.filter(id=first_created.id).update(updated_at=now)
-        Order.objects.filter(id=second_created.id).update(updated_at=now - timedelta(hours=1))
+        Order.objects.filter(id=first_created.id).update(
+            created_at=now - timedelta(hours=2),
+            updated_at=now,
+        )
+        Order.objects.filter(id=second_created.id).update(
+            created_at=now - timedelta(hours=1),
+            updated_at=now - timedelta(hours=3),
+        )
 
         response = self.client.get(reverse('api_get_orders'))
 
         self.assertEqual(response.status_code, 200)
         returned_ids = [row['id'] for row in response.json()['data']]
-        self.assertEqual(returned_ids[:2], [first_created.id, second_created.id])
+        self.assertEqual(returned_ids[:2], [second_created.id, first_created.id])
 
     def test_get_orders_filters_by_product_on_server(self):
         other_same_store_product = Product.objects.create(
@@ -1555,6 +1561,72 @@ class OrderRiskFlowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, 3)
 
+    def test_save_order_preserves_original_creator_when_edited_by_another_user(self):
+        self.user.first_name = 'Ngọc'
+        self.user.save(update_fields=['first_name'])
+        editor = User.objects.create_user(
+            username='tan_hop',
+            password='pass123',
+            first_name='Tấn',
+            last_name='Hợp',
+        )
+        UserProfile.objects.create(user=editor, store=self.store)
+        order = self._create_order(code='DH-CREATOR-FIX-001', status=1, created_by=self.user)
+        order.creator_name = self.user.get_full_name()
+        order.save(update_fields=['creator_name'])
+
+        self.client.force_login(editor)
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'status': 1,
+                'note': 'Tấn Hợp sửa đơn',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(order.created_by_id, self.user.id)
+        self.assertEqual(order.creator_name, 'Ngọc')
+
+        history = OrderEditHistory.objects.filter(order=order, action='update').first()
+        self.assertIsNotNone(history)
+        self.assertEqual(history.actor_id, editor.id)
+
+    def test_order_list_creator_display_uses_original_created_by(self):
+        self.user.first_name = 'Ngọc'
+        self.user.save(update_fields=['first_name'])
+        order = self._create_order(code='DH-CREATOR-DISPLAY-001', status=1, created_by=self.user)
+        order.creator_name = 'Ngân'
+        order.save(update_fields=['creator_name'])
+
+        response = self.client.get(reverse('api_get_orders'), {'text': order.code})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['id'] == order.id)
+        self.assertEqual(row['creator_name'], 'Ngọc')
+
     def test_save_order_history_describes_item_quantity_change(self):
         order = self._create_order(code='DH-HISTORY-ITEM-001', status=1)
         OrderItem.objects.create(
@@ -2148,7 +2220,15 @@ class OrderRiskFlowTests(TestCase):
 
         detail_payload = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
         self.assertEqual(detail_payload['status'], 'ok')
-        self.assertEqual(detail_payload['order']['returns'][0]['exchange_order_code'], exchange_order.code)
+        return_detail = detail_payload['order']['returns'][0]
+        self.assertEqual(return_detail['exchange_order_code'], exchange_order.code)
+        self.assertEqual(return_detail['reason'], 'Khách đổi sang mẫu khác')
+        self.assertEqual(return_detail['created_by_name'], self.user.username)
+        self.assertEqual(return_detail['return_items'][0]['product_code'], self.product.code)
+        self.assertEqual(return_detail['return_items'][0]['quantity'], 1.0)
+        self.assertEqual(return_detail['exchange_items'][0]['product_code'], exchange_product.code)
+        self.assertEqual(return_detail['exchange_items'][0]['quantity'], 1.0)
+        self.assertEqual(return_detail['exchange_items'][0]['note'], 'Đổi mẫu mới')
 
     def test_save_order_return_allows_standalone_compensation_refund(self):
         order = self._create_order(code='DH-RETURN-COMPENSATION', status=5)

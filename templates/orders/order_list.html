@@ -769,7 +769,7 @@
 </div>
 
 	<div class="modal fade" id="modal_order_quick_view" tabindex="-1">
-	    <div class="modal-dialog modal-lg modal-dialog-centered">
+	    <div class="modal-dialog modal-xl modal-dialog-centered">
 	        <div class="modal-content">
 	            <div class="modal-header bg-light py-2">
 	                <h5 class="modal-title">Xem nhanh đơn hàng</h5>
@@ -1232,6 +1232,60 @@
 	    background: #f8fafc;
 	    color: #94a3b8;
 	}
+	.quick-view-section-title {
+	    display: flex;
+	    align-items: center;
+	    justify-content: space-between;
+	    gap: 10px;
+	    margin: 16px 0 8px;
+	    padding-bottom: 6px;
+	    border-bottom: 2px solid #e2e8f0;
+	    color: #334155;
+	}
+	.quick-view-return-card {
+	    border: 1px solid #dbe3eb;
+	    border-radius: 8px;
+	    overflow: hidden;
+	    background: #fff;
+	    box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+	}
+	.quick-view-return-card + .quick-view-return-card {
+	    margin-top: 10px;
+	}
+	.quick-view-return-card-header {
+	    display: flex;
+	    align-items: center;
+	    justify-content: space-between;
+	    flex-wrap: wrap;
+	    gap: 8px;
+	    padding: 9px 12px;
+	    background: #f8fafc;
+	    border-bottom: 1px solid #e2e8f0;
+	}
+	.quick-view-return-metrics {
+	    display: grid;
+	    grid-template-columns: repeat(4, minmax(120px, 1fr));
+	    gap: 8px;
+	}
+	.quick-view-return-metric {
+	    padding: 7px 9px;
+	    border: 1px solid #e2e8f0;
+	    border-radius: 6px;
+	    background: #f8fafc;
+	}
+	.quick-view-return-metric small {
+	    display: block;
+	    color: #64748b;
+	}
+	.quick-view-return-table th,
+	.quick-view-return-table td {
+	    vertical-align: middle;
+	}
+	@media (max-width: 767.98px) {
+	    .quick-view-return-metrics {
+	        grid-template-columns: repeat(2, minmax(110px, 1fr));
+	    }
+	}
 	.loss-warning-banner {
 	    display: inline-block;
 	    padding: 8px 14px;
@@ -1453,10 +1507,13 @@
 <script src="/static/js/column_config.js"></script>
 <script>
 var allProducts = [];
+var ORDER_PRODUCT_BY_ID = {};
 var ORDER_PRODUCT_SELECT_CACHE = {};
 var ORDER_PRODUCT_SELECT_OPTIONS_HTML = null;
 var ORDER_ROW_VISUAL_REFRESH_QUEUE = [];
 var ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
+var ORDER_TOTAL_RECALC_HANDLE = null;
+var ORDER_TOTAL_RECALC_OPTIONS = {};
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
@@ -1486,6 +1543,15 @@ window._quickProductCodeCheckInFlight = false;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function applyOrderProductDataset(products, cacheKey){
     allProducts = Array.isArray(products) ? products : [];
+    ORDER_PRODUCT_BY_ID = {};
+    allProducts.forEach(function(product){
+        product._orderSearchText = [
+            product.name || '',
+            product.code || '',
+            product.barcode || ''
+        ].join(' ').toLowerCase();
+        ORDER_PRODUCT_BY_ID[String(product.id)] = product;
+    });
     if(cacheKey){
         ORDER_PRODUCT_SELECT_CACHE[cacheKey] = allProducts;
     }
@@ -1605,12 +1671,7 @@ function getQuickProductMatches(searchTerm){
     var keyword = (searchTerm || '').trim().toLowerCase();
     if(!keyword) return [];
     var matches = (allProducts || []).filter(function(p){
-        var searchText = [
-            p.name || '',
-            p.code || '',
-            p.barcode || ''
-        ].join(' ').toLowerCase();
-        return searchText.indexOf(keyword) >= 0;
+        return String(p._orderSearchText || '').indexOf(keyword) >= 0;
     });
     if(typeof matchesQuickSearchStockFilter === 'function'){
         matches = matches.filter(matchesQuickSearchStockFilter);
@@ -1672,9 +1733,7 @@ function submitQuickProductTerm(term, options){
             }
             $.get('/api/products-select/', function(productRes){
                 applyOrderProductDataset(productRes.data || [], getOrderProductSelectCacheKey(null));
-                var reloadedProduct = allProducts.find(function(p){
-                    return Number(p.id) === Number(res.product.id);
-                });
+                var reloadedProduct = getOrderProductById(res.product.id);
                 if(!addCheckedProductToDocument(reloadedProduct, sourceSelectEl) && typeof setQuickSearchStatusHint === 'function'){
                     setQuickSearchStatusHint('<i class="fas fa-exclamation-triangle text-warning mr-1"></i>Đã thấy mã nhưng chưa tải được chi tiết sản phẩm');
                 }
@@ -1879,9 +1938,8 @@ function formatOrderProductOption(option){
 }
 
 function getOrderProductById(productId){
-    var id = parseInt(productId || 0, 10);
-    if(!id) return null;
-    return (allProducts || []).find(function(product){ return product.id === id; }) || null;
+    if(productId === undefined || productId === null || productId === '') return null;
+    return ORDER_PRODUCT_BY_ID[String(productId)] || null;
 }
 
 function getOrderProductVariant(product, variantId){
@@ -2016,9 +2074,40 @@ function initializeOrderProductSelect($row){
             var selectEl = this;
             setTimeout(function(){
                 if(window._activeProductSelect2 === selectEl) window._activeProductSelect2 = null;
+                if(document.body.contains(selectEl)){
+                    compactOrderProductSelect($(selectEl).closest('tr'));
+                }
             }, 0);
         });
     return $select;
+}
+
+function compactOrderProductSelect($row){
+    if(!$row || !$row.length || $row.hasClass('service-line-row')) return;
+    var $select = $row.find('.sel_product').first();
+    if(!$select.length || String($select.data('lazySelect') || '0') === '1') return;
+
+    var currentProductId = $select.val() || '';
+    var $selected = $select.find('option:selected').first();
+    var currentVariantId = $selected.data('variant-id') || '';
+    var selectedOptionHtml = '<option value="">-- Chọn SP --</option>';
+    if(currentProductId && $selected.length){
+        var $selectedClone = $selected.clone();
+        $selectedClone.attr('selected', 'selected');
+        selectedOptionHtml = $('<div>').append($selectedClone).html();
+    }
+
+    if($select.hasClass('select2-hidden-accessible')){
+        try { $select.select2('destroy'); } catch(err) {}
+    }
+    $select
+        .html(selectedOptionHtml)
+        .attr('data-lazy-select', '1')
+        .attr('data-current-product-id', currentProductId)
+        .attr('data-current-variant-id', currentVariantId)
+        .data('lazySelect', 1)
+        .data('currentProductId', currentProductId)
+        .data('currentVariantId', currentVariantId);
 }
 
 function ensureOrderProductSelectReady($row, openAfterInit){
@@ -2045,7 +2134,7 @@ function syncOrderRowProductVisuals($row, preservePrice, resetItemNote){
     }
     var imgUrl = $opt.data('img');
     if(imgUrl){
-        $row.find('.lbl_img').html('<img src="'+imgUrl+'" class="order-item-img" alt="">');
+        $row.find('.lbl_img').html('<img src="'+imgUrl+'" class="order-item-img" loading="lazy" decoding="async" alt="">');
     } else {
         $row.find('.lbl_img').html('<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>');
     }
@@ -2246,7 +2335,7 @@ function getStockDisplayState(info, qty, alertInfo){
 	    return html;
 	}
 
-function renderStockCellHtml(product, info, qty){
+function renderStockCellHtml(product, info, qty, alertInfo){
     if(info.isService){
         return '<span class="text-muted">DV</span>';
     }
@@ -2255,7 +2344,8 @@ function renderStockCellHtml(product, info, qty){
     var summaryLabel = selectedWarehouseId
         ? ('Kho xuất: ' + getWarehouseNameById(selectedWarehouseId))
         : 'Tổng tất cả kho';
-    var displayState = getStockDisplayState(info, qty, getProductStockAlertInfo(product));
+    alertInfo = alertInfo || getProductStockAlertInfo(product);
+    var displayState = getStockDisplayState(info, qty, alertInfo);
     var warehouseRows = getProductWarehouseRows(product);
     var detailsHtml = warehouseRows.map(function(row){
         var isSelected = selectedWarehouseId && String(row.warehouseId) === String(selectedWarehouseId);
@@ -2282,7 +2372,7 @@ function renderStockCellForRow($row){
         return;
     }
 
-    var product = allProducts.find(function(item){ return item.id === productId; });
+    var product = getOrderProductById(productId);
     if(!product){
         $stockCell.html('-').attr('title', '').removeClass('text-success text-danger text-warning text-muted font-weight-bold');
         return;
@@ -2290,9 +2380,10 @@ function renderStockCellForRow($row){
 
     var qty = parseFloat($row.find('.inp_qty').val()) || 0;
     var info = getStockForProduct(productId);
-    var displayState = getStockDisplayState(info, qty, getProductStockAlertInfo(product));
+    var alertInfo = getProductStockAlertInfo(product);
+    var displayState = getStockDisplayState(info, qty, alertInfo);
     $stockCell
-        .html(renderStockCellHtml(product, info, qty))
+        .html(renderStockCellHtml(product, info, qty, alertInfo))
         .attr('title', displayState.title || '')
         .removeClass('text-success text-danger text-warning text-muted font-weight-bold')
         .addClass(displayState.cellClass);
@@ -2392,6 +2483,7 @@ function setQuickSearchStockFilter(filterKey){
 
 function matchesQuickSearchStockFilter(product){
     if(!product) return false;
+    if(currentQuickSearchStockFilter === 'all') return true;
     var info = getStockForProduct(product.id);
     var alertInfo = getProductStockAlertInfo(product);
     if(currentQuickSearchStockFilter === 'available'){
@@ -2407,6 +2499,9 @@ function matchesQuickSearchStockFilter(product){
 }
 
 function sortQuickSearchResults(results){
+    if(currentQuickSearchStockFilter === 'all'){
+        return (results || []).slice();
+    }
     var items = (results || []).map(function(product, index){
         var info = getStockForProduct(product.id);
         var sortMeta = {
@@ -2434,10 +2529,6 @@ function sortQuickSearchResults(results){
 
         return sortMeta;
     });
-
-    if(currentQuickSearchStockFilter === 'all'){
-        return items.map(function(item){ return item.product; });
-    }
 
     items.sort(function(left, right){
         if(left.bucket !== right.bucket){
@@ -2685,7 +2776,7 @@ function renderOrderItemsLoading(message){
             '</td>' +
         '</tr>'
     );
-    calcTotal();
+    calcTotal({syncDuplicates: true});
 }
 
 function refreshRenderedOrderRows(){
@@ -2709,7 +2800,7 @@ function populateOrderFormItems(items, options){
         normalizedItems.forEach(function(item){
             addItemRow(item, {deferEnhancement: true});
         });
-        calcTotal();
+        calcTotal({syncDuplicates: true});
         var scheduleFrame = window.requestAnimationFrame || function(callback){
             return window.setTimeout(callback, 16);
         };
@@ -3975,7 +4066,7 @@ $(document).ready(function(){
         $('#order_history_card').hide();$('#order_history_list').html('Chưa có lịch sử');
         syncStatusOptions(0);
         if($('#inp_salesperson').length) $('#inp_salesperson').val('').trigger('change');
-        $('#items_tbl tbody').html('');calcTotal();
+        $('#items_tbl tbody').html('');calcTotal({syncDuplicates: true});
         // Bật lại chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
         $('#btn_save').show();
@@ -4060,10 +4151,10 @@ $(document).ready(function(){
             $('#items_tbl tbody').html('');
             if(res.items && res.items.length > 0){
                 res.items.forEach(function(it){
-                    addItemRow(it);
+                    addItemRow(it, {deferEnhancement: true});
                 });
             }
-            calcTotal();
+            calcTotal({syncDuplicates: true});
             // Thông báo
             alert('✅ Đã áp dụng báo giá ' + q.code + ' — ' + res.items.length + ' sản phẩm');
         });
@@ -4131,12 +4222,7 @@ $(document).ready(function(){
         var keyword = (term || '').trim().toLowerCase();
         if(!keyword) return [];
         return sortQuickSearchResults(allProducts.filter(function(p){
-            var searchText = [
-                p.name || '',
-                p.code || '',
-                p.barcode || ''
-            ].join(' ').toLowerCase();
-            return searchText.indexOf(keyword) >= 0;
+            return String(p._orderSearchText || '').indexOf(keyword) >= 0;
         }).filter(matchesQuickSearchStockFilter));
     }
 
@@ -4172,13 +4258,12 @@ $(document).ready(function(){
             $('#search_count_hint').text(results.length + ' SP');
 
             // Show top 12
-            results = sortQuickSearchResults(results);
             renderProductSearchResults(results.slice(0, 12), term, false);
         }, 150);
     });
 
     function renderProductSearchResults(results, term, isPopular){
-        results = sortQuickSearchResults((results || []).filter(matchesQuickSearchStockFilter));
+        results = results || [];
         if(results.length === 0){
             var noResultHtml = '<div class="p-3 text-center">' +
                 '<i class="fas fa-search text-muted" style="font-size:24px;"></i>' +
@@ -4194,7 +4279,7 @@ $(document).ready(function(){
             html += '<div class="px-3 py-1 bg-light border-bottom"><small class="text-muted font-weight-bold"><i class="fas fa-star text-warning mr-1"></i>Sản phẩm gần đây</small></div>';
         }
         results.forEach(function(p, idx){
-            var imgHtml = p.image_url ? '<img src="'+p.image_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
+            var imgHtml = p.image_url ? '<img src="'+p.image_url+'" loading="lazy" decoding="async" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:10px;">' : '<span style="display:inline-block;width:36px;height:36px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);border-radius:6px;margin-right:10px;text-align:center;line-height:36px;"><i class="fas fa-box text-primary"></i></span>';
             var priceHtml = renderProductPriceSummary(p);
             var stockHtml = renderQuickSearchStockText(p);
             var alertBadgesHtml = renderQuickSearchAlertBadges(p);
@@ -4220,7 +4305,7 @@ $(document).ready(function(){
     // Click on search result to add product
     $(document).on('click', '.quick-search-item', function(){
         var pid = $(this).data('product-id');
-        var product = allProducts.find(function(p){ return p.id == pid; });
+        var product = getOrderProductById(pid);
         addQuickSearchProduct(product);
     });
     $(document).on('click', '.quick-search-alert-badge', function(e){
@@ -4336,7 +4421,7 @@ $(document).ready(function(){
                         applyOrderProductDataset(res.data, getOrderProductSelectCacheKey(null));
                         var newProductId = r.product ? r.product.id : null;
                         var newProductCode = r.product ? r.product.code : code;
-                        var newProduct = allProducts.find(function(p){ return (newProductId && p.id === newProductId) || (newProductCode && p.code === newProductCode); });
+                        var newProduct = newProductId ? getOrderProductById(newProductId) : allProducts.find(function(p){ return newProductCode && p.code === newProductCode; });
                         if(newProduct) addItemFromProduct(newProduct);
                     });
                     $('#modal_quick_product').modal('hide');
@@ -4353,7 +4438,7 @@ $(document).ready(function(){
         openPrintConfig(source, id, $('#inp_code').val());
     });
 
-    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
+    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ scheduleCalcTotal(); });
 
     $('#btn_save').click(function(){
         var $saveBtn = $(this);
@@ -4391,7 +4476,7 @@ $(document).ready(function(){
 
             // Check stock (skip service products)
             if(whId){
-                var product = allProducts.find(function(p){return p.id==pid;});
+                var product = getOrderProductById(pid);
                 if(product && !product.is_service){
                     var stock = product.sellable_stocks && product.sellable_stocks[whId] !== undefined ? product.sellable_stocks[whId] : (product.stocks[whId] || 0);
                     if(qty > stock) stockWarning = true;
@@ -4531,7 +4616,7 @@ $(document).ready(function(){
 
 function getStockForProduct(productId){
     var whId = $('#inp_warehouse_id').val();
-    var product = allProducts.find(function(p){return p.id == productId;});
+    var product = getOrderProductById(productId);
     if(!product) return {stock: 0, actualStock: 0, sellableStock: 0, label: '-', isService: false};
     if(product.is_service) return {stock: 999999, actualStock: 999999, sellableStock: 999999, label: 'DV', isService: true};
     if(whId){
@@ -4582,7 +4667,7 @@ function addItemFromProduct(product){
         var $qty = $existingRow.find('.inp_qty');
         $qty.val((parseFloat($qty.val()) || 0) + 1);
         promoteOrderItemRow($existingRow);
-        calcLine($existingRow);
+        calcLine($existingRow, {syncDuplicates: true});
         flashExistingRow($existingRow);
         focusOrderItemQuantity($existingRow);
         toastr ? toastr.info('Sản phẩm đã có trong đơn, đã tăng số lượng thêm 1.') : alert('Sản phẩm đã có trong đơn, đã tăng số lượng thêm 1.');
@@ -4599,8 +4684,8 @@ function addItemFromProduct(product){
         discount_percent: 0,
         image_url: product.image_url || '',
     };
-    var $row = addItemRow(item, {prepend: true});
-    calcTotal();
+    var $row = addItemRow(item, {prepend: true, deferEnhancement: true});
+    calcTotal({syncDuplicates: true});
     focusOrderItemQuantity($row);
 }
 
@@ -4654,16 +4739,16 @@ function addItemRow(item, options){
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
         var $serviceRow = $('#items_tbl tbody tr:last');
-        $serviceRow.find('.inp_qty,.inp_price,.inp_disc').on('input', function(){ calcLine($serviceRow); });
-        $serviceRow.find('.btn_remove_item').click(function(){ $serviceRow.remove(); calcTotal(); syncDuplicateWarnings(); });
+        $serviceRow.find('.inp_qty,.inp_price,.inp_disc').on('input', function(){ calcLine($serviceRow, {deferTotal: true}); });
+        $serviceRow.find('.btn_remove_item').click(function(){ $serviceRow.remove(); calcTotal({syncDuplicates: true}); });
         syncStockInfoVisibility();
-        calcLine($serviceRow);
+        calcLine($serviceRow, {syncDuplicates: true});
         return;
     }
 
     var imageUrl = item && item.image_url ? item.image_url : (selectedProduct ? (selectedProduct.image_url || selectedProduct.image || '') : '');
     var imgHtml = imageUrl
-        ? '<img src="'+escapeAttr(imageUrl)+'" class="order-item-img" alt="">'
+        ? '<img src="'+escapeAttr(imageUrl)+'" class="order-item-img" loading="lazy" decoding="async" alt="">'
         : '<span class="order-item-img-placeholder"><i class="fas fa-image"></i></span>';
     var selectAttrs = '';
     if(useLazySelect){
@@ -4707,10 +4792,10 @@ function addItemRow(item, options){
             var productName = $opt.text();
             if(confirm('⚠️ Sản phẩm "' + productName + '" đã có trong đơn (SL: ' + existingQty + ').\n\nBạn muốn gộp thêm ' + newQty + ' vào dòng cũ?')){
                 $duplicateRow.find('.inp_qty').val(existingQty + newQty);
-                calcLine($duplicateRow);
+                calcLine($duplicateRow, {syncDuplicates: true});
                 flashExistingRow($duplicateRow);
                 $row.remove();
-                calcTotal();
+                calcTotal({syncDuplicates: true});
                 toastr ? toastr.success('Đã gộp +'+ newQty +' vào dòng cũ (tổng: '+ (existingQty+newQty) +')') : null;
             } else {
                 if($(this).hasClass('select2-hidden-accessible')){
@@ -4719,20 +4804,18 @@ function addItemRow(item, options){
                     $(this).val('');
                 }
                 syncOrderRowProductVisuals($row, false, true);
-                calcLine($row);
+                calcLine($row, {syncDuplicates: true});
             }
-            syncDuplicateWarnings();
             return;
         }
-        calcLine($row);
-        syncDuplicateWarnings();
+        calcLine($row, {syncDuplicates: true});
     });
     $row.find('.inp_qty').on('input',function(){
-        calcLine($row);
+        calcLine($row, {deferTotal: true});
         queueOrderRowVisualRefresh($row, {preservePrice: true});
     });
-    $row.find('.inp_price,.inp_disc').on('input',function(){calcLine($row);});
-    $row.find('.btn_remove_item').click(function(){$row.remove();calcTotal();syncDuplicateWarnings();});
+    $row.find('.inp_price,.inp_disc').on('input',function(){calcLine($row, {deferTotal: true});});
+    $row.find('.btn_remove_item').click(function(){$row.remove();calcTotal({syncDuplicates: true});});
     if(useLazySelect){
         queueOrderRowVisualRefresh($row, {preservePrice: true});
     } else {
@@ -4741,15 +4824,37 @@ function addItemRow(item, options){
     return $row;
 }
 
-function calcLine($row){
+function scheduleCalcTotal(options){
+    ORDER_TOTAL_RECALC_OPTIONS.syncDuplicates = ORDER_TOTAL_RECALC_OPTIONS.syncDuplicates || !!(options && options.syncDuplicates);
+    if(ORDER_TOTAL_RECALC_HANDLE){
+        return;
+    }
+    var scheduleFrame = window.requestAnimationFrame || function(callback){
+        return window.setTimeout(callback, 16);
+    };
+    ORDER_TOTAL_RECALC_HANDLE = scheduleFrame(function(){
+        var opts = ORDER_TOTAL_RECALC_OPTIONS;
+        ORDER_TOTAL_RECALC_HANDLE = null;
+        ORDER_TOTAL_RECALC_OPTIONS = {};
+        calcTotal(opts);
+    });
+}
+
+function calcLine($row, options){
+    options = options || {};
     var qty=parseFloat($row.find('.inp_qty').val())||0;
     var price=getMoneyValue($row.find('.inp_price'))||0;
     var disc=parseFloat($row.find('.inp_disc').val())||0;
     $row.find('.lbl_line_total').text(fmt(qty*price*(1-disc/100)) + 'đ');
-    calcTotal();
+    if(options.deferTotal){
+        scheduleCalcTotal(options);
+    } else {
+        calcTotal(options);
+    }
 }
 
-function calcTotal(){
+function calcTotal(options){
+    options = options || {};
     var total=0;
     var totalQuantity=0;
     var itemSequence=0;
@@ -4781,7 +4886,9 @@ function calcTotal(){
     $('#lbl_final').text(fmt(finalAmount) + 'đ');
     // Show/hide cost warning
     if(hasLossItem){ $('#cost_warning_row').show(); } else { $('#cost_warning_row').hide(); }
-    syncDuplicateWarnings();
+    if(options.syncDuplicates){
+        syncDuplicateWarnings();
+    }
     syncPaymentSummary();
 }
 
@@ -4989,7 +5096,7 @@ function loadData(){
 	            if(d.status === 4){
 	                actions += '<button class="btn btn-xs btn-light" onclick="viewItem('+d.id+')">Xem</button>';
 	            } else if(d.status === 5){
-	                actions += '<button class="btn btn-xs btn-light" onclick="viewItem('+d.id+')">Ghi chú</button>';
+	                actions += '<button class="btn btn-xs btn-light" onclick="createReturn('+d.id+')">Hoàn hàng</button>';
 	            } else if(d.status !== 6){
 	                actions += '<button class="btn btn-xs btn-light" onclick="editItem('+d.id+')">Sửa</button>';
 	            }
@@ -5343,6 +5450,111 @@ function rejectOrder(id, code){
 	    });
 	}
 
+	function renderQuickViewReturnItems(items, itemType){
+	    items = items || [];
+	    if(!items.length){
+	        return '<div class="text-center text-muted border rounded py-3">Không có sản phẩm</div>';
+	    }
+	    var rows = items.map(function(item){
+	        var variant = item.variant_name ? ' [' + escapeHtml(item.variant_name) + ']' : '';
+	        var itemNote = itemType === 'return' ? item.reason : item.note;
+	        return '<tr>' +
+	            '<td><strong>' + escapeHtml(item.product_code || '') + '</strong><br>' +
+	                escapeHtml(item.product_name || '') + variant +
+	                (itemNote ? '<div class="small text-muted mt-1">' + escapeHtml(itemNote) + '</div>' : '') +
+	            '</td>' +
+	            '<td class="text-center">' + escapeHtml(item.unit || '') + '</td>' +
+	            '<td class="text-right">' + fmt(item.quantity || 0) + '</td>' +
+	            '<td class="text-right">' + fmt(item.unit_price || 0) + 'đ</td>' +
+	            '<td class="text-right font-weight-bold">' + fmt(item.total_price || 0) + 'đ</td>' +
+	        '</tr>';
+	    }).join('');
+	    return '<div class="table-responsive"><table class="table table-sm table-bordered quick-view-return-table mb-0">' +
+	        '<thead class="bg-light"><tr><th>Sản phẩm</th><th class="text-center">ĐVT</th><th class="text-right">SL</th><th class="text-right">Đơn giá</th><th class="text-right">Thành tiền</th></tr></thead>' +
+	        '<tbody>' + rows + '</tbody></table></div>';
+	}
+
+	function renderQuickViewReturnHistory(order){
+	    var returns = (order && order.returns) || [];
+	    var sourceHtml = '';
+	    if(order && order.is_exchange_order){
+	        sourceHtml = '<div class="alert alert-primary py-2 mb-3 d-flex align-items-center justify-content-between flex-wrap">' +
+	            '<div><i class="fas fa-exchange-alt mr-1"></i> Đây là <strong>đơn đổi hàng</strong> phát sinh từ phiếu <strong>' + escapeHtml(order.exchange_source_return_code || '') + '</strong>' +
+	            (order.exchange_original_order_code ? ', thuộc đơn gốc <strong>' + escapeHtml(order.exchange_original_order_code) + '</strong>' : '') + '.</div>' +
+	            (order.exchange_original_order_id ? '<button type="button" class="btn btn-sm btn-outline-primary ml-2" onclick="quickViewOrder(' + Number(order.exchange_original_order_id) + ')"><i class="fas fa-arrow-left mr-1"></i>Xem đơn gốc</button>' : '') +
+	        '</div>';
+	    }
+	    if(!returns.length){
+	        return sourceHtml;
+	    }
+
+	    var totalRefund = 0;
+	    var totalDue = 0;
+	    var exchangeCount = 0;
+	    returns.forEach(function(item){
+	        totalRefund += Number(item.total_refund || 0);
+	        totalDue += Number(item.amount_due || 0);
+	        if(item.has_exchange_items) exchangeCount += 1;
+	    });
+
+	    var cards = returns.map(function(item){
+	        var isExchange = !!item.has_exchange_items;
+	        var typeBadge = isExchange
+	            ? '<span class="badge badge-warning text-dark"><i class="fas fa-exchange-alt mr-1"></i>Hoàn & đổi</span>'
+	            : '<span class="badge badge-info"><i class="fas fa-undo-alt mr-1"></i>Hoàn hàng</span>';
+	        var statusClass = Number(item.status) === 2 ? 'badge-success' : (Number(item.status) === 1 ? 'badge-info' : 'badge-light border');
+	        var returnItems = item.return_items || [];
+	        var exchangeItems = item.exchange_items || [];
+	        var returnCol = returnItems.length && exchangeItems.length ? 'col-md-6' : 'col-12';
+	        var exchangeCol = returnItems.length && exchangeItems.length ? 'col-md-6' : 'col-12';
+	        var itemTables = '';
+	        if(returnItems.length){
+	            itemTables += '<div class="' + returnCol + ' mb-2"><div class="font-weight-bold text-info mb-1"><i class="fas fa-arrow-left mr-1"></i>Hàng khách trả</div>' + renderQuickViewReturnItems(returnItems, 'return') + '</div>';
+	        }
+	        if(exchangeItems.length){
+	            itemTables += '<div class="' + exchangeCol + ' mb-2"><div class="font-weight-bold text-warning mb-1"><i class="fas fa-arrow-right mr-1"></i>Hàng khách nhận đổi</div>' + renderQuickViewReturnItems(exchangeItems, 'exchange') + '</div>';
+	        }
+	        if(!itemTables){
+	            itemTables = '<div class="col-12"><div class="text-muted border rounded py-2 px-3">Phiếu không có dòng sản phẩm, chỉ phát sinh hoàn/đền bù tiền.</div></div>';
+	        }
+
+	        var returnUrl = '{% url "order_return_tbl" %}?return_id=' + encodeURIComponent(item.id);
+	        var actions = '<a class="btn btn-xs btn-outline-secondary" target="_blank" href="' + escapeAttr(returnUrl) + '"><i class="fas fa-external-link-alt mr-1"></i>Mở phiếu</a>';
+	        if(item.exchange_order_id){
+	            actions += '<button type="button" class="btn btn-xs btn-outline-primary ml-1" onclick="quickViewOrder(' + Number(item.exchange_order_id) + ')"><i class="fas fa-file-invoice mr-1"></i>Xem đơn đổi ' + escapeHtml(item.exchange_order_code || '') + '</button>';
+	        }
+
+	        return '<div class="quick-view-return-card">' +
+	            '<div class="quick-view-return-card-header">' +
+	                '<div><strong>' + escapeHtml(item.code || '') + '</strong> ' + typeBadge + ' <span class="badge ' + statusClass + '">' + escapeHtml(item.status_display || '') + '</span>' +
+	                '<div class="small text-muted mt-1">Ngày ' + escapeHtml(fmtDt(item.return_date || '')) +
+	                    (item.created_by_name ? ' · Người thực hiện: ' + escapeHtml(item.created_by_name) : '') +
+	                    (item.created_at ? ' · Tạo lúc ' + escapeHtml(item.created_at) : '') + '</div></div>' +
+	                '<div>' + actions + '</div>' +
+	            '</div>' +
+	            '<div class="p-2">' +
+	                '<div class="quick-view-return-metrics mb-2">' +
+	                    '<div class="quick-view-return-metric"><small>Giá trị hàng trả</small><strong>' + fmt(item.return_amount || 0) + 'đ</strong></div>' +
+	                    '<div class="quick-view-return-metric"><small>Giá trị hàng đổi</small><strong>' + fmt(item.exchange_amount || 0) + 'đ</strong></div>' +
+	                    '<div class="quick-view-return-metric"><small>Hoàn lại khách</small><strong class="text-success">' + fmt(item.total_refund || 0) + 'đ</strong></div>' +
+	                    '<div class="quick-view-return-metric"><small>Khách trả thêm</small><strong class="text-primary">' + fmt(item.amount_due || 0) + 'đ</strong></div>' +
+	                '</div>' +
+	                (item.reason ? '<div class="small mb-1"><strong>Lý do:</strong> ' + escapeHtml(item.reason) + '</div>' : '') +
+	                (item.exchange_note ? '<div class="small mb-2"><strong>Ghi chú đổi:</strong> ' + escapeHtml(item.exchange_note) + '</div>' : '') +
+	                '<div class="row">' + itemTables + '</div>' +
+	            '</div>' +
+	        '</div>';
+	    }).join('');
+
+	    return sourceHtml +
+	        '<div class="quick-view-section-title"><strong><i class="fas fa-history mr-1"></i>Lịch sử hoàn/đổi (' + returns.length + ')</strong>' +
+	            '<div><span class="badge badge-info mr-1">Hoàn: ' + (returns.length - exchangeCount) + '</span>' +
+	            '<span class="badge badge-warning text-dark mr-1">Đổi: ' + exchangeCount + '</span>' +
+	            (totalRefund > 0 ? '<span class="badge badge-success mr-1">Đã hoàn ' + fmt(totalRefund) + 'đ</span>' : '') +
+	            (totalDue > 0 ? '<span class="badge badge-primary">Đã/đang thu thêm ' + fmt(totalDue) + 'đ</span>' : '') + '</div>' +
+	        '</div>' + cards;
+	}
+
 	function quickViewOrder(id){
 	    $('#order_quick_view_body').html('<div class="text-center text-muted py-4">Đang tải...</div>');
 	    $('#modal_order_quick_view').data('order-id', id).modal('show');
@@ -5355,7 +5567,7 @@ function rejectOrder(id, code){
 	        var itemsHtml = '';
 	        (res.items || []).forEach(function(it){
 	            var img = it.image_url
-	                ? '<img src="' + escapeAttr(it.image_url) + '" class="quick-view-product-img" alt="">'
+	                ? '<img src="' + escapeAttr(it.image_url) + '" class="quick-view-product-img" loading="lazy" decoding="async" alt="">'
 	                : '<span class="quick-view-product-placeholder"><i class="fas fa-image"></i></span>';
 	            itemsHtml += '<tr>' +
 	                '<td class="text-center">' + img + '</td>' +
@@ -5369,8 +5581,8 @@ function rejectOrder(id, code){
 	        if(!itemsHtml){
 	            itemsHtml = '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
 	        }
-	        var relationPanel = renderOrderReturnPanel(o);
-	        var html = relationPanel + '<div class="row">' +
+	        var returnHistoryHtml = renderQuickViewReturnHistory(o);
+	        var html = '<div class="row">' +
 	            '<div class="col-md-7">' +
 	            '<div class="mb-2"><strong>' + escapeHtml(o.code || '') + '</strong> · ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</div>' +
 	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' +
@@ -5389,10 +5601,11 @@ function rejectOrder(id, code){
 	            '</table>' +
 	            '</div>' +
 	            '</div>' +
-	            '<div class="table-responsive mt-2" style="max-height:260px;overflow-y:auto;">' +
+	            '<div class="quick-view-section-title"><strong><i class="fas fa-shopping-bag mr-1"></i>Sản phẩm đơn gốc</strong><span class="badge badge-light border">' + (res.items || []).length + ' dòng</span></div>' +
+	            '<div class="table-responsive" style="max-height:300px;overflow-y:auto;">' +
 	            '<table class="table table-sm table-bordered mb-0">' +
 	            '<thead class="bg-light"><tr><th class="text-center" style="width:56px;">Ảnh</th><th>Sản phẩm</th><th class="text-center">ĐVT</th><th class="text-right">SL</th><th class="text-right">Đơn giá</th><th class="text-right">Thành tiền</th></tr></thead>' +
-	            '<tbody>' + itemsHtml + '</tbody></table></div>';
+	            '<tbody>' + itemsHtml + '</tbody></table></div>' + returnHistoryHtml;
 	        $('#order_quick_view_body').html(html);
 	    });
 	}

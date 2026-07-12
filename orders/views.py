@@ -1162,6 +1162,18 @@ def _user_display_name(user):
     return (user.get_full_name() or user.username) if user else ''
 
 
+def _order_creator_display(order):
+    """Tên người tạo gốc của đơn.
+
+    `created_by` là nguồn dữ liệu cố định khi tạo đơn. `creator_name` chỉ là
+    bản lưu dự phòng cho dữ liệu cũ/trường hợp user đã bị xóa, nên không dùng
+    nó để thay thế người tạo ban đầu khi đơn được người khác chỉnh sửa.
+    """
+    if getattr(order, 'created_by', None):
+        return _user_display_name(order.created_by)
+    return getattr(order, 'creator_name', None) or ''
+
+
 def _history_item_label(product, item_name='', variant=None):
     if product:
         parts = [product.code or '', product.name or '']
@@ -1400,6 +1412,44 @@ def _serialize_order_return_summary(order_return):
         'exchange_order_code': order_return.exchange_order.code if order_return.exchange_order else '',
         'summary': '; '.join(parts) if parts else 'Không phát sinh chênh lệch tiền',
     }
+
+
+def _serialize_order_return_detail(order_return):
+    data = _serialize_order_return_summary(order_return)
+    data.update({
+        'compensation_amount': float(order_return.compensation_amount or 0),
+        'reason': order_return.reason or '',
+        'exchange_note': order_return.exchange_note or '',
+        'note': order_return.note or '',
+        'created_at': order_return.created_at.strftime('%d/%m/%Y %H:%M') if order_return.created_at else '',
+        'created_by_name': _user_display_name(order_return.created_by),
+        'return_items': [{
+            'id': item.id,
+            'product_id': item.product_id,
+            'product_code': item.product.code if item.product else '',
+            'product_name': item.product.name if item.product else '',
+            'unit': item.product.unit if item.product else '',
+            'quantity': float(item.quantity),
+            'unit_price': float(item.unit_price),
+            'total_price': float(item.total_price),
+            'reason': item.reason or '',
+        } for item in order_return.items.all()],
+        'exchange_items': [{
+            'id': item.id,
+            'product_id': item.product_id,
+            'variant_id': item.variant_id,
+            'product_code': item.product.code if item.product else '',
+            'product_name': item.product.name if item.product else '',
+            'variant_name': item.variant.size_name if item.variant else '',
+            'unit': item.product.unit if item.product else '',
+            'quantity': float(item.quantity),
+            'unit_price': float(item.unit_price),
+            'discount_percent': float(item.discount_percent),
+            'total_price': float(item.total_price),
+            'note': item.note or '',
+        } for item in order_return.exchange_items.all()],
+    })
+    return data
 
 
 def _order_return_summaries(order):
@@ -1931,7 +1981,7 @@ def api_pending_approvals(request):
 
     # Lấy đơn chờ duyệt: approver = user hiện tại, hoặc brand owner thấy tất cả
     if is_brand_owner(user):
-        pending = Order.objects.filter(approval_status=1).select_related('customer', 'approver')
+        pending = Order.objects.filter(approval_status=1).select_related('customer', 'approver', 'created_by')
         pending = filter_by_store(pending, request)
         # Đơn đã xử lý gần đây (duyệt/từ chối) trong 7 ngày
         from django.utils import timezone
@@ -1940,10 +1990,10 @@ def api_pending_approvals(request):
         processed = Order.objects.filter(
             approval_status__in=[2, 3],
             approved_at__gte=recent_cutoff
-        ).select_related('customer', 'approver')
+        ).select_related('customer', 'approver', 'created_by')
         processed = filter_by_store(processed, request)
     else:
-        pending = Order.objects.filter(approver=user, approval_status=1).select_related('customer', 'approver')
+        pending = Order.objects.filter(approver=user, approval_status=1).select_related('customer', 'approver', 'created_by')
         from django.utils import timezone
         from datetime import timedelta
         recent_cutoff = timezone.now() - timedelta(days=7)
@@ -1951,7 +2001,7 @@ def api_pending_approvals(request):
             approver=user,
             approval_status__in=[2, 3],
             approved_at__gte=recent_cutoff
-        ).select_related('customer', 'approver')
+        ).select_related('customer', 'approver', 'created_by')
 
     def serialize(orders):
         return [{
@@ -1969,7 +2019,7 @@ def api_pending_approvals(request):
             'approval_status_display': o.get_approval_status_display(),
             'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
             'approver_name': o.approver.get_full_name() if o.approver else '',
-            'creator_name': o.creator_name or '',
+            'creator_name': _order_creator_display(o),
             'salesperson': o.salesperson or '',
             'note': o.note or '',
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
@@ -2360,7 +2410,7 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
             Q(note__icontains=text) |
             Q(tags__icontains=text) |
             Q(customer__group__name__icontains=text) |
-            Q(creator_name__icontains=text) |
+            Q(created_by__isnull=True, creator_name__icontains=text) |
             Q(created_by__first_name__icontains=text) |
             Q(created_by__last_name__icontains=text) |
             Q(created_by__username__icontains=text) |
@@ -2432,9 +2482,7 @@ def _serialize_order_list(orders):
                 product.name or '',
                 getattr(product, 'barcode', '') or '',
             ])
-        creator_display = o.creator_name or ''
-        if not creator_display and o.created_by:
-            creator_display = o.created_by.get_full_name() or o.created_by.username
+        creator_display = _order_creator_display(o)
         return_summaries = _order_return_summaries(o)
         source_return = getattr(o, 'source_return_exchange', None)
         data.append({
@@ -2519,7 +2567,7 @@ def api_get_orders(request):
     status_scope_queryset = _apply_order_list_filters(base_queryset, filters, include_status=False)
     status_counts = _build_order_status_counts(status_scope_queryset)
 
-    filtered_queryset = _apply_order_list_filters(base_queryset, filters, include_status=True).order_by('-updated_at', '-id')
+    filtered_queryset = _apply_order_list_filters(base_queryset, filters, include_status=True).order_by('-created_at', '-id')
     list_queryset = _prefetch_order_list_queryset(filtered_queryset)
     paginator = Paginator(list_queryset, page_size)
     page_obj = paginator.get_page(page)
@@ -2554,14 +2602,24 @@ def api_get_order_detail(request):
             request,
             oid,
             queryset=Order.objects.select_related(
-                'customer', 'warehouse', 'store', 'store__brand', 'issuing_brand',
+                'customer', 'warehouse', 'created_by', 'store', 'store__brand', 'issuing_brand',
                 'source_return_exchange', 'source_return_exchange__order',
             ).prefetch_related(
                 Prefetch(
                     'returns',
-                    queryset=OrderReturn.objects.select_related('exchange_order').prefetch_related(
-                        'items',
-                        'exchange_items',
+                    queryset=OrderReturn.objects.select_related(
+                        'exchange_order', 'created_by',
+                    ).prefetch_related(
+                        Prefetch(
+                            'items',
+                            queryset=OrderReturnItem.objects.select_related('product').order_by('id'),
+                        ),
+                        Prefetch(
+                            'exchange_items',
+                            queryset=OrderReturnExchangeItem.objects.select_related(
+                                'product', 'variant',
+                            ).order_by('id'),
+                        ),
                     ).exclude(status=3).order_by('-return_date', '-id'),
                     to_attr='visible_returns',
                 )
@@ -2569,7 +2627,10 @@ def api_get_order_detail(request):
         )
         if not o:
             raise Order.DoesNotExist
-        return_summaries = _order_return_summaries(o)
+        return_details = [
+            _serialize_order_return_detail(item)
+            for item in getattr(o, 'visible_returns', [])
+        ]
         source_return = getattr(o, 'source_return_exchange', None)
         items = []
         for it in o.items.select_related('product', 'variant').all():
@@ -2620,7 +2681,7 @@ def api_get_order_detail(request):
                 'payment_status_display': o.get_payment_status_display(),
                 'paid_amount': float(o.paid_amount),
                 'remaining_amount': float(max(_to_decimal(o.final_amount) - _to_decimal(o.paid_amount), Decimal('0'))),
-                'creator_name': o.creator_name or '',
+                'creator_name': _order_creator_display(o),
                 'salesperson': o.salesperson or '',
                 'server_staff': o.server_staff or '',
                 'approver_id': o.approver_id,
@@ -2632,10 +2693,10 @@ def api_get_order_detail(request):
                 'issuing_brand_id': o.issuing_brand_id,
                 'issuing_brand_name': o.issuing_brand.name if o.issuing_brand else '',
                 'store_brand_id': o.store.brand_id if o.store and o.store.brand_id else None,
-                'returns': return_summaries,
-                'return_count': len(return_summaries),
-                'has_returns': bool(return_summaries),
-                'has_exchange_returns': any(item['has_exchange_items'] for item in return_summaries),
+                'returns': return_details,
+                'return_count': len(return_details),
+                'has_returns': bool(return_details),
+                'has_exchange_returns': any(item['has_exchange_items'] for item in return_details),
                 'is_exchange_order': bool(source_return),
                 'exchange_source_return_id': source_return.id if source_return else None,
                 'exchange_source_return_code': source_return.code if source_return else '',
@@ -2819,7 +2880,13 @@ def api_save_order(request):
                 o.note = data.get('note', '')
 
             # Thông tin nhân sự
-            o.creator_name = request.user.get_full_name() or request.user.username
+            # Người tạo gốc chỉ được ghi khi tạo đơn. Các lần sửa sau do người
+            # khác thực hiện sẽ được lưu ở OrderEditHistory, không thay thế
+            # người tạo ban đầu.
+            if not oid:
+                o.creator_name = _user_display_name(o.created_by) or _user_display_name(request.user)
+            elif not o.creator_name and o.created_by_id:
+                o.creator_name = _user_display_name(o.created_by)
             # NV bán hàng: nếu có quotation thì tự lấy từ người tạo báo giá
             if 'salesperson' in data or (not oid and quotation):
                 sp = data.get('salesperson', '')
@@ -4894,7 +4961,7 @@ def export_orders_excel(request):
             'payment': o.get_payment_status_display(),
             'payment_method': ', '.join(payment_methods),
             'status': o.get_status_display(),
-            'creator': (o.created_by.get_full_name() or o.created_by.username) if o.created_by else '',
+            'creator': _order_creator_display(o),
             'note': o.note or '',
         })
 

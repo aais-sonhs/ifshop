@@ -4534,7 +4534,7 @@ $(document).ready(function(){
         }
         if(ORDER_LOSS_WARNINGS.length){
             var lossConfirm='⚠️ CẢNH BÁO BÁN DƯỚI GIÁ VỐN\n\n'+ORDER_LOSS_WARNINGS.map(function(item){
-                return '• '+item.label+': bán '+fmt(item.effective_price)+'đ < vốn '+fmt(item.cost_price)+'đ (lỗ '+fmt(item.loss_amount)+'đ)';
+                return '• '+item.label;
             }).join('\n')+'\n\nBạn vẫn muốn lưu '+(isQuotation?'báo giá':'đơn hàng')+' này?';
             if(!confirm(lossConfirm)) return;
         }
@@ -4924,9 +4924,7 @@ function renderOrderCostWarnings(warnings){
         return;
     }
     var details=ORDER_LOSS_WARNINGS.map(function(item){
-        return '<div><strong>'+escapeHtml(item.label)+'</strong>: giá sau chiết khấu <strong>'+fmt(item.effective_price)+'đ</strong>'+
-            ' &lt; giá vốn <strong>'+fmt(item.cost_price)+'đ</strong>'+
-            ' · lỗ dự kiến <strong>'+fmt(item.loss_amount)+'đ</strong></div>';
+        return '<div><i class="fas fa-exclamation-circle mr-1"></i><strong>'+escapeHtml(item.label)+'</strong></div>';
     }).join('');
     $('#cost_warning_details').html(details);
     $('#cost_warning_row .loss-warning-banner').html(
@@ -4978,8 +4976,7 @@ function calcTotal(options){
             lossWarnings.push(warning);
             $row.addClass('loss-sale-row');
             $row.find('.order-item-product-cell').append(
-                '<div class="order-item-loss-warning"><i class="fas fa-exclamation-triangle mr-1"></i>Bán '+
-                fmt(warning.effective_price)+'đ &lt; vốn '+fmt(warning.cost_price)+'đ · lỗ '+fmt(warning.loss_amount)+'đ</div>'
+                '<div class="order-item-loss-warning"><i class="fas fa-exclamation-triangle mr-1"></i>Sản phẩm đang bán dưới giá vốn</div>'
             );
         }
     });

@@ -986,6 +986,36 @@ def _calculate_line_total(quantity, unit_price, discount_percent):
     return qty * price * (Decimal('1') - (discount / Decimal('100')))
 
 
+def _effective_unit_cost(product, variant=None, visited_product_ids=None):
+    """Giá vốn dùng tại thời điểm ghi dòng bán, có fallback về giá nhập."""
+    candidates = []
+    if variant is not None:
+        candidates.extend([variant.cost_price, variant.import_price])
+    if product is not None:
+        candidates.extend([product.cost_price, product.import_price])
+    for candidate in candidates:
+        value = _to_decimal(candidate)
+        if value > 0:
+            return value
+    if product is not None and getattr(product, 'is_combo', False):
+        visited_product_ids = set(visited_product_ids or ())
+        if product.id in visited_product_ids:
+            return Decimal('0')
+        visited_product_ids.add(product.id)
+        combo_cost = Decimal('0')
+        for combo_item in product.combo_items.select_related('product').all():
+            combo_cost += (
+                _effective_unit_cost(
+                    combo_item.product,
+                    visited_product_ids=visited_product_ids,
+                )
+                * _to_decimal(combo_item.quantity)
+            )
+        if combo_cost > 0:
+            return combo_cost
+    return Decimal('0')
+
+
 def _calculate_final_amount(total, discount_amount=0, shipping_fee=0, other_fee=0):
     """Tính tổng thanh toán và chặn mọi trường hợp âm do chiết khấu quá lớn."""
     final_amount = (
@@ -1536,9 +1566,7 @@ def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
 
     exchange_order.items.all().delete()
     for item in exchange_items:
-        cost = Decimal(str(item.product.cost_price or 0)) if item.product else Decimal('0')
-        if item.variant:
-            cost = Decimal(str(item.variant.cost_price or 0))
+        cost = _effective_unit_cost(item.product, item.variant)
         OrderItem.objects.create(
             order=exchange_order,
             product=item.product,
@@ -2143,7 +2171,7 @@ def api_get_products_for_select(request):
             'size_name': v.size_name,
             'sku': v.sku,
             'import_price': float(v.import_price),
-            'cost_price': float(v.cost_price),
+            'cost_price': float(_effective_unit_cost(p, v)),
             'selling_price': float(v.selling_price),
             'retail_price': float(p.selling_price),
         } for v in p.variants.all()]
@@ -2162,9 +2190,9 @@ def api_get_products_for_select(request):
                     'unit': ci.product.unit,
                     'is_service': ci.product.is_service,
                     'quantity': float(ci.quantity),
-                    'cost_price': float(ci.product.cost_price),
+                    'cost_price': float(_effective_unit_cost(ci.product)),
                     'selling_price': float(ci.product.selling_price),
-                    'line_cost': float(ci.quantity * ci.product.cost_price),
+                    'line_cost': float(ci.quantity * _effective_unit_cost(ci.product)),
                     'line_total': float(ci.quantity * ci.product.selling_price),
                     'total_stock': float(sum(stock.quantity for stock in ci.product.stocks.all())),
                     'stocks': ci_stocks,
@@ -2199,7 +2227,7 @@ def api_get_products_for_select(request):
             'selling_price': float(p.selling_price),
             'retail_price': float(p.selling_price),
             'import_price': float(p.import_price),
-            'cost_price': float(p.cost_price),
+            'cost_price': float(_effective_unit_cost(p)),
             'price': float(p.selling_price),
             'is_weight_based': p.is_weight_based,
             'is_service': p.is_service,
@@ -3065,12 +3093,8 @@ def api_save_order(request):
                 cost = Decimal('0')
                 is_below_cost = False
                 if product:
-                    cost = Decimal(str(product.cost_price or 0))
-                    fallback_cost = Decimal(str(product.import_price or 0))
-                    if variant:
-                        cost = Decimal(str(variant.cost_price or 0))
-                        fallback_cost = Decimal(str(variant.import_price or 0))
-                    compare_cost = cost if cost > 0 else fallback_cost
+                    cost = _effective_unit_cost(product, variant)
+                    compare_cost = cost
                     unit_after_line_discount = price * (Decimal('1') - disc / Decimal('100'))
                     unit_after_order_discount = unit_after_line_discount * (Decimal('1') - order_discount_ratio)
                     is_below_cost = compare_cost > 0 and unit_after_order_discount < compare_cost
@@ -4157,9 +4181,7 @@ def api_save_quotation(request):
                 line_total = _calculate_line_total(qty, price, disc)
                 variant_id = variant.id if variant else None
                 if product:
-                    compare_cost = _to_decimal(product.cost_price or product.import_price or 0)
-                    if variant:
-                        compare_cost = _to_decimal(variant.cost_price or variant.import_price or compare_cost)
+                    compare_cost = _effective_unit_cost(product, variant)
                     effective_unit_price = price * (Decimal('1') - disc / Decimal('100')) * (Decimal('1') - quotation_discount_ratio)
                     if compare_cost > 0 and effective_unit_price < compare_cost:
                         loss_warnings.append(
@@ -4894,7 +4916,7 @@ def api_pos_checkout(request):
                     unit_price=item_data.get('unit_price', 0),
                     total_price=item_data.get('total_price', 0),
                     discount_percent=item_data.get('discount_percent', 0),
-                    cost_price=float(product.cost_price or 0),
+                    cost_price=_effective_unit_cost(product),
                     note=_payload_item_note(item_data, product),
                 )
                 oi.save()

@@ -1273,6 +1273,104 @@ class OrderRiskFlowTests(TestCase):
         self.assertTrue(order.below_listed_price_warning)
         self.assertTrue(order.items.first().is_below_listed)
 
+    def test_save_order_falls_back_to_import_price_when_cost_price_is_zero(self):
+        self.product.cost_price = 0
+        self.product.import_price = 75
+        self.product.save(update_fields=['cost_price', 'import_price'])
+
+        product_response = self.client.get(reverse('api_get_products_for_select'))
+        product_row = next(
+            item for item in product_response.json()['data']
+            if item['id'] == self.product.id
+        )
+        self.assertEqual(product_row['cost_price'], 75.0)
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-COST-FALLBACK-001',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'other_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 2,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        item = Order.objects.get(id=response.json()['order_id']).items.get()
+        self.assertEqual(float(item.cost_price), 75.0)
+
+    def test_save_order_calculates_combo_cost_from_component_import_prices(self):
+        self.product.cost_price = 0
+        self.product.import_price = 40
+        self.product.save(update_fields=['cost_price', 'import_price'])
+        combo = Product.objects.create(
+            store=self.store,
+            code='CB-COST-FALLBACK-001',
+            name='Combo tính vốn từ thành phần',
+            unit='Bộ',
+            is_combo=True,
+            cost_price=0,
+            import_price=0,
+            selling_price=120,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=2)
+
+        product_response = self.client.get(reverse('api_get_products_for_select'))
+        combo_row = next(item for item in product_response.json()['data'] if item['id'] == combo.id)
+        self.assertEqual(combo_row['cost_price'], 80.0)
+        self.assertEqual(combo_row['combo_items'][0]['line_cost'], 80.0)
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-COMBO-COST-FALLBACK-001',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'other_fee': 0,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': combo.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 120,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        item = Order.objects.get(id=response.json()['order_id']).items.get()
+        self.assertEqual(float(item.cost_price), 80.0)
+
     def test_completed_order_note_can_be_updated(self):
         order = self._create_order(code='DH-COMPLETE-NOTE', status=5)
 

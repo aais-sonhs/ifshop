@@ -191,9 +191,11 @@ class SalesReportTests(TestCase):
             status=5,
             payment_status=2,
             total_amount=100,
+            discount_amount=10,
+            shipping_fee=5,
             other_fee=20,
-            final_amount=120,
-            paid_amount=120,
+            final_amount=115,
+            paid_amount=115,
             order_date=today,
             salesperson='Nhân viên A',
             created_by=self.user,
@@ -215,9 +217,51 @@ class SalesReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         row = next(item for item in payload['order_details'] if item['id'] == order.id)
+        self.assertEqual(row['goods_amount'], 100.0)
+        self.assertEqual(row['discount_amount'], 10.0)
+        self.assertEqual(row['shipping_fee'], 5.0)
         self.assertEqual(row['other_fee'], 20.0)
-        self.assertEqual(row['revenue'], 120.0)
-        self.assertEqual(row['profit'], 60.0)
+        self.assertEqual(row['revenue'], 115.0)
+        self.assertEqual(row['profit'], 55.0)
+
+    def test_api_report_sales_falls_back_when_legacy_order_item_cost_is_zero(self):
+        today = date.today()
+        self.product.cost_price = 60
+        self.product.import_price = 65
+        self.product.save(update_fields=['cost_price', 'import_price'])
+        order = Order.objects.create(
+            code='DH-RP-LEGACY-ZERO-COST',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            salesperson='Nhân viên A',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=0,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['order_details'] if item['id'] == order.id)
+        self.assertEqual(row['cost'], 60.0)
+        self.assertEqual(row['profit'], 40.0)
 
     def test_api_report_sales_includes_sapo_style_sku_details(self):
         today = date.today()

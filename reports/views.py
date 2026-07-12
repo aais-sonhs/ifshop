@@ -351,6 +351,29 @@ def _build_sales_report_payload(request, include_filter_options=True):
             return False
         return True
 
+    def _effective_item_unit_cost(item):
+        candidates = [item.cost_price]
+        if item.variant_id:
+            candidates.extend([item.variant.cost_price, item.variant.import_price])
+        if item.product_id:
+            candidates.extend([item.product.cost_price, item.product.import_price])
+        for candidate in candidates:
+            value = float(candidate or 0)
+            if value > 0:
+                return value
+        if item.product_id and item.product.is_combo:
+            combo_cost = 0.0
+            for combo_item in item.product.combo_items.select_related('product').all():
+                component_cost = float(
+                    combo_item.product.cost_price
+                    or combo_item.product.import_price
+                    or 0
+                )
+                combo_cost += component_cost * float(combo_item.quantity or 0)
+            if combo_cost > 0:
+                return combo_cost
+        return 0.0
+
     orders_qs = Order.objects.filter(
         order_date__gte=filters['from_date'],
         order_date__lte=filters['to_date'],
@@ -408,7 +431,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         base_total = float(item.order.total_amount or 0)
         final_total = max(float(item.order.final_amount or 0), 0)
         line_revenue = float(item.total_price or 0)
-        line_cost = float(item.cost_price or 0) * float(item.quantity or 0)
+        line_cost = _effective_item_unit_cost(item) * float(item.quantity or 0)
         if base_total > 0:
             adjusted_revenue = line_revenue * final_total / base_total
         else:
@@ -459,6 +482,11 @@ def _build_sales_report_payload(request, include_filter_options=True):
         goods_amount = item_totals['goods_amount'] if item_scope else float(max(order.total_amount or 0, 0))
         revenue = item_totals['revenue'] if item_scope else float(max(order.final_amount or 0, 0))
         cost = item_totals['cost']
+        order_goods_total = float(max(order.total_amount or 0, 0))
+        scope_ratio = (goods_amount / order_goods_total) if item_scope and order_goods_total > 0 else 1.0
+        discount_amount = float(order.discount_amount or 0) * scope_ratio
+        shipping_fee = float(order.shipping_fee or 0) * scope_ratio
+        other_fee = float(order.other_fee or 0) * scope_ratio
 
         if item_scope:
             base_amount = float(order.final_amount or 0)
@@ -486,7 +514,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'store_name': order.store.name if order.store else '',
             'salesperson': order.salesperson or '',
             'goods_amount': goods_amount,
-            'other_fee': float(order.other_fee or 0),
+            'discount_amount': discount_amount,
+            'shipping_fee': shipping_fee,
+            'other_fee': other_fee,
             'revenue': revenue,
             'paid': paid,
             'debt': revenue - paid,

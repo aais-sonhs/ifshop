@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+#data_tbl .btn-action-group {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+#data_tbl .btn-action-group .btn {
+    white-space: nowrap;
+}
+#data_tbl .btn-action-group .btn + .btn {
+    margin-left: 4px;
+}
+</style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-undo-alt mr-2"></i>Danh sách trả hàng</h3>

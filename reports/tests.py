@@ -7,7 +7,7 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
-from orders.models import Order, OrderItem, OrderReturn
+from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from products.models import Product, ProductCategory, ProductVariant, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
@@ -66,6 +66,83 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok')
+
+    def test_api_report_sales_defaults_to_realized_orders(self):
+        today = date.today()
+        created_orders = []
+        for status, suffix in ((3, 'PACK'), (4, 'EXPORTED'), (5, 'DONE'), (6, 'CANCELLED')):
+            order = Order.objects.create(
+                code=f'DH-RP-SCOPE-{suffix}',
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=status,
+                total_amount=100,
+                final_amount=100,
+                order_date=today,
+                created_by=self.user,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=100,
+                cost_price=60,
+                total_price=100,
+            )
+            created_orders.append(order)
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 2)
+        self.assertEqual(
+            {row['code'] for row in payload['order_details']},
+            {created_orders[1].code, created_orders[2].code},
+        )
+        self.assertEqual(payload['filters_applied']['order_scope'], 'realized')
+
+    def test_api_report_sales_all_active_scope_includes_non_cancelled_orders(self):
+        today = date.today()
+        expected_codes = set()
+        for status, suffix in ((1, 'ORDER'), (3, 'PACK'), (4, 'EXPORTED'), (5, 'DONE'), (6, 'CANCELLED')):
+            order = Order.objects.create(
+                code=f'DH-RP-ALL-{suffix}',
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=status,
+                total_amount=100,
+                final_amount=100,
+                order_date=today,
+                created_by=self.user,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=100,
+                cost_price=60,
+                total_price=100,
+            )
+            if status != 6:
+                expected_codes.add(order.code)
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'order_scope': 'all_active',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 4)
+        self.assertEqual({row['code'] for row in payload['order_details']}, expected_codes)
+        self.assertEqual(payload['filters_applied']['order_scope'], 'all_active')
 
     def test_api_report_sales_counts_linked_returns(self):
         today = date.today()
@@ -346,7 +423,7 @@ class SalesReportTests(TestCase):
             cost_price=70,
             total_price=200,
         )
-        OrderReturn.objects.create(
+        order_return = OrderReturn.objects.create(
             code='TH-RP-DAILY',
             order=order,
             customer=self.customer,
@@ -355,6 +432,13 @@ class SalesReportTests(TestCase):
             total_refund=30,
             return_date=today,
             created_by=self.user,
+        )
+        OrderReturnItem.objects.create(
+            order_return=order_return,
+            product=self.product,
+            quantity=1,
+            unit_price=30,
+            total_price=30,
         )
 
         response = self.client.get(reverse('api_report_sales'), {
@@ -367,8 +451,11 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['status'], 'ok')
         self.assertEqual(payload['summary']['total_goods_amount'], 200.0)
         self.assertEqual(payload['summary']['total_net_revenue'], 150.0)
-        self.assertEqual(payload['summary']['total_gross_profit'], 10.0)
-        self.assertEqual(payload['summary']['gross_margin'], 6.7)
+        self.assertEqual(payload['summary']['total_sales_cost'], 140.0)
+        self.assertEqual(payload['summary']['total_return_cost'], 70.0)
+        self.assertEqual(payload['summary']['total_net_cost'], 70.0)
+        self.assertEqual(payload['summary']['total_gross_profit'], 80.0)
+        self.assertEqual(payload['summary']['gross_margin'], 53.3)
         self.assertEqual(len(payload['daily_finance']), 1)
         row = payload['daily_finance'][0]
         self.assertEqual(row['date'], today.strftime('%d/%m/%Y'))
@@ -376,10 +463,12 @@ class SalesReportTests(TestCase):
         self.assertEqual(row['revenue'], 180.0)
         self.assertEqual(row['returns'], 30.0)
         self.assertEqual(row['net_revenue'], 150.0)
-        self.assertEqual(row['cost'], 140.0)
-        self.assertEqual(row['gross_profit'], 10.0)
-        self.assertEqual(row['gross_margin'], 6.7)
-        self.assertEqual(row['net_profit'], 10.0)
+        self.assertEqual(row['gross_cost'], 140.0)
+        self.assertEqual(row['return_cost'], 70.0)
+        self.assertEqual(row['cost'], 70.0)
+        self.assertEqual(row['gross_profit'], 80.0)
+        self.assertEqual(row['gross_margin'], 53.3)
+        self.assertEqual(row['net_profit'], 80.0)
 
     def test_api_report_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()
@@ -830,7 +919,7 @@ class SalesReportTests(TestCase):
         self.assertIn('Chi tiết đơn hàng', workbook.sheetnames)
         self.assertEqual(
             workbook.active['A3'].value,
-            'Bộ lọc: Xem theo: Ngày | Kiểu khách: Khách buôn / sỉ | Nhóm mặt hàng: Đồ uống | Lợi nhuận: Báo lỗ',
+            'Bộ lọc: Xem theo: Ngày | Phạm vi đơn: Đã xuất kho + Hoàn thành | Kiểu khách: Khách buôn / sỉ | Nhóm mặt hàng: Đồ uống | Lợi nhuận: Báo lỗ',
         )
 
         order_sheet = workbook['Chi tiết đơn hàng']
@@ -848,6 +937,53 @@ class SalesReportTests(TestCase):
             if row[1]
         ]
         self.assertEqual(exported_product_names, [exported_product.name])
+
+    def test_export_sales_excel_respects_order_scope(self):
+        today = date.today()
+        pending_order = Order.objects.create(
+            code='DH-EX-SCOPE-PENDING',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=1,
+            total_amount=100,
+            final_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=pending_order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=60,
+            total_price=100,
+        )
+
+        default_response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        default_workbook = load_workbook(BytesIO(default_response.content))
+        default_codes = [
+            row[1]
+            for row in default_workbook['Chi tiết đơn hàng'].iter_rows(min_row=2, max_col=2, values_only=True)
+            if row[1] and row[1] != 'TỔNG'
+        ]
+        self.assertNotIn(pending_order.code, default_codes)
+
+        all_active_response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'order_scope': 'all_active',
+        })
+        all_active_workbook = load_workbook(BytesIO(all_active_response.content))
+        all_active_codes = [
+            row[1]
+            for row in all_active_workbook['Chi tiết đơn hàng'].iter_rows(min_row=2, max_col=2, values_only=True)
+            if row[1] and row[1] != 'TỔNG'
+        ]
+        self.assertIn(pending_order.code, all_active_codes)
 
     def test_api_report_staff_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()

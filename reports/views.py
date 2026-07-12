@@ -160,10 +160,14 @@ def _get_sales_report_filters(request):
     time_group = (request.GET.get('time_group') or 'day').strip().lower()
     if time_group not in ('day', 'month', 'year'):
         time_group = 'day'
+    order_scope = (request.GET.get('order_scope') or 'realized').strip().lower()
+    if order_scope not in ('realized', 'all_active'):
+        order_scope = 'realized'
     return {
         'from_date': from_date,
         'to_date': to_date,
         'time_group': time_group,
+        'order_scope': order_scope,
         'store_id': request.GET.get('store_id') or '',
         'customer_kind': request.GET.get('customer_kind', '').strip(),
         'customer_group_id': request.GET.get('customer_group_id') or '',
@@ -208,6 +212,12 @@ def _get_sales_report_filter_labels(filters):
     filter_labels = []
     if filters.get('time_group'):
         filter_labels.append(f"Xem theo: {_get_sales_report_time_group_meta(filters['time_group'])['label']}")
+    order_scope_label = {
+        'realized': 'Đã xuất kho + Hoàn thành',
+        'all_active': 'Tất cả đơn chưa hủy',
+    }.get(filters.get('order_scope'))
+    if order_scope_label:
+        filter_labels.append(f"Phạm vi đơn: {order_scope_label}")
     if filters.get('store_id'):
         filter_labels.append(f"Cửa hàng: {_lookup_name(Store, filters['store_id'])}")
     if filters.get('customer_kind'):
@@ -351,19 +361,16 @@ def _build_sales_report_payload(request, include_filter_options=True):
             return False
         return True
 
-    def _effective_item_unit_cost(item):
-        candidates = [item.cost_price]
-        if item.variant_id:
-            candidates.extend([item.variant.cost_price, item.variant.import_price])
-        if item.product_id:
-            candidates.extend([item.product.cost_price, item.product.import_price])
-        for candidate in candidates:
+    def _effective_product_unit_cost(product):
+        if not product:
+            return 0.0
+        for candidate in (product.cost_price, product.import_price):
             value = float(candidate or 0)
             if value > 0:
                 return value
-        if item.product_id and item.product.is_combo:
+        if product.is_combo:
             combo_cost = 0.0
-            for combo_item in item.product.combo_items.select_related('product').all():
+            for combo_item in product.combo_items.select_related('product').all():
                 component_cost = float(
                     combo_item.product.cost_price
                     or combo_item.product.import_price
@@ -374,10 +381,25 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 return combo_cost
         return 0.0
 
+    def _effective_item_unit_cost(item):
+        candidates = [item.cost_price]
+        if item.variant_id:
+            candidates.extend([item.variant.cost_price, item.variant.import_price])
+        for candidate in candidates:
+            value = float(candidate or 0)
+            if value > 0:
+                return value
+        return _effective_product_unit_cost(item.product if item.product_id else None)
+
     orders_qs = Order.objects.filter(
         order_date__gte=filters['from_date'],
         order_date__lte=filters['to_date'],
-    ).exclude(status=6).select_related(
+    )
+    if filters['order_scope'] == 'all_active':
+        orders_qs = orders_qs.exclude(status=6)
+    else:
+        orders_qs = orders_qs.filter(status__in=[4, 5])
+    orders_qs = orders_qs.select_related(
         'customer', 'customer__group', 'warehouse', 'store'
     )
     orders_qs = filter_by_store(orders_qs, request)
@@ -644,29 +666,39 @@ def _build_sales_report_payload(request, include_filter_options=True):
             Q(customer__name__icontains=search) |
             Q(reason__icontains=search)
         )
-    if allowed_order_ids:
-        returns_qs = returns_qs.filter(Q(order_id__in=allowed_order_ids) | Q(order__isnull=True))
+    # Phiếu trả có đơn gốc phải đi theo đúng phạm vi đơn đang được báo cáo.
+    # Phiếu legacy thiếu đơn gốc vẫn được giữ lại nếu suy luận được đúng cửa hàng.
+    returns_qs = returns_qs.filter(Q(order_id__in=allowed_order_ids) | Q(order__isnull=True))
 
     returns_total = 0
     returns_count = 0
     returns_by_date = {}
-    return_items_qs = OrderReturnItem.objects.none()
+    return_cost_total = 0
+    return_cost_by_date = {}
+
+    return_items_qs = OrderReturnItem.objects.filter(order_return__in=returns_qs)
+    if filters['category_id']:
+        return_items_qs = return_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
+    if filters['product_type_id']:
+        return_items_qs = return_items_qs.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
+    if filters['product_id']:
+        return_items_qs = return_items_qs.filter(product_id=filters['product_id'])
+    return_items_for_breakdown = list(return_items_qs.select_related(
+        'product',
+        'order_return',
+        'order_return__order',
+        'order_return__customer',
+        'order_return__order__store',
+    ))
+
     if item_scope:
-        return_items_qs = OrderReturnItem.objects.filter(order_return__in=returns_qs)
-        if filters['category_id']:
-            return_items_qs = return_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
-        if filters['product_type_id']:
-            return_items_qs = return_items_qs.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
-        if filters['product_id']:
-            return_items_qs = return_items_qs.filter(product_id=filters['product_id'])
-        returns_total = float(return_items_qs.aggregate(s=Sum('total_price'))['s'] or 0)
-        returns_count = return_items_qs.values('order_return_id').distinct().count()
-        for row in return_items_qs.values('order_return__return_date').annotate(
-            total=Sum('total_price')
-        ):
-            if not row['order_return__return_date']:
+        returns_total = sum(float(item.total_price or 0) for item in return_items_for_breakdown)
+        returns_count = len({item.order_return_id for item in return_items_for_breakdown})
+        for item in return_items_for_breakdown:
+            if not item.order_return.return_date:
                 continue
-            returns_by_date[row['order_return__return_date'].strftime('%Y-%m-%d')] = float(row['total'] or 0)
+            date_key = item.order_return.return_date.strftime('%Y-%m-%d')
+            returns_by_date[date_key] = returns_by_date.get(date_key, 0) + float(item.total_price or 0)
     else:
         returns_total = float(returns_qs.aggregate(s=Sum('total_refund'))['s'] or 0)
         returns_count = returns_qs.count()
@@ -675,20 +707,47 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 continue
             returns_by_date[row['return_date'].strftime('%Y-%m-%d')] = float(row['total'] or 0)
 
-    return_items_for_breakdown = OrderReturnItem.objects.filter(order_return__in=returns_qs)
-    if filters['category_id']:
-        return_items_for_breakdown = return_items_for_breakdown.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
-    if filters['product_type_id']:
-        return_items_for_breakdown = return_items_for_breakdown.filter(_get_product_category_direct_q(filters['product_type_id'], 'product__'))
-    if filters['product_id']:
-        return_items_for_breakdown = return_items_for_breakdown.filter(product_id=filters['product_id'])
-    return_items_for_breakdown = return_items_for_breakdown.select_related(
-        'product',
-        'order_return',
-        'order_return__order',
-        'order_return__customer',
-        'order_return__order__store',
-    )
+    # Giá vốn hàng trả lấy theo snapshot giá vốn trên đơn gốc. Nếu dữ liệu cũ
+    # thiếu snapshot thì fallback về giá vốn/import hiện có của sản phẩm.
+    return_order_ids = {
+        item.order_return.order_id
+        for item in return_items_for_breakdown
+        if item.order_return.order_id
+    }
+    return_product_ids = {item.product_id for item in return_items_for_breakdown if item.product_id}
+    original_cost_map = defaultdict(lambda: {'quantity': 0.0, 'cost': 0.0})
+    if return_order_ids and return_product_ids:
+        original_items = OrderItem.objects.filter(
+            order_id__in=return_order_ids,
+            product_id__in=return_product_ids,
+        ).select_related('product', 'variant')
+        for original_item in original_items:
+            quantity = float(original_item.quantity or 0)
+            if quantity <= 0:
+                continue
+            key = (original_item.order_id, original_item.product_id)
+            original_cost_map[key]['quantity'] += quantity
+            original_cost_map[key]['cost'] += _effective_item_unit_cost(original_item) * quantity
+
+    return_cost_by_return_id = {}
+    return_cost_by_item_id = {}
+    for item in return_items_for_breakdown:
+        quantity = float(item.quantity or 0)
+        order_id = item.order_return.order_id
+        original_cost = original_cost_map.get((order_id, item.product_id))
+        if original_cost and original_cost['quantity'] > 0:
+            unit_cost = original_cost['cost'] / original_cost['quantity']
+        else:
+            unit_cost = _effective_product_unit_cost(item.product)
+        item_return_cost = unit_cost * quantity
+        return_cost_by_item_id[item.id] = item_return_cost
+        return_cost_total += item_return_cost
+        return_cost_by_return_id[item.order_return_id] = (
+            return_cost_by_return_id.get(item.order_return_id, 0) + item_return_cost
+        )
+        if item.order_return.return_date:
+            date_key = item.order_return.return_date.strftime('%Y-%m-%d')
+            return_cost_by_date[date_key] = return_cost_by_date.get(date_key, 0) + item_return_cost
 
     purchases = GoodsReceipt.objects.filter(
         receipt_date__gte=filters['from_date'],
@@ -712,6 +771,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 'count': 0,
                 'goods_amount': 0,
                 'revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
                 'cost': 0,
                 'profit': 0,
                 'returns': 0,
@@ -719,8 +780,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         daily_map[key]['count'] += 1
         daily_map[key]['goods_amount'] += row['goods_amount']
         daily_map[key]['revenue'] += row['revenue']
-        daily_map[key]['cost'] += row['cost']
-        daily_map[key]['profit'] += row['profit']
+        daily_map[key]['gross_cost'] += row['cost']
     for date_key, amount in returns_by_date.items():
         date_obj = datetime.strptime(date_key, '%Y-%m-%d')
         bucket_key = date_obj.strftime(time_group_meta['key_format'])
@@ -733,10 +793,32 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 'count': 0,
                 'goods_amount': 0,
                 'revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
                 'cost': 0,
                 'profit': 0,
                 'returns': amount,
             }
+    for date_key, amount in return_cost_by_date.items():
+        date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+        bucket_key = date_obj.strftime(time_group_meta['key_format'])
+        bucket_label = date_obj.strftime(time_group_meta['display_format'])
+        if bucket_key not in daily_map:
+            daily_map[bucket_key] = {
+                'date': bucket_label,
+                'count': 0,
+                'goods_amount': 0,
+                'revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
+                'cost': 0,
+                'profit': 0,
+                'returns': 0,
+            }
+        daily_map[bucket_key]['return_cost'] += amount
+    for row in daily_map.values():
+        row['cost'] = row['gross_cost'] - row['return_cost']
+        row['profit'] = row['revenue'] - row['returns'] - row['cost']
     daily_data = [daily_map[key] for key in sorted(daily_map.keys())]
 
     daily_finance_map = {}
@@ -753,6 +835,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 'revenue': 0,
                 'returns': 0,
                 'net_revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
                 'cost': 0,
                 'gross_profit': 0,
                 'gross_margin': 0,
@@ -760,7 +844,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             }
         daily_finance_map[date_key]['goods_amount'] += row['goods_amount']
         daily_finance_map[date_key]['revenue'] += row['revenue']
-        daily_finance_map[date_key]['cost'] += row['cost']
+        daily_finance_map[date_key]['gross_cost'] += row['cost']
     for date_key, amount in returns_by_date.items():
         date_obj = datetime.strptime(date_key, '%Y-%m-%d')
         if date_key not in daily_finance_map:
@@ -771,21 +855,44 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 'revenue': 0,
                 'returns': 0,
                 'net_revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
                 'cost': 0,
                 'gross_profit': 0,
                 'gross_margin': 0,
                 'net_profit': 0,
             }
         daily_finance_map[date_key]['returns'] += amount
+    for date_key, amount in return_cost_by_date.items():
+        date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+        if date_key not in daily_finance_map:
+            daily_finance_map[date_key] = {
+                'date': date_obj.strftime('%d/%m/%Y'),
+                'date_raw': date_key,
+                'goods_amount': 0,
+                'revenue': 0,
+                'returns': 0,
+                'net_revenue': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
+                'cost': 0,
+                'gross_profit': 0,
+                'gross_margin': 0,
+                'net_profit': 0,
+            }
+        daily_finance_map[date_key]['return_cost'] += amount
 
     daily_finance = []
     for row in [daily_finance_map[key] for key in sorted(daily_finance_map.keys())]:
         revenue = float(row.get('revenue') or 0)
         returns = float(row.get('returns') or 0)
-        cost = float(row.get('cost') or 0)
+        gross_cost = float(row.get('gross_cost') or 0)
+        return_cost = float(row.get('return_cost') or 0)
+        cost = gross_cost - return_cost
         net_revenue = revenue - returns
         gross_profit = net_revenue - cost
         row['net_revenue'] = net_revenue
+        row['cost'] = cost
         row['gross_profit'] = gross_profit
         row['gross_margin'] = round(gross_profit / net_revenue * 100, 1) if net_revenue > 0 else 0
         row['net_profit'] = gross_profit
@@ -993,10 +1100,12 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 'name': item.product.name if item.product else 'N/A',
                 'qty': 0,
                 'amount': 0,
+                'cost': 0,
                 'return_ids': set(),
             }
         return_product_map[product_key]['qty'] += qty
         return_product_map[product_key]['amount'] += refund
+        return_product_map[product_key]['cost'] += return_cost_by_item_id.get(item.id, 0)
         return_product_map[product_key]['return_ids'].add(item.order_return_id)
 
     return_order_rows = []
@@ -1026,6 +1135,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'store_name': store_name,
             'qty': qty,
             'amount': refund,
+            'cost': return_cost_by_return_id.get(ret.id, 0),
             'order_revenue': float(order_row.get('revenue') or (ret.order.final_amount if ret.order else 0) or 0),
             'status': ret.status,
             'status_display': ret.get_status_display(),
@@ -1038,6 +1148,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'name': row['name'],
             'qty': row['qty'],
             'amount': row['amount'],
+            'cost': row['cost'],
             'return_count': len(row['return_ids']),
         } for row in return_product_map.values()],
         key=lambda row: (-row['amount'], -row['qty'], row['name'])
@@ -1056,7 +1167,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
         store_breakdown = [row for row in store_breakdown if _matches_metric_filters(row)]
 
     total_net_revenue = total_revenue - returns_total
-    total_gross_profit = total_net_revenue - total_cost
+    total_net_cost = total_cost - return_cost_total
+    total_gross_profit = total_net_revenue - total_net_cost
     gross_margin = round(total_gross_profit / total_net_revenue * 100, 1) if total_net_revenue > 0 else 0
 
     payload = {
@@ -1067,11 +1179,15 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'total_goods_amount': total_goods_amount,
             'total_revenue': total_revenue,
             'total_net_revenue': total_net_revenue,
-            'total_cost': total_cost,
-            'total_profit': total_profit,
+            'total_cost': total_net_cost,
+            'total_sales_cost': total_cost,
+            'total_return_cost': return_cost_total,
+            'total_net_cost': total_net_cost,
+            'total_order_profit': total_profit,
+            'total_profit': total_gross_profit,
             'total_gross_profit': total_gross_profit,
             'total_net_profit': total_gross_profit,
-            'profit_margin': round(total_profit / total_revenue * 100, 1) if total_revenue > 0 else 0,
+            'profit_margin': gross_margin,
             'gross_margin': gross_margin,
             'total_returns': returns_total,
             'returns_count': returns_count,
@@ -1104,6 +1220,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'return_count': returns_count,
             'return_products': len(return_product_breakdown),
             'returned_qty': sum(row['qty'] for row in return_product_breakdown),
+            'return_cost': return_cost_total,
             'return_rate': round(returns_total / total_revenue * 100, 1) if total_revenue > 0 else 0,
         },
         'filters_applied': filters,
@@ -1917,7 +2034,7 @@ def export_sales_excel(request):
         ws['A3'].font = Font(italic=True, size=9)
         ws['A3'].alignment = Alignment(horizontal='center')
 
-    headers = ['STT', time_group_label, 'Số ĐH', 'Doanh thu', 'Giá vốn', 'Lợi nhuận', 'Trả hàng']
+    headers = ['STT', time_group_label, 'Số ĐH', 'Doanh thu', 'Giá vốn thuần', 'Lợi nhuận', 'Trả hàng']
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=h)
         cell.font = sub_font
@@ -1957,7 +2074,7 @@ def export_sales_excel(request):
     # ===== Sheet 2: Tổng hợp ngày =====
     ws_daily = wb.create_sheet('Tổng hợp ngày')
     daily_headers = [
-        'Ngày', 'Tiền hàng', 'Doanh thu', 'Doanh thu thuần', 'Tiền vốn',
+        'Ngày', 'Tiền hàng', 'Doanh thu', 'Doanh thu thuần', 'Giá vốn thuần',
         'Lợi nhuận gộp', 'Tỷ suất lợi nhuận gộp', 'Lợi nhuận ròng',
     ]
     for col, h in enumerate(daily_headers, 1):

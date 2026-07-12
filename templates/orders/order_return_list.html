@@ -44,7 +44,7 @@
         <div class="form-group"><label>Lý do</label><textarea class="form-control" id="inp_reason" rows="2"></textarea></div>
         <div class="form-group"><label>Trạng thái</label><select class="form-control" id="inp_status"><option value="0">Nháp</option><option value="1">Xác nhận</option><option value="2">Hoàn thành</option><option value="3">Hủy</option></select></div>
     </div>
-    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button><button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button></div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button><button type="button" class="btn btn-outline-warning btn-return-print" data-print-type="k80" style="display:none;"><i class="fas fa-receipt"></i> In K80</button><button type="button" class="btn btn-warning btn-return-print" data-print-type="a4" style="display:none;"><i class="fas fa-print"></i> In A4</button><button type="button" class="btn btn-primary" id="btn_save"><i class="fas fa-save"></i> Lưu</button></div>
 </div></div></div>
 {% endblock %}
 {% block extra_js %}
@@ -84,6 +84,7 @@ function loadOrderOptions(selectedId){
 }
 function openReturnForm(orderId){
     $('#edit_id').val('');
+    $('.btn-return-print').hide();
     $('#inp_code,#inp_reason').val('');
     $('#inp_return_date').val('');
     $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').val(0);
@@ -101,13 +102,41 @@ $(document).ready(function(){
     loadOrderOptions();
     loadData(returnId);
     $('#btn_add').click(function(){openReturnForm();});
+    $('.btn-return-print').click(function(){var returnId=$('#edit_id').val();if(!returnId)return;window.open('/api/order-returns/print/?id='+encodeURIComponent(returnId)+'&type='+encodeURIComponent($(this).data('print-type')||'a4'),'_blank');});
     $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').on('input', calcManualReturnBalance);
     $('#btn_save').click(function(){var paymentMeta=getSelectedRefundPaymentMeta();var balance=calcManualReturnBalance();var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),order_id:$('#inp_order_id').val()||null,return_date:$('#inp_return_date').val(),return_amount:$('#inp_return_amount').val(),exchange_amount:$('#inp_exchange_amount').val(),compensation_amount:$('#inp_compensation_amount').val(),total_refund:balance.refund,reason:$('#inp_reason').val(),status:parseInt($('#inp_status').val(),10),payment_method:paymentMeta.payment_method,payment_method_option_id:paymentMeta.payment_method_option_id,cash_book_id:paymentMeta.cash_book_id};if(!data.code||!data.return_date||!data.order_id){alert('Vui lòng nhập mã, chọn đơn gốc và ngày trả');return;}
         $.ajax({url:'/api/order-returns/save/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}});});
     if(orderId) openReturnForm(orderId);
 });
 function fmtDt(dateStr, createdAt){if(!dateStr)return '';var p=dateStr.split('-');var d=p.length===3?p[2]+'/'+p[1]+'/'+p[0]:dateStr;if(createdAt){var t=createdAt.split(' ');if(t.length===2)d+=' '+t[1];}return d;}
-function loadData(selectedReturnId){$.get('/api/order-returns/',function(res){var h='';res.data.forEach(function(d,i){var balance=d.total_refund>0?'<span class="text-success">Hoàn '+fmt(d.total_refund)+'đ</span>':(d.amount_due>0?'<span class="text-primary">Thu '+fmt(d.amount_due)+'đ</span>':'0đ');h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(d.code)+'</td><td>'+escapeHtml(d.order)+'</td><td>'+escapeHtml(d.exchange_order_code||'')+'</td><td>'+escapeHtml(d.customer)+'</td><td>'+fmtDt(d.return_date, d.created_at)+'</td><td class="text-right">'+fmt(d.return_amount)+'đ</td><td class="text-right">'+fmt(d.exchange_amount)+'đ</td><td class="text-right">'+balance+'</td><td>'+escapeHtml(d.status_display)+'</td><td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button></div></td></tr>';});$('#data_tbl tbody').html(h);if(selectedReturnId){var selected=(res.data||[]).find(function(item){return Number(item.id)===Number(selectedReturnId);});if(selected) editItem(selected);}});}
-function editItem(d){$('#edit_id').val(d.id);$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
+function loadData(selectedReturnId){
+    $.get('/api/order-returns/', function(res){
+        var h = '';
+        (res.data || []).forEach(function(d, i){
+            var balance = d.total_refund > 0
+                ? '<span class="text-success">Hoàn ' + fmt(d.total_refund) + 'đ</span>'
+                : (d.amount_due > 0 ? '<span class="text-primary">Thu ' + fmt(d.amount_due) + 'đ</span>' : '0đ');
+            var printUrl = '/api/order-returns/print/?id=' + encodeURIComponent(d.id);
+            var rowPayload = JSON.stringify(d).replace(/'/g, "&#39;");
+            var actions = '<div class="btn-action-group">' +
+                '<button class="btn btn-xs btn-info" onclick=\'editItem(' + rowPayload + ')\'>Sửa</button>' +
+                '<div class="btn-group">' +
+                    '<button type="button" class="btn btn-xs btn-warning dropdown-toggle" data-toggle="dropdown"><i class="fas fa-print mr-1"></i>In phiếu</button>' +
+                    '<div class="dropdown-menu dropdown-menu-right">' +
+                        '<a class="dropdown-item" target="_blank" href="' + printUrl + '&type=a4"><i class="fas fa-file-alt mr-2"></i>Phiếu A4</a>' +
+                        '<a class="dropdown-item" target="_blank" href="' + printUrl + '&type=k80"><i class="fas fa-receipt mr-2"></i>Phiếu K80</a>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+            h += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(d.code) + '</td><td>' + escapeHtml(d.order) + '</td><td>' + escapeHtml(d.exchange_order_code || '') + '</td><td>' + escapeHtml(d.customer) + '</td><td>' + fmtDt(d.return_date, d.created_at) + '</td><td class="text-right">' + fmt(d.return_amount) + 'đ</td><td class="text-right">' + fmt(d.exchange_amount) + 'đ</td><td class="text-right">' + balance + '</td><td>' + escapeHtml(d.status_display) + '</td><td>' + actions + '</td></tr>';
+        });
+        $('#data_tbl tbody').html(h);
+        if(selectedReturnId){
+            var selected = (res.data || []).find(function(item){ return Number(item.id) === Number(selectedReturnId); });
+            if(selected) editItem(selected);
+        }
+    });
+}
+function editItem(d){$('#edit_id').val(d.id);$('.btn-return-print').show();$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
 </script>
 {% endblock %}

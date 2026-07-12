@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/quotations/delete/', views.api_delete_quotation, name='api_delete_quotation'),
     path('api/order-returns/', views.api_get_order_returns, name='api_get_order_returns'),
     path('api/order-returns/save/', views.api_save_order_return, name='api_save_order_return'),
+    path('api/order-returns/print/', views.api_print_order_return, name='api_print_order_return'),
     path('api/packagings/', views.api_get_packagings, name='api_get_packagings'),
     path('api/packagings/save/', views.api_save_packaging, name='api_save_packaging'),
     path('api/packagings/delete/', views.api_delete_packaging, name='api_delete_packaging'),

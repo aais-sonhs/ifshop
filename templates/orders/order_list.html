@@ -762,6 +762,7 @@
             </div>
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" id="btn_confirm_quick_return_print"><i class="fas fa-print mr-1"></i> Lưu & in A4</button>
                 <button type="button" class="btn btn-sm btn-warning" id="btn_confirm_quick_return"><i class="fas fa-check mr-1"></i> Lưu phiếu trả/đổi</button>
             </div>
         </div>
@@ -5519,7 +5520,14 @@ function rejectOrder(id, code){
 	        }
 
 	        var returnUrl = '{% url "order_return_tbl" %}?return_id=' + encodeURIComponent(item.id);
-	        var actions = '<a class="btn btn-xs btn-outline-secondary" target="_blank" href="' + escapeAttr(returnUrl) + '"><i class="fas fa-external-link-alt mr-1"></i>Mở phiếu</a>';
+	        var printUrl = '/api/order-returns/print/?id=' + encodeURIComponent(item.id);
+	        var actions = '<div class="btn-group">' +
+	            '<button type="button" class="btn btn-xs btn-outline-warning dropdown-toggle" data-toggle="dropdown"><i class="fas fa-print mr-1"></i>In phiếu</button>' +
+	            '<div class="dropdown-menu dropdown-menu-right">' +
+	                '<a class="dropdown-item" target="_blank" href="' + escapeAttr(printUrl + '&type=a4') + '"><i class="fas fa-file-alt mr-2"></i>In phiếu A4</a>' +
+	                '<a class="dropdown-item" target="_blank" href="' + escapeAttr(printUrl + '&type=k80') + '"><i class="fas fa-receipt mr-2"></i>In phiếu K80</a>' +
+	            '</div></div>' +
+	            '<a class="btn btn-xs btn-outline-secondary ml-1" target="_blank" href="' + escapeAttr(returnUrl) + '"><i class="fas fa-external-link-alt mr-1"></i>Mở phiếu</a>';
 	        if(item.exchange_order_id){
 	            actions += '<button type="button" class="btn btn-xs btn-outline-primary ml-1" onclick="quickViewOrder(' + Number(item.exchange_order_id) + ')"><i class="fas fa-file-invoice mr-1"></i>Xem đơn đổi ' + escapeHtml(item.exchange_order_code || '') + '</button>';
 	        }
@@ -5997,7 +6005,8 @@ $('#quick_return_check_all').on('change', function(){
     calcQuickReturnTotal();
 });
 
-$('#btn_confirm_quick_return').on('click', function(){
+$('#btn_confirm_quick_return,#btn_confirm_quick_return_print').on('click', function(){
+    var printAfterSave = this.id === 'btn_confirm_quick_return_print';
     var orderId = $('#quick_return_order_id').val();
     var items = [];
     $('#quick_return_items_tbl tbody tr').each(function(){
@@ -6048,8 +6057,8 @@ $('#btn_confirm_quick_return').on('click', function(){
         payment_method_option_id: paymentMeta.payment_method_option_id,
         cash_book_id: paymentMeta.cash_book_id
     };
-    var $btn = $('#btn_confirm_quick_return');
-    $btn.prop('disabled', true);
+    var $buttons = $('#btn_confirm_quick_return,#btn_confirm_quick_return_print');
+    $buttons.prop('disabled', true);
     $.ajax({
         url:'/api/order-returns/save/',
         type:'POST',
@@ -6062,12 +6071,15 @@ $('#btn_confirm_quick_return').on('click', function(){
                 loadData();
                 loadOrderHistory(orderId);
                 toastr ? toastr.success(r.message) : alert(r.message);
+                if(printAfterSave && r.return_id){
+                    window.open('/api/order-returns/print/?id=' + encodeURIComponent(r.return_id) + '&type=a4', '_blank');
+                }
             } else {
                 alert(r.message);
             }
         },
         complete:function(){
-            $btn.prop('disabled', false);
+            $buttons.prop('disabled', false);
         }
     });
 });

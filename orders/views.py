@@ -4265,6 +4265,73 @@ def api_get_order_returns(request):
 
 
 @login_required(login_url="/login/")
+def api_print_order_return(request):
+    """In phiếu hoàn/trả hàng, độc lập với hóa đơn của đơn đổi phát sinh."""
+    return_id = request.GET.get('id')
+    print_type = request.GET.get('type', 'a4')
+    requested_brand_id = request.GET.get('brand_id')
+    template_name = (
+        'orders/print/order_return_k80.html'
+        if print_type == 'k80'
+        else 'orders/print/order_return_a4.html'
+    )
+
+    order_return = _filter_order_returns_by_scope(
+        OrderReturn.objects.select_related(
+            'order', 'order__store', 'order__store__brand', 'order__issuing_brand',
+            'customer', 'warehouse', 'warehouse__store', 'created_by', 'exchange_order',
+        ).prefetch_related(
+            Prefetch(
+                'items',
+                queryset=OrderReturnItem.objects.select_related('product').order_by('id'),
+            ),
+            Prefetch(
+                'exchange_items',
+                queryset=OrderReturnExchangeItem.objects.select_related(
+                    'product', 'variant',
+                ).order_by('id'),
+            ),
+        ),
+        request,
+    ).filter(id=return_id).first()
+    if not order_return:
+        return render(request, template_name, {'error': 'Không tìm thấy phiếu hoàn trả'})
+
+    print_record = order_return.order
+    print_store = (
+        print_record.store
+        if print_record and print_record.store_id
+        else (order_return.warehouse.store if order_return.warehouse else None)
+    )
+    brand = _resolve_issuing_brand(
+        request,
+        record=print_record,
+        store=print_store,
+        requested_brand_id=requested_brand_id,
+    )
+    template_brand = _get_template_brand_for_print(request, record=print_record)
+    template_type = 'k80' if print_type == 'k80' else 'a4'
+    print_template = _get_print_template(template_type, template_brand)
+
+    context = {
+        'order_return': order_return,
+        'return_items': list(order_return.items.all()),
+        'exchange_items': list(order_return.exchange_items.all()),
+        'brand': brand,
+        'print_template': print_template,
+        'print_type': print_type,
+        'print_source': 'return',
+        'print_record_id': order_return.id,
+        'selected_brand_id': brand.id if brand else '',
+        'printer_brand_id': template_brand.id if template_brand else '',
+        'available_print_brands': list(
+            _get_print_brand_selection_queryset(request, record=print_record, store=print_store)
+        ),
+    }
+    return render(request, template_name, context)
+
+
+@login_required(login_url="/login/")
 def api_save_order_return(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})

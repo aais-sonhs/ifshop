@@ -1,0 +1,124 @@
+{% extends "orders/print/base_print.html" %}
+{% load order_format %}
+{% block title %}Phiếu hoàn trả — {{ order_return.code }}{% endblock %}
+{% block toolbar_title %}↩ Phiếu hoàn trả — {{ order_return.code }}{% endblock %}
+{% block page_margin %}15mm{% endblock %}
+{% block extra_style %}
+.return-sheet { max-width: 210mm; margin: 0 auto; padding: 20px; font-size: 13px; }
+.return-header { display:flex; align-items:flex-start; gap:20px; margin-bottom:14px; }
+.return-header .logo { width:80px; height:80px; object-fit:contain; }
+.return-header .company { flex:1; }
+.return-header h2 { color:#b45309; font-size:18px; text-transform:uppercase; margin-bottom:4px; }
+.return-header p { color:#666; font-size:12px; margin:1px 0; }
+.return-title { text-align:center; margin:14px 0 18px; }
+.return-title h1 { color:#b45309; font-size:22px; letter-spacing:1px; }
+.return-title div { color:#555; margin-top:3px; }
+.return-meta { display:grid; grid-template-columns:1fr 1fr; gap:10px 30px; margin-bottom:14px; }
+.return-meta .label { color:#666; font-size:11px; font-weight:600; text-transform:uppercase; }
+.return-meta .value { margin-top:2px; }
+.section-title { margin:14px 0 6px; color:#92400e; font-size:14px; font-weight:700; }
+.return-table { width:100%; border-collapse:collapse; }
+.return-table th { padding:8px; background:#b45309; color:#fff; font-size:12px; text-align:left; }
+.return-table td { padding:8px; border-bottom:1px solid #e5e7eb; font-size:12px; vertical-align:top; }
+.return-table tr:nth-child(even) td { background:#fffbeb; }
+.return-table .text-center { text-align:center; }
+.return-table .text-right { text-align:right; }
+.item-note { color:#6b7280; font-size:11px; margin-top:3px; }
+.empty-items { padding:14px; border:1px dashed #d1d5db; color:#6b7280; text-align:center; }
+.return-summary { width:340px; margin:14px 0 0 auto; }
+.return-summary .row { display:flex; justify-content:space-between; gap:14px; padding:4px 0; }
+.return-summary .grand { border-top:2px solid #b45309; margin-top:4px; padding-top:8px; font-size:15px; font-weight:700; }
+.return-note { margin-top:12px; padding:9px 12px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; }
+.signatures { display:flex; justify-content:space-between; margin-top:38px; text-align:center; }
+.signature { width:210px; }
+.signature strong { display:block; margin-bottom:62px; }
+{% endblock %}
+{% block content %}
+{% if error %}
+<div class="return-sheet"><div class="empty-items">{{ error }}</div></div>
+{% else %}
+<div class="return-sheet">
+    <div class="return-header">
+        {% if print_template.show_brand_logo and brand.logo %}<img class="logo" src="{{ brand.logo.url }}" alt="Logo">{% endif %}
+        <div class="company">
+            <h2>{{ brand.name|default:"CỬA HÀNG" }}</h2>
+            {% if print_template.show_brand_info %}
+            {% if brand.address %}<p>Địa chỉ: {{ brand.address }}</p>{% endif %}
+            {% if brand.phone %}<p>Điện thoại: {{ brand.phone }}</p>{% endif %}
+            {% if brand.email %}<p>Email: {{ brand.email }}</p>{% endif %}
+            {% if brand.tax_code %}<p>MST: {{ brand.tax_code }}</p>{% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="return-title">
+        <h1>{% if exchange_items %}PHIẾU HOÀN / ĐỔI HÀNG{% else %}PHIẾU HOÀN TRẢ HÀNG{% endif %}</h1>
+        <div>Số: <strong>{{ order_return.code }}</strong> — Ngày trả: {{ order_return.return_date|date:"d/m/Y" }}</div>
+    </div>
+
+    <div class="return-meta">
+        <div><div class="label">Khách hàng</div><div class="value"><strong>{{ order_return.customer.name|default:"Khách lẻ" }}</strong>{% if order_return.customer.phone %} — {{ order_return.customer.phone }}{% endif %}</div></div>
+        <div><div class="label">Đơn hàng gốc</div><div class="value"><strong>{{ order_return.order.code|default:"—" }}</strong>{% if order_return.order.order_date %} — {{ order_return.order.order_date|date:"d/m/Y" }}{% endif %}</div></div>
+        <div><div class="label">Địa chỉ</div><div class="value">{{ order_return.customer.address|default:order_return.customer.company_address|default:"—" }}</div></div>
+        <div><div class="label">Kho nhận hàng</div><div class="value">{{ order_return.warehouse.name|default:"—" }}</div></div>
+        <div><div class="label">Người thực hiện</div><div class="value">{{ order_return.created_by.get_full_name|default:order_return.created_by.username|default:"—" }}</div></div>
+        <div><div class="label">Trạng thái</div><div class="value">{{ order_return.get_status_display }}</div></div>
+    </div>
+
+    <div class="section-title">DANH MỤC HÀNG KHÁCH TRẢ LẠI</div>
+    {% if return_items %}
+    <table class="return-table">
+        <thead><tr><th style="width:6%">STT</th><th>Sản phẩm trả</th><th style="width:10%" class="text-center">ĐVT</th><th style="width:10%" class="text-right">SL</th><th style="width:16%" class="text-right">Đơn giá</th><th style="width:17%" class="text-right">Thành tiền</th></tr></thead>
+        <tbody>
+        {% for item in return_items %}
+        <tr>
+            <td class="text-center">{{ forloop.counter }}</td>
+            <td><strong>{{ item.product.code }}</strong> — {{ item.product.name }}{% if item.reason %}<div class="item-note">Lý do: {{ item.reason }}</div>{% endif %}</td>
+            <td class="text-center">{{ item.product.unit }}</td>
+            <td class="text-right">{{ item.quantity|qty_vn }}</td>
+            <td class="text-right">{{ item.unit_price|money_vnd }}đ</td>
+            <td class="text-right"><strong>{{ item.total_price|money_vnd }}đ</strong></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty-items">Phiếu không có dòng hàng trả; chỉ phát sinh khoản hoàn/đền bù riêng.</div>{% endif %}
+
+    {% if exchange_items %}
+    <div class="section-title">DANH MỤC HÀNG KHÁCH NHẬN ĐỔI</div>
+    <table class="return-table">
+        <thead><tr><th style="width:6%">STT</th><th>Sản phẩm đổi</th><th style="width:10%" class="text-center">ĐVT</th><th style="width:10%" class="text-right">SL</th><th style="width:16%" class="text-right">Đơn giá</th><th style="width:17%" class="text-right">Thành tiền</th></tr></thead>
+        <tbody>
+        {% for item in exchange_items %}
+        <tr>
+            <td class="text-center">{{ forloop.counter }}</td>
+            <td><strong>{{ item.product.code }}</strong> — {{ item.product.name }}{% if item.variant %} [{{ item.variant.size_name }}]{% endif %}{% if item.note %}<div class="item-note">{{ item.note }}</div>{% endif %}</td>
+            <td class="text-center">{{ item.product.unit }}</td>
+            <td class="text-right">{{ item.quantity|qty_vn }}</td>
+            <td class="text-right">{{ item.unit_price|money_vnd }}đ</td>
+            <td class="text-right"><strong>{{ item.total_price|money_vnd }}đ</strong></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <div class="return-summary">
+        <div class="row"><span>Giá trị hàng trả:</span><strong>{{ order_return.return_amount|money_vnd }}đ</strong></div>
+        {% if order_return.exchange_amount %}<div class="row"><span>Giá trị hàng đổi:</span><strong>{{ order_return.exchange_amount|money_vnd }}đ</strong></div>{% endif %}
+        {% if order_return.compensation_amount %}<div class="row"><span>Hoàn/đền bù riêng:</span><strong>{{ order_return.compensation_amount|money_vnd }}đ</strong></div>{% endif %}
+        {% if order_return.total_refund %}<div class="row grand"><span>HOÀN LẠI KHÁCH:</span><span>{{ order_return.total_refund|money_vnd }}đ</span></div>{% endif %}
+        {% if order_return.amount_due %}<div class="row grand"><span>KHÁCH THANH TOÁN THÊM:</span><span>{{ order_return.amount_due|money_vnd }}đ</span></div>{% endif %}
+    </div>
+
+    {% if order_return.reason %}<div class="return-note"><strong>Lý do hoàn trả:</strong> {{ order_return.reason|linebreaksbr }}</div>{% endif %}
+    {% if order_return.exchange_note %}<div class="return-note"><strong>Ghi chú đổi hàng:</strong> {{ order_return.exchange_note|linebreaksbr }}</div>{% endif %}
+    {% if order_return.note %}<div class="return-note"><strong>Ghi chú:</strong> {{ order_return.note|linebreaksbr }}</div>{% endif %}
+
+    <div class="signatures">
+        <div class="signature"><strong>Khách hàng</strong><span>(Ký, ghi rõ họ tên)</span></div>
+        <div class="signature"><strong>Người nhận hàng</strong><span>{{ order_return.created_by.get_full_name|default:order_return.created_by.username }}</span></div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

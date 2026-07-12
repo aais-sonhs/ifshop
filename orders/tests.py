@@ -2230,6 +2230,25 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(return_detail['exchange_items'][0]['quantity'], 1.0)
         self.assertEqual(return_detail['exchange_items'][0]['note'], 'Đổi mẫu mới')
 
+        return_a4 = self.client.get(
+            reverse('api_print_order_return'),
+            {'id': order_return.id, 'type': 'a4'},
+        )
+        self.assertEqual(return_a4.status_code, 200)
+        self.assertContains(return_a4, 'PHIẾU HOÀN / ĐỔI HÀNG')
+        self.assertContains(return_a4, 'DANH MỤC HÀNG KHÁCH TRẢ LẠI')
+        self.assertContains(return_a4, self.product.code)
+        self.assertContains(return_a4, exchange_product.code)
+        self.assertContains(return_a4, 'Khách đổi sang mẫu khác')
+
+        return_k80 = self.client.get(
+            reverse('api_print_order_return'),
+            {'id': order_return.id, 'type': 'k80'},
+        )
+        self.assertEqual(return_k80.status_code, 200)
+        self.assertContains(return_k80, 'HÀNG KHÁCH TRẢ')
+        self.assertContains(return_k80, self.product.code)
+
     def test_save_order_return_allows_standalone_compensation_refund(self):
         order = self._create_order(code='DH-RETURN-COMPENSATION', status=5)
 

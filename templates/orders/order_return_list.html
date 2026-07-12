@@ -120,13 +120,7 @@ function loadData(selectedReturnId){
             var rowPayload = JSON.stringify(d).replace(/'/g, "&#39;");
             var actions = '<div class="btn-action-group">' +
                 '<button class="btn btn-xs btn-info" onclick=\'editItem(' + rowPayload + ')\'>Sửa</button>' +
-                '<div class="btn-group">' +
-                    '<button type="button" class="btn btn-xs btn-warning dropdown-toggle" data-toggle="dropdown"><i class="fas fa-print mr-1"></i>In phiếu</button>' +
-                    '<div class="dropdown-menu dropdown-menu-right">' +
-                        '<a class="dropdown-item" target="_blank" href="' + printUrl + '&type=a4"><i class="fas fa-file-alt mr-2"></i>Phiếu A4</a>' +
-                        '<a class="dropdown-item" target="_blank" href="' + printUrl + '&type=k80"><i class="fas fa-receipt mr-2"></i>Phiếu K80</a>' +
-                    '</div>' +
-                '</div>' +
+                '<a class="btn btn-xs btn-warning" target="_blank" href="' + printUrl + '&type=a4"><i class="fas fa-print mr-1"></i>In phiếu</a>' +
             '</div>';
             h += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(d.code) + '</td><td>' + escapeHtml(d.order) + '</td><td>' + escapeHtml(d.exchange_order_code || '') + '</td><td>' + escapeHtml(d.customer) + '</td><td>' + fmtDt(d.return_date, d.created_at) + '</td><td class="text-right">' + fmt(d.return_amount) + 'đ</td><td class="text-right">' + fmt(d.exchange_amount) + 'đ</td><td class="text-right">' + balance + '</td><td>' + escapeHtml(d.status_display) + '</td><td>' + actions + '</td></tr>';
         });

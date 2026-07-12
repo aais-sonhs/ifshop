@@ -986,9 +986,14 @@ def _calculate_line_total(quantity, unit_price, discount_percent):
     return qty * price * (Decimal('1') - (discount / Decimal('100')))
 
 
-def _calculate_final_amount(total, discount_amount=0, shipping_fee=0):
+def _calculate_final_amount(total, discount_amount=0, shipping_fee=0, other_fee=0):
     """Tính tổng thanh toán và chặn mọi trường hợp âm do chiết khấu quá lớn."""
-    final_amount = _to_decimal(total) - _non_negative_decimal(discount_amount) + _non_negative_decimal(shipping_fee)
+    final_amount = (
+        _to_decimal(total)
+        - _non_negative_decimal(discount_amount)
+        + _non_negative_decimal(shipping_fee)
+        + _non_negative_decimal(other_fee)
+    )
     return final_amount if final_amount > 0 else Decimal('0')
 
 
@@ -1234,6 +1239,7 @@ def _capture_order_history_snapshot(order):
         'status': order.status,
         'discount_amount': _to_decimal(order.discount_amount),
         'shipping_fee': _to_decimal(order.shipping_fee),
+        'other_fee': _to_decimal(order.other_fee),
         'shipping_address': order.shipping_address or '',
         'final_amount': _to_decimal(order.final_amount),
         'tags': order.tags or '',
@@ -1351,6 +1357,7 @@ def _describe_order_history_changes(before, order, normalized_items):
                                  lambda value: status_labels.get(value, value))
     _append_history_field_change(money_parts, before['discount_amount'], _to_decimal(order.discount_amount), 'Chiết khấu', _format_money_for_history)
     _append_history_field_change(money_parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
+    _append_history_field_change(money_parts, before['other_fee'], _to_decimal(order.other_fee), 'Chi phí khác', _format_money_for_history)
     _append_history_field_change(field_parts, before['shipping_address'], order.shipping_address or '', 'Địa chỉ giao hàng')
     _append_history_field_change(field_parts, before['tags'], order.tags or '', 'Tags')
     _append_history_field_change(field_parts, before['note'], order.note or '', 'Ghi chú')
@@ -1511,6 +1518,7 @@ def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
     exchange_order.total_amount = _to_decimal(order_return.exchange_amount)
     exchange_order.discount_amount = offset_amount
     exchange_order.shipping_fee = Decimal('0')
+    exchange_order.other_fee = Decimal('0')
     exchange_order.final_amount = _to_decimal(order_return.amount_due)
     exchange_order.note = (
         f'Đơn đổi hàng từ phiếu {order_return.code}'
@@ -1592,6 +1600,7 @@ def _get_receipted_order_blocking_changes(order, data):
     for field_name, label in (
         ('discount_amount', 'chiết khấu'),
         ('shipping_fee', 'phí vận chuyển'),
+        ('other_fee', 'chi phí khác'),
         ('bonus_amount', 'tiền bonus'),
     ):
         if field_name in data and _to_decimal(data.get(field_name, 0)) != _to_decimal(getattr(order, field_name, 0)):
@@ -2498,6 +2507,7 @@ def _serialize_order_list(orders):
             'total_amount': float(o.total_amount),
             'discount_amount': float(o.discount_amount),
             'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
+            'other_fee': float(getattr(o, 'other_fee', 0) or 0),
             'final_amount': float(o.final_amount),
             'paid_amount': float(o.paid_amount),
             'remaining_amount': max(float(o.final_amount) - float(o.paid_amount), 0),
@@ -2673,6 +2683,7 @@ def api_get_order_detail(request):
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
                 'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
+                'other_fee': float(getattr(o, 'other_fee', 0) or 0),
                 'final_amount': float(o.final_amount),
                 'status': o.status, 'note': o.note or '',
                 'status_display': o.get_status_display(),
@@ -2854,6 +2865,7 @@ def api_save_order(request):
                 o.order_date = data.get('order_date')
             o.discount_amount = _non_negative_decimal(data.get('discount_amount', o.discount_amount if oid else 0))
             o.shipping_fee = _non_negative_decimal(data.get('shipping_fee', o.shipping_fee if oid else 0))
+            o.other_fee = _non_negative_decimal(data.get('other_fee', o.other_fee if oid else 0))
             if 'shipping_address' in data or not oid:
                 o.shipping_address = (data.get('shipping_address', '') or '').strip() or None
             if 'tags' in data or not oid:
@@ -2982,7 +2994,7 @@ def api_save_order(request):
                 )
 
             o.total_amount = total
-            o.final_amount = _calculate_final_amount(total, o.discount_amount, o.shipping_fee)
+            o.final_amount = _calculate_final_amount(total, o.discount_amount, o.shipping_fee, o.other_fee)
             order_discount_ratio = Decimal('0')
             if total > 0 and _to_decimal(o.discount_amount) > 0:
                 order_discount_ratio = min(_to_decimal(o.discount_amount) / total, Decimal('1'))
@@ -3127,6 +3139,8 @@ def api_save_order(request):
                 summary_parts.append(f'chiết khấu {int(float(o.discount_amount)):,}đ')
             if float(o.shipping_fee or 0):
                 summary_parts.append(f'phí vận chuyển {int(float(o.shipping_fee)):,}đ')
+            if float(o.other_fee or 0):
+                summary_parts.append(f'chi phí khác {int(float(o.other_fee)):,}đ')
             if o.tags:
                 summary_parts.append(f'tags: {o.tags}')
             if float(o.paid_amount or 0):
@@ -3922,6 +3936,7 @@ def api_get_quotations(request):
             'total_amount': float(q.total_amount),
             'discount_amount': float(q.discount_amount),
             'shipping_fee': float(getattr(q, 'shipping_fee', 0) or 0),
+            'other_fee': float(getattr(q, 'other_fee', 0) or 0),
             'final_amount': float(q.final_amount),
             'status': q.status, 'status_display': q.get_status_display(),
             'tags': q.tags or '',
@@ -3983,6 +3998,7 @@ def api_get_quotation_detail(request):
                 'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
                 'discount_amount': float(q.discount_amount),
                 'shipping_fee': float(getattr(q, 'shipping_fee', 0) or 0),
+                'other_fee': float(getattr(q, 'other_fee', 0) or 0),
                 'status': q.status, 'note': q.note or '',
                 'tags': q.tags or '',
                 'salesperson': q.salesperson or '',
@@ -4055,6 +4071,7 @@ def api_save_quotation(request):
             q.valid_until = data.get('valid_until') or None
             q.discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
             q.shipping_fee = _non_negative_decimal(data.get('shipping_fee', 0))
+            q.other_fee = _non_negative_decimal(data.get('other_fee', 0))
             q.tags = (data.get('tags', '') or '').strip() or None
             q.status = data.get('status', 0)
             q.note = data.get('note', '')
@@ -4125,7 +4142,7 @@ def api_save_quotation(request):
                 total += line_total
 
             q.total_amount = total
-            q.final_amount = _calculate_final_amount(total, q.discount_amount, q.shipping_fee)
+            q.final_amount = _calculate_final_amount(total, q.discount_amount, q.shipping_fee, q.other_fee)
             quotation_discount_ratio = Decimal('0')
             if total > 0 and _to_decimal(q.discount_amount) > 0:
                 quotation_discount_ratio = min(_to_decimal(q.discount_amount) / total, Decimal('1'))
@@ -4982,6 +4999,7 @@ def export_orders_excel(request):
         {'key': 'total', 'label': 'Tổng tiền hàng', 'width': 16},
         {'key': 'discount', 'label': 'Chiết khấu', 'width': 14},
         {'key': 'shipping', 'label': 'Phí VC', 'width': 12},
+        {'key': 'other_fee', 'label': 'Chi phí khác', 'width': 14},
         {'key': 'final', 'label': 'Tổng thanh toán', 'width': 18},
         {'key': 'paid', 'label': 'Đã trả', 'width': 16},
         {'key': 'debt', 'label': 'Còn nợ', 'width': 16},
@@ -5022,6 +5040,7 @@ def export_orders_excel(request):
             'total': float(o.total_amount),
             'discount': float(o.discount_amount),
             'shipping': float(o.shipping_fee) if hasattr(o, 'shipping_fee') else 0,
+            'other_fee': float(o.other_fee) if hasattr(o, 'other_fee') else 0,
             'final': float(o.final_amount),
             'paid': float(o.paid_amount),
             'debt': debt,
@@ -5046,7 +5065,7 @@ def export_orders_excel(request):
         columns=columns,
         rows=rows,
         filename=f'Don_hang_{datetime.now().strftime("%Y%m%d")}',
-        money_cols=['total', 'discount', 'shipping', 'final', 'paid', 'debt'],
+        money_cols=['total', 'discount', 'shipping', 'other_fee', 'final', 'paid', 'debt'],
         total_row={'stt': '', 'code': 'TỔNG CỘNG', 'final': total_final, 'paid': total_paid, 'debt': total_debt},
     )
 
@@ -5097,6 +5116,7 @@ def api_print_order(request):
                 self.total_amount = q.total_amount
                 self.discount_amount = q.discount_amount
                 self.shipping_fee = q.shipping_fee
+                self.other_fee = q.other_fee
                 self.tax_amount = Decimal('0')
                 self.final_amount = q.final_amount
                 self.paid_amount = Decimal('0')

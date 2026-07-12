@@ -181,6 +181,44 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['order_details'][0]['revenue'], 80.0)
         self.assertEqual(payload['top_products'][0]['amount'], 80.0)
 
+    def test_api_report_sales_includes_order_other_fee_in_revenue_and_profit(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-OTHER-FEE',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            other_fee=20,
+            final_amount=120,
+            paid_amount=120,
+            order_date=today,
+            salesperson='Nhân viên A',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=60,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['order_details'] if item['id'] == order.id)
+        self.assertEqual(row['other_fee'], 20.0)
+        self.assertEqual(row['revenue'], 120.0)
+        self.assertEqual(row['profit'], 60.0)
+
     def test_api_report_sales_includes_sapo_style_sku_details(self):
         today = date.today()
         variant = ProductVariant.objects.create(

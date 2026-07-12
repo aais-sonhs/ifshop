@@ -486,6 +486,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'store_name': order.store.name if order.store else '',
             'salesperson': order.salesperson or '',
             'goods_amount': goods_amount,
+            'other_fee': float(order.other_fee or 0),
             'revenue': revenue,
             'paid': paid,
             'debt': revenue - paid,

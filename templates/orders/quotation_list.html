@@ -223,6 +223,11 @@
                                     <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td>
                                     <td></td>
                                 </tr>
+                                <tr>
+	                                    <td colspan="7" class="text-right">Chi phí khác:</td>
+                                    <td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_other_fee" value="0"></td>
+                                    <td></td>
+                                </tr>
                                 <tr class="font-weight-bold quotation-final-total-row">
                                     <td colspan="7" class="text-right quotation-total-label">Thành tiền:</td>
                                     <td class="text-right quotation-final-total-amount" id="lbl_final">0</td>
@@ -1607,7 +1612,7 @@ $(document).ready(function(){
 	        addItemRow({is_service_line:true, item_name:'', unit:'Lần', quantity:1, unit_price:0, discount_percent:0});
 	        $('#items_tbl tbody tr:last .inp_service_name').focus();
 	    });
-    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ calcTotal(); });
+    $('#inp_discount_amount, #inp_shipping_fee, #inp_other_fee').on('input', function(){ calcTotal(); });
     $('#filter_text').on('input', function(){ loadData(); });
 
     // Quick search product - POS-style
@@ -1920,6 +1925,7 @@ $(document).ready(function(){
             valid_until: $('#inp_valid_until').val(),
             discount_amount: getMoneyValue('#inp_discount_amount'),
             shipping_fee: getMoneyValue('#inp_shipping_fee'),
+            other_fee: getMoneyValue('#inp_other_fee'),
             status: parseInt($('#inp_status').val()),
             tags: $('#inp_tags').val(),
             note: $('#inp_note').val(),
@@ -2160,7 +2166,8 @@ function calcTotal(){
     });
     var discount = getMoneyValue('#inp_discount_amount');
     var shippingFee = getMoneyValue('#inp_shipping_fee');
-    var finalAmount = Math.max(total - discount + shippingFee, 0);
+    var otherFee = getMoneyValue('#inp_other_fee');
+    var finalAmount = Math.max(total - discount + shippingFee + otherFee, 0);
     $('#lbl_total').text(fmt(total) + 'đ');
     $('#lbl_final').text(fmt(finalAmount) + 'đ');
     $('#cost_warning_row').toggle(hasLossItem);
@@ -2456,7 +2463,8 @@ function buildQuotationHTML(res){
     });
     var discount = q.discount_amount || 0;
     var shippingFee = q.shipping_fee || 0;
-    var finalAmt = Math.max(total - discount + shippingFee, 0);
+    var otherFee = q.other_fee || 0;
+    var finalAmt = Math.max(total - discount + shippingFee + otherFee, 0);
     var custName = q.customer_label || '';
     var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
     var colSpan = hasAnyImage ? 7 : 6;
@@ -2472,6 +2480,7 @@ function buildQuotationHTML(res){
         '<tfoot><tr><td colspan="'+colSpan+'" class="text-right">T\u1ED5ng c\u1ED9ng:</td><td class="text-right">' + fmtMoney(total) + '</td></tr>' +
         (discount > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Chi\u1EBFt kh\u1EA5u:</td><td class="text-right">-' + fmtMoney(discount) + '</td></tr>' : '') +
         (shippingFee > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Ph\u00ED v\u1EADn chuy\u1EC3n:</td><td class="text-right">' + fmtMoney(shippingFee) + '</td></tr>' : '') +
+        (otherFee > 0 ? '<tr><td colspan="'+colSpan+'" class="text-right">Chi ph\u00ED kh\u00E1c:</td><td class="text-right">' + fmtMoney(otherFee) + '</td></tr>' : '') +
         '<tr><td colspan="'+colSpan+'" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
         '</tfoot></table>' +
         '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +

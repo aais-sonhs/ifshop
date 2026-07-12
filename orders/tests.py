@@ -267,6 +267,90 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order.status, 1)
         self.assertEqual(order.final_amount, 100)
 
+    def test_order_other_fee_is_editable_and_included_in_final_amount(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-OTHER-FEE-001',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_amount': 5,
+                'shipping_fee': 10,
+                'other_fee': 25,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        order = Order.objects.get(id=response.json()['order_id'])
+        self.assertEqual(float(order.other_fee), 25.0)
+        self.assertEqual(float(order.final_amount), 130.0)
+
+        detail = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
+        self.assertEqual(detail['order']['other_fee'], 25.0)
+        list_row = next(
+            row for row in self.client.get(reverse('api_get_orders')).json()['data']
+            if row['id'] == order.id
+        )
+        self.assertEqual(list_row['other_fee'], 25.0)
+
+        edit_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'discount_amount': 5,
+                'shipping_fee': 10,
+                'other_fee': 30,
+                'status': 1,
+                'note': '',
+                'tags': '',
+                'pay_mode': 'none',
+                'payment_amount': 0,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'variant_id': None,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(float(order.other_fee), 30.0)
+        self.assertEqual(float(order.final_amount), 135.0)
+        history = OrderEditHistory.objects.filter(order=order, action='update').first()
+        self.assertIn('Chi phí khác', history.summary)
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+        self.assertContains(print_response, 'Chi phí khác:')
+
     def test_quick_create_customer_persists_customer_kind(self):
         response = self.client.post(
             reverse('api_quick_create_customer'),

@@ -420,6 +420,7 @@
                                 <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
                                 <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chiết khấu:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_discount_amount" value="0"></td><td></td></tr>
                                 <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chi phí khác:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_other_fee" value="0"></td><td></td></tr>
                                 <tr class="font-weight-bold order-final-total-row"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td><td></td></tr>
                                 <tr id="duplicate_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
 	                                <tr id="cost_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu nhưng cần kiểm tra lại giá bán.</div></td></tr>
@@ -4062,7 +4063,7 @@ $(document).ready(function(){
         _statusAutoPromotedByPayment = false;
         $('#inp_status').val('0');setMoneyValue('#inp_discount_amount',0);
         $('#inp_quotation_status').val('0');$('#inp_valid_until').val('');
-        setMoneyValue('#inp_shipping_fee',0);$('#inp_tags').val('');
+        setMoneyValue('#inp_shipping_fee',0);setMoneyValue('#inp_other_fee',0);$('#inp_tags').val('');
         $('#payment_history_section').hide();
         $('#order_history_card').hide();$('#order_history_list').html('Chưa có lịch sử');
         syncStatusOptions(0);
@@ -4142,6 +4143,7 @@ $(document).ready(function(){
             // Fill chiết khấu
             setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
             setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
+            setMoneyValue('#inp_other_fee', q.other_fee || 0);
             $('#inp_tags').val(q.tags || '');
             // Fill ghi chú
             var note = $('#inp_note').val();
@@ -4439,7 +4441,7 @@ $(document).ready(function(){
         openPrintConfig(source, id, $('#inp_code').val());
     });
 
-    $('#inp_discount_amount, #inp_shipping_fee').on('input', function(){ scheduleCalcTotal(); });
+    $('#inp_discount_amount, #inp_shipping_fee, #inp_other_fee').on('input', function(){ scheduleCalcTotal(); });
 
     $('#btn_save').click(function(){
         var $saveBtn = $(this);
@@ -4516,6 +4518,7 @@ $(document).ready(function(){
                 valid_until: $('#inp_valid_until').val(),
                 discount_amount: getMoneyValue('#inp_discount_amount'),
                 shipping_fee: getMoneyValue('#inp_shipping_fee'),
+                other_fee: getMoneyValue('#inp_other_fee'),
                 status: parseInt($('#inp_quotation_status').val(), 10) || 0,
                 tags: $('#inp_tags').val(),
                 note: $('#inp_note').val(),
@@ -4561,6 +4564,7 @@ $(document).ready(function(){
             shipping_address:$('#inp_shipping_address').val(),
             discount_amount:getMoneyValue('#inp_discount_amount'),
             shipping_fee:getMoneyValue('#inp_shipping_fee'),
+            other_fee:getMoneyValue('#inp_other_fee'),
             status:parseInt($('#inp_status').val()),note:$('#inp_note').val(),
             tags:$('#inp_tags').val(),
             is_paid:isPaid,pay_mode:payMode,payment_amount:totalPaying,
@@ -4881,7 +4885,8 @@ function calcTotal(options){
     });
     var discount=getMoneyValue('#inp_discount_amount');
     var shippingFee=getMoneyValue('#inp_shipping_fee');
-    var finalAmount = Math.max(total-discount+shippingFee, 0);
+    var otherFee=getMoneyValue('#inp_other_fee');
+    var finalAmount = Math.max(total-discount+shippingFee+otherFee, 0);
     $('#lbl_total_quantity').text(fmt(totalQuantity));
     $('#lbl_total').text(fmt(total) + 'đ');
     $('#lbl_final').text(fmt(finalAmount) + 'đ');
@@ -5410,6 +5415,7 @@ function rejectOrder(id, code){
         setOrderWarehouseValue(getStoredOrderWarehouseId());
         setMoneyValue('#inp_discount_amount', q.discount_amount || 0);
         setMoneyValue('#inp_shipping_fee', q.shipping_fee || 0);
+        setMoneyValue('#inp_other_fee', q.other_fee || 0);
         $('#inp_quotation_status').val(copyMode ? '0' : String(q.status || 0));
         $('#inp_valid_until').val(copyMode ? '' : (q.valid_until || ''));
         $('#inp_tags').val(q.tags || '');
@@ -5603,6 +5609,8 @@ function rejectOrder(id, code){
 	            '<div class="col-md-5">' +
 	            '<table class="table table-sm mb-0">' +
 	            '<tr><td class="text-muted">Ngày đặt</td><td class="text-right">' + escapeHtml(o.order_date || '') + '</td></tr>' +
+	            '<tr><td class="text-muted">Phí vận chuyển</td><td class="text-right">' + fmt(o.shipping_fee || 0) + 'đ</td></tr>' +
+	            '<tr><td class="text-muted">Chi phí khác</td><td class="text-right">' + fmt(o.other_fee || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Tổng tiền</td><td class="text-right font-weight-bold">' + fmt(o.final_amount || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Đã thu</td><td class="text-right">' + fmt(o.paid_amount || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Còn lại</td><td class="text-right text-warning">' + fmt(Math.max((o.final_amount || 0) - (o.paid_amount || 0), 0)) + 'đ</td></tr>' +
@@ -5645,7 +5653,7 @@ function rejectOrder(id, code){
         _timelineReadonly = false;
         _orderFormReadonly = false;
         _statusAutoPromotedByPayment = false;
-        setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
+        setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);setMoneyValue('#inp_other_fee', o.other_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
         syncStatusOptions(o.status);
         $('#lock_warning,#order_return_summary_box').remove();
         var editReturnPanel = renderOrderReturnPanel(o);
@@ -5704,7 +5712,7 @@ function viewItem(id){
         } else { clearCustomer(); }
         $('#inp_shipping_address').val(o.shipping_address || o.customer_address || '');
         setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
-        setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
+        setMoneyValue('#inp_discount_amount', o.discount_amount);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);setMoneyValue('#inp_other_fee', o.other_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
         $('#items_tbl tbody').html('');
         _timelineReadonly = true;
         _orderFormReadonly = true;
@@ -6110,7 +6118,8 @@ function downloadOrderPDF(id){
         });
         var discount = o.discount_amount || 0;
         var shippingFee = o.shipping_fee || 0;
-        var finalAmt = Math.max(total - discount + shippingFee, 0);
+        var otherFee = o.other_fee || 0;
+        var finalAmt = Math.max(total - discount + shippingFee + otherFee, 0);
         var html = getPrintHeader() +
             '<div class="print-title">H\u00D3A \u0110\u01A0N B\u00C1N H\u00C0NG</div>' +
             '<div class="print-subtitle">S\u1ED1: ' + o.code + '</div>' +
@@ -6123,6 +6132,7 @@ function downloadOrderPDF(id){
             '<tfoot><tr><td colspan="6" class="text-right">T\u1ED5ng c\u1ED9ng:</td><td class="text-right">' + fmtMoney(total) + '</td></tr>' +
             (discount > 0 ? '<tr><td colspan="6" class="text-right">Chi\u1EBFt kh\u1EA5u:</td><td class="text-right">-' + fmtMoney(discount) + '</td></tr>' : '') +
             (shippingFee > 0 ? '<tr><td colspan="6" class="text-right">Ph\u00ED v\u1EADn chuy\u1EC3n:</td><td class="text-right">' + fmtMoney(shippingFee) + '</td></tr>' : '') +
+            (otherFee > 0 ? '<tr><td colspan="6" class="text-right">Chi ph\u00ED kh\u00E1c:</td><td class="text-right">' + fmtMoney(otherFee) + '</td></tr>' : '') +
             '<tr><td colspan="6" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
             '</tfoot></table>' +
             '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +
@@ -6150,6 +6160,7 @@ function copyOrder(id){
         setOrderWarehouseValue(o.warehouse_id);
         setMoneyValue('#inp_discount_amount', o.discount_amount);
         setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);
+        setMoneyValue('#inp_other_fee', o.other_fee || 0);
         _timelineReadonly = false;
         _orderFormReadonly = false;
         _statusAutoPromotedByPayment = false;

@@ -91,6 +91,7 @@
         <div class="row"><span>Tổng cộng:</span><span>{{ order.total_amount|money_vnd }}đ</span></div>
         {% if print_template.show_discount and order.discount_amount %}<div class="row"><span>Chiết khấu:</span><span>-{{ order.discount_amount|money_vnd }}đ</span></div>{% endif %}
         {% if print_template.show_shipping_fee and order.shipping_fee %}<div class="row"><span>Phí vận chuyển:</span><span>{{ order.shipping_fee|money_vnd }}đ</span></div>{% endif %}
+        {% if order.other_fee %}<div class="row"><span>Chi phí khác:</span><span>{{ order.other_fee|money_vnd }}đ</span></div>{% endif %}
         {% if print_template.show_tax and order.tax_amount %}<div class="row"><span>Thuế:</span><span>{{ order.tax_amount|money_vnd }}đ</span></div>{% endif %}
         <div class="row grand" style="color:#e65100;border-color:#e65100;"><span>TỔNG BÁO GIÁ:</span><span>{{ order.final_amount|money_vnd }}đ</span></div>
     </div>

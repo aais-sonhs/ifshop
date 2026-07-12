@@ -817,6 +817,13 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['total_orders'], 1)
         self.assertEqual(payload['order_details'][0]['code'], loss_order.code)
         self.assertTrue(payload['order_details'][0]['is_loss'])
+        self.assertEqual(payload['order_details'][0]['loss_product_names'], self.product.name)
+        self.assertEqual(len(payload['order_details'][0]['loss_products']), 1)
+        loss_product = payload['order_details'][0]['loss_products'][0]
+        self.assertEqual(loss_product['product_name'], self.product.name)
+        self.assertEqual(loss_product['unit_revenue'], 100.0)
+        self.assertEqual(loss_product['unit_cost'], 130.0)
+        self.assertEqual(loss_product['loss_amount'], 30.0)
         self.assertEqual(payload['summary']['loss_count'], 1)
 
     def test_export_sales_excel_respects_filters_and_uses_readable_labels(self):
@@ -929,6 +936,9 @@ class SalesReportTests(TestCase):
             if row[1] and row[1] != 'TỔNG'
         ]
         self.assertEqual(exported_order_codes, [loss_order.code])
+        order_headers = [cell.value for cell in order_sheet[1]]
+        loss_product_col = order_headers.index('Sản phẩm lỗ') + 1
+        self.assertEqual(order_sheet.cell(row=2, column=loss_product_col).value, exported_product.name)
 
         product_sheet = workbook['Mặt hàng']
         exported_product_names = [

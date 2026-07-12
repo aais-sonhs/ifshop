@@ -487,6 +487,22 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'line_profit': line_profit,
         })
 
+    loss_items_by_order = defaultdict(list)
+    for item_row in adjusted_item_rows:
+        if item_row['line_profit'] >= 0:
+            continue
+        quantity = float(item_row['quantity'] or 0)
+        unit_revenue = item_row['revenue'] / quantity if quantity > 0 else item_row['revenue']
+        unit_cost = item_row['cost'] / quantity if quantity > 0 else item_row['cost']
+        loss_items_by_order[item_row['order_id']].append({
+            'product_name': item_row['product_name'],
+            'sku': item_row['sku'],
+            'quantity': quantity,
+            'unit_revenue': unit_revenue,
+            'unit_cost': unit_cost,
+            'loss_amount': abs(item_row['line_profit']),
+        })
+
     if line_profit_scope:
         adjusted_item_rows = [row for row in adjusted_item_rows if _matches_line_profit_filters(row)]
 
@@ -520,6 +536,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             paid = float(order.paid_amount or 0)
 
         profit = revenue - cost
+        loss_products = loss_items_by_order.get(order.id, [])
         customer_kind, customer_kind_label = _classify_sales_report_customer_kind(order.customer)
         order_rows.append({
             'id': order.id,
@@ -545,6 +562,10 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'cost': cost,
             'profit': profit,
             'is_loss': profit < 0,
+            'loss_products': loss_products,
+            'loss_product_names': ', '.join(
+                row['product_name'] for row in loss_products
+            ),
             'status': order.status,
             'status_display': order.get_status_display(),
             'payment_status': order.payment_status,
@@ -2344,7 +2365,7 @@ def export_sales_excel(request):
     ws5 = wb.create_sheet('Chi tiết đơn hàng')
     od_headers = [
         'STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Kiểu khách', 'Nhóm KH',
-        'Doanh thu', 'Đã thu', 'Công nợ', 'Giá vốn', 'Lợi nhuận', 'Báo lỗ',
+        'Sản phẩm lỗ', 'Doanh thu', 'Đã thu', 'Công nợ', 'Giá vốn', 'Lợi nhuận', 'Báo lỗ',
         'TT đơn', 'TT thanh toán',
     ]
     for col, h in enumerate(od_headers, 1):
@@ -2364,6 +2385,7 @@ def export_sales_excel(request):
             o.get('customer') or '',
             o.get('customer_kind_label') or '',
             o.get('customer_group') or '',
+            o.get('loss_product_names') or '',
             float(o.get('revenue') or 0),
             float(o.get('paid') or 0),
             float(o.get('debt') or 0),
@@ -2376,11 +2398,11 @@ def export_sales_excel(request):
         for col, val in enumerate(vals, 1):
             cell = ws5.cell(row=od_row, column=col, value=val)
             cell.border = thin
-            if col in (7, 8, 9, 10, 11):
+            if col in (8, 9, 10, 11, 12):
                 cell.number_format = money_fmt
             if is_loss:
                 cell.fill = loss_fill
-            if col == 11 and is_loss:
+            if col == 12 and is_loss:
                 cell.font = Font(bold=True, color='FF0000')
 
         od_grand['revenue'] += float(o.get('revenue') or 0)
@@ -2392,7 +2414,7 @@ def export_sales_excel(request):
 
     # Total row for order detail
     for col, val in enumerate([
-        '', 'TỔNG', '', '', '', '',
+        '', 'TỔNG', '', '', '', '', '',
         od_grand['revenue'], od_grand['paid'], od_grand['debt'],
         od_grand['cost'], od_grand['profit'], '', '', '',
     ], 1):
@@ -2400,10 +2422,10 @@ def export_sales_excel(request):
         cell.font = Font(bold=True)
         cell.fill = total_fill
         cell.border = thin
-        if col in (7, 8, 9, 10, 11):
+        if col in (8, 9, 10, 11, 12):
             cell.number_format = money_fmt
 
-    for i, w in enumerate([6, 12, 12, 25, 18, 15, 18, 18, 18, 18, 18, 10, 15, 18], 1):
+    for i, w in enumerate([6, 12, 12, 25, 18, 15, 36, 18, 18, 18, 18, 18, 10, 15, 18], 1):
         ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     response = HttpResponse(

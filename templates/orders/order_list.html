@@ -369,6 +369,16 @@
                             <small class="text-muted"><kbd>F4</kbd> Tìm KH</small>
                         </div>
                     </div>
+                    <div id="cost_warning_box" class="alert alert-danger mx-2 mt-2 mb-0" style="display:none;">
+                        <div class="d-flex align-items-start">
+                            <i class="fas fa-exclamation-triangle fa-lg mr-2 mt-1"></i>
+                            <div class="flex-grow-1">
+                                <strong>Cảnh báo bán dưới giá vốn</strong>
+                                <div class="small">Vui lòng kiểm tra các sản phẩm sau trước khi lưu đơn:</div>
+                                <div id="cost_warning_details" class="mt-1"></div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="card-body p-0">
                         <!-- THANH TÌM KIẾM SẢN PHẨM — LUÔN HIỂN THỊ, LUÔN SẴN SÀNG -->
                         <div class="px-2 pt-2 pb-1" style="background:linear-gradient(135deg, #e3f2fd 0%, #f5f5f5 100%); border-bottom:2px solid #42a5f5; position:relative;">
@@ -1297,6 +1307,21 @@
 	    color: #b45309;
 	    font-weight: 700;
 	}
+	#items_tbl tr.loss-sale-row > td {
+	    background: #fff1f0;
+	}
+	#items_tbl tr.loss-sale-row .inp_price {
+	    color: #c62828 !important;
+	    border-color: #dc3545;
+	    background: #fff8f8;
+	    font-weight: 700;
+	}
+	.order-item-loss-warning {
+	    margin-top: 4px;
+	    color: #c62828;
+	    font-size: 11px;
+	    font-weight: 700;
+	}
 	/* Text-style action links in list */
 	#data_tbl td a {
 	    font-size: 12px;
@@ -1516,6 +1541,7 @@ var ORDER_ROW_VISUAL_REFRESH_QUEUE = [];
 var ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
 var ORDER_TOTAL_RECALC_HANDLE = null;
 var ORDER_TOTAL_RECALC_OPTIONS = {};
+var ORDER_LOSS_WARNINGS = [];
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
@@ -4103,10 +4129,13 @@ $(document).ready(function(){
     });
 
     var pageParams = new URLSearchParams(window.location.search);
+    var openOrderId = pageParams.get('open_order');
     var editQuotationId = pageParams.get('edit_quotation');
     var copyQuotationId = pageParams.get('copy_quotation');
     var createMode = pageParams.get('create');
-    if(editQuotationId){
+    if(openOrderId && /^\d+$/.test(openOrderId)){
+        viewItem(parseInt(openOrderId, 10));
+    } else if(editQuotationId){
         openQuotationDocument(editQuotationId, false);
     } else if(copyQuotationId){
         openQuotationDocument(copyQuotationId, true);
@@ -4450,6 +4479,7 @@ $(document).ready(function(){
         var docType = getDocumentType();
         var isQuotation = docType === 'quotation';
         if(!code||!date){alert('Vui lòng nhập mã và ' + (isQuotation ? 'ngày báo giá' : 'ngày đặt'));return;}
+        calcTotal();
         var items=[],hasError=false,stockWarning=false;
         var whId = $('#inp_warehouse_id').val();
 
@@ -4502,9 +4532,12 @@ $(document).ready(function(){
             alert((isQuotation ? 'Báo giá' : 'Đơn hàng') + ' đang có sản phẩm trùng nhau. Vui lòng gộp lại trước khi lưu.');
             return;
         }
-	        if($('#cost_warning_row').is(':visible') && typeof toastr !== 'undefined'){
-	            toastr.warning('Có sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu để bạn chủ động xử lý giá.');
-	        }
+        if(ORDER_LOSS_WARNINGS.length){
+            var lossConfirm='⚠️ CẢNH BÁO BÁN DƯỚI GIÁ VỐN\n\n'+ORDER_LOSS_WARNINGS.map(function(item){
+                return '• '+item.label+': bán '+fmt(item.effective_price)+'đ < vốn '+fmt(item.cost_price)+'đ (lỗ '+fmt(item.loss_amount)+'đ)';
+            }).join('\n')+'\n\nBạn vẫn muốn lưu '+(isQuotation?'báo giá':'đơn hàng')+' này?';
+            if(!confirm(lossConfirm)) return;
+        }
         if(stockWarning){
             if(!confirm('⚠️ Có sản phẩm số lượng vượt quá tồn kho!\nBạn có muốn tiếp tục lưu?')) return;
         }
@@ -4858,12 +4891,56 @@ function calcLine($row, options){
     }
 }
 
+function getOrderRowCostPrice($row){
+    if($row.hasClass('service-line-row') || $row.data('service-line') == 1) return 0;
+    var $select=$row.find('.sel_product');
+    var $option=$select.find('option:selected').first();
+    var optionCost=Number($option.data('cost')||0);
+    if(optionCost>0) return optionCost;
+    var product=getOrderProductById($select.val());
+    if(!product) return 0;
+    var variant=getOrderProductVariant(product, $option.data('variant-id')||'');
+    if(variant){
+        var variantCost=Number(variant.cost_price||variant.import_price||0);
+        if(variantCost>0) return variantCost;
+    }
+    return Number(product.cost_price||product.import_price||0);
+}
+
+function getOrderRowProductLabel($row){
+    var $select=$row.find('.sel_product');
+    var product=getOrderProductById($select.val());
+    if(product){
+        return (product.code ? product.code+' - ' : '')+(product.name||'Sản phẩm');
+    }
+    return $.trim($select.find('option:selected').text())||'Sản phẩm';
+}
+
+function renderOrderCostWarnings(warnings){
+    ORDER_LOSS_WARNINGS=warnings||[];
+    if(!ORDER_LOSS_WARNINGS.length){
+        $('#cost_warning_box,#cost_warning_row').hide();
+        $('#cost_warning_details').empty();
+        return;
+    }
+    var details=ORDER_LOSS_WARNINGS.map(function(item){
+        return '<div><strong>'+escapeHtml(item.label)+'</strong>: giá sau chiết khấu <strong>'+fmt(item.effective_price)+'đ</strong>'+
+            ' &lt; giá vốn <strong>'+fmt(item.cost_price)+'đ</strong>'+
+            ' · lỗ dự kiến <strong>'+fmt(item.loss_amount)+'đ</strong></div>';
+    }).join('');
+    $('#cost_warning_details').html(details);
+    $('#cost_warning_row .loss-warning-banner').html(
+        '<i class="fas fa-exclamation-triangle mr-1"></i> Có '+ORDER_LOSS_WARNINGS.length+
+        ' sản phẩm đang bán dưới giá vốn. Xem chi tiết cảnh báo phía trên bảng.'
+    );
+    $('#cost_warning_box,#cost_warning_row').show();
+}
+
 function calcTotal(options){
     options = options || {};
     var total=0;
     var totalQuantity=0;
     var itemSequence=0;
-    var hasLossItem = false;
     $('#items_tbl tbody tr').each(function(){
         if($(this).hasClass('order-items-loading-row')) return;
         itemSequence += 1;
@@ -4873,25 +4950,44 @@ function calcTotal(options){
         var disc=parseFloat($(this).find('.inp_disc').val())||0;
         totalQuantity+=qty;
         total+=qty*price*(1-disc/100);
-        // Check selling below cost price
-        var costPrice = parseFloat($(this).find('.sel_product option:selected').data('cost')) || 0;
-        var effectivePrice = price * (1 - disc/100);
-        if(costPrice > 0 && effectivePrice < costPrice){
-            hasLossItem = true;
-            $(this).find('.inp_price').css('color', '#d32f2f');
-        } else {
-            $(this).find('.inp_price').css('color', '');
-        }
     });
     var discount=getMoneyValue('#inp_discount_amount');
     var shippingFee=getMoneyValue('#inp_shipping_fee');
     var otherFee=getMoneyValue('#inp_other_fee');
+    var orderDiscountRatio=total>0?Math.min(Math.max(discount/total,0),1):0;
+    var lossWarnings=[];
+    $('#items_tbl tbody tr').each(function(){
+        var $row=$(this);
+        if($row.hasClass('order-items-loading-row')) return;
+        $row.removeClass('loss-sale-row');
+        $row.find('.order-item-loss-warning').remove();
+        if($row.hasClass('service-line-row') || $row.data('service-line') == 1) return;
+        var qty=parseFloat($row.find('.inp_qty').val())||0;
+        var price=getMoneyValue($row.find('.inp_price'))||0;
+        var disc=parseFloat($row.find('.inp_disc').val())||0;
+        var costPrice=getOrderRowCostPrice($row);
+        var effectivePrice=price*(1-disc/100)*(1-orderDiscountRatio);
+        if(costPrice>0 && effectivePrice<costPrice){
+            var warning={
+                label:getOrderRowProductLabel($row),
+                effective_price:Math.round(effectivePrice),
+                cost_price:Math.round(costPrice),
+                quantity:qty,
+                loss_amount:Math.round((costPrice-effectivePrice)*qty)
+            };
+            lossWarnings.push(warning);
+            $row.addClass('loss-sale-row');
+            $row.find('.order-item-product-cell').append(
+                '<div class="order-item-loss-warning"><i class="fas fa-exclamation-triangle mr-1"></i>Bán '+
+                fmt(warning.effective_price)+'đ &lt; vốn '+fmt(warning.cost_price)+'đ · lỗ '+fmt(warning.loss_amount)+'đ</div>'
+            );
+        }
+    });
     var finalAmount = Math.max(total-discount+shippingFee+otherFee, 0);
     $('#lbl_total_quantity').text(fmt(totalQuantity));
     $('#lbl_total').text(fmt(total) + 'đ');
     $('#lbl_final').text(fmt(finalAmount) + 'đ');
-    // Show/hide cost warning
-    if(hasLossItem){ $('#cost_warning_row').show(); } else { $('#cost_warning_row').hide(); }
+    renderOrderCostWarnings(lossWarnings);
     if(options.syncDuplicates){
         syncDuplicateWarnings();
     }

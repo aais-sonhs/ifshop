@@ -372,6 +372,27 @@ DETAILED_OPERATION_GUIDES = [
         ],
     },
     {
+        'title': 'Xem doanh thu, giá vốn, lợi nhuận và đơn lỗ theo ngày',
+        'goal': 'Kiểm tra kết quả kinh doanh trong một ngày hoặc khoảng ngày, đồng thời xác định từng đơn và sản phẩm đang bán lỗ.',
+        'steps': [
+            'Đăng nhập bằng tài khoản Chủ thương hiệu, Giám đốc hoặc Kế toán. Đây là các vai trò được phép xem Báo cáo bán hàng.',
+            'Trên thanh menu bên trái, vào Báo cáo và chọn BC Bán hàng.',
+            'Tại Bộ lọc, nhập Từ ngày và Đến ngày. Ví dụ muốn kiểm tra ngày 11 và 12/07 thì chọn Từ ngày 11/07, Đến ngày 12/07.',
+            'Giữ Phạm vi đơn là "Đã xuất kho + Hoàn thành" để xem doanh thu đã thực hiện. Nếu cần kiểm tra cả đơn đang xử lý nhưng chưa hủy, chọn "Tất cả đơn chưa hủy".',
+            'Để xem toàn bộ kết quả, giữ bộ lọc Lợi nhuận là "Tất cả". Để chỉ xem đơn lỗ, chọn "Báo lỗ" rồi nhấn "Xem báo cáo".',
+            'Mở tab Tổng quan để xem tổng số đơn, doanh thu, giá vốn thuần, lợi nhuận gộp, công nợ và số đơn báo lỗ trong khoảng ngày đã chọn.',
+            'Mở tab Tổng hợp ngày để đối chiếu riêng từng ngày: tiền hàng, doanh thu, doanh thu thuần, giá vốn thuần, lợi nhuận gộp và tỷ suất lợi nhuận.',
+            'Mở tab Theo đơn để xem từng đơn. Đơn lỗ được đánh dấu màu đỏ; các cột Sản phẩm lỗ, Doanh thu, Giá vốn và Lợi nhuận cho biết nguyên nhân và mức lỗ.',
+            'Bấm vào mã đơn hoặc nút "Mở đơn lỗ" để kiểm tra chi tiết đơn hàng. Có thể nhấn "Xuất Excel" nếu cần gửi hoặc lưu báo cáo.',
+        ],
+        'checks': [
+            'Khoảng ngày trên BC Bán hàng hiện được lọc theo Ngày đặt hàng, không phải ngày khách chuyển khoản, ngày ghi phiếu thu hoặc ngày hoàn thành đơn.',
+            'Doanh thu của đơn được tính từ tiền hàng sau chiết khấu, cộng phí vận chuyển và chi phí khác; lợi nhuận bằng doanh thu trừ giá vốn.',
+            'Muốn số liệu lãi/lỗ chính xác, sản phẩm phải có giá vốn hoặc giá nhập đúng và đơn hàng phải ghi nhận đủ số lượng, chiết khấu, phí phát sinh và trả hàng.',
+            'Nếu không thấy dữ liệu, kiểm tra lại khoảng ngày, Phạm vi đơn, cửa hàng và bộ lọc Lợi nhuận trước khi kết luận báo cáo bị thiếu.',
+        ],
+    },
+    {
         'title': 'Xem báo cáo và ra quyết định',
         'goal': 'Biến dữ liệu bán hàng, kho, khách hàng và tài chính thành thông tin quản trị dễ hiểu.',
         'steps': [

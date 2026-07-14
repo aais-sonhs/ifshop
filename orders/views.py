@@ -21,6 +21,7 @@ from finance.models import Receipt, FinanceCategory, CashBook, Payment, PaymentM
 from finance.services import (
     cancel_receipt_with_effect,
     capture_receipt_effect,
+    normalize_order_receipt_date,
     save_receipt_with_effect,
     update_order_payment_status,
 )
@@ -80,6 +81,14 @@ def _to_decimal(value, default='0'):
         return Decimal(str(value if value not in (None, '') else default))
     except Exception:
         return Decimal(str(default))
+
+
+def _local_date_iso(value):
+    if not value:
+        return ''
+    if timezone.is_aware(value):
+        value = timezone.localtime(value)
+    return value.date().isoformat()
 
 
 def _non_negative_decimal(value, default='0'):
@@ -768,7 +777,7 @@ def _create_completed_receipt_for_order(order, actor, amount, payment_method=2,
         order=order,
         amount=amount,
         description=f'Thu tiền đơn hàng {order.code} ({description_suffix})',
-        receipt_date=receipt_date or order.order_date or date.today(),
+        receipt_date=normalize_order_receipt_date(order, receipt_date),
         status=1,
         payment_method=payment_method,
         payment_method_option=selected_method,
@@ -1045,6 +1054,7 @@ def _build_receipt_items_from_payload(data, order, existing_paid):
                 'payment_method_option_id': payment_line.get('payment_method_option_id'),
                 'payment_method': int(payment_line.get('payment_method', 2) or 2),
                 'cash_book_id': payment_line.get('cash_book_id'),
+                'receipt_date': payment_line.get('receipt_date') or data.get('receipt_date'),
             })
         return receipt_items
 
@@ -1063,6 +1073,7 @@ def _build_receipt_items_from_payload(data, order, existing_paid):
         'payment_method_option_id': data.get('payment_method_option_id'),
         'payment_method': int(data.get('payment_method', 2) or 2),
         'cash_book_id': data.get('cash_book_id'),
+        'receipt_date': data.get('receipt_date'),
     }]
 
 
@@ -2530,7 +2541,7 @@ def _serialize_order_list(orders):
             'warehouse': o.warehouse.name if o.warehouse else '',
             'warehouse_id': o.warehouse_id,
             'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
-            'created_date': o.created_at.strftime('%Y-%m-%d') if o.created_at else '',
+            'created_date': _local_date_iso(o.created_at),
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
             'total_amount': float(o.total_amount),
             'discount_amount': float(o.discount_amount),
@@ -2708,6 +2719,7 @@ def api_get_order_detail(request):
                 'shipping_address': o.shipping_address or '',
                 'warehouse_id': o.warehouse_id,
                 'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
+                'created_date': _local_date_iso(o.created_at),
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
                 'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
@@ -3061,9 +3073,10 @@ def api_save_order(request):
                 o.code = _auto_next_order_code()
                 o.save()
 
+            created_receipts = []
             for idx, ri in enumerate(receipt_items):
                 base_code = f'PT-{o.code}' if idx == 0 else f'PT-{o.code}-{idx + 1}'
-                _create_completed_receipt_for_order(
+                created_receipt = _create_completed_receipt_for_order(
                     order=o,
                     actor=request.user,
                     amount=ri['amount'],
@@ -3072,7 +3085,10 @@ def api_save_order(request):
                     cash_book_id=ri.get('cash_book_id'),
                     base_code=base_code,
                     description_suffix='tự động',
+                    receipt_date=ri.get('receipt_date'),
                 )
+                if created_receipt:
+                    created_receipts.append(created_receipt)
 
             # Cập nhật paid trên order (luôn tính từ phiếu thu thực tế)
             _refresh_order_payment(o)
@@ -3169,6 +3185,11 @@ def api_save_order(request):
                 summary_parts.append(f'tags: {o.tags}')
             if float(o.paid_amount or 0):
                 summary_parts.append(f'đã thu {int(float(o.paid_amount)):,}đ')
+            if created_receipts:
+                payment_dates = sorted({receipt.receipt_date for receipt in created_receipts})
+                summary_parts.append(
+                    'ngày thanh toán thực tế ' + ', '.join(item.strftime('%d/%m/%Y') for item in payment_dates)
+                )
             if loss_warnings:
                 summary_parts.append('cảnh báo bán lỗ: ' + '; '.join(loss_warnings[:5]))
             if stock_export_warning:
@@ -3527,6 +3548,7 @@ def api_bulk_collect_orders(request):
         payment_method = int(data.get('payment_method', 2) or 2)
         payment_method_option_id = data.get('payment_method_option_id') or None
         cash_book_id = data.get('cash_book_id') or None
+        receipt_date = data.get('receipt_date') or None
         if not ids and not payment_entries:
             return JsonResponse({'status': 'error', 'message': 'Chưa chọn đơn hàng'})
 
@@ -3624,7 +3646,7 @@ def api_bulk_collect_orders(request):
                     cash_book_id=cash_book.id if cash_book else None,
                     base_code=f'PT-{order.code}-BULK',
                     description_suffix='module thanh toán nhiều đơn',
-                    receipt_date=date.today(),
+                    receipt_date=receipt_date,
                 )
 
                 _refresh_order_payment(order)
@@ -3632,7 +3654,12 @@ def api_bulk_collect_orders(request):
                     order=order,
                     actor=request.user,
                     action='bulk_collect',
-                    summary=f'Thanh toán nhiều đơn {int(requested_amount):,}đ qua {cash_book.name if cash_book else "tài khoản mặc định"}',
+                    summary=(
+                        f'Thanh toán nhiều đơn {int(requested_amount):,}đ qua '
+                        f'{cash_book.name if cash_book else "tài khoản mặc định"}; '
+                        f'ngày thanh toán thực tế '
+                        f'{normalize_order_receipt_date(order, receipt_date).strftime("%d/%m/%Y")}'
+                    ),
                     status_before=old_status,
                     status_after=order.status,
                 )
@@ -3690,6 +3717,7 @@ def api_collect_order_payment(request):
                 'payment_method': payment_method,
                 'payment_method_option_id': line.get('payment_method_option_id') or data.get('payment_method_option_id') or None,
                 'cash_book_id': line.get('cash_book_id') or data.get('cash_book_id') or None,
+                'receipt_date': line.get('receipt_date') or data.get('receipt_date') or None,
             })
 
         if not payment_lines:
@@ -3704,6 +3732,7 @@ def api_collect_order_payment(request):
                     'payment_method': payment_method,
                     'payment_method_option_id': data.get('payment_method_option_id') or None,
                     'cash_book_id': data.get('cash_book_id') or None,
+                    'receipt_date': data.get('receipt_date') or None,
                 })
 
         if not payment_lines:
@@ -3745,12 +3774,13 @@ def api_collect_order_payment(request):
                     cash_book_id=line.get('cash_book_id'),
                     base_code=base_code,
                     description_suffix='thu tiền riêng tại đơn hàng',
-                    receipt_date=date.today(),
+                    receipt_date=line.get('receipt_date'),
                 )
                 if receipt:
                     receipt_codes.append(receipt.code)
                     receipt_details.append(
-                        f'{receipt.get_payment_method_label()}: {_format_money_for_history(receipt.amount)} ({receipt.code})'
+                        f'{receipt.get_payment_method_label()}: {_format_money_for_history(receipt.amount)} '
+                        f'({receipt.code}, ngày {receipt.receipt_date.strftime("%d/%m/%Y")})'
                     )
 
             _refresh_order_payment(order)
@@ -4949,6 +4979,7 @@ def api_pos_checkout(request):
                     cash_book_id=data.get('cash_book_id') or None,
                     base_code=f'PT-{order.code}',
                     description_suffix='POS',
+                    receipt_date=data.get('receipt_date') or None,
                 )
             else:
                 _refresh_order_payment(order)

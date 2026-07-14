@@ -1,8 +1,44 @@
+from datetime import date as date_type, datetime
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from .models import CashBook, Receipt
+
+
+def normalize_order_receipt_date(order, value=None):
+    """Chuẩn hóa ngày thu của đơn và chặn ngày không thể xảy ra trong thực tế."""
+    now = timezone.now()
+    today = timezone.localtime(now).date() if timezone.is_aware(now) else now.date()
+    if value in (None, ''):
+        receipt_date = today
+    elif isinstance(value, datetime):
+        receipt_date = value.date()
+    elif isinstance(value, date_type):
+        receipt_date = value
+    else:
+        receipt_date = parse_date(str(value).strip())
+        if not receipt_date:
+            raise ValueError('Ngày thanh toán không hợp lệ.')
+
+    created_date = None
+    if order and getattr(order, 'created_at', None):
+        created_at = order.created_at
+        if timezone.is_aware(created_at):
+            created_at = timezone.localtime(created_at)
+        created_date = created_at.date()
+
+    if created_date and receipt_date < created_date:
+        raise ValueError(
+            f'Ngày thanh toán không được trước ngày tạo đơn ({created_date.strftime("%d/%m/%Y")}).'
+        )
+    if receipt_date > today:
+        raise ValueError(
+            f'Ngày thanh toán không được vượt quá ngày hiện tại ({today.strftime("%d/%m/%Y")}).'
+        )
+    return receipt_date
 
 
 def capture_receipt_effect(receipt):

@@ -1558,6 +1558,33 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(second_order.paid_amount), 200.0)
         self.assertEqual(second_order.payment_status, 2)
 
+    def test_bulk_collect_can_backdate_payment_and_complete_exported_order(self):
+        order = self._create_order(code='DH-BULK-BACKDATE-001', status=4)
+        Order.objects.filter(id=order.id).update(created_at=timezone.now() - timedelta(days=3))
+        order.refresh_from_db()
+        actual_payment_date = date.today() - timedelta(days=1)
+
+        response = self.client.post(
+            reverse('api_bulk_collect_orders'),
+            data=json.dumps({
+                'ids': [order.id],
+                'payments': [{'order_id': order.id, 'amount': 100}],
+                'payment_method_option_id': self.payment_method.id,
+                'receipt_date': actual_payment_date.isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(order.status, 5)
+        receipt = Receipt.objects.get(order=order, status=1)
+        self.assertEqual(receipt.receipt_date, actual_payment_date)
+        history = OrderEditHistory.objects.get(order=order, action='bulk_collect')
+        self.assertIn(actual_payment_date.strftime('%d/%m/%Y'), history.summary)
+
     def test_collect_order_payment_accepts_multiple_methods_without_saving_order(self):
         order = self._create_order(code='DH-COLLECT-ONE-001', status=1)
         OrderItem.objects.create(
@@ -1601,6 +1628,46 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(Receipt.objects.filter(order=order, status=1).count(), 2)
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 1000100.0)
+
+    def test_collect_order_payment_rejects_date_before_order_creation(self):
+        order = self._create_order(code='DH-COLLECT-DATE-BEFORE')
+        invalid_date = date.today() - timedelta(days=1)
+
+        response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'receipt_date': invalid_date.isoformat(),
+                'payment_lines': [{'amount': 100, 'payment_method': 2}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('trước ngày tạo đơn', payload['message'])
+        self.assertFalse(Receipt.objects.filter(order=order).exists())
+
+    def test_collect_order_payment_rejects_future_date(self):
+        order = self._create_order(code='DH-COLLECT-DATE-FUTURE')
+        invalid_date = date.today() + timedelta(days=1)
+
+        response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'receipt_date': invalid_date.isoformat(),
+                'payment_lines': [{'amount': 100, 'payment_method': 2}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('vượt quá ngày hiện tại', payload['message'])
+        self.assertFalse(Receipt.objects.filter(order=order).exists())
 
     def test_collect_order_payment_can_be_called_repeatedly_without_saving_order(self):
         order = self._create_order(code='DH-COLLECT-REPEAT-001', status=1)

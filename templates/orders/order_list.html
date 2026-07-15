@@ -383,6 +383,10 @@
                     <div class="card-header py-1 d-flex align-items-center justify-content-between">
                         <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
                         <div class="card-tools d-flex align-items-center" style="gap:8px;">
+                            <select class="custom-select custom-select-sm" id="order_item_sort" title="Sắp xếp cách hiển thị sản phẩm theo STT">
+                                <option value="asc">STT: thấp → cao</option>
+                                <option value="desc">STT: cao → thấp</option>
+                            </select>
                             <button type="button" class="btn btn-xs btn-outline-secondary" id="btn_toggle_stock_info" title="Ẩn/hiện kiểm tra tồn kho">
                                 <i class="fas fa-eye mr-1"></i> Kiểm tra tồn
                             </button>
@@ -433,20 +437,25 @@
                             </div>
                             <div id="quick_search_results" style="display:none; position:absolute; left:0; right:0; z-index:9999; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #42a5f5; border-top:none; border-radius:0 0 6px 6px; box-shadow:0 6px 20px rgba(0,0,0,0.18);"></div>
                         </div>
-                        <table class="table table-sm mb-0" id="items_tbl">
-                            <thead class="bg-light"><tr>
-	                                <th style="width:4%" class="text-center">STT</th>
-	                                <th style="width:5%" class="text-center">Ảnh</th>
-	                                <th style="width:20%">Sản phẩm</th>
-                                <th style="width:6%">ĐVT</th>
-                                <th style="width:17%" class="stock-info-col">Tồn theo kho</th>
-                                <th style="width:9%">Số lượng</th>
-                                <th style="width:13%">Đơn giá</th>
-                                <th style="width:8%">CK (%)</th>
-                                <th style="width:13%">Thành tiền</th>
-                                <th style="width:5%"></th>
-                            </tr></thead>
-                            <tbody></tbody>
+                        <div class="order-items-scroll" id="order_items_scroll" tabindex="0" aria-label="Danh sách sản phẩm trong đơn">
+                            <table class="table table-sm mb-0" id="items_tbl">
+                                <thead class="bg-light"><tr>
+	                                    <th style="width:4%" class="text-center">STT</th>
+	                                    <th style="width:5%" class="text-center">Ảnh</th>
+	                                    <th style="width:20%">Sản phẩm</th>
+                                    <th style="width:6%">ĐVT</th>
+                                    <th style="width:17%" class="stock-info-col">Tồn theo kho</th>
+                                    <th style="width:9%">Số lượng</th>
+                                    <th style="width:13%">Đơn giá</th>
+                                    <th style="width:8%">CK (%)</th>
+                                    <th style="width:13%">Thành tiền</th>
+                                    <th style="width:5%"></th>
+                                </tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div class="order-items-summary" id="order_items_summary">
+                            <table class="table table-sm mb-0" id="order_items_totals_tbl">
                             <tfoot>
                                 <tr class="font-weight-bold order-total-quantity-row"><td colspan="5" class="text-right order-total-label" data-stock-colspan="5" data-compact-colspan="4">Tổng số lượng sản phẩm:</td><td class="text-center" id="lbl_total_quantity">0</td><td colspan="4"></td></tr>
                                 <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
@@ -468,7 +477,8 @@
                                 <tr id="duplicate_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
 	                                <tr id="cost_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Đây chỉ là cảnh báo; hàng tặng giá 0 vẫn được lưu đơn.</div></td></tr>
                             </tfoot>
-                        </table>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -1040,6 +1050,43 @@
     white-space: nowrap;
     line-height: 1.6;
 }
+#order_item_sort {
+    width: 150px;
+    flex: 0 0 150px;
+    font-size: 12px;
+}
+#order_items_scroll {
+    position: relative;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    background: #fff;
+    outline: none;
+}
+#order_items_scroll.is-scrollable {
+    border-bottom: 1px solid #cfd8e3;
+    box-shadow: inset 0 -8px 12px -12px rgba(15, 23, 42, .75);
+}
+#items_tbl,
+#order_items_totals_tbl {
+    min-width: 1060px;
+    table-layout: fixed;
+}
+#items_tbl thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #f8f9fa;
+    box-shadow: inset 0 -1px 0 #dee2e6;
+}
+#order_items_summary {
+    overflow-x: auto;
+    background: #fff;
+    border-top: 2px solid #90caf9;
+}
+#order_items_totals_tbl tfoot td {
+    vertical-align: middle;
+}
 #items_tbl .select2-container--bootstrap4 .select2-selection--single {
     min-height: 31px;
     height: auto;
@@ -1080,10 +1127,10 @@
     color: #6c757d;
     font-weight: 600;
 }
-#items_tbl .order-total-quantity-row td {
+#order_items_totals_tbl .order-total-quantity-row td {
     background: #f8fafc;
 }
-#items_tbl #lbl_total_quantity {
+#order_items_totals_tbl #lbl_total_quantity {
     color: #1565c0;
     font-size: 15px;
 }
@@ -1582,6 +1629,8 @@ var ORDER_ROW_VISUAL_REFRESH_QUEUE = [];
 var ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
 var ORDER_TOTAL_RECALC_HANDLE = null;
 var ORDER_TOTAL_RECALC_OPTIONS = {};
+var ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
+var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
@@ -1736,6 +1785,7 @@ function processQueuedOrderRowVisualRefresh(){
     if(ORDER_ROW_VISUAL_REFRESH_QUEUE.length){
         queueOrderRowVisualRefresh([]);
     }
+    scheduleOrderItemsViewportRefresh();
 }
 function isQuickProductEnterEvent(event){
     return event && (event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13 || event.which === 13);
@@ -2692,7 +2742,7 @@ function persistStockInfoVisible(visible){
 function syncStockInfoVisibility(){
     var visible = !!currentStockInfoVisible;
     $('body').toggleClass('order-stock-compact', !visible);
-    $('#items_tbl [data-stock-colspan]').each(function(){
+    $('#order_items_totals_tbl [data-stock-colspan]').each(function(){
         $(this).attr('colspan', visible ? $(this).data('stock-colspan') : $(this).data('compact-colspan'));
     });
     $('#btn_toggle_stock_info')
@@ -2704,6 +2754,7 @@ function syncStockInfoVisibility(){
         persistQuickSearchStockFilter(currentQuickSearchStockFilter);
         syncQuickSearchStockFilterUI();
     }
+    scheduleOrderItemsViewportRefresh();
 }
 
 function setStockInfoVisible(visible, persist){
@@ -2907,6 +2958,7 @@ function populateOrderFormItems(items, options){
     }
 
     renderOrderItemsLoading(options.loadingText);
+    setOrderItemSortDirection('asc');
 
     if(!modalShown){
         $('#modal_form')
@@ -4197,6 +4249,36 @@ $(document).ready(function(){
                 ensureOrderProductSelectReady($select.closest('tr'), true);
             }
         });
+    $('#order_item_sort').on('change', function(){
+        setOrderItemSortDirection($(this).val());
+    });
+    $('#modal_form').on('shown.bs.modal.orderItemsViewport', function(){
+        scheduleOrderItemsViewportRefresh();
+    });
+    var orderItemsViewport = document.getElementById('order_items_scroll');
+    if(orderItemsViewport){
+        var orderItemsSummary = document.getElementById('order_items_summary');
+        orderItemsViewport.addEventListener('scroll', function(){
+            if(orderItemsSummary && orderItemsSummary.scrollLeft !== orderItemsViewport.scrollLeft){
+                orderItemsSummary.scrollLeft = orderItemsViewport.scrollLeft;
+            }
+        });
+        if(orderItemsSummary){
+            orderItemsSummary.addEventListener('scroll', function(){
+                if(orderItemsViewport.scrollLeft !== orderItemsSummary.scrollLeft){
+                    orderItemsViewport.scrollLeft = orderItemsSummary.scrollLeft;
+                }
+            });
+        }
+        orderItemsViewport.addEventListener('wheel', function(event){
+            if(orderItemsViewport.scrollHeight <= orderItemsViewport.clientHeight + 1) return;
+            var atTop = orderItemsViewport.scrollTop <= 0;
+            var atBottom = orderItemsViewport.scrollTop + orderItemsViewport.clientHeight >= orderItemsViewport.scrollHeight - 1;
+            if((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)){
+                event.preventDefault();
+            }
+        }, {passive: false});
+    }
     initCustomerPicker();
     $('#btn_toggle_payment').on('click', function(){
         if(isPaymentEntryActive()){
@@ -4258,7 +4340,7 @@ $(document).ready(function(){
         $('#order_history_card').hide();$('#order_history_list').html('Chưa có lịch sử');
         syncStatusOptions(0);
         if($('#inp_salesperson').length) $('#inp_salesperson').val('').trigger('change');
-        $('#items_tbl tbody').html('');calcTotal({syncDuplicates: true});
+        $('#items_tbl tbody').html('');setOrderItemSortDirection('asc');calcTotal({syncDuplicates: true});
         // Bật lại chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
         $('#btn_save').show();
@@ -4346,6 +4428,7 @@ $(document).ready(function(){
             $('#inp_note').val(note ? note + '\n' + qNote : qNote);
             // Xóa SP cũ và fill items từ báo giá
             $('#items_tbl tbody').html('');
+            setOrderItemSortDirection('asc');
             if(res.items && res.items.length > 0){
                 res.items.forEach(function(it){
                     addItemRow(it, {deferEnhancement: true});
@@ -4593,8 +4676,8 @@ $(document).ready(function(){
         if(e.key === 'F3'){
             e.preventDefault();
             if(!$('#modal_form').hasClass('show')) return;
-            addServiceLine();
-            $('#items_tbl tbody tr:last .inp_service_name').focus();
+            var $serviceRow = addServiceLine();
+            if($serviceRow && $serviceRow.length) $serviceRow.find('.inp_service_name').focus();
         }
     });
 
@@ -4668,25 +4751,26 @@ $(document).ready(function(){
         var items=[],hasError=false,stockWarning=false;
         var whId = $('#inp_warehouse_id').val();
 
-        $('#items_tbl tbody tr').each(function(){
-            var isServiceLine = $(this).data('service-line') == 1;
-            var pid=$(this).find('.sel_product').val();
-            var qty=parseFloat($(this).find('.inp_qty').val())||0;
-            var price=getMoneyValue($(this).find('.inp_price'))||0;
-            var disc=parseFloat($(this).find('.inp_disc').val())||0;
+        getOrderItemRowsInSequenceOrder().forEach(function(row){
+            var $row=$(row);
+            var isServiceLine = $row.data('service-line') == 1;
+            var pid=$row.find('.sel_product').val();
+            var qty=parseFloat($row.find('.inp_qty').val())||0;
+            var price=getMoneyValue($row.find('.inp_price'))||0;
+            var disc=parseFloat($row.find('.inp_disc').val())||0;
             if(isServiceLine){
-                var serviceName = ($(this).find('.inp_service_name').val() || '').trim();
+                var serviceName = ($row.find('.inp_service_name').val() || '').trim();
                 if(!serviceName){hasError=true;return;}
                 items.push({
                     product_id: null,
                     item_type: 'service',
                     is_service_line: true,
                     item_name: serviceName,
-                    unit: ($(this).find('.inp_service_unit').val() || '').trim(),
+                    unit: ($row.find('.inp_service_unit').val() || '').trim(),
                     quantity: qty,
                     unit_price: price,
                     discount_percent: disc,
-                    note: ($(this).find('.inp_item_note').val() || '').trim()
+                    note: ($row.find('.inp_item_note').val() || '').trim()
                 });
                 return;
             }
@@ -4701,14 +4785,14 @@ $(document).ready(function(){
                 }
             }
 
-            var variantId = $(this).find('.sel_product option:selected').data('variant-id') || null;
+            var variantId = $row.find('.sel_product option:selected').data('variant-id') || null;
             items.push({
                 product_id:pid,
                 variant_id:variantId,
                 quantity:qty,
                 unit_price:price,
                 discount_percent:disc,
-                note:($(this).find('.inp_item_note').val() || '').trim()
+                note:($row.find('.inp_item_note').val() || '').trim()
             });
         });
         if(hasError){alert('Vui lòng chọn SP hoặc nhập tên dịch vụ cho tất cả dòng');return;}
@@ -4870,12 +4954,91 @@ function updateAllStockDisplay(){
     queueOrderRowVisualRefresh($('#items_tbl tbody tr'), {preservePrice: true});
 }
 
-function promoteOrderItemRow($row){
-    if(!$row || !$row.length) return;
-    var $tbody = $('#items_tbl tbody');
-    if(!$row.is($tbody.children('tr').first())){
-        $row.detach().prependTo($tbody);
+function getNextOrderItemSequence(){
+    var maxSequence = 0;
+    $('#items_tbl tbody tr').not('.order-items-loading-row').each(function(){
+        maxSequence = Math.max(maxSequence, Number($(this).attr('data-item-sequence')) || 0);
+    });
+    return maxSequence + 1;
+}
+
+function ensureOrderItemSequence($row){
+    if(!$row || !$row.length || $row.hasClass('order-items-loading-row')) return 0;
+    var sequence = Number($row.attr('data-item-sequence')) || 0;
+    if(!sequence){
+        sequence = getNextOrderItemSequence();
+        $row.attr('data-item-sequence', sequence);
     }
+    return sequence;
+}
+
+function getOrderItemRowsInSequenceOrder(){
+    var rows = $('#items_tbl tbody tr').not('.order-items-loading-row').get();
+    rows.forEach(function(row){ ensureOrderItemSequence($(row)); });
+    return rows.sort(function(left, right){
+        return (Number($(left).attr('data-item-sequence')) || 0) -
+            (Number($(right).attr('data-item-sequence')) || 0);
+    });
+}
+
+function syncOrderItemsScrollHeight(){
+    var $viewport = $('#order_items_scroll');
+    if(!$viewport.length) return;
+    var $rows = $('#items_tbl tbody tr').not('.order-items-loading-row');
+    if($rows.length <= 3){
+        $viewport.css('max-height', '').removeClass('is-scrollable');
+        if($rows.length === 0) $viewport.scrollTop(0);
+        return;
+    }
+    var height = $('#items_tbl thead').outerHeight(true) || 34;
+    $rows.slice(0, 3).each(function(){ height += $(this).outerHeight(true) || 56; });
+    height = Math.min(Math.max(Math.ceil(height) + 2, 190), 360);
+    $viewport.css('max-height', height + 'px').addClass('is-scrollable');
+}
+
+function scheduleOrderItemsViewportRefresh(){
+    if(ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE) return;
+    var scheduleFrame = window.requestAnimationFrame || function(callback){
+        return window.setTimeout(callback, 16);
+    };
+    ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = scheduleFrame(function(){
+        ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
+        syncOrderItemsScrollHeight();
+    });
+}
+
+function applyOrderItemDisplayOrder(){
+    var rows = getOrderItemRowsInSequenceOrder();
+    var displayRows = ORDER_ITEM_SORT_DIRECTION === 'desc' ? rows.slice().reverse() : rows;
+    var tbody = $('#items_tbl tbody')[0];
+    if(tbody){
+        displayRows.forEach(function(row){ tbody.appendChild(row); });
+    }
+    rows.forEach(function(row){
+        var $row = $(row);
+        $row.find('.order-item-sequence').text($row.attr('data-item-sequence'));
+    });
+    $('#order_item_sort').val(ORDER_ITEM_SORT_DIRECTION);
+    scheduleOrderItemsViewportRefresh();
+}
+
+function setOrderItemSortDirection(direction){
+    ORDER_ITEM_SORT_DIRECTION = direction === 'desc' ? 'desc' : 'asc';
+    applyOrderItemDisplayOrder();
+}
+
+function normalizeOrderItemSequences(){
+    getOrderItemRowsInSequenceOrder().forEach(function(row, index){
+        $(row).attr('data-item-sequence', index + 1);
+    });
+    applyOrderItemDisplayOrder();
+}
+
+function removeOrderItemRow($row){
+    if(!$row || !$row.length) return;
+    $row.remove();
+    normalizeOrderItemSequences();
+    calcTotal({syncDuplicates: true});
 }
 
 function focusOrderItemQuantity($row){
@@ -4898,7 +5061,6 @@ function addItemFromProduct(product){
     if($existingRow.length){
         var $qty = $existingRow.find('.inp_qty');
         $qty.val((parseFloat($qty.val()) || 0) + 1);
-        promoteOrderItemRow($existingRow);
         calcLine($existingRow, {syncDuplicates: true});
         flashExistingRow($existingRow);
         focusOrderItemQuantity($existingRow);
@@ -4916,13 +5078,13 @@ function addItemFromProduct(product){
         discount_percent: 0,
         image_url: product.image_url || '',
     };
-    var $row = addItemRow(item, {prepend: true, deferEnhancement: true});
+    var $row = addItemRow(item, {deferEnhancement: true});
     calcTotal({syncDuplicates: true});
     focusOrderItemQuantity($row);
 }
 
 function addServiceLine(item){
-    addItemRow($.extend({
+    return addItemRow($.extend({
         is_service_line: true,
         item_name: '',
         unit: 'Lần',
@@ -4971,11 +5133,13 @@ function addItemRow(item, options){
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
         var $serviceRow = $('#items_tbl tbody tr:last');
+        ensureOrderItemSequence($serviceRow);
         $serviceRow.find('.inp_qty,.inp_price,.inp_disc').on('input', function(){ calcLine($serviceRow, {deferTotal: true}); });
-        $serviceRow.find('.btn_remove_item').click(function(){ $serviceRow.remove(); calcTotal({syncDuplicates: true}); });
+        $serviceRow.find('.btn_remove_item').click(function(){ removeOrderItemRow($serviceRow); });
         syncStockInfoVisibility();
         calcLine($serviceRow, {syncDuplicates: true});
-        return;
+        applyOrderItemDisplayOrder();
+        return $serviceRow;
     }
 
     var imageUrl = item && item.image_url ? item.image_url : (selectedProduct ? (selectedProduct.image_url || selectedProduct.image || '') : '');
@@ -4999,12 +5163,9 @@ function addItemRow(item, options){
         '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
         '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
     var $tbody = $('#items_tbl tbody');
-    if(options.prepend){
-        $tbody.prepend(html);
-    } else {
-        $tbody.append(html);
-    }
-    var $row = options.prepend ? $tbody.children('tr').first() : $tbody.children('tr').last();
+    $tbody.append(html);
+    var $row = $tbody.children('tr').last();
+    ensureOrderItemSequence($row);
     if(!useLazySelect){
         initializeOrderProductSelect($row);
     }
@@ -5027,6 +5188,7 @@ function addItemRow(item, options){
                 calcLine($duplicateRow, {syncDuplicates: true});
                 flashExistingRow($duplicateRow);
                 $row.remove();
+                normalizeOrderItemSequences();
                 calcTotal({syncDuplicates: true});
                 toastr ? toastr.success('Đã gộp +'+ newQty +' vào dòng cũ (tổng: '+ (existingQty+newQty) +')') : null;
             } else {
@@ -5047,12 +5209,13 @@ function addItemRow(item, options){
         queueOrderRowVisualRefresh($row, {preservePrice: true});
     });
     $row.find('.inp_price,.inp_disc').on('input',function(){calcLine($row, {deferTotal: true});});
-    $row.find('.btn_remove_item').click(function(){$row.remove();calcTotal({syncDuplicates: true});});
+    $row.find('.btn_remove_item').click(function(){removeOrderItemRow($row);});
     if(useLazySelect){
         queueOrderRowVisualRefresh($row, {preservePrice: true});
     } else {
         syncOrderRowProductVisuals($row, hasSelectedProduct);
     }
+    applyOrderItemDisplayOrder();
     return $row;
 }
 
@@ -5177,14 +5340,12 @@ function calcTotal(options){
     options = options || {};
     var total=0;
     var totalQuantity=0;
-    var itemSequence=0;
-    $('#items_tbl tbody tr').each(function(){
-        if($(this).hasClass('order-items-loading-row')) return;
-        itemSequence += 1;
-        $(this).find('.order-item-sequence').text(itemSequence);
-        var qty=parseFloat($(this).find('.inp_qty').val())||0;
-        var price=getMoneyValue($(this).find('.inp_price'))||0;
-        var disc=parseFloat($(this).find('.inp_disc').val())||0;
+    getOrderItemRowsInSequenceOrder().forEach(function(row){
+        var $row=$(row);
+        $row.find('.order-item-sequence').text($row.attr('data-item-sequence'));
+        var qty=parseFloat($row.find('.inp_qty').val())||0;
+        var price=getMoneyValue($row.find('.inp_price'))||0;
+        var disc=parseFloat($row.find('.inp_disc').val())||0;
         totalQuantity+=qty;
         total+=qty*price*(1-disc/100);
     });
@@ -5228,6 +5389,7 @@ function calcTotal(options){
         syncDuplicateWarnings();
     }
     syncPaymentSummary();
+    scheduleOrderItemsViewportRefresh();
 }
 
 function getOrderStatusFilterText(statusValue){
@@ -6070,6 +6232,7 @@ function viewItem(id){
         $('#payment_lines_container').hide();
         // KHÓA: Disable tất cả
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', true);
+        $('#order_item_sort').prop('disabled', false);
 	        $('#btn_save').hide();
 	        $('#btn_print_current').show();
 	        $('#btn_toggle_payment').prop('disabled', true);

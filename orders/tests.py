@@ -765,6 +765,20 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(print_response.status_code, 200)
         self.assertNotContains(print_response, 'Hiệu lực:')
 
+    def test_order_form_exposes_item_sequence_sort_and_independent_scroll_area(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="order_item_sort"')
+        self.assertContains(response, '<option value="desc">STT: cao → thấp</option>', html=True)
+        self.assertContains(response, 'id="order_items_scroll"')
+        self.assertContains(response, 'id="order_items_summary"')
+        self.assertContains(response, 'overscroll-behavior: contain;')
+        self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
+        self.assertNotContains(response, 'addItemRow(item, {prepend: true')
+
     def test_products_select_exposes_combo_components_and_component_based_stock(self):
         self.product.cost_price = 100
         self.product.selling_price = 150

@@ -1162,17 +1162,27 @@
     font-weight: 600;
 }
 #items_tbl .order-line-discount-group {
-    min-width: 132px;
-    flex-wrap: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 118px;
+    width: 100%;
 }
 #items_tbl .order-line-discount-group .inp_disc_mode {
-    flex: 0 0 58px;
-    max-width: 58px;
-    padding-left: 4px;
-    padding-right: 4px;
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    height: 29px;
+    padding: 2px 24px 2px 7px;
+    border-radius: 4px;
+    font-size: 12px;
 }
 #items_tbl .order-line-discount-group .inp_disc {
-    min-width: 70px;
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    border-radius: 4px;
 }
 #items_tbl .order-line-discount-hint {
     display: block;
@@ -5285,12 +5295,12 @@ $(document).on('keydown.orderLineDiscount', '#items_tbl .inp_disc', function(eve
 function renderOrderLineDiscountEditor(mode, amount, percent){
     mode = normalizeOrderLineDiscountMode(mode);
     var value = mode === 'amount' ? fmt(Math.round(Number(amount) || 0)) : formatOrderDiscountPercent(percent);
-    return '<div class="input-group input-group-sm order-line-discount-group">' +
+    return '<div class="order-line-discount-group">' +
         '<select class="custom-select inp_disc_mode" data-current-mode="'+mode+'">' +
             '<option value="percent"'+(mode === 'percent' ? ' selected' : '')+'>%</option>' +
             '<option value="amount"'+(mode === 'amount' ? ' selected' : '')+'>Tiền</option>' +
         '</select>' +
-        '<input type="text" inputmode="'+(mode === 'amount' ? 'numeric' : 'decimal')+'" class="form-control text-right inp_disc'+(mode === 'amount' ? ' order-line-discount-money' : '')+'" value="'+escapeAttr(value)+'" placeholder="'+(mode === 'amount' ? '0đ' : '0%')+'" aria-label="Chiết khấu theo dòng">' +
+        '<input type="text" inputmode="'+(mode === 'amount' ? 'numeric' : 'decimal')+'" class="form-control form-control-sm text-right inp_disc'+(mode === 'amount' ? ' order-line-discount-money' : '')+'" value="'+escapeAttr(value)+'" placeholder="'+(mode === 'amount' ? '0đ' : '0%')+'" aria-label="Chiết khấu theo dòng">' +
     '</div><small class="order-line-discount-hint"></small>';
 }
 

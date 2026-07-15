@@ -780,6 +780,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, '<option value="desc">STT: cao → thấp</option>', html=True)
         self.assertContains(response, 'id="order_items_scroll"')
         self.assertContains(response, 'id="order_items_summary"')
+        self.assertContains(response, 'modal-dialog-scrollable order-form-dialog')
+        self.assertContains(response, 'max-width: 1600px;')
         self.assertContains(response, 'overscroll-behavior: contain;')
         self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')

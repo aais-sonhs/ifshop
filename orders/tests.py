@@ -832,6 +832,17 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
 
+    def test_order_status_action_buttons_have_spacing(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'class="d-flex align-items-center" id="status_flow_actions" style="gap:3px;"',
+        )
+        self.assertContains(response, 'class="btn btn-sm btn-outline-primary" id="btn_status_next"')
+        self.assertContains(response, 'class="btn btn-sm btn-outline-success" id="btn_status_save"')
+
     def test_products_select_exposes_combo_components_and_component_based_stock(self):
         self.product.cost_price = 100
         self.product.selling_price = 150

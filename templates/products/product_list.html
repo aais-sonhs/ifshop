@@ -985,6 +985,18 @@ function refreshSuppliers(selectedId, done){
     });
 }
 
+function setProductSupplierValue(supplierId, supplierName){
+    var $select = $('#inp_supplier_id');
+    var value = supplierId ? String(supplierId) : '';
+    var hasOption = $select.find('option').filter(function(){
+        return String(this.value) === value;
+    }).length > 0;
+    if(value && !hasOption && supplierName){
+        $select.append($('<option>', {value: value, text: supplierName}));
+    }
+    $select.val(value).trigger('change.select2');
+}
+
 function renderLocationControls(locations, selectedId){
     var activeLocations = (locations || []).filter(function(location){ return location.is_active !== false; });
     var options = '<option value="">-- Chọn --</option>';
@@ -2395,7 +2407,7 @@ function editItem(d){
     $('#inp_category_id').val(d.category_id || '').trigger('change.select2');
     renderProductTypeOptions(d.category_id || '', d.product_type_id || '');
     $('#inp_product_type_id').val(d.product_type_id || '').trigger('change.select2');
-    $('#inp_supplier_id').val(d.supplier_id);
+    setProductSupplierValue(d.supplier_id, d.supplier);
     setMoneyValue('#inp_cost_price', d.cost_price);
     setMoneyValue('#inp_import_price', d.import_price);
     setMoneyValue('#inp_selling_price', d.selling_price);
@@ -2544,7 +2556,8 @@ function viewCombo(d){
     $('#inp_category_id').val(d.category_id).prop('disabled', true);
     renderProductTypeOptions(d.category_id || '', d.product_type_id || '');
     $('#inp_product_type_id').val(d.product_type_id || '').prop('disabled', true);
-    $('#inp_supplier_id').val(d.supplier_id).prop('disabled', true);
+    setProductSupplierValue(d.supplier_id, d.supplier);
+    $('#inp_supplier_id').prop('disabled', true);
     $('#inp_location_id').val(d.location_id || '').prop('disabled', true).trigger('change');
     $('.btn-quick-master').hide();
     $('#inp_specification').val(d.specification || '').prop('disabled', true);

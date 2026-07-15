@@ -300,6 +300,22 @@ class ProductInventoryFlowTests(TestCase):
         ):
             self.assertContains(response, f'id="{field_id}"', count=1)
 
+    def test_product_edit_restores_supplier_value_in_select2(self):
+        self.product.supplier = self.supplier
+        self.product.save(update_fields=['supplier'])
+
+        api_response = self.client.get(reverse('api_get_products'))
+        self.assertEqual(api_response.status_code, 200)
+        row = next(item for item in api_response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['supplier_id'], self.supplier.id)
+        self.assertEqual(row['supplier'], self.supplier.name)
+
+        page_response = self.client.get(reverse('product_tbl'))
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'function setProductSupplierValue(supplierId, supplierName)')
+        self.assertContains(page_response, 'setProductSupplierValue(d.supplier_id, d.supplier);', count=2)
+        self.assertContains(page_response, ".val(value).trigger('change.select2')")
+
     def test_product_list_exposes_and_updates_inline_note(self):
         self.product.note = 'In kem phu kien'
         self.product.save(update_fields=['note'])
@@ -580,6 +596,12 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(supplier.phone, '0909000111')
         self.assertEqual(supplier.contact_person, 'Anh Minh')
         self.assertEqual(supplier.address, '12 Nguyen Trai')
+
+    def test_goods_receipt_quick_supplier_button_has_top_spacing(self):
+        response = self.client.get(reverse('goods_receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="btn_quick_supplier" style="margin-top:3px;"')
 
     def test_brand_owner_can_quick_create_product_location(self):
         self.client.force_login(self.owner)

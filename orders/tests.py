@@ -149,6 +149,37 @@ class OrderRiskFlowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.issuing_brand_id, print_label.id)
 
+    def test_k80_print_separates_items_and_aligns_quantity_unit_price_and_total(self):
+        self.product.unit = 'Bộ 12c'
+        self.product.save(update_fields=['unit'])
+        order = self._create_order(code='DH-K80-ITEM-LAYOUT')
+        order.total_amount = 250000
+        order.final_amount = 250000
+        order.save(update_fields=['total_amount', 'final_amount'])
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=125000,
+            total_price=250000,
+        )
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'k80', 'source': 'order'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'SL / ĐVT')
+        self.assertContains(response, 'Đơn giá')
+        self.assertContains(response, 'Thành tiền')
+        self.assertContains(response, 'class="item-name-row"')
+        self.assertContains(response, 'class="item-value-row"')
+        self.assertContains(response, 'border-bottom: 1px dashed #aaa;')
+        self.assertContains(response, 'Bộ 12c')
+        self.assertContains(response, '125.000đ')
+        self.assertContains(response, '250.000đ')
+
     def test_print_quotation_can_switch_brand_and_persist_issuing_brand(self):
         print_label = Brand.objects.create(
             name='Z Brand Quote',
@@ -669,6 +700,11 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'class="custom-select inp_disc_mode"')
         self.assertContains(response, '<option value="amount"', count=2)
         self.assertContains(response, 'var itemDiscountAmount = Number(it.discount_amount || 0);')
+        self.assertContains(response, "$(document).on('input.orderLineDiscount', '#items_tbl .inp_disc'")
+        self.assertContains(response, "$(document).on('blur.orderLineDiscount', '#items_tbl .inp_disc'")
+        self.assertContains(response, "$(document).on('keydown.orderLineDiscount', '#items_tbl .inp_disc'")
+        self.assertContains(response, "raw.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.')")
+        self.assertContains(response, "if(event.key !== 'Enter') return;")
 
     def test_create_and_edit_order_persist_custom_shipping_address(self):
         self.customer.address = 'Địa chỉ mặc định của khách'

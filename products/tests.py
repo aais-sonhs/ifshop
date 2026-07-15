@@ -220,6 +220,33 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, '.product-combined-header small{margin-top:2px;color:#fff !important;')
         self.assertContains(response, 'colspan="15"')
 
+    def test_product_form_uses_near_full_width_dialog(self):
+        response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'class="modal-dialog modal-xl modal-dialog-scrollable product-form-dialog"',
+        )
+        self.assertContains(
+            response,
+            '#modal_form .product-form-dialog{width:calc(100vw - 24px);max-width:1600px;margin:12px auto;}',
+        )
+        for section_title in (
+            'Thông tin cơ bản', 'Phân loại &amp; kho', 'Giá sản phẩm',
+            'Hình ảnh', 'Tồn theo kho', 'Mô tả &amp; ghi chú',
+        ):
+            self.assertContains(response, section_title)
+        self.assertContains(response, 'class="product-option-grid"')
+        self.assertContains(response, 'class="product-money-input is-primary"')
+        for field_id in (
+            'inp_code', 'inp_name', 'inp_barcode', 'inp_unit', 'inp_specification',
+            'inp_category_id', 'inp_product_type_id', 'inp_supplier_id', 'inp_location_id',
+            'inp_import_price', 'inp_cost_price', 'inp_selling_price',
+            'inp_wholesale_no_warranty', 'inp_wholesale_warranty',
+        ):
+            self.assertContains(response, f'id="{field_id}"', count=1)
+
     def test_product_list_exposes_and_updates_inline_note(self):
         self.product.note = 'In kem phu kien'
         self.product.save(update_fields=['note'])

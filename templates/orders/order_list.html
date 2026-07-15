@@ -5205,6 +5205,7 @@ function convertOrderLineDiscountMode($row, nextMode){
     var currentData = getOrderLineDiscountData($row, previousMode);
     nextMode = normalizeOrderLineDiscountMode(nextMode);
     $mode.val(nextMode).data('currentMode', nextMode);
+    syncOrderLineDiscountInputAppearance($row);
     $row.find('.inp_disc').val(
         nextMode === 'amount'
             ? fmt(Math.round(currentData.amount))
@@ -5214,32 +5215,72 @@ function convertOrderLineDiscountMode($row, nextMode){
 }
 
 function formatOrderLineDiscountAmountInput(input){
+    var oldValue = String(input.value || '');
+    var oldCursor = typeof input.selectionStart === 'number' ? input.selectionStart : oldValue.length;
+    var digitsBeforeCursor = oldValue.slice(0, oldCursor).replace(/[^0-9]/g, '').length;
     var raw = String(input.value || '').replace(/[^0-9]/g, '');
-    input.value = raw ? Number(raw).toLocaleString('vi-VN') : '';
+    raw = raw.replace(/^0+(?=\d)/, '');
+    var formatted = raw ? raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+    input.value = formatted;
+    if(document.activeElement === input && typeof input.setSelectionRange === 'function'){
+        var nextCursor = 0;
+        var seenDigits = 0;
+        while(nextCursor < formatted.length && seenDigits < digitsBeforeCursor){
+            if(/[0-9]/.test(formatted.charAt(nextCursor))) seenDigits += 1;
+            nextCursor += 1;
+        }
+        input.setSelectionRange(nextCursor, nextCursor);
+    }
+}
+
+function syncOrderLineDiscountInputAppearance($row){
+    var isAmount = normalizeOrderLineDiscountMode($row.find('.inp_disc_mode').val()) === 'amount';
+    $row.find('.inp_disc')
+        .toggleClass('order-line-discount-money', isAmount)
+        .attr('inputmode', isAmount ? 'numeric' : 'decimal')
+        .attr('placeholder', isAmount ? '0đ' : '0%');
+}
+
+function finalizeOrderLineDiscountInput($input){
+    var $row = $input.closest('tr');
+    var discountData = getOrderLineDiscountData($row);
+    $input.val(
+        discountData.mode === 'amount'
+            ? fmt(Math.round(discountData.amount))
+            : formatOrderDiscountPercent(discountData.percent)
+    );
+    syncOrderLineDiscountInputAppearance($row);
+    calcLine($row, {syncDuplicates: true});
 }
 
 function bindOrderLineDiscountEditor($row){
     var $mode = $row.find('.inp_disc_mode');
-    var $input = $row.find('.inp_disc');
-    $mode.on('change', function(){
-        convertOrderLineDiscountMode($row, $(this).val());
-    });
-    $input.on('input', function(){
-        if(normalizeOrderLineDiscountMode($mode.val()) === 'amount'){
-            formatOrderLineDiscountAmountInput(this);
-        }
-        calcLine($row, {deferTotal: true});
-    }).on('blur', function(){
-        var discountData = getOrderLineDiscountData($row);
-        $(this).val(
-            discountData.mode === 'amount'
-                ? fmt(Math.round(discountData.amount))
-                : formatOrderDiscountPercent(discountData.percent)
-        );
-        calcLine($row, {syncDuplicates: true});
-    });
+    $mode.data('currentMode', normalizeOrderLineDiscountMode($mode.val()));
+    syncOrderLineDiscountInputAppearance($row);
     updateOrderLineDiscountHint($row);
 }
+
+$(document).on('change.orderLineDiscount', '#items_tbl .inp_disc_mode', function(){
+    convertOrderLineDiscountMode($(this).closest('tr'), $(this).val());
+});
+
+$(document).on('input.orderLineDiscount', '#items_tbl .inp_disc', function(){
+    var $row = $(this).closest('tr');
+    if(normalizeOrderLineDiscountMode($row.find('.inp_disc_mode').val()) === 'amount'){
+        formatOrderLineDiscountAmountInput(this);
+    }
+    calcLine($row, {deferTotal: true});
+});
+
+$(document).on('blur.orderLineDiscount', '#items_tbl .inp_disc', function(){
+    finalizeOrderLineDiscountInput($(this));
+});
+
+$(document).on('keydown.orderLineDiscount', '#items_tbl .inp_disc', function(event){
+    if(event.key !== 'Enter') return;
+    event.preventDefault();
+    this.blur();
+});
 
 function renderOrderLineDiscountEditor(mode, amount, percent){
     mode = normalizeOrderLineDiscountMode(mode);
@@ -5249,7 +5290,7 @@ function renderOrderLineDiscountEditor(mode, amount, percent){
             '<option value="percent"'+(mode === 'percent' ? ' selected' : '')+'>%</option>' +
             '<option value="amount"'+(mode === 'amount' ? ' selected' : '')+'>Tiền</option>' +
         '</select>' +
-        '<input type="text" inputmode="decimal" class="form-control text-right inp_disc" value="'+escapeAttr(value)+'" aria-label="Chiết khấu theo dòng">' +
+        '<input type="text" inputmode="'+(mode === 'amount' ? 'numeric' : 'decimal')+'" class="form-control text-right inp_disc'+(mode === 'amount' ? ' order-line-discount-money' : '')+'" value="'+escapeAttr(value)+'" placeholder="'+(mode === 'amount' ? '0đ' : '0%')+'" aria-label="Chiết khấu theo dòng">' +
     '</div><small class="order-line-discount-hint"></small>';
 }
 

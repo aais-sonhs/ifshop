@@ -199,7 +199,7 @@
 </div>
 
 <div class="modal fade" id="modal_form" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable product-form-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="modal_title">Thêm sản phẩm</h5>
@@ -207,105 +207,146 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
-                <div class="row">
-                    <div class="col-md-8">
-                        <div class="row">
-                            <div class="col-md-6"><div class="form-group"><label>Mã SP</label><input type="text" class="form-control form-control-sm" id="inp_code" placeholder="Tự sinh nếu bỏ trống"></div></div>
-                            <div class="col-md-6"><div class="form-group"><label>Tên SP <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_name"></div></div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-2"><div class="form-group"><label>ĐVT</label><input type="text" class="form-control form-control-sm" id="inp_unit" value="Cái"></div></div>
-                            <div class="col-md-3"><div class="form-group"><label>Danh mục</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_category_id"><option value="">-- Chọn --</option>{% for c in root_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_category">Thêm</button></div></div></div>
-                            <div class="col-md-3"><div class="form-group"><label>Loại sản phẩm</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_product_type_id"><option value="">-- Chọn --</option>{% for c in product_types %}<option value="{{ c.id }}" data-parent-id="{{ c.parent_id }}">{{ c.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_product_type">Thêm</button></div></div></div>
-                            <div class="col-md-2"><div class="form-group"><label>NCC</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_supplier">Thêm</button></div></div></div>
-                            <div class="col-md-2"><div class="form-group"><label><i class="fas fa-map-marker-alt text-info mr-1"></i>Vị trí</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_location_id"><option value="">-- Chọn --</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_location">Thêm</button></div></div></div>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col-md-12">
-                                <div class="d-flex align-items-center flex-wrap" style="gap:16px;">
-                                    <div class="custom-control custom-checkbox">
-                                        <input type="checkbox" class="custom-control-input" id="inp_is_weight_based">
-                                        <label class="custom-control-label" for="inp_is_weight_based" title="Bán theo Kg, g, lít...">Cân/Đong</label>
-                                    </div>
-                                    <div class="custom-control custom-checkbox">
-                                        <input type="checkbox" class="custom-control-input" id="inp_is_service">
-                                        <label class="custom-control-label" for="inp_is_service" title="SP dịch vụ không kiểm tra tồn kho">Dịch vụ</label>
-                                    </div>
-                                    <div class="custom-control custom-checkbox">
-                                        <input type="checkbox" class="custom-control-input" id="inp_is_combo" style="accent-color:#f0ad4e;">
-                                        <label class="custom-control-label font-weight-bold text-warning" for="inp_is_combo" title="Sản phẩm combo gồm nhiều SP thành phần"><i class="fas fa-cubes mr-1"></i>Combo</label>
+                <div class="row product-form-layout">
+                    <div class="col-xl-9 col-lg-8">
+                        <section class="product-form-section">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-primary-soft"><i class="fas fa-box-open"></i></span>
+                                <div><strong>Thông tin cơ bản</strong><small>Mã, tên và quy cách nhận diện sản phẩm</small></div>
+                            </div>
+                            <div class="product-form-section-body">
+                                <div class="row">
+                                    <div class="col-md-4"><div class="form-group"><label>Mã sản phẩm</label><input type="text" class="form-control form-control-sm" id="inp_code" placeholder="Tự sinh nếu bỏ trống"></div></div>
+                                    <div class="col-md-8"><div class="form-group"><label>Tên sản phẩm <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_name" placeholder="Nhập tên sản phẩm"></div></div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4"><div class="form-group"><label>Barcode</label><input type="text" class="form-control form-control-sm" id="inp_barcode" placeholder="Mã vạch sản phẩm"></div></div>
+                                    <div class="col-md-2"><div class="form-group"><label>Đơn vị tính</label><input type="text" class="form-control form-control-sm" id="inp_unit" value="Cái"></div></div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>Quy cách sản phẩm</label>
+                                            <input type="text" class="form-control form-control-sm" id="inp_specification" list="product_specification_suggestions" placeholder="Ví dụ: 20c/thùng, chai 330ml">
+                                            <small class="form-text text-muted">Cách đóng gói hoặc quy chuẩn bán hàng.</small>
+                                            <datalist id="product_specification_suggestions">
+                                                <option value="20c/thùng"></option>
+                                                <option value="12c/hộp"></option>
+                                                <option value="24 lon/thùng"></option>
+                                                <option value="6 chai/lốc"></option>
+                                                <option value="chai 330ml"></option>
+                                            </datalist>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-3"><div class="form-group"><label>Barcode</label><input type="text" class="form-control form-control-sm" id="inp_barcode"></div></div>
-                            <div class="col-md-5">
-                                <div class="form-group">
-                                    <label><i class="fas fa-box text-success mr-1"></i>Quy cách sản phẩm</label>
-                                    <input type="text" class="form-control form-control-sm" id="inp_specification" list="product_specification_suggestions" placeholder="Ví dụ: 20c/thùng, 12c/hộp, chai 330ml">
-                                    <small class="text-muted">Nhập tự do theo cách đóng gói / quy chuẩn bán hàng của sản phẩm.</small>
-                                    <datalist id="product_specification_suggestions">
-                                        <option value="20c/thùng"></option>
-                                        <option value="12c/hộp"></option>
-                                        <option value="24 lon/thùng"></option>
-                                        <option value="6 chai/lốc"></option>
-                                        <option value="chai 330ml"></option>
-                                    </datalist>
+                                <div class="product-option-grid">
+                                    <label class="product-option-card" for="inp_is_weight_based">
+                                        <span class="product-option-icon text-info"><i class="fas fa-weight-hanging"></i></span>
+                                        <span><strong>Cân / Đong</strong><small>Bán theo kg, g, lít...</small></span>
+                                        <input type="checkbox" id="inp_is_weight_based">
+                                    </label>
+                                    <label class="product-option-card" for="inp_is_service">
+                                        <span class="product-option-icon text-secondary"><i class="fas fa-concierge-bell"></i></span>
+                                        <span><strong>Dịch vụ</strong><small>Không kiểm tra tồn kho</small></span>
+                                        <input type="checkbox" id="inp_is_service">
+                                    </label>
+                                    <label class="product-option-card" for="inp_is_combo">
+                                        <span class="product-option-icon text-warning"><i class="fas fa-cubes"></i></span>
+                                        <span><strong>Combo</strong><small>Gồm nhiều sản phẩm</small></span>
+                                        <input type="checkbox" id="inp_is_combo">
+                                    </label>
                                 </div>
                             </div>
-                            <div class="col-md-2"><div class="form-group"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
-                            <div class="col-md-2"><div class="form-group"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
-                        </div>
-                        <div class="row" id="price_row">
-                            <div class="col-md-4"><div class="form-group"><label><i class="fas fa-tag text-info mr-1"></i>Giá nhập <small class="text-muted">(hiện tại/gần nhất)</small></label><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_import_price" value="0" title="Giá đang nhập được tại một thời điểm, thường là giá nhập gần nhất"></div></div>
-                            <div class="col-md-4"><div class="form-group"><label><i class="fas fa-calculator text-primary mr-1"></i>Giá vốn <small class="text-muted">(tự tính)</small></label><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_cost_price" value="0" readonly title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại. Hệ thống ưu tiên lô nhập mới nhất để tính phần hàng còn tồn." style="background:#f0f4ff;"></div></div>
-                            <div class="col-md-4"><div class="form-group"><label><i class="fas fa-money-bill-wave text-success mr-1"></i>Giá bán lẻ <span class="text-danger">*</span></label><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_selling_price" value="0"></div></div>
-                        </div>
-                        <div class="row" id="price_row_2">
-                            <div class="col-md-4"><div class="form-group"><label>Giá sỉ KBH</label><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_no_warranty" value="0"></div></div>
-                            <div class="col-md-4"><div class="form-group"><label>Giá sỉ BH</label><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_warranty" value="0"></div></div>
-                        </div>
+                        </section>
+
+                        <section class="product-form-section">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-info-soft"><i class="fas fa-sitemap"></i></span>
+                                <div><strong>Phân loại &amp; kho</strong><small>Sắp xếp sản phẩm và thiết lập ngưỡng tồn</small></div>
+                            </div>
+                            <div class="product-form-section-body">
+                                <div class="row">
+                                    <div class="col-xl-3 col-md-6"><div class="form-group"><label>Danh mục</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_category_id"><option value="">-- Chọn --</option>{% for c in root_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_category" title="Thêm danh mục"><i class="fas fa-plus"></i></button></div></div></div>
+                                    <div class="col-xl-3 col-md-6"><div class="form-group"><label>Loại sản phẩm</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_product_type_id"><option value="">-- Chọn --</option>{% for c in product_types %}<option value="{{ c.id }}" data-parent-id="{{ c.parent_id }}">{{ c.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_product_type" title="Thêm loại sản phẩm"><i class="fas fa-plus"></i></button></div></div></div>
+                                    <div class="col-xl-3 col-md-6"><div class="form-group"><label>Nhà cung cấp</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_supplier" title="Thêm nhà cung cấp"><i class="fas fa-plus"></i></button></div></div></div>
+                                    <div class="col-xl-3 col-md-6"><div class="form-group"><label>Vị trí</label><div class="product-select-with-add"><select class="form-control form-control-sm select2" id="inp_location_id"><option value="">-- Chọn --</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select><button type="button" class="btn btn-sm btn-outline-primary btn-quick-master" id="btn_quick_add_location" title="Thêm vị trí"><i class="fas fa-plus"></i></button></div></div></div>
+                                </div>
+                                <div class="row align-items-end">
+                                    <div class="col-md-3"><div class="form-group mb-md-0"><label>Tồn tối thiểu</label><input type="number" class="form-control form-control-sm" id="inp_min_stock" value="0"></div></div>
+                                    <div class="col-md-3"><div class="form-group mb-md-0"><label>Tồn tối đa</label><input type="number" class="form-control form-control-sm" id="inp_max_stock" value="0"></div></div>
+                                    <div class="col-md-6"><div class="product-form-tip"><i class="fas fa-info-circle"></i><span>Dùng ngưỡng tồn để hệ thống cảnh báo mặt hàng sắp hết hoặc tồn quá nhiều.</span></div></div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="product-form-section mb-lg-0">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-success-soft"><i class="fas fa-tags"></i></span>
+                                <div><strong>Giá sản phẩm</strong><small>Giá nhập, giá vốn và các mức giá bán</small></div>
+                            </div>
+                            <div class="product-form-section-body">
+                                <div class="row" id="price_row">
+                                    <div class="col-md-4"><div class="form-group"><label>Giá nhập <small class="text-muted">(gần nhất)</small></label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_import_price" value="0" title="Giá đang nhập được tại một thời điểm, thường là giá nhập gần nhất"></div></div></div>
+                                    <div class="col-md-4"><div class="form-group"><label>Giá vốn <small class="text-muted">(tự tính)</small></label><div class="product-money-input is-readonly"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_cost_price" value="0" readonly title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại. Hệ thống ưu tiên lô nhập mới nhất để tính phần hàng còn tồn."></div></div></div>
+                                    <div class="col-md-4"><div class="form-group"><label>Giá bán lẻ <span class="text-danger">*</span></label><div class="product-money-input is-primary"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_selling_price" value="0"></div></div></div>
+                                </div>
+                                <div class="row" id="price_row_2">
+                                    <div class="col-md-6"><div class="form-group mb-md-0"><label>Giá sỉ không bảo hành</label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_no_warranty" value="0"></div></div></div>
+                                    <div class="col-md-6"><div class="form-group mb-0"><label>Giá sỉ có bảo hành</label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_warranty" value="0"></div></div></div>
+                                </div>
+                            </div>
+                        </section>
                     </div>
-                    <!-- Cột ảnh -->
-                    <div class="col-md-4">
-                        <div class="form-group">
-                            <label>Hình ảnh sản phẩm</label>
-                            <div class="text-center mb-2">
-                                <img id="img_preview" src="" alt="Preview" class="img-thumbnail" style="max-height:180px;max-width:100%;display:none;">
-                                <div id="img_placeholder" class="border rounded d-flex align-items-center justify-content-center" style="height:180px;background:#f4f6f9;cursor:pointer;" onclick="$('#inp_image').click();">
-                                    <div class="text-muted text-center">
-                                        <i class="fas fa-cloud-upload-alt fa-3x"></i><br>
-                                        <small>Click để chọn ảnh</small>
+
+                    <div class="col-xl-3 col-lg-4">
+                        <section class="product-form-section product-form-side-section">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-warning-soft"><i class="fas fa-image"></i></span>
+                                <div><strong>Hình ảnh</strong><small>Ảnh đại diện sản phẩm</small></div>
+                            </div>
+                            <div class="product-form-section-body">
+                                <div class="text-center mb-3 product-image-stage">
+                                    <img id="img_preview" src="" alt="Preview" class="img-thumbnail" style="display:none;">
+                                    <div id="img_placeholder" class="product-image-placeholder" onclick="$('#inp_image').click();">
+                                        <div><i class="fas fa-cloud-upload-alt fa-3x"></i><strong>Chọn ảnh sản phẩm</strong><small>PNG, JPG hoặc WEBP</small></div>
                                     </div>
                                 </div>
+                                <div class="custom-file">
+                                    <input type="file" class="custom-file-input" id="inp_image" accept="image/*">
+                                    <label class="custom-file-label" for="inp_image" id="lbl_image">Chọn ảnh...</label>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-block btn-outline-danger mt-2" id="btn_remove_image" style="display:none;"><i class="fas fa-times mr-1"></i>Xóa ảnh</button>
                             </div>
-                            <div class="custom-file">
-                                <input type="file" class="custom-file-input" id="inp_image" accept="image/*">
-                                <label class="custom-file-label" for="inp_image" id="lbl_image">Chọn ảnh...</label>
+                        </section>
+
+                        <section id="stock_detail_section" style="display:none;" class="product-form-section product-form-side-section">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-info-soft"><i class="fas fa-warehouse"></i></span>
+                                <div><strong>Tồn theo kho</strong><small>Có thể nhập số âm nếu được phép</small></div>
                             </div>
-                            <button type="button" class="btn btn-xs btn-outline-danger mt-1" id="btn_remove_image" style="display:none;"><i class="fas fa-times"></i> Xóa ảnh</button>
-                        </div>
-                        <!-- Tồn kho chi tiết theo kho -->
-                        <div id="stock_detail_section" style="display:none;" class="mt-2">
-                            <label><i class="fas fa-warehouse text-info mr-1"></i>Tồn kho chi tiết</label>
-                            <small class="d-block text-muted mb-1">Có thể nhập số âm nếu cửa hàng đã bật “Cho phép tồn âm”.</small>
-                            <div class="border rounded p-2" style="background:#f8f9fa;max-height:160px;overflow-y:auto;">
-                                <table class="table table-sm table-borderless mb-0" id="stock_detail_tbl">
-                                    <thead class="small text-muted"><tr><th>Kho</th><th class="text-right">Tồn</th><th class="text-right">Trạng thái</th></tr></thead>
-                                    <tbody></tbody>
-                                    <tfoot class="border-top font-weight-bold">
-                                        <tr><td>Tổng tồn</td><td class="text-right" id="stock_detail_total">0</td><td></td></tr>
-                                    </tfoot>
-                                </table>
+                            <div class="product-form-section-body p-0">
+                                <div class="product-stock-table-wrap">
+                                    <table class="table table-sm table-borderless mb-0" id="stock_detail_tbl">
+                                        <thead><tr><th>Kho</th><th class="text-right">Tồn</th><th class="text-right">Trạng thái</th></tr></thead>
+                                        <tbody></tbody>
+                                        <tfoot class="font-weight-bold"><tr><td>Tổng tồn</td><td class="text-right" id="stock_detail_total">0</td><td></td></tr></tfoot>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
+                        </section>
                     </div>
                 </div>
-                <div class="row">
-                    <div class="col-md-6"><div class="form-group"><label>Mô tả</label><textarea class="form-control form-control-sm" id="inp_description" rows="2"></textarea></div></div>
-                    <div class="col-md-6"><div class="form-group"><label>Ghi chú khi in</label><textarea class="form-control form-control-sm" id="inp_note" rows="2" placeholder="Hiển thị dưới tên sản phẩm khi in báo giá / hóa đơn"></textarea></div></div>
-                </div>
+
+                <section class="product-form-section product-form-notes-section">
+                    <div class="product-form-section-header">
+                        <span class="product-form-section-icon bg-secondary-soft"><i class="fas fa-align-left"></i></span>
+                        <div><strong>Mô tả &amp; ghi chú</strong><small>Thông tin nội bộ và nội dung hiển thị khi in</small></div>
+                    </div>
+                    <div class="product-form-section-body">
+                        <div class="row">
+                            <div class="col-md-6"><div class="form-group mb-md-0"><label>Mô tả sản phẩm</label><textarea class="form-control form-control-sm" id="inp_description" rows="3" placeholder="Thông tin mô tả chi tiết..."></textarea></div></div>
+                            <div class="col-md-6"><div class="form-group mb-0"><label>Ghi chú khi in</label><textarea class="form-control form-control-sm" id="inp_note" rows="3" placeholder="Hiển thị dưới tên sản phẩm khi in báo giá / hóa đơn"></textarea></div></div>
+                        </div>
+                    </div>
+                </section>
 
                 <div id="variant_legacy_notice" class="alert alert-light border py-2 px-3 mt-3 mb-0" style="display:none;">
                     <strong>Dữ liệu kích thước cũ đang được giữ nguyên.</strong>
@@ -516,6 +557,84 @@
 
 {% block extra_js %}
 <style>
+@media (min-width:992px){
+    #modal_form .product-form-dialog{width:calc(100vw - 24px);max-width:1600px;margin:12px auto;}
+}
+#modal_form .modal-content{border:0;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,.24);}
+#modal_form .modal-header{padding:14px 20px;background:linear-gradient(135deg,#1769aa,#2196f3) !important;border-bottom:0;}
+#modal_form .modal-title{font-size:18px;font-weight:700;}
+#modal_form .modal-body{padding:16px;background:#f4f7fb;}
+#modal_form .modal-footer{padding:12px 18px;background:#fff;border-top:1px solid #e2e8f0;}
+#modal_form .modal-footer .btn{min-width:92px;border-radius:8px;font-weight:600;}
+.product-form-layout>[class*="col-"]{display:flex;flex-direction:column;}
+.product-form-section{margin-bottom:14px;background:#fff;border:1px solid #dfe7f0;border-radius:11px;box-shadow:0 2px 7px rgba(15,23,42,.04);}
+.product-form-section-header{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid #edf1f5;background:#fbfcfe;border-radius:11px 11px 0 0;}
+.product-form-section-header>div{min-width:0;line-height:1.25;}
+.product-form-section-header strong{display:block;color:#1f2937;font-size:14px;font-weight:700;}
+.product-form-section-header small{display:block;margin-top:2px;color:#718096;font-size:11px;}
+.product-form-section-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:0 0 32px;border-radius:9px;font-size:14px;}
+.bg-primary-soft{background:#e7f0ff;color:#1769aa;}
+.bg-info-soft{background:#e5f7fb;color:#0e7490;}
+.bg-success-soft{background:#e8f7ee;color:#16803c;}
+.bg-warning-soft{background:#fff4da;color:#b76e00;}
+.bg-secondary-soft{background:#edf1f5;color:#536273;}
+.product-form-section-body{padding:14px;}
+.product-form-section-body .form-group{margin-bottom:12px;}
+.product-form-section-body label:not(.product-option-card){margin-bottom:5px;color:#374151;font-size:12px;font-weight:600;}
+.product-form-section-body .form-control-sm{height:36px;border-color:#d7e0ea;border-radius:7px;background-color:#fff;}
+.product-form-section-body textarea.form-control-sm{height:auto;min-height:82px;resize:vertical;}
+.product-form-section-body .form-control:focus{border-color:#64a9e9;box-shadow:0 0 0 3px rgba(33,150,243,.12);}
+.product-form-section-body .select2-container--bootstrap4 .select2-selection--single{height:36px !important;border-color:#d7e0ea;border-radius:7px;}
+.product-form-section-body .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered{line-height:34px;}
+.product-form-section-body .select2-container--bootstrap4 .select2-selection--single .select2-selection__arrow{height:34px;}
+.product-option-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:2px;}
+.product-option-card{position:relative;display:flex;align-items:center;gap:10px;min-height:58px;margin:0;padding:10px 38px 10px 11px;border:1px solid #dbe3ec;border-radius:9px;background:#f9fbfd;cursor:pointer;transition:.15s ease;}
+.product-option-card:hover{border-color:#90caf9;background:#f2f8ff;}
+.product-option-card:has(input:checked){border-color:#42a5f5;background:#eaf5ff;box-shadow:0 0 0 2px rgba(66,165,245,.1);}
+.product-option-card>span:nth-child(2){min-width:0;line-height:1.2;}
+.product-option-card strong{display:block;color:#27364a;font-size:12px;}
+.product-option-card small{display:block;margin-top:3px;color:#7b8794;font-size:10px;}
+.product-option-card input{position:absolute;top:50%;right:12px;width:17px;height:17px;margin-top:-8px;accent-color:#2196f3;}
+.product-option-icon{display:flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:#fff;border:1px solid #e5eaf0;}
+.product-form-tip{display:flex;align-items:flex-start;gap:8px;min-height:36px;padding:8px 10px;border-radius:7px;background:#eef7ff;color:#48647c;font-size:11px;line-height:1.35;}
+.product-form-tip i{margin-top:2px;color:#2196f3;}
+.product-money-input{position:relative;}
+.product-money-input>span{position:absolute;left:11px;top:50%;z-index:1;transform:translateY(-50%);color:#8793a1;font-size:12px;font-weight:600;pointer-events:none;}
+.product-money-input .form-control{padding-left:28px;font-weight:600;}
+.product-money-input.is-readonly .form-control{background:#f2f6fb;color:#1769aa;}
+.product-money-input.is-primary .form-control{border-color:#7bc79b;background:#f3fbf6;color:#16713b;}
+.product-form-side-section{flex:0 0 auto;}
+.product-image-stage{min-height:220px;}
+#img_preview{width:100%;height:220px;max-height:220px;object-fit:contain;border:1px solid #dce4ec;border-radius:9px;background:#f8fafc;}
+.product-image-placeholder{display:flex;align-items:center;justify-content:center;width:100%;height:220px;border:2px dashed #b9c9d9;border-radius:9px;background:#f8fbfe;color:#73869a;cursor:pointer;transition:.15s ease;}
+.product-image-placeholder:hover{border-color:#42a5f5;background:#eef7ff;color:#1976d2;}
+.product-image-placeholder strong,.product-image-placeholder small{display:block;margin-top:7px;}
+.product-image-placeholder strong{color:inherit;font-size:12px;}
+.product-image-placeholder small{margin-top:3px;font-size:10px;}
+.product-stock-table-wrap{max-height:250px;overflow:auto;border-radius:0 0 11px 11px;}
+#stock_detail_tbl thead th{position:sticky;top:0;z-index:1;padding:8px !important;background:#edf4f9 !important;color:#425466 !important;font-size:10px;letter-spacing:0;text-transform:none;}
+#stock_detail_tbl td{padding:7px 8px !important;font-size:11px;}
+#stock_detail_tbl .product-stock-input{min-width:74px;height:30px;}
+#stock_detail_tbl tfoot td{position:sticky;bottom:0;background:#f7fafc !important;border-top:1px solid #dfe7ef !important;}
+.product-form-notes-section{margin-top:14px;margin-bottom:0;}
+#combo_section{margin-top:14px;padding:14px;background:#fff;border:1px solid #ead9ac;border-radius:11px;box-shadow:0 2px 7px rgba(15,23,42,.04);}
+#combo_section>hr{display:none;}
+#variant_legacy_notice{border-radius:9px;}
+@media (max-width:1199.98px){
+    .product-option-grid{grid-template-columns:1fr;}
+    .product-image-stage,#img_preview,.product-image-placeholder{height:190px;min-height:190px;max-height:190px;}
+}
+@media (max-width:991.98px){
+    #modal_form .modal-body{padding:12px;}
+    .product-form-layout>[class*="col-"]{display:block;}
+    .product-option-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+    .product-form-side-section{margin-top:14px;}
+}
+@media (max-width:767.98px){
+    .product-option-grid{grid-template-columns:1fr;}
+    .product-form-section-body{padding:12px;}
+    .product-form-section-header small{display:none;}
+}
 .product-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 .product-name-link{font-weight:600;line-height:1.25;text-decoration:none;}
 .product-name-link:hover{text-decoration:underline;}

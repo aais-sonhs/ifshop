@@ -32,6 +32,19 @@
 .receipt table th { text-align: left; border-bottom: 1px solid #000; padding: 3px 0; font-size: 11px; font-weight: 800; }
 .receipt table td { padding: 3px 0; vertical-align: top; }
 .receipt table td.text-right { text-align: right; }
+.receipt .item-table { table-layout: fixed; margin-top: 2px; }
+.receipt .item-table thead th { padding: 4px 2px; text-align: right; }
+.receipt .item-table thead th:first-child { text-align: left; }
+.receipt .item-name-row td { padding: 7px 2px 2px; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.receipt .item-value-row td { padding: 2px 2px 7px; vertical-align: bottom; border-bottom: 1px dashed #aaa; }
+.receipt .item-quantity-cell { width: 28%; text-align: left; }
+.receipt .item-unit-price-cell { width: 34%; text-align: right; }
+.receipt .item-line-total-cell { width: 38%; text-align: right; }
+.receipt .item-quantity { display: block; font-size: 13px; font-weight: 800; line-height: 1.2; }
+.receipt .item-unit { display: block; margin-top: 2px; font-size: 10px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.receipt .item-unit-price { display: block; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.receipt .item-line-total { display: block; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.receipt .item-discount { display: block; margin-top: 2px; font-size: 9px; font-weight: 700; line-height: 1.2; }
 .receipt strong { font-weight: 800; }
 .receipt small { font-size: 11px; font-weight: 700; }
 .receipt .product-thumb { width: 28px; height: 28px; object-fit: contain; border: 1px solid #000; border-radius: 3px; margin-right: 4px; vertical-align: top; }
@@ -77,25 +90,28 @@
     {% endif %}
     {% if order.salesperson %}<div class="info-row"><span class="label">NV:</span><span>{{ order.salesperson }}</span></div>{% endif %}
     <div class="divider"></div>
-    <table>
-        <thead><tr><th>Sản phẩm</th><th style="text-align:right;width:20%">SL</th><th style="text-align:right;width:30%">T.Tiền</th></tr></thead>
+    <table class="item-table">
+        <thead><tr><th class="item-quantity-cell">SL / ĐVT</th><th class="item-unit-price-cell">Đơn giá</th><th class="item-line-total-cell">Thành tiền</th></tr></thead>
         <tbody>
         {% for item in items %}
-        <tr>
-            <td>
+        <tr class="item-name-row">
+            <td colspan="3">
                 {% if print_template.show_product_images and item.product and item.product.image %}<img class="product-thumb" src="{{ item.product.image.url }}" alt="">{% endif %}
                 {% if print_template.show_product_code %}<strong>{{ item.display_code }}</strong> - {% endif %}{{ item.display_name }}
-                {% if print_template.show_unit_price or print_template.show_discount %}
-                <br><small style="color:#888">
-                    {% if print_template.show_unit_price %}{{ item.unit_price|money_vnd }}đ{% endif %}
-                    {% if print_template.show_discount and item.discount_mode == 'amount' and item.discount_amount %} ×CK{{ item.discount_amount|money_vnd }}đ{% elif print_template.show_discount and item.discount_percent %} ×CK{{ item.discount_percent }}%{% endif %}
-                </small>
-                {% endif %}
                 {% if item.display_note %}<div class="item-note">({{ item.display_note }})</div>{% endif %}
                 {% include "orders/print/_combo_components.html" %}
             </td>
-            <td class="text-right">{{ item.quantity|qty_vn }}</td>
-            <td class="text-right">{{ item.total_price|money_vnd }}đ</td>
+        </tr>
+        <tr class="item-value-row">
+            <td class="item-quantity-cell">
+                <span class="item-quantity">{{ item.quantity|qty_vn }}</span>
+                <span class="item-unit">{{ item.display_unit|default:"—" }}</span>
+            </td>
+            <td class="item-unit-price-cell">
+                {% if print_template.show_unit_price %}<span class="item-unit-price">{{ item.unit_price|money_vnd }}đ</span>{% endif %}
+                {% if print_template.show_discount and item.discount_mode == 'amount' and item.discount_amount %}<small class="item-discount">CK: {{ item.discount_amount|money_vnd }}đ</small>{% elif print_template.show_discount and item.discount_percent %}<small class="item-discount">CK: {{ item.discount_percent }}%</small>{% endif %}
+            </td>
+            <td class="item-line-total-cell"><span class="item-line-total">{{ item.total_price|money_vnd }}đ</span></td>
         </tr>
         {% endfor %}
         </tbody>

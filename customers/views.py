@@ -7,7 +7,7 @@ from django.db.models import Count, F, Q, Sum
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from .models import Customer, CustomerGroup, PointTransaction, CafeTable
+from .models import Customer, CustomerAddress, CustomerGroup, PointTransaction, CafeTable
 from orders.models import Order
 from core.store_utils import (
     can_manage_users,
@@ -30,6 +30,37 @@ def _normalize_customer_kind(value, fallback=''):
     if normalized in valid_values:
         return normalized
     return fallback if fallback in valid_values or fallback == '' else ''
+
+
+def _normalize_delivery_addresses(value):
+    if value in (None, ''):
+        return []
+    if not isinstance(value, list):
+        raise ValueError('Danh sách địa chỉ phụ không hợp lệ.')
+
+    normalized = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError('Thông tin địa chỉ phụ không hợp lệ.')
+        address = str(item.get('address') or '').strip()
+        if not address:
+            continue
+        label = str(item.get('label') or '').strip()
+        if len(label) > 100:
+            raise ValueError('Tên điểm nhận không được vượt quá 100 ký tự.')
+        normalized.append({'label': label, 'address': address})
+    return normalized
+
+
+def _serialize_delivery_addresses(customer):
+    return [
+        {
+            'id': address.id,
+            'label': address.label or '',
+            'address': address.address,
+        }
+        for address in customer.delivery_addresses.all()
+    ]
 
 
 def _get_default_store_for_request(request):
@@ -291,7 +322,7 @@ def customer_group_tbl(request):
 @login_required(login_url="/login/")
 def api_get_customers(request):
     """Trả về danh sách khách hàng trong phạm vi store mà user được phép xem."""
-    customers = Customer.objects.select_related('group', 'created_by').all()
+    customers = Customer.objects.select_related('group', 'created_by').prefetch_related('delivery_addresses').all()
     customers = filter_by_store(customers, request)
     metrics_map = _build_customer_order_metrics_map(request, customers)
     product_history_map = _build_customer_product_history_map(request, customers)
@@ -308,6 +339,7 @@ def api_get_customers(request):
             'customer_kind_display': c.get_customer_kind_label(),
             'phone': c.phone or '', 'email': c.email or '',
             'address': c.address or '',
+            'delivery_addresses': _serialize_delivery_addresses(c),
             'id_number': c.id_number or '',
             'company': c.company or '',
             'tax_code': c.tax_code or '',
@@ -361,6 +393,10 @@ def api_save_customer(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        delivery_addresses = (
+            _normalize_delivery_addresses(data.get('delivery_addresses'))
+            if 'delivery_addresses' in data else None
+        )
         cid = data.get('id')
         if cid:
             c = _get_customer_for_user(request, cid)
@@ -416,8 +452,25 @@ def api_save_customer(request):
         c.last_purchase_at = datetime.strptime(last_purchase, '%d/%m/%Y %H:%M') if last_purchase else None
         c.gender = data.get('gender', c.gender or 0) or 0
         c.is_active = data.get('is_active', True)
-        c.save()
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        with transaction.atomic():
+            c.save()
+            if delivery_addresses is not None:
+                c.delivery_addresses.all().delete()
+                CustomerAddress.objects.bulk_create([
+                    CustomerAddress(
+                        customer=c,
+                        label=item['label'],
+                        address=item['address'],
+                        sort_order=index,
+                    )
+                    for index, item in enumerate(delivery_addresses)
+                ])
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Lưu thành công',
+            'id': c.id,
+            'delivery_addresses': _serialize_delivery_addresses(c),
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

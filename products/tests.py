@@ -255,6 +255,82 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock_by_warehouse[self.warehouse_b.id], -2.0)
         self.assertEqual(row['total_stock'], -2.0)
 
+    def test_product_list_sorts_total_stock_before_pagination(self):
+        for index in range(12):
+            product = Product.objects.create(
+                store=self.store,
+                code=f'STOCK-SORT-{index:02d}',
+                name=f'San pham sap xep ton {index:02d}',
+                created_by=self.user,
+            )
+            ProductStock.objects.create(
+                product=product,
+                warehouse=self.warehouse_a,
+                quantity=Decimal(str(index)),
+            )
+
+        descending_page_one = self.client.get(
+            reverse('api_get_products'),
+            data={'text': 'STOCK-SORT', 'stock_sort': 'desc', 'page_size': 10, 'page': 1},
+        ).json()
+        descending_page_two = self.client.get(
+            reverse('api_get_products'),
+            data={'text': 'STOCK-SORT', 'stock_sort': 'desc', 'page_size': 10, 'page': 2},
+        ).json()
+        ascending_page_one = self.client.get(
+            reverse('api_get_products'),
+            data={'text': 'STOCK-SORT', 'stock_sort': 'asc', 'page_size': 10, 'page': 1},
+        ).json()
+
+        self.assertEqual(
+            [row['total_stock'] for row in descending_page_one['data']],
+            [float(value) for value in range(11, 1, -1)],
+        )
+        self.assertEqual(
+            [row['total_stock'] for row in descending_page_two['data']],
+            [1.0, 0.0],
+        )
+        self.assertEqual(
+            [row['total_stock'] for row in ascending_page_one['data']],
+            [float(value) for value in range(10)],
+        )
+
+    def test_product_list_stock_sort_uses_computed_combo_quantity(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('14'),
+        )
+        standalone = Product.objects.create(
+            store=self.store,
+            code='SP-STOCK-SORT-STANDALONE',
+            name='San pham ton nam',
+            created_by=self.user,
+        )
+        ProductStock.objects.create(
+            product=standalone,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('5'),
+        )
+        combo = Product.objects.create(
+            store=self.store,
+            code='SP-STOCK-SORT-COMBO',
+            name='Combo ton bay',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('2'))
+
+        response = self.client.get(
+            reverse('api_get_products'),
+            data={'stock_sort': 'desc'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()['data']
+        self.assertEqual([row['id'] for row in rows], [self.product.id, combo.id, standalone.id])
+        self.assertEqual([row['total_stock'] for row in rows], [14.0, 7.0, 5.0])
+
     def test_edit_product_allows_negative_stock_when_enabled(self):
         BusinessConfig.objects.create(
             brand=self.brand,

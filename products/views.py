@@ -922,10 +922,11 @@ def _serialize_product_list(products):
 def _needs_python_product_post_filter(request):
     params = request.GET
     stock = (params.get('stock') or '').strip()
+    stock_sort = (params.get('stock_sort') or '').strip().lower()
     price_basis = (params.get('price_basis') or 'import_price').strip()
     price_from = (params.get('price_from') or '').strip()
     price_to = (params.get('price_to') or '').strip()
-    return bool(stock) or (
+    return stock_sort in ('asc', 'desc') or bool(stock) or (
         price_basis == 'total_stock' and (price_from not in ('', None) or price_to not in ('', None))
     )
 
@@ -933,6 +934,7 @@ def _needs_python_product_post_filter(request):
 def _apply_python_product_post_filters(items, request):
     params = request.GET
     stock = (params.get('stock') or '').strip()
+    stock_sort = (params.get('stock_sort') or '').strip().lower()
     price_basis = (params.get('price_basis') or 'import_price').strip()
     price_from = (params.get('price_from') or '').strip()
     price_to = (params.get('price_to') or '').strip()
@@ -960,6 +962,14 @@ def _apply_python_product_post_filters(items, request):
                 continue
 
         filtered.append(item)
+
+    if stock_sort in ('asc', 'desc'):
+        def _stock_sort_key(item):
+            total_stock = float(item.get('total_stock') or 0)
+            stock_value = total_stock if stock_sort == 'asc' else -total_stock
+            return stock_value, str(item.get('name') or '').casefold(), int(item.get('id') or 0)
+
+        filtered.sort(key=_stock_sort_key)
     return filtered
 
 

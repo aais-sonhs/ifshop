@@ -217,7 +217,23 @@
                         <div class="col-md-6"><div class="form-group"><label>MST cá nhân chủ hộ</label><input type="text" class="form-control" id="inp_owner_tax_code" placeholder="MST cá nhân"></div></div>
                     </div>
                 </div>
-                <div class="form-group"><label>Địa chỉ</label><textarea class="form-control" id="inp_address" rows="2"></textarea></div>
+                <div class="form-group">
+                    <label>Địa chỉ mặc định</label>
+                    <textarea class="form-control" id="inp_address" rows="2" placeholder="Địa chỉ được chọn sẵn khi tạo đơn"></textarea>
+                </div>
+                <div class="border rounded p-2 mb-3 bg-light">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div>
+                            <strong><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ / điểm nhận phụ</strong>
+                            <small class="text-muted d-block">Lưu thêm kho, chi nhánh hoặc điểm nhận hàng của khách.</small>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btn_add_delivery_address">
+                            <i class="fas fa-plus mr-1"></i>Thêm địa chỉ
+                        </button>
+                    </div>
+                    <div id="delivery_address_rows"></div>
+                    <div class="small text-muted" id="delivery_address_empty">Chưa có địa chỉ phụ.</div>
+                </div>
                 <div class="form-group"><label>Ghi chú</label><textarea class="form-control" id="inp_note" rows="2"></textarea></div>
             </div>
             <div class="modal-footer">
@@ -368,6 +384,60 @@ function getSelectedText(selector){
     var $el = $(selector);
     return $el.val() ? ($el.find('option:selected').text() || '') : '';
 }
+
+function syncDeliveryAddressEmptyState(){
+    $('#delivery_address_empty').toggle(!$('#delivery_address_rows .delivery-address-row').length);
+}
+
+function addDeliveryAddressRow(item){
+    item = item || {};
+    var html = '<div class="delivery-address-row border rounded bg-white p-2 mb-2">' +
+        '<div class="row align-items-end">' +
+            '<div class="col-md-4"><div class="form-group mb-0">' +
+                '<label class="small text-muted mb-1">Tên điểm nhận</label>' +
+                '<input type="text" class="form-control form-control-sm delivery-address-label" maxlength="100" placeholder="VD: Kho Hà Nội" value="'+escapeAttr(item.label || '')+'">' +
+            '</div></div>' +
+            '<div class="col-md-7"><div class="form-group mb-0">' +
+                '<label class="small text-muted mb-1">Địa chỉ nhận hàng <span class="text-danger">*</span></label>' +
+                '<input type="text" class="form-control form-control-sm delivery-address-value" placeholder="Nhập địa chỉ đầy đủ" value="'+escapeAttr(item.address || '')+'">' +
+            '</div></div>' +
+            '<div class="col-md-1 text-right">' +
+                '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-delivery-address" title="Xóa địa chỉ"><i class="fas fa-trash"></i></button>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+    $('#delivery_address_rows').append(html);
+    syncDeliveryAddressEmptyState();
+}
+
+function renderDeliveryAddresses(items){
+    $('#delivery_address_rows').empty();
+    (items || []).forEach(function(item){ addDeliveryAddressRow(item); });
+    syncDeliveryAddressEmptyState();
+}
+
+function getDeliveryAddressesFromForm(){
+    var items = [];
+    $('#delivery_address_rows .delivery-address-row').each(function(){
+        var address = $(this).find('.delivery-address-value').val().trim();
+        if(!address) return;
+        items.push({
+            label: $(this).find('.delivery-address-label').val().trim(),
+            address: address
+        });
+    });
+    return items;
+}
+
+$(document).on('click', '#btn_add_delivery_address', function(){
+    addDeliveryAddressRow();
+    $('#delivery_address_rows .delivery-address-value:last').focus();
+});
+
+$(document).on('click', '.btn-remove-delivery-address', function(){
+    $(this).closest('.delivery-address-row').remove();
+    syncDeliveryAddressEmptyState();
+});
 
 var defaultAvatar = "{% static 'img/default_avatar.svg' %}";
 var allCustomers = [];
@@ -706,8 +776,12 @@ function filterCustomers(list){
 
     return list.filter(function(d){
         if(keyword){
+            var deliveryAddressSearch = (d.delivery_addresses || []).map(function(item){
+                return (item.label || '') + ' ' + (item.address || '');
+            }).join(' ');
             var searchable = [
-                d.name, d.phone, d.code, d.email, d.company, d.address, d.note, d.group
+                d.name, d.phone, d.code, d.email, d.company, d.address,
+                d.company_address, deliveryAddressSearch, d.note, d.group
             ].join(' ');
             var textMatched = normalizeCustomerText(searchable).indexOf(keyword) >= 0;
             var phoneMatched = keywordDigits.length >= 3 && onlyDigits(d.phone || '').indexOf(keywordDigits) >= 0;
@@ -752,6 +826,7 @@ function resetCustomerForm(){
     $('#inp_group_id').val('');
     $('#inp_customer_type').val('1');
     $('#inp_customer_kind').val('retail');
+    renderDeliveryAddresses([]);
     toggleCustomerType();
     $('#avatar_preview').attr('src', defaultAvatar);
     $('#inp_avatar_file').val('');
@@ -1046,11 +1121,17 @@ $(document).ready(function(){
             tax_code:$('#inp_tax_code').val(),
             company_address:$('#inp_company_address').val(),
             owner_tax_code:$('#inp_owner_tax_code').val(),
-            address:$('#inp_address').val(),note:$('#inp_note').val(),
+            address:$('#inp_address').val(),delivery_addresses:getDeliveryAddressesFromForm(),note:$('#inp_note').val(),
             group_id:$('#inp_group_id').val()};
         if(!data.name){alert('Vui lòng nhập tên KH');return;}
         if(ctype === 2 && (!data.company || !data.tax_code)){alert('Khách hàng Công ty cần nhập tên CTY và MST');return;}
         if(ctype === 3 && !data.company){alert('Hộ kinh doanh cần nhập tên hộ KD');return;}
+        var hasIncompleteDeliveryAddress = $('#delivery_address_rows .delivery-address-row').toArray().some(function(row){
+            var label = $(row).find('.delivery-address-label').val().trim();
+            var address = $(row).find('.delivery-address-value').val().trim();
+            return label && !address;
+        });
+        if(hasIncompleteDeliveryAddress){alert('Vui lòng nhập đầy đủ địa chỉ cho điểm nhận phụ.');return;}
         $saveBtn.data('submitting', true).prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
         $.ajax({url:'/api/customers/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
@@ -1060,7 +1141,7 @@ $(document).ready(function(){
                     var fileInput = $('#inp_avatar_file')[0];
                     if(fileInput.files && fileInput.files[0]){
                         // Lấy customer id từ response hoặc edit_id
-                        var cid = data.id;
+                        var cid = r.id || data.id;
                         if(!cid){
                             // Reload data và lấy id mới nhất
                             $.get('/api/customers/', function(res2){
@@ -1359,6 +1440,7 @@ function editItem(d){
     $('#inp_owner_tax_code').val(d.owner_tax_code);
     if(d.customer_type === 3) $('#inp_company_hkd').val(d.company); else $('#inp_company_hkd').val('');
     $('#inp_address').val(d.address);$('#inp_note').val(d.note);$('#inp_group_id').val(d.group_id);
+    renderDeliveryAddresses(d.delivery_addresses || []);
     $('#inp_customer_kind').val(d.customer_kind || 'retail');
     $('#inp_customer_type').val(d.customer_type || 1); toggleCustomerType();
     $('#avatar_preview').attr('src', d.avatar_url || defaultAvatar);

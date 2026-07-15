@@ -36,12 +36,14 @@
         </div>
         <div class="col">
             {% if order.salesperson %}<div><span class="label">Người BG:</span> <span class="value">{{ order.salesperson }}</span></div>{% endif %}
+            {% if biz.opt_quotation_validity %}
             <div style="margin-top:8px; padding:8px 12px; background:#fff3e0; border-radius:6px; border-left:3px solid #e65100;">
                 <span class="label" style="color:#e65100;">Hiệu lực:</span>
                 <span class="value" style="font-weight:700; color:#e65100;">
                     {% if valid_until %}đến {{ valid_until|date:"d/m/Y" }}{% else %}30 ngày{% endif %}
                 </span>
             </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -106,7 +108,9 @@
     {% elif print_template.show_terms %}
     <div class="inv-note" style="margin-top:16px; background:#fff3e0;">
         <strong>Điều khoản:</strong><br>
+        {% if biz.opt_quotation_validity %}
         • Báo giá có hiệu lực {% if valid_until %}đến {{ valid_until|date:"d/m/Y" }}{% else %}30 ngày kể từ ngày lập{% endif %}.<br>
+        {% endif %}
         • Giá trên chưa bao gồm VAT (nếu có).<br>
         • Thanh toán: theo thỏa thuận hai bên.
     </div>

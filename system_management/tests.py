@@ -703,3 +703,25 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(save_response.json()['status'], 'ok', msg=save_response.content.decode())
         config = BusinessConfig.get_config(brand=self.brand)
         self.assertTrue(config.opt_allow_negative_stock)
+
+    def test_business_config_exposes_and_saves_quotation_validity_option(self):
+        response = self.client.get(reverse('api_get_business_config'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        self.assertTrue(data['opt_quotation_validity'])
+
+        data['opt_quotation_validity'] = False
+        save_response = self.client.post(
+            reverse('api_save_business_config'),
+            data=json.dumps(data),
+            content_type='application/json',
+        )
+
+        self.assertEqual(save_response.status_code, 200)
+        self.assertEqual(save_response.json()['status'], 'ok', msg=save_response.content.decode())
+        config = BusinessConfig.get_config(brand=self.brand)
+        self.assertFalse(config.opt_quotation_validity)
+
+        setting_response = self.client.get(reverse('setting_quotation'))
+        self.assertEqual(setting_response.status_code, 200)
+        self.assertContains(setting_response, 'id="opt_quotation_validity"')

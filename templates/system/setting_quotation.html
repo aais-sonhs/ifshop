@@ -19,6 +19,14 @@
                             </label>
                         </div>
                         <small class="text-muted">Khi bật, danh sách báo giá sẽ hiện thêm cột "Người BG" — tự động lấy từ tài khoản đang đăng nhập.</small>
+                        <hr>
+                        <div class="custom-control custom-switch mb-2">
+                            <input type="checkbox" class="custom-control-input" id="opt_quotation_validity">
+                            <label class="custom-control-label" for="opt_quotation_validity">
+                                <i class="fas fa-calendar-check text-success mr-1"></i> Hiển thị <b>hiệu lực báo giá</b>
+                            </label>
+                        </div>
+                        <small class="text-muted">Khi bật, hiện trường “Hiệu lực đến”, cột hiệu lực trong danh sách và thời hạn hiệu lực trên bản in báo giá.</small>
                     </div>
                 </div>
 
@@ -38,6 +46,7 @@ $(document).ready(function(){
     $.get('/api/business-config/', function(res){
         var d = res.data;
         $('#opt_quotation_salesperson').prop('checked', d.opt_quotation_salesperson);
+        $('#opt_quotation_validity').prop('checked', d.opt_quotation_validity !== false);
     });
 
     // Save
@@ -45,6 +54,7 @@ $(document).ready(function(){
         $.get('/api/business-config/', function(res){
             var data = res.data;
             data.opt_quotation_salesperson = $('#opt_quotation_salesperson').prop('checked');
+            data.opt_quotation_validity = $('#opt_quotation_validity').prop('checked');
             $.ajax({
                 url: '/api/business-config/save/', type: 'POST',
                 contentType: 'application/json',

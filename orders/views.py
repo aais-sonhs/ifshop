@@ -3,7 +3,7 @@ import logging
 import re
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -15,7 +15,7 @@ from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
 )
-from customers.models import Customer
+from customers.models import Customer, CustomerAddress
 from products.models import Product, Warehouse, ProductStock, ProductVariant, ComboItem
 from finance.models import Receipt, FinanceCategory, CashBook, Payment, PaymentMethodOption
 from finance.services import (
@@ -114,6 +114,23 @@ def _normalize_percentage(value):
     if percent > 100:
         return Decimal('100')
     return percent
+
+
+def _normalize_discount_mode(value):
+    return 'percent' if str(value or '').strip().lower() == 'percent' else 'amount'
+
+
+def _resolve_order_discount(total, mode, amount=0, percent=0):
+    """Quy đổi chiết khấu tổng đơn về số tiền nguyên đồng để dùng chung cho báo cáo/công nợ."""
+    normalized_mode = _normalize_discount_mode(mode)
+    normalized_percent = _normalize_percentage(percent) if normalized_mode == 'percent' else Decimal('0')
+    if normalized_mode == 'percent':
+        normalized_amount = (
+            _non_negative_decimal(total) * normalized_percent / Decimal('100')
+        ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    else:
+        normalized_amount = _non_negative_decimal(amount)
+    return normalized_mode, normalized_percent, normalized_amount
 
 
 def _adjust_stock_quantity(stock, delta):
@@ -1963,6 +1980,16 @@ def order_tbl(request):
     customers = list(_get_sales_customers_queryset(request).values(
         'id', 'code', 'name', 'phone', 'address', 'company_address'
     ))
+    delivery_address_map = defaultdict(list)
+    for item in CustomerAddress.objects.filter(
+        customer_id__in=[customer['id'] for customer in customers]
+    ).order_by('sort_order', 'id').values('customer_id', 'label', 'address'):
+        delivery_address_map[item['customer_id']].append({
+            'label': item['label'] or '',
+            'address': item['address'],
+        })
+    for customer in customers:
+        customer['delivery_addresses'] = delivery_address_map.get(customer['id'], [])
     warehouses = list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name'))
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
     payment_methods = list(PaymentMethodOption.objects.filter(is_active=True).values(
@@ -2329,6 +2356,10 @@ def api_quick_create_customer(request):
                     'phone': existing_customer.phone or '',
                     'address': existing_customer.address or '',
                     'company_address': existing_customer.company_address or '',
+                    'delivery_addresses': [
+                        {'label': item.label or '', 'address': item.address}
+                        for item in existing_customer.delivery_addresses.all()
+                    ],
                 }
             })
 
@@ -2380,6 +2411,7 @@ def api_quick_create_customer(request):
                 'phone': c.phone or '',
                 'address': c.address or '',
                 'company_address': c.company_address or '',
+                'delivery_addresses': [],
                 'customer_kind': c.customer_kind or '',
             }
         })
@@ -2545,6 +2577,8 @@ def _serialize_order_list(orders):
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
             'total_amount': float(o.total_amount),
             'discount_amount': float(o.discount_amount),
+            'discount_mode': o.discount_mode or 'amount',
+            'discount_percent': float(o.discount_percent or 0),
             'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
             'other_fee': float(getattr(o, 'other_fee', 0) or 0),
             'final_amount': float(o.final_amount),
@@ -2722,6 +2756,8 @@ def api_get_order_detail(request):
                 'created_date': _local_date_iso(o.created_at),
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
+                'discount_mode': o.discount_mode or 'amount',
+                'discount_percent': float(o.discount_percent or 0),
                 'shipping_fee': float(getattr(o, 'shipping_fee', 0) or 0),
                 'other_fee': float(getattr(o, 'other_fee', 0) or 0),
                 'final_amount': float(o.final_amount),
@@ -2903,7 +2939,9 @@ def api_save_order(request):
             o.quotation = quotation
             if 'order_date' in data or not oid:
                 o.order_date = data.get('order_date')
-            o.discount_amount = _non_negative_decimal(data.get('discount_amount', o.discount_amount if oid else 0))
+            requested_discount_mode = _normalize_discount_mode(data.get('discount_mode', 'amount'))
+            requested_discount_percent = data.get('discount_percent', 0)
+            requested_discount_amount = data.get('discount_amount', o.discount_amount if oid else 0)
             o.shipping_fee = _non_negative_decimal(data.get('shipping_fee', o.shipping_fee if oid else 0))
             o.other_fee = _non_negative_decimal(data.get('other_fee', o.other_fee if oid else 0))
             if 'shipping_address' in data or not oid:
@@ -3034,6 +3072,12 @@ def api_save_order(request):
                 )
 
             o.total_amount = total
+            o.discount_mode, o.discount_percent, o.discount_amount = _resolve_order_discount(
+                total,
+                requested_discount_mode,
+                requested_discount_amount,
+                requested_discount_percent,
+            )
             o.final_amount = _calculate_final_amount(total, o.discount_amount, o.shipping_fee, o.other_fee)
             order_discount_ratio = Decimal('0')
             if total > 0 and _to_decimal(o.discount_amount) > 0:
@@ -3209,7 +3253,7 @@ def api_save_order(request):
             approver_name = o.approver.get_full_name() if o.approver else ''
             msg += f'. ⏳ Đơn hàng cần được {approver_name} duyệt trước khi hoàn thành.'
         if loss_warnings:
-            msg += '. Cảnh báo bán dưới giá vốn: ' + '; '.join(loss_warnings[:5])
+            msg += '. Đơn vẫn được lưu. Cảnh báo bán dưới giá vốn: ' + '; '.join(loss_warnings[:5])
         if stock_export_warning:
             msg += '. ' + stock_export_warning
         return JsonResponse({
@@ -3989,6 +4033,8 @@ def api_get_quotations(request):
             'product_search': ' '.join(product_search_parts),
             'total_amount': float(q.total_amount),
             'discount_amount': float(q.discount_amount),
+            'discount_mode': q.discount_mode or 'amount',
+            'discount_percent': float(q.discount_percent or 0),
             'shipping_fee': float(getattr(q, 'shipping_fee', 0) or 0),
             'other_fee': float(getattr(q, 'other_fee', 0) or 0),
             'final_amount': float(q.final_amount),
@@ -4051,6 +4097,8 @@ def api_get_quotation_detail(request):
                 'quotation_date': q.quotation_date.strftime('%Y-%m-%d') if q.quotation_date else '',
                 'valid_until': q.valid_until.strftime('%Y-%m-%d') if q.valid_until else '',
                 'discount_amount': float(q.discount_amount),
+                'discount_mode': q.discount_mode or 'amount',
+                'discount_percent': float(q.discount_percent or 0),
                 'shipping_fee': float(getattr(q, 'shipping_fee', 0) or 0),
                 'other_fee': float(getattr(q, 'other_fee', 0) or 0),
                 'status': q.status, 'note': q.note or '',
@@ -4123,7 +4171,9 @@ def api_save_quotation(request):
             q.customer = _resolve_sale_customer(request, data.get('customer_id'))
             q.quotation_date = data.get('quotation_date')
             q.valid_until = data.get('valid_until') or None
-            q.discount_amount = _non_negative_decimal(data.get('discount_amount', 0))
+            requested_discount_mode = _normalize_discount_mode(data.get('discount_mode', 'amount'))
+            requested_discount_percent = data.get('discount_percent', 0)
+            requested_discount_amount = data.get('discount_amount', 0)
             q.shipping_fee = _non_negative_decimal(data.get('shipping_fee', 0))
             q.other_fee = _non_negative_decimal(data.get('other_fee', 0))
             q.tags = (data.get('tags', '') or '').strip() or None
@@ -4196,6 +4246,12 @@ def api_save_quotation(request):
                 total += line_total
 
             q.total_amount = total
+            q.discount_mode, q.discount_percent, q.discount_amount = _resolve_order_discount(
+                total,
+                requested_discount_mode,
+                requested_discount_amount,
+                requested_discount_percent,
+            )
             q.final_amount = _calculate_final_amount(total, q.discount_amount, q.shipping_fee, q.other_fee)
             quotation_discount_ratio = Decimal('0')
             if total > 0 and _to_decimal(q.discount_amount) > 0:

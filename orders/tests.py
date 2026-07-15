@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from customers.models import Customer
+from customers.models import Customer, CustomerAddress
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
 from orders.models import (
@@ -610,6 +610,59 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(a4_response, 'Địa chỉ giao:')
         self.assertContains(a4_response, self.customer.address)
 
+    def test_order_page_exposes_all_saved_customer_delivery_addresses(self):
+        self.customer.address = 'Địa chỉ mặc định'
+        self.customer.save(update_fields=['address'])
+        CustomerAddress.objects.create(
+            customer=self.customer,
+            label='Kho Hà Nội',
+            address='Số 1 Tràng Tiền, Hà Nội',
+            sort_order=0,
+        )
+        CustomerAddress.objects.create(
+            customer=self.customer,
+            label='Chi nhánh 2',
+            address='Số 2 Nguyễn Huệ, TP.HCM',
+            sort_order=1,
+        )
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        customer = next(item for item in response.context['customers'] if item['id'] == self.customer.id)
+        self.assertEqual(
+            customer['delivery_addresses'],
+            [
+                {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội'},
+                {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM'},
+            ],
+        )
+        self.assertContains(response, 'Kho Hà Nội')
+        self.assertContains(response, 'Chi nhánh 2')
+
+    def test_order_page_exposes_copy_action_for_every_order_and_quick_view(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Tạo đơn mới giống đơn này')
+        self.assertContains(response, 'id="btn_quick_view_copy"')
+        self.assertContains(response, "$('#inp_status').val('1')")
+        self.assertContains(response, 'clearPaymentLines()')
+
+    def test_order_page_exposes_amount_and_percent_discount_modes(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="inp_discount_mode"')
+        self.assertContains(response, '<option value="amount">Số tiền</option>', html=True)
+        self.assertContains(response, '<option value="percent">Phần trăm</option>', html=True)
+        self.assertContains(response, 'id="lbl_discount_conversion"')
+
     def test_create_and_edit_order_persist_custom_shipping_address(self):
         self.customer.address = 'Địa chỉ mặc định của khách'
         self.customer.save(update_fields=['address'])
@@ -684,6 +737,33 @@ class OrderRiskFlowTests(TestCase):
                 )
                 self.assertContains(response, 'Địa chỉ giao:')
                 self.assertContains(response, self.customer.address)
+
+    def test_quotation_validity_setting_hides_field_list_column_and_print_block(self):
+        quotation = self._create_quotation(code='BG-HIDE-VALIDITY', status=1)
+        quotation.valid_until = date.today() + timedelta(days=30)
+        quotation.save(update_fields=['valid_until'])
+        config = BusinessConfig.get_config(brand=self.brand)
+        config.opt_quotation_validity = False
+        config.save(update_fields=['opt_quotation_validity'])
+
+        self.client.force_login(self.owner)
+        list_response = self.client.get(reverse('quotation_tbl'))
+        self.assertEqual(list_response.status_code, 200)
+        self.assertNotContains(list_response, '<th data-col="valid">Hiệu lực</th>', html=True)
+        self.assertNotContains(list_response, '<label>Hiệu lực đến</label>', html=True)
+        self.assertContains(list_response, 'type="hidden" id="inp_valid_until"')
+
+        order_response = self.client.get(reverse('order_tbl'))
+        self.assertEqual(order_response.status_code, 200)
+        self.assertNotContains(order_response, '<label>Hiệu lực đến</label>', html=True)
+        self.assertContains(order_response, 'type="hidden" id="inp_valid_until"')
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': quotation.id, 'type': 'quotation_a4', 'source': 'quotation'},
+        )
+        self.assertEqual(print_response.status_code, 200)
+        self.assertNotContains(print_response, 'Hiệu lực:')
 
     def test_products_select_exposes_combo_components_and_component_based_stock(self):
         self.product.cost_price = 100
@@ -999,6 +1079,47 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(order.final_amount), 0.0)
         self.assertEqual(order.payment_status, 2)
 
+    def test_save_order_converts_percent_discount_to_amount_and_preserves_mode(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-DISCOUNT-PERCENT',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_mode': 'percent',
+                'discount_percent': 5,
+                'discount_amount': 999,
+                'shipping_fee': 0,
+                'other_fee': 0,
+                'status': 1,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 2,
+                    'unit_price': 500,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order = Order.objects.get(code='DH-DISCOUNT-PERCENT')
+        self.assertEqual(order.discount_mode, 'percent')
+        self.assertEqual(float(order.discount_percent), 5.0)
+        self.assertEqual(float(order.discount_amount), 50.0)
+        self.assertEqual(float(order.final_amount), 950.0)
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        detail = detail_response.json()['order']
+        self.assertEqual(detail['discount_mode'], 'percent')
+        self.assertEqual(detail['discount_percent'], 5.0)
+        self.assertEqual(detail['discount_amount'], 50.0)
+
     def test_partial_payment_converts_quote_status_to_order(self):
         response = self.client.post(
             reverse('api_save_order'),
@@ -1272,6 +1393,45 @@ class OrderRiskFlowTests(TestCase):
         order = Order.objects.get(code='DH-BELOW-COST-WARN')
         self.assertTrue(order.below_listed_price_warning)
         self.assertTrue(order.items.first().is_below_listed)
+
+    def test_save_order_allows_zero_price_gift_with_below_cost_warning(self):
+        self.product.cost_price = 150
+        self.product.import_price = 150
+        self.product.save(update_fields=['cost_price', 'import_price'])
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-GIFT-ZERO-PRICE',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 1,
+                'note': 'Tặng khách',
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 0,
+                    'discount_percent': 0,
+                    'note': 'Hàng tặng',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertIn('Đơn vẫn được lưu', payload['message'])
+
+        order = Order.objects.get(code='DH-GIFT-ZERO-PRICE')
+        item = order.items.get(product=self.product)
+        self.assertEqual(float(order.final_amount), 0.0)
+        self.assertEqual(float(item.unit_price), 0.0)
+        self.assertEqual(float(item.cost_price), 150.0)
+        self.assertTrue(order.below_listed_price_warning)
+        self.assertTrue(item.is_below_listed)
 
     def test_save_order_falls_back_to_import_price_when_cost_price_is_zero(self):
         self.product.cost_price = 0
@@ -1558,10 +1718,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(second_order.paid_amount), 200.0)
         self.assertEqual(second_order.payment_status, 2)
 
-    def test_bulk_collect_can_backdate_payment_and_complete_exported_order(self):
+    def test_bulk_collect_can_use_payment_date_before_order_creation_and_complete_order(self):
         order = self._create_order(code='DH-BULK-BACKDATE-001', status=4)
-        Order.objects.filter(id=order.id).update(created_at=timezone.now() - timedelta(days=3))
-        order.refresh_from_db()
         actual_payment_date = date.today() - timedelta(days=1)
 
         response = self.client.post(
@@ -1629,15 +1787,15 @@ class OrderRiskFlowTests(TestCase):
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 1000100.0)
 
-    def test_collect_order_payment_rejects_date_before_order_creation(self):
+    def test_collect_order_payment_accepts_date_before_order_creation(self):
         order = self._create_order(code='DH-COLLECT-DATE-BEFORE')
-        invalid_date = date.today() - timedelta(days=1)
+        actual_payment_date = date.today() - timedelta(days=1)
 
         response = self.client.post(
             reverse('api_collect_order_payment'),
             data=json.dumps({
                 'order_id': order.id,
-                'receipt_date': invalid_date.isoformat(),
+                'receipt_date': actual_payment_date.isoformat(),
                 'payment_lines': [{'amount': 100, 'payment_method': 2}],
             }),
             content_type='application/json',
@@ -1645,9 +1803,9 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['status'], 'error')
-        self.assertIn('trước ngày tạo đơn', payload['message'])
-        self.assertFalse(Receipt.objects.filter(order=order).exists())
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        receipt = Receipt.objects.get(order=order, status=1)
+        self.assertEqual(receipt.receipt_date, actual_payment_date)
 
     def test_collect_order_payment_rejects_future_date(self):
         order = self._create_order(code='DH-COLLECT-DATE-FUTURE')

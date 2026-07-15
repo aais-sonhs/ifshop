@@ -712,6 +712,7 @@ def api_get_business_config(request):
             'mod_pos': c.mod_pos,
             'mod_cafe_tables': c.mod_cafe_tables,
             'opt_quotation_salesperson': c.opt_quotation_salesperson,
+            'opt_quotation_validity': c.opt_quotation_validity,
             'opt_order_salesperson': c.opt_order_salesperson,
             'opt_order_server_staff': c.opt_order_server_staff,
             'opt_order_approver': c.opt_order_approver,
@@ -759,6 +760,7 @@ def api_save_business_config(request):
         c.mod_pos = data.get('mod_pos', False)
         c.mod_cafe_tables = data.get('mod_cafe_tables', False)
         c.opt_quotation_salesperson = data.get('opt_quotation_salesperson', False)
+        c.opt_quotation_validity = data.get('opt_quotation_validity', c.opt_quotation_validity)
         c.opt_order_salesperson = data.get('opt_order_salesperson', False)
         c.opt_order_server_staff = data.get('opt_order_server_staff', False)
         c.opt_order_approver = data.get('opt_order_approver', False)

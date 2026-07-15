@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-tags mr-2"></i>Danh sách sản phẩm</h3>
+        <h3 class="card-title"><i class="fas fa-tags mr-2"></i>DS sản phẩm</h3>
         <div class="card-tools">
             <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/products/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-outline-primary" id="btn_import_products" title="Nhập Excel"><i class="fas fa-file-import"></i> Nhập Excel</button>
@@ -157,7 +157,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="product_type">Loại sản phẩm</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá nhập tại thời điểm gần nhất, lấy theo phiếu nhập mới nhất" style="cursor:help;">Giá nhập</th><th data-col="purchase_history" title="Phiếu nhập gần nhất và nút xem chi tiết từng phiếu nhập" style="cursor:help;">Nhập gần nhất</th><th data-col="cost_price" title="Giá vốn tồn hiện tại = giá trung bình của số lượng còn tồn, ưu tiên các lô nhập mới nhất. Ví dụ tồn 300 = 150c giá A + 50c giá B + 100c giá C chia 300." style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="selling_price">Giá bán lẻ</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock">Tồn kho</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec">Quy cách</th><th data-col="location">Vị trí</th><th data-col="category">Danh mục</th><th data-col="product_type">Loại sản phẩm</th><th data-col="unit">ĐVT</th><th data-col="import_price" title="Giá nhập tại thời điểm gần nhất, lấy theo phiếu nhập mới nhất" style="cursor:help;">Giá nhập</th><th data-col="purchase_history" title="Phiếu nhập gần nhất và nút xem chi tiết từng phiếu nhập" style="cursor:help;">Nhập gần nhất</th><th data-col="cost_price" title="Giá vốn tồn hiện tại = giá trung bình của số lượng còn tồn, ưu tiên các lô nhập mới nhất. Ví dụ tồn 300 = 150c giá A + 50c giá B + 100c giá C chia 300." style="color:#1a73e8;cursor:help;">Giá vốn</th><th data-col="selling_price">Giá bán lẻ</th><th data-col="ws_no_warranty" title="Giá sỉ không bảo hành">Giá sỉ KBH</th><th data-col="ws_warranty" title="Giá sỉ có bảo hành">Giá sỉ BH</th><th data-col="stock" aria-sort="none"><button type="button" class="btn btn-link btn-sm p-0 font-weight-bold text-dark text-nowrap" id="btn_sort_stock">Tồn kho <i class="fas fa-sort ml-1" id="stock_sort_icon"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -549,11 +549,16 @@ var PRODUCT_ALL_DATA = [];
 var PRODUCT_LAST_FILTERED = [];
 var PRODUCT_INLINE_NOTE_HINT_TIMERS = {};
 var PRODUCT_PAGE_SIZE_KEY = 'ifshop_product_page_size';
+var PRODUCT_STOCK_SORT_KEY = 'ifshop_product_stock_sort';
 var PRODUCT_PAGE_STATE = {
     page: 1,
     page_size: (function(){
         var saved = parseInt(localStorage.getItem(PRODUCT_PAGE_SIZE_KEY) || '50', 10);
         return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    stock_sort: (function(){
+        var saved = localStorage.getItem(PRODUCT_STOCK_SORT_KEY) || '';
+        return saved === 'asc' || saved === 'desc' ? saved : '';
     })(),
     meta: null
 };
@@ -638,6 +643,9 @@ function getProductRequestParams(){
         page: PRODUCT_PAGE_STATE.page || 1,
         page_size: PRODUCT_PAGE_STATE.page_size || 50
     };
+    if(PRODUCT_PAGE_STATE.stock_sort){
+        params.stock_sort = PRODUCT_PAGE_STATE.stock_sort;
+    }
     Object.keys(filters).forEach(function(key){
         if(filters[key] !== '' && filters[key] !== null && filters[key] !== undefined){
             params[key] = filters[key];
@@ -645,6 +653,31 @@ function getProductRequestParams(){
     });
     return params;
 }
+
+function renderProductStockSort(){
+    var direction = PRODUCT_PAGE_STATE.stock_sort || '';
+    var iconClass = direction === 'asc' ? 'fa-sort-up' : (direction === 'desc' ? 'fa-sort-down' : 'fa-sort');
+    var title = direction === 'asc'
+        ? 'Đang xếp tồn ít đến nhiều. Bấm để đổi sang nhiều đến ít.'
+        : (direction === 'desc'
+            ? 'Đang xếp tồn nhiều đến ít. Bấm để đổi sang ít đến nhiều.'
+            : 'Bấm để xếp tồn kho từ nhiều đến ít.');
+    $('#stock_sort_icon').attr('class', 'fas ' + iconClass + ' ml-1');
+    $('#btn_sort_stock').attr('title', title).attr('aria-label', title);
+    $('#btn_sort_stock').closest('th').attr(
+        'aria-sort',
+        direction === 'asc' ? 'ascending' : (direction === 'desc' ? 'descending' : 'none')
+    );
+}
+
+$(document).on('click', '#btn_sort_stock', function(){
+    PRODUCT_PAGE_STATE.stock_sort = PRODUCT_PAGE_STATE.stock_sort === 'desc' ? 'asc' : 'desc';
+    localStorage.setItem(PRODUCT_STOCK_SORT_KEY, PRODUCT_PAGE_STATE.stock_sort);
+    renderProductStockSort();
+    resetProductPage();
+    loadData();
+});
+renderProductStockSort();
 
 function getProductPriceBasisLabel(value){
     var labels = {
@@ -1458,6 +1491,7 @@ function loadData(done){
 
         var filtered = PRODUCT_ALL_DATA;
         PRODUCT_LAST_FILTERED = filtered;
+        var startIndex = Number((res.meta && res.meta.start_index) || 1);
 
         var h = '';
         filtered.forEach(function(d, i){
@@ -1528,7 +1562,7 @@ function loadData(done){
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
 
             h += '<tr id="product_row_'+d.id+'">'+
-                productColConfig.td('stt', (i+1))+
+                productColConfig.td('stt', (startIndex+i))+
                 productColConfig.td('image', imgTd, 'class="text-center"')+
                 productColConfig.td('code', d.code)+
                 productColConfig.td('name', productNameHtml, 'style="white-space:normal;min-width:220px;word-break:break-word;"')+

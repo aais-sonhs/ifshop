@@ -64,7 +64,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã BG</th><th data-col="customer">Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th data-col="salesperson">Người BG</th>{% endif %}<th data-col="date">Ngày BG</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="items">Số SP</th><th data-col="total">Tổng tiền</th><th data-col="valid">Hiệu lực</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã BG</th><th data-col="customer">Khách hàng</th>{% if biz.opt_quotation_salesperson %}<th data-col="salesperson">Người BG</th>{% endif %}<th data-col="date">Ngày BG</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="items">Số SP</th><th data-col="total">Tổng tiền</th>{% if biz.opt_quotation_validity %}<th data-col="valid">Hiệu lực</th>{% endif %}<th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -115,12 +115,16 @@
                             <input type="date" class="form-control form-control-sm" id="inp_quotation_date">
                         </div>
                     </div>
+                    {% if biz.opt_quotation_validity %}
                     <div class="col-md-2">
                         <div class="form-group">
                             <label>Hiệu lực đến</label>
                             <input type="date" class="form-control form-control-sm" id="inp_valid_until">
                         </div>
                     </div>
+                    {% else %}
+                    <input type="hidden" id="inp_valid_until">
+                    {% endif %}
                     <div class="col-md-2">
                         <div class="form-group">
                             <label>Trạng thái</label>
@@ -1349,7 +1353,7 @@ var quotationColConfig = new ColumnConfig({
         {key: 'products',    label: 'Sản phẩm',        default: false},
         {key: 'items',       label: 'Số SP',          default: true},
         {key: 'total',       label: 'Tổng tiền',      default: true},
-        {key: 'valid',       label: 'Hiệu lực',       default: true},
+        {% if biz.opt_quotation_validity %}{key: 'valid', label: 'Hiệu lực', default: true},{% endif %}
         {key: 'status',      label: 'Trạng thái',     default: true},
         {key: 'actions',     label: 'Thao tác',       default: true},
     ]
@@ -2295,12 +2299,12 @@ function loadData(){
                 quotationColConfig.td('products', escapeHtml(d.product_display || ''), 'style="min-width:180px;white-space:normal;"')+
                 quotationColConfig.td('items', d.item_count, 'class="text-center"')+
                 quotationColConfig.td('total', fmt(d.final_amount) + 'đ', 'class="text-right"')+
-                quotationColConfig.td('valid', d.valid_until)+
+                {% if biz.opt_quotation_validity %}quotationColConfig.td('valid', d.valid_until)+{% endif %}
                 quotationColConfig.td('status', getQuotationStatusBadgeHtml(d.status, d.status_display))+
                 quotationColConfig.td('actions', actionsHtml)+
                 '</tr>';
         });
-        var cols = {% if biz.opt_quotation_salesperson %}13{% else %}12{% endif %};
+        var cols = 11{% if biz.opt_quotation_salesperson %} + 1{% endif %}{% if biz.opt_quotation_validity %} + 1{% endif %};
         $('#data_tbl tbody').html(h || '<tr><td colspan="'+cols+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
 }
@@ -2468,12 +2472,14 @@ function buildQuotationHTML(res){
     var custName = q.customer_label || '';
     var thImage = hasAnyImage ? '<th style="width:70px">H\u00ecnh \u1ea3nh</th>' : '';
     var colSpan = hasAnyImage ? 7 : 6;
+    var validityCells = {% if biz.opt_quotation_validity %}'<td class="label">Hi\u1EC7u l\u1EF1c \u0111\u1EBFn:</td><td>' + (q.valid_until||'') + '</td>'{% else %}''{% endif %};
+    var validityNote = {% if biz.opt_quotation_validity %}'<div class="print-note">* B\u00E1o gi\u00E1 c\u00F3 hi\u1EC7u l\u1EF1c \u0111\u1EBFn ng\u00E0y ' + (q.valid_until||'...') + '</div>'{% else %}''{% endif %};
     var html = getPrintHeader() +
         '<div class="print-title">B\u00C1O GI\u00C1</div>' +
         '<div class="print-subtitle">S\u1ED1: ' + q.code + '</div>' +
         '<div class="print-info"><table>' +
         '<tr><td class="label">Kh\u00E1ch h\u00E0ng:</td><td>' + custName + '</td></tr>' +
-        '<tr><td class="label">Ng\u00E0y b\u00E1o gi\u00E1:</td><td>' + (q.quotation_date||'') + '</td><td class="label">Hi\u1EC7u l\u1EF1c \u0111\u1EBFn:</td><td>' + (q.valid_until||'') + '</td></tr>' +
+        '<tr><td class="label">Ng\u00E0y b\u00E1o gi\u00E1:</td><td>' + (q.quotation_date||'') + '</td>' + validityCells + '</tr>' +
         '</table></div>' +
         '<table class="print-table"><thead><tr><th>STT</th>'+thImage+'<th>S\u1EA3n ph\u1EA9m</th><th>\u0110VT</th><th>SL</th><th>\u0110\u01A1n gi\u00E1</th><th>CK</th><th>Th\u00E0nh ti\u1EC1n</th></tr></thead>' +
         '<tbody>' + itemsHtml + '</tbody>' +
@@ -2484,7 +2490,7 @@ function buildQuotationHTML(res){
         '<tr><td colspan="'+colSpan+'" class="text-right" style="font-size:15px">TH\u00C0NH TI\u1EC0N:</td><td class="text-right" style="font-size:15px;color:#d32f2f">' + fmtMoney(finalAmt) + '</td></tr>' +
         '</tfoot></table>' +
         '<div class="print-total-row">B\u1EB1ng ch\u1EEF: <em>' + readAmount(finalAmt) + '</em></div>' +
-        '<div class="print-note">* B\u00E1o gi\u00E1 c\u00F3 hi\u1EC7u l\u1EF1c \u0111\u1EBFn ng\u00E0y ' + (q.valid_until||'...') + '</div>' +
+        validityNote +
         getPrintSignatures('Kh\u00E1ch h\u00E0ng', 'Ng\u01B0\u1EDDi l\u1EADp') +
         getPrintFooter();
     return html;

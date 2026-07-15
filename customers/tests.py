@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from customers.models import CafeTable, Customer
+from customers.models import CafeTable, Customer, CustomerAddress
 from customers.views import add_loyalty_points_for_order
 from orders.models import Order, OrderItem
 from products.models import Product
@@ -103,6 +103,72 @@ class CustomerScopeTests(TestCase):
         row = next(item for item in customers_response.json()['data'] if item['id'] == customer.id)
         self.assertEqual(row['customer_kind'], Customer.CUSTOMER_KIND_WHOLESALE)
         self.assertEqual(row['customer_kind_display'], 'Khách buôn / sỉ')
+
+    def test_save_customer_persists_multiple_delivery_addresses_and_api_returns_them(self):
+        response = self.client.post(
+            reverse('api_save_customer'),
+            data=json.dumps({
+                'id': self.customer.id,
+                'code': self.customer.code,
+                'name': self.customer.name,
+                'address': 'Địa chỉ mặc định',
+                'delivery_addresses': [
+                    {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội'},
+                    {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM'},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(
+            list(CustomerAddress.objects.filter(customer=self.customer).values_list('label', 'address')),
+            [
+                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội'),
+                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM'),
+            ],
+        )
+
+        customers_response = self.client.get(reverse('api_get_customers'))
+        row = next(
+            item for item in customers_response.json()['data']
+            if item['id'] == self.customer.id
+        )
+        self.assertEqual(row['address'], 'Địa chỉ mặc định')
+        self.assertEqual(
+            [(item['label'], item['address']) for item in row['delivery_addresses']],
+            [
+                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội'),
+                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM'),
+            ],
+        )
+
+    def test_save_customer_replaces_removed_delivery_addresses(self):
+        CustomerAddress.objects.create(
+            customer=self.customer,
+            label='Điểm cũ',
+            address='Địa chỉ cũ',
+        )
+
+        response = self.client.post(
+            reverse('api_save_customer'),
+            data=json.dumps({
+                'id': self.customer.id,
+                'code': self.customer.code,
+                'name': self.customer.name,
+                'delivery_addresses': [
+                    {'label': 'Điểm mới', 'address': 'Địa chỉ mới'},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(
+            list(CustomerAddress.objects.filter(customer=self.customer).values_list('label', 'address')),
+            [('Điểm mới', 'Địa chỉ mới')],
+        )
 
     def test_save_customer_rejects_foreign_customer_edit(self):
         response = self.client.post(

@@ -126,6 +126,29 @@ class Customer(SoftDeleteModel):
         return dict(self.CUSTOMER_KIND_CHOICES).get(self.customer_kind, 'Chưa chọn')
 
 
+class CustomerAddress(models.Model):
+    """Địa chỉ/điểm nhận hàng phụ của khách hàng."""
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='delivery_addresses',
+        verbose_name='Khách hàng',
+    )
+    label = models.CharField(max_length=100, blank=True, default='', verbose_name='Tên điểm nhận')
+    address = models.TextField(verbose_name='Địa chỉ nhận hàng')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'customer_addresses'
+        verbose_name = 'Địa chỉ nhận hàng của khách'
+        verbose_name_plural = 'Địa chỉ nhận hàng của khách'
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f'{self.customer} - {self.label or self.address}'
+
+
 class PointTransaction(models.Model):
     """Lịch sử tích/đổi điểm"""
     TYPE_CHOICES = (

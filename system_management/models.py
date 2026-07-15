@@ -298,6 +298,7 @@ class BusinessConfig(models.Model):
     mod_pos = models.BooleanField(default=False, verbose_name='POS bán hàng nhanh')
     # Options
     opt_quotation_salesperson = models.BooleanField(default=False, verbose_name='Hiện người báo giá')
+    opt_quotation_validity = models.BooleanField(default=True, verbose_name='Hiện hiệu lực báo giá')
     opt_order_salesperson = models.BooleanField(default=False, verbose_name='Hiện NV bán hàng trên hóa đơn')
     opt_order_server_staff = models.BooleanField(default=False, verbose_name='Hiện NV phục vụ trên hóa đơn')
     opt_order_approver = models.BooleanField(default=False, verbose_name='Hiện người duyệt trên hóa đơn')

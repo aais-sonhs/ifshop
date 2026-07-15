@@ -5,6 +5,12 @@ from products.models import Product, Warehouse
 from core.soft_delete import SoftDeleteModel
 
 
+DISCOUNT_MODE_CHOICES = (
+    ('amount', 'Số tiền'),
+    ('percent', 'Phần trăm'),
+)
+
+
 class Quotation(SoftDeleteModel):
     """Báo giá"""
     STATUS_CHOICES = [
@@ -26,6 +32,12 @@ class Quotation(SoftDeleteModel):
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
+    discount_mode = models.CharField(
+        max_length=10, choices=DISCOUNT_MODE_CHOICES, default='amount', verbose_name='Cách chiết khấu'
+    )
+    discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu tổng đơn (%)'
+    )
     shipping_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Phí vận chuyển')
     other_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chi phí khác')
     final_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Thành tiền')
@@ -123,6 +135,12 @@ class Order(SoftDeleteModel):
                                          verbose_name='Trạng thái thanh toán')
     total_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng tiền hàng')
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu')
+    discount_mode = models.CharField(
+        max_length=10, choices=DISCOUNT_MODE_CHOICES, default='amount', verbose_name='Cách chiết khấu'
+    )
+    discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu tổng đơn (%)'
+    )
     shipping_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Phí vận chuyển')
     other_fee = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chi phí khác')
     tax_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Thuế')

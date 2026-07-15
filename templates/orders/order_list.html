@@ -442,12 +442,12 @@
                                 <thead class="bg-light"><tr>
 	                                    <th style="width:4%" class="text-center">STT</th>
 	                                    <th style="width:5%" class="text-center">Ảnh</th>
-	                                    <th style="width:20%">Sản phẩm</th>
+	                                    <th style="width:18%">Sản phẩm</th>
                                     <th style="width:6%">ĐVT</th>
-                                    <th style="width:17%" class="stock-info-col">Tồn theo kho</th>
+                                    <th style="width:15%" class="stock-info-col">Tồn theo kho</th>
                                     <th style="width:9%">Số lượng</th>
                                     <th style="width:13%">Đơn giá</th>
-                                    <th style="width:8%">CK (%)</th>
+                                    <th style="width:12%">CK (% hoặc tiền)</th>
                                     <th style="width:13%">Thành tiền</th>
                                     <th style="width:5%"></th>
                                 </tr></thead>
@@ -456,12 +456,17 @@
                         </div>
                         <div class="order-items-summary" id="order_items_summary">
                             <table class="table table-sm mb-0" id="order_items_totals_tbl">
+                            <colgroup>
+                                <col span="8">
+                                <col class="order-summary-value-column">
+                                <col class="order-summary-action-column">
+                            </colgroup>
                             <tfoot>
                                 <tr class="font-weight-bold order-total-quantity-row"><td colspan="5" class="text-right order-total-label" data-stock-colspan="5" data-compact-colspan="4">Tổng số lượng sản phẩm:</td><td class="text-center" id="lbl_total_quantity">0</td><td colspan="4"></td></tr>
                                 <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
-                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chiết khấu:</td><td style="min-width:250px;">
-                                    <div class="input-group input-group-sm">
-                                        <select class="custom-select" id="inp_discount_mode" style="max-width:105px;">
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chiết khấu (% hoặc tiền):</td><td class="order-discount-value-cell">
+                                    <div class="input-group input-group-sm order-discount-input-group">
+                                        <select class="custom-select" id="inp_discount_mode">
                                             <option value="amount">Số tiền</option>
                                             <option value="percent">Phần trăm</option>
                                         </select>
@@ -1069,7 +1074,7 @@
 }
 #items_tbl,
 #order_items_totals_tbl {
-    min-width: 1060px;
+    min-width: 1180px;
     table-layout: fixed;
 }
 #items_tbl thead th {
@@ -1086,6 +1091,28 @@
 }
 #order_items_totals_tbl tfoot td {
     vertical-align: middle;
+}
+#order_items_totals_tbl .order-summary-value-column {
+    width: 340px;
+}
+#order_items_totals_tbl .order-summary-action-column {
+    width: 44px;
+}
+#order_items_totals_tbl .order-discount-value-cell {
+    min-width: 340px;
+}
+#order_items_totals_tbl .order-discount-input-group {
+    width: 100%;
+    min-width: 320px;
+    flex-wrap: nowrap;
+}
+#order_items_totals_tbl #inp_discount_mode {
+    flex: 0 0 125px;
+    max-width: 125px;
+}
+#order_items_totals_tbl #inp_discount_amount,
+#order_items_totals_tbl #inp_discount_percent {
+    min-width: 150px;
 }
 #items_tbl .select2-container--bootstrap4 .select2-selection--single {
     min-height: 31px;
@@ -2743,7 +2770,7 @@ function syncStockInfoVisibility(){
     var visible = !!currentStockInfoVisible;
     $('body').toggleClass('order-stock-compact', !visible);
     $('#order_items_totals_tbl [data-stock-colspan]').each(function(){
-        $(this).attr('colspan', visible ? $(this).data('stock-colspan') : $(this).data('compact-colspan'));
+        $(this).attr('colspan', $(this).data('stock-colspan'));
     });
     $('#btn_toggle_stock_info')
         .toggleClass('btn-outline-secondary', !visible)
@@ -6081,6 +6108,13 @@ function rejectOrder(id, code){
 	        var o = res.order;
 	        var itemsHtml = '';
 	        (res.items || []).forEach(function(it){
+	            var itemDiscountPercent = Number(it.discount_percent || 0);
+	            var itemDiscountAmount = Math.round(
+	                Number(it.quantity || 0) * Number(it.unit_price || 0) * itemDiscountPercent / 100
+	            );
+	            var itemDiscountDisplay = itemDiscountPercent > 0
+	                ? formatOrderDiscountPercent(itemDiscountPercent) + '% / ' + fmt(itemDiscountAmount) + 'đ'
+	                : '—';
 	            var img = it.image_url
 	                ? '<img src="' + escapeAttr(it.image_url) + '" class="quick-view-product-img" loading="lazy" decoding="async" alt="">'
 	                : '<span class="quick-view-product-placeholder"><i class="fas fa-image"></i></span>';
@@ -6090,12 +6124,16 @@ function rejectOrder(id, code){
 	                '<td class="text-center">' + escapeHtml(it.unit || '') + '</td>' +
 	                '<td class="text-right">' + fmt(it.quantity || 0) + '</td>' +
 	                '<td class="text-right">' + fmt(it.unit_price || 0) + '</td>' +
+	                '<td class="text-right text-nowrap">' + itemDiscountDisplay + '</td>' +
 	                '<td class="text-right font-weight-bold">' + fmt(it.total_price || 0) + '</td>' +
 	                '</tr>';
 	        });
 	        if(!itemsHtml){
-	            itemsHtml = '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
+	            itemsHtml = '<tr><td colspan="7" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
 	        }
+	        var orderDiscountDisplay = o.discount_mode === 'percent'
+	            ? formatOrderDiscountPercent(o.discount_percent || 0) + '% (' + fmt(o.discount_amount || 0) + 'đ)'
+	            : fmt(o.discount_amount || 0) + 'đ';
 	        var returnHistoryHtml = renderQuickViewReturnHistory(o);
 	        var html = '<div class="row">' +
 	            '<div class="col-md-7">' +
@@ -6112,6 +6150,7 @@ function rejectOrder(id, code){
 	            '<tr><td class="text-muted">Ngày đặt</td><td class="text-right">' + escapeHtml(o.order_date || '') + '</td></tr>' +
 	            '<tr><td class="text-muted">Phí vận chuyển</td><td class="text-right">' + fmt(o.shipping_fee || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Chi phí khác</td><td class="text-right">' + fmt(o.other_fee || 0) + 'đ</td></tr>' +
+	            '<tr><td class="text-muted">Chiết khấu (% hoặc tiền)</td><td class="text-right">' + orderDiscountDisplay + '</td></tr>' +
 	            '<tr><td class="text-muted">Tổng tiền</td><td class="text-right font-weight-bold">' + fmt(o.final_amount || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Đã thu</td><td class="text-right">' + fmt(o.paid_amount || 0) + 'đ</td></tr>' +
 	            '<tr><td class="text-muted">Còn lại</td><td class="text-right text-warning">' + fmt(Math.max((o.final_amount || 0) - (o.paid_amount || 0), 0)) + 'đ</td></tr>' +
@@ -6121,7 +6160,7 @@ function rejectOrder(id, code){
 	            '<div class="quick-view-section-title"><strong><i class="fas fa-shopping-bag mr-1"></i>Sản phẩm đơn gốc</strong><span class="badge badge-light border">' + (res.items || []).length + ' dòng</span></div>' +
 	            '<div class="table-responsive" style="max-height:300px;overflow-y:auto;">' +
 	            '<table class="table table-sm table-bordered mb-0">' +
-	            '<thead class="bg-light"><tr><th class="text-center" style="width:56px;">Ảnh</th><th>Sản phẩm</th><th class="text-center">ĐVT</th><th class="text-right">SL</th><th class="text-right">Đơn giá</th><th class="text-right">Thành tiền</th></tr></thead>' +
+	            '<thead class="bg-light"><tr><th class="text-center" style="width:56px;">Ảnh</th><th>Sản phẩm</th><th class="text-center">ĐVT</th><th class="text-right">SL</th><th class="text-right">Đơn giá</th><th class="text-right">CK (% hoặc tiền)</th><th class="text-right">Thành tiền</th></tr></thead>' +
 	            '<tbody>' + itemsHtml + '</tbody></table></div>' + returnHistoryHtml;
 	        $('#order_quick_view_body').html(html);
 	    });

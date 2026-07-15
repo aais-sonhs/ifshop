@@ -662,6 +662,11 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, '<option value="amount">Số tiền</option>', html=True)
         self.assertContains(response, '<option value="percent">Phần trăm</option>', html=True)
         self.assertContains(response, 'id="lbl_discount_conversion"')
+        self.assertContains(response, 'CK (% hoặc tiền)')
+        self.assertContains(response, 'class="order-summary-value-column"')
+        self.assertContains(response, 'order-discount-input-group')
+        self.assertContains(response, 'Chiết khấu (% hoặc tiền)')
+        self.assertContains(response, 'var itemDiscountAmount = Math.round(')
 
     def test_create_and_edit_order_persist_custom_shipping_address(self):
         self.customer.address = 'Địa chỉ mặc định của khách'

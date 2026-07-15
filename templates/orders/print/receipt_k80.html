@@ -34,16 +34,17 @@
 .receipt table td.text-right { text-align: right; }
 .receipt .item-table { table-layout: fixed; margin-top: 2px; }
 .receipt .item-table thead th { padding: 4px 2px; text-align: right; }
-.receipt .item-table thead th:first-child { text-align: left; }
-.receipt .item-name-row td { padding: 7px 2px 2px; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
-.receipt .item-value-row td { padding: 2px 2px 7px; vertical-align: bottom; border-bottom: 1px dashed #aaa; }
-.receipt .item-quantity-cell { width: 28%; text-align: left; }
-.receipt .item-unit-price-cell { width: 34%; text-align: right; }
-.receipt .item-line-total-cell { width: 38%; text-align: right; }
-.receipt .item-quantity { display: block; font-size: 13px; font-weight: 800; line-height: 1.2; }
+.receipt .item-row td { padding: 6px 2px; vertical-align: top; border-bottom: 1px dashed #aaa; }
+.receipt .item-product-cell { width: 40%; text-align: left !important; overflow-wrap: anywhere; }
+.receipt .item-quantity-cell { width: 12%; text-align: center !important; }
+.receipt .item-unit-price-cell { width: 23%; text-align: right; }
+.receipt .item-line-total-cell { width: 25%; text-align: right; }
+.receipt .item-product-name { display: block; font-size: 11px; font-weight: 800; line-height: 1.25; }
+.receipt .item-product-code { display: block; margin-top: 2px; font-size: 9px; font-weight: 700; line-height: 1.2; }
+.receipt .item-quantity { display: block; font-size: 12px; font-weight: 800; line-height: 1.2; }
 .receipt .item-unit { display: block; margin-top: 2px; font-size: 10px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
-.receipt .item-unit-price { display: block; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.receipt .item-line-total { display: block; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.receipt .item-unit-price { display: block; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.receipt .item-line-total { display: block; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .receipt .item-discount { display: block; margin-top: 2px; font-size: 9px; font-weight: 700; line-height: 1.2; }
 .receipt strong { font-weight: 800; }
 .receipt small { font-size: 11px; font-weight: 700; }
@@ -91,18 +92,17 @@
     {% if order.salesperson %}<div class="info-row"><span class="label">NV:</span><span>{{ order.salesperson }}</span></div>{% endif %}
     <div class="divider"></div>
     <table class="item-table">
-        <thead><tr><th class="item-quantity-cell">SL / ĐVT</th><th class="item-unit-price-cell">Đơn giá</th><th class="item-line-total-cell">Thành tiền</th></tr></thead>
+        <thead><tr><th class="item-product-cell">Tên SP/Mã hàng</th><th class="item-quantity-cell">SL</th><th class="item-unit-price-cell">Đơn giá</th><th class="item-line-total-cell">Thành tiền</th></tr></thead>
         <tbody>
         {% for item in items %}
-        <tr class="item-name-row">
-            <td colspan="3">
+        <tr class="item-row">
+            <td class="item-product-cell">
                 {% if print_template.show_product_images and item.product and item.product.image %}<img class="product-thumb" src="{{ item.product.image.url }}" alt="">{% endif %}
-                {% if print_template.show_product_code %}<strong>{{ item.display_code }}</strong> - {% endif %}{{ item.display_name }}
+                <strong class="item-product-name">{{ item.display_name }}</strong>
+                {% if print_template.show_product_code %}<span class="item-product-code">{{ item.display_code }}</span>{% endif %}
                 {% if item.display_note %}<div class="item-note">({{ item.display_note }})</div>{% endif %}
                 {% include "orders/print/_combo_components.html" %}
             </td>
-        </tr>
-        <tr class="item-value-row">
             <td class="item-quantity-cell">
                 <span class="item-quantity">{{ item.quantity|qty_vn }}</span>
                 <span class="item-unit">{{ item.display_unit|default:"—" }}</span>

@@ -150,7 +150,7 @@ class OrderRiskFlowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.issuing_brand_id, print_label.id)
 
-    def test_k80_print_separates_items_and_aligns_quantity_unit_price_and_total(self):
+    def test_k80_print_uses_four_product_quantity_price_and_total_columns(self):
         self.product.unit = 'Bộ 12c'
         self.product.save(update_fields=['unit'])
         order = self._create_order(code='DH-K80-ITEM-LAYOUT')
@@ -171,11 +171,15 @@ class OrderRiskFlowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'SL / ĐVT')
+        self.assertContains(response, '<th class="item-product-cell">Tên SP/Mã hàng</th>', html=True)
+        self.assertContains(response, '<th class="item-quantity-cell">SL</th>', html=True)
         self.assertContains(response, 'Đơn giá')
         self.assertContains(response, 'Thành tiền')
-        self.assertContains(response, 'class="item-name-row"')
-        self.assertContains(response, 'class="item-value-row"')
+        self.assertContains(response, 'class="item-row"')
+        self.assertContains(response, 'class="item-product-name"')
+        self.assertContains(response, 'class="item-product-code"')
+        self.assertNotContains(response, 'class="item-name-row"')
+        self.assertNotContains(response, 'class="item-value-row"')
         self.assertContains(response, 'border-bottom: 1px dashed #aaa;')
         self.assertContains(response, 'Bộ 12c')
         self.assertContains(response, '125.000đ')

@@ -9,9 +9,16 @@
     </div>
     <div class="card-body">
         <div class="row mb-3">
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
-            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
+            <div class="col-md-2"><label class="small text-muted mb-1">Từ ngày</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+            <div class="col-md-2"><label class="small text-muted mb-1">Đến ngày</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-md-3">
+                <label class="small text-muted mb-1">Nhà cung cấp</label>
+                <select class="form-control form-control-sm" id="filter_supplier">
+                    <option value="">Tất cả nhà cung cấp</option>
+                    {% for supplier in suppliers %}<option value="{{ supplier.id }}">{{ supplier.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
         </div>
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
             <div class="small text-muted">
@@ -32,7 +39,26 @@
                     <div class="icon"><i class="fas fa-coins"></i></div>
                 </div>
             </div>
+            <div class="col-md-4">
+                <div class="small-box bg-info">
+                    <div class="inner"><h4 id="total_suppliers">0</h4><p>Nhà cung cấp có nhập hàng</p></div>
+                    <div class="icon"><i class="fas fa-truck"></i></div>
+                </div>
+            </div>
         </div>
+        <h5 class="mb-2"><i class="fas fa-truck mr-1 text-info"></i>Tổng hợp theo nhà cung cấp</h5>
+        <div class="table-responsive mb-4">
+            <table id="supplier_summary_tbl" class="table table-bordered table-striped table-sm">
+                <thead class="bg-info text-white">
+                    <tr><th style="width:60px">STT</th><th>Nhà cung cấp</th><th class="text-center">Số phiếu hoàn thành</th><th class="text-right">Tổng tiền hàng</th></tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot class="font-weight-bold bg-light">
+                    <tr><td></td><td>TỔNG</td><td class="text-center" id="supplier_ft_count">0</td><td class="text-right" id="supplier_ft_total">0đ</td></tr>
+                </tfoot>
+            </table>
+        </div>
+        <h5 class="mb-2"><i class="fas fa-list mr-1 text-secondary"></i>Chi tiết phiếu nhập</h5>
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
@@ -52,6 +78,7 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
+function esc(value){ return $('<div>').text(value==null?'':String(value)).html(); }
 function localDateInputValue(date){
     var d = date || new Date();
     var month = String(d.getMonth() + 1).padStart(2, '0');
@@ -72,19 +99,29 @@ $(document).ready(function(){
     });
 });
 function loadReport(){
-    var url = '/api/report-purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val()+'&_ts='+Date.now();
+    var url = '/api/report-purchases/?from_date='+$('#filter_from_date').val()+'&to_date='+$('#filter_to_date').val()+'&supplier_id='+encodeURIComponent($('#filter_supplier').val()||'')+'&_ts='+Date.now();
     $.get(url, function(res){
         if(res.status !== 'ok') return;
         $('#total_count').text(res.summary.total_count);
         $('#total_amount').text(fmtD(res.summary.total_amount));
+        $('#total_suppliers').text(res.summary.total_suppliers||0);
         $('#report_refreshed_at').text(res.summary.refreshed_at || '--');
+        var supplierRows='', supplierCount=0;
+        (res.supplier_summary||[]).forEach(function(item,i){
+            supplierRows += '<tr><td>'+(i+1)+'</td><td><strong>'+esc(item.supplier)+'</strong></td><td class="text-center">'+fmt(item.receipt_count)+'</td><td class="text-right font-weight-bold">'+fmtD(item.total_amount)+'</td></tr>';
+            supplierCount += Number(item.receipt_count||0);
+        });
+        if(!supplierRows) supplierRows = '<tr><td colspan="4" class="text-center text-muted py-3">Không có phiếu nhập hoàn thành trong kỳ</td></tr>';
+        $('#supplier_summary_tbl tbody').html(supplierRows);
+        $('#supplier_ft_count').text(fmt(supplierCount));
+        $('#supplier_ft_total').text(fmtD(res.summary.total_amount));
         var h='', total=0;
         res.data.forEach(function(d,i){
             var badge = d.status===2 ? '<span class="badge badge-dark">Hủy</span>' :
                         d.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' :
                         '<span class="badge badge-info">'+d.status_display+'</span>';
-            h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.date+'</td>'+
-                '<td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
+            h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(i+1)+'</td><td><strong>'+esc(d.code)+'</strong></td><td>'+esc(d.date)+'</td>'+
+                '<td>'+esc(d.supplier)+'</td><td>'+esc(d.warehouse)+'</td>'+
                 '<td class="text-right">'+fmtD(d.total_amount)+'</td><td class="text-center">'+badge+'</td></tr>';
             if(d.status === 1) total += d.total_amount;
         });
@@ -97,7 +134,8 @@ function loadReport(){
 $('#btn_export').click(function(){
     var from = $('#filter_from_date').val();
     var to = $('#filter_to_date').val();
-    window.location.href = '/api/export-purchases-excel/?from_date='+from+'&to_date='+to;
+    var supplier = $('#filter_supplier').val()||'';
+    window.location.href = '/api/export-purchases-excel/?from_date='+from+'&to_date='+to+'&supplier_id='+encodeURIComponent(supplier);
 });
 </script>
 {% endblock %}

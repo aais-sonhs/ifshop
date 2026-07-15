@@ -1319,8 +1319,46 @@ def api_report_sales(request):
 @brand_owner_required
 @report_permission_required
 def report_purchases(request):
-    context = {'active_tab': 'report_purchases'}
+    from products.models import Supplier
+
+    store_ids = get_managed_store_ids(request.user)
+    suppliers = Supplier.objects.filter(
+        goods_receipts__warehouse__store_id__in=store_ids,
+        goods_receipts__is_deleted=False,
+    ).distinct().order_by('name').values('id', 'name')
+    context = {
+        'active_tab': 'report_purchases',
+        'suppliers': list(suppliers),
+    }
     return render(request, "reports/report_purchases.html", context)
+
+
+def _purchase_report_receipts(request, from_date, to_date, supplier_id=None):
+    from products.models import GoodsReceipt
+
+    receipts = GoodsReceipt.objects.filter(
+        receipt_date__gte=from_date,
+        receipt_date__lte=to_date,
+    ).select_related('supplier', 'warehouse')
+    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    if supplier_id:
+        receipts = receipts.filter(supplier_id=supplier_id)
+    return receipts
+
+
+def _purchase_supplier_summary(receipts):
+    rows = (
+        receipts.filter(status=1)
+        .values('supplier_id', 'supplier__name')
+        .annotate(receipt_count=Count('id'), total_amount=Sum('total_amount'))
+        .order_by('-total_amount', 'supplier__name')
+    )
+    return [{
+        'supplier_id': row['supplier_id'],
+        'supplier': row['supplier__name'] or 'Chưa chọn NCC',
+        'receipt_count': row['receipt_count'],
+        'total_amount': float(row['total_amount'] or 0),
+    } for row in rows]
 
 
 @login_required(login_url="/login/")
@@ -1335,11 +1373,14 @@ def api_report_purchases(request):
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
-    from products.models import GoodsReceipt
-    receipts = GoodsReceipt.objects.filter(
-        receipt_date__gte=from_date, receipt_date__lte=to_date
-    ).select_related('supplier', 'warehouse').order_by('-receipt_date')
-    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    supplier_id = _parse_filter_int(request.GET.get('supplier_id'))
+    receipts = _purchase_report_receipts(
+        request,
+        from_date,
+        to_date,
+        supplier_id=supplier_id,
+    ).order_by('-receipt_date', '-id')
+    supplier_summary = _purchase_supplier_summary(receipts)
 
     data = [{
         'id': r.id, 'code': r.code,
@@ -1358,8 +1399,10 @@ def api_report_purchases(request):
         'summary': {
             'total_amount': total,
             'total_count': count,
+            'total_suppliers': sum(1 for row in supplier_summary if row['supplier_id'] is not None),
             'refreshed_at': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-        }
+        },
+        'supplier_summary': supplier_summary,
     })
 
 
@@ -2785,8 +2828,6 @@ def export_purchases_excel(request):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
-    from products.models import GoodsReceipt
-
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     today = datetime.now().date()
@@ -2795,10 +2836,14 @@ def export_purchases_excel(request):
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
-    receipts = GoodsReceipt.objects.filter(
-        receipt_date__gte=from_date, receipt_date__lte=to_date
-    ).select_related('supplier', 'warehouse').order_by('-receipt_date')
-    receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    supplier_id = _parse_filter_int(request.GET.get('supplier_id'))
+    receipts = _purchase_report_receipts(
+        request,
+        from_date,
+        to_date,
+        supplier_id=supplier_id,
+    ).order_by('-receipt_date', '-id')
+    supplier_summary = _purchase_supplier_summary(receipts)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2836,7 +2881,7 @@ def export_purchases_excel(request):
     for idx, r in enumerate(receipts, 1):
         amt = float(r.total_amount)
         is_cancel = (r.status == 2)
-        if not is_cancel:
+        if r.status == 1:
             total += amt
         vals = [idx, r.code,
                 r.receipt_date.strftime('%d/%m/%Y') if r.receipt_date else '',
@@ -2863,6 +2908,46 @@ def export_purchases_excel(request):
 
     for i, w in enumerate([6, 15, 12, 25, 15, 18, 12], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    summary_ws = wb.create_sheet('Tổng hợp NCC')
+    summary_ws.merge_cells('A1:D1')
+    summary_ws['A1'] = 'TỔNG HỢP NHẬP HÀNG THEO NHÀ CUNG CẤP'
+    summary_ws['A1'].font = hf
+    summary_ws['A1'].fill = hfill
+    summary_ws['A1'].alignment = Alignment(horizontal='center')
+    summary_ws.merge_cells('A2:D2')
+    summary_ws['A2'] = f'Từ {from_date} đến {to_date} · Chỉ tính phiếu hoàn thành'
+    summary_ws['A2'].font = Font(italic=True, size=10)
+    summary_ws['A2'].alignment = Alignment(horizontal='center')
+
+    summary_headers = ['STT', 'Nhà cung cấp', 'Số phiếu hoàn thành', 'Tổng tiền hàng']
+    for col, header in enumerate(summary_headers, 1):
+        cell = summary_ws.cell(row=4, column=col, value=header)
+        cell.font = sf
+        cell.fill = sfill
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+
+    summary_row = 5
+    for index, item in enumerate(supplier_summary, 1):
+        values = [index, item['supplier'], item['receipt_count'], item['total_amount']]
+        for col, value in enumerate(values, 1):
+            cell = summary_ws.cell(row=summary_row, column=col, value=value)
+            cell.border = thin
+            if col == 4:
+                cell.number_format = mfmt
+        summary_row += 1
+
+    summary_totals = ['', 'TỔNG', sum(item['receipt_count'] for item in supplier_summary), total]
+    for col, value in enumerate(summary_totals, 1):
+        cell = summary_ws.cell(row=summary_row, column=col, value=value)
+        cell.font = Font(bold=True)
+        cell.fill = tfill
+        cell.border = thin
+        if col == 4:
+            cell.number_format = mfmt
+    for index, width in enumerate([6, 32, 22, 20], 1):
+        summary_ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = width
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

@@ -8,7 +8,15 @@ from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
-from products.models import Product, ProductCategory, ProductStock, ProductVariant, Warehouse
+from products.models import (
+    GoodsReceipt,
+    Product,
+    ProductCategory,
+    ProductStock,
+    ProductVariant,
+    Supplier,
+    Warehouse,
+)
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -66,6 +74,78 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok')
+
+    def test_purchase_report_groups_completed_receipts_by_supplier_and_filters_supplier(self):
+        today = date.today()
+        supplier_a = Supplier.objects.create(code='NCC-RP-A', name='NCC báo cáo A')
+        supplier_b = Supplier.objects.create(code='NCC-RP-B', name='NCC báo cáo B')
+        for code, supplier, amount, status in [
+            ('PN-RP-A1', supplier_a, 100, 1),
+            ('PN-RP-A2', supplier_a, 200, 1),
+            ('PN-RP-A-DRAFT', supplier_a, 900, 0),
+            ('PN-RP-B1', supplier_b, 400, 1),
+        ]:
+            GoodsReceipt.objects.create(
+                code=code,
+                supplier=supplier,
+                warehouse=self.warehouse,
+                receipt_date=today,
+                total_amount=amount,
+                status=status,
+                created_by=self.user,
+            )
+
+        response = self.client.get(reverse('api_report_purchases'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        summary_by_supplier = {row['supplier']: row for row in payload['supplier_summary']}
+        self.assertEqual(payload['summary']['total_amount'], 700.0)
+        self.assertEqual(payload['summary']['total_count'], 3)
+        self.assertEqual(payload['summary']['total_suppliers'], 2)
+        self.assertEqual(summary_by_supplier[supplier_a.name]['receipt_count'], 2)
+        self.assertEqual(summary_by_supplier[supplier_a.name]['total_amount'], 300.0)
+        self.assertEqual(summary_by_supplier[supplier_b.name]['total_amount'], 400.0)
+
+        filtered = self.client.get(reverse('api_report_purchases'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'supplier_id': supplier_a.id,
+        }).json()
+        self.assertEqual(filtered['summary']['total_amount'], 300.0)
+        self.assertEqual(filtered['summary']['total_count'], 2)
+        self.assertEqual(len(filtered['supplier_summary']), 1)
+        self.assertTrue(all(row['supplier'] == supplier_a.name for row in filtered['data']))
+
+    def test_export_purchase_report_includes_supplier_summary_sheet(self):
+        today = date.today()
+        supplier = Supplier.objects.create(code='NCC-RP-EX', name='NCC xuất báo cáo')
+        GoodsReceipt.objects.create(
+            code='PN-RP-EX',
+            supplier=supplier,
+            warehouse=self.warehouse,
+            receipt_date=today,
+            total_amount=750,
+            status=1,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('export_purchases_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'supplier_id': supplier.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        self.assertIn('Tổng hợp NCC', workbook.sheetnames)
+        summary_sheet = workbook['Tổng hợp NCC']
+        self.assertEqual(summary_sheet['B5'].value, supplier.name)
+        self.assertEqual(summary_sheet['C5'].value, 1)
+        self.assertEqual(summary_sheet['D5'].value, 750)
 
     def test_inventory_report_alert_card_controls_are_available(self):
         owner = User.objects.create_user(username='owner_inventory_report', password='pass123')

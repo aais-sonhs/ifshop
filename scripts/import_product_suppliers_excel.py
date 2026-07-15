@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import unicodedata
+import warnings
 from collections import Counter
 from pathlib import Path
 
@@ -27,9 +28,19 @@ HEADER_ALIASES = {
     'ma sp': 'product_code',
     'ma san pham': 'product_code',
     'ma hang': 'product_code',
+    'ma hang hoa': 'product_code',
+    'ma vat tu': 'product_code',
+    'ma sku': 'product_code',
+    'product code': 'product_code',
+    'item code': 'product_code',
     'sku': 'product_code',
     'code': 'product_code',
     'nhan hieu': 'supplier_name',
+    'ten nhan hieu': 'supplier_name',
+    'nhan hang': 'supplier_name',
+    'thuong hieu': 'supplier_name',
+    'ten thuong hieu': 'supplier_name',
+    'brand': 'supplier_name',
     'ncc': 'supplier_name',
     'nha cung cap': 'supplier_name',
     'supplier': 'supplier_name',
@@ -85,20 +96,41 @@ def normalize_text(value):
     return re.sub(r'[^a-z0-9]+', ' ', text).strip()
 
 
-def find_header(sheet, max_rows=20):
+def resolve_header_key(value):
+    normalized = normalize_text(value)
+    key = HEADER_ALIASES.get(normalized)
+    if key:
+        return key
+
+    # Một số file xuất thêm hậu tố như "Mã SP (*)" hoặc "Nhãn hiệu sản phẩm".
+    if normalized.startswith(('ma san pham ', 'ma sp ', 'ma hang hoa ', 'product code ')):
+        return 'product_code'
+    if normalized.startswith((
+        'nhan hieu ',
+        'ten nhan hieu ',
+        'thuong hieu ',
+        'ten thuong hieu ',
+        'nha cung cap ',
+        'ten nha cung cap ',
+    )):
+        return 'supplier_name'
+    return None
+
+
+def find_header(sheet, max_rows=200):
     for row_number, row in enumerate(
         sheet.iter_rows(min_row=1, max_row=max_rows, values_only=True),
         start=1,
     ):
         headers = {}
         for column_number, value in enumerate(row, start=1):
-            key = HEADER_ALIASES.get(normalize_text(value))
+            key = resolve_header_key(value)
             if key and key not in headers:
                 headers[key] = column_number
         if {'product_code', 'supplier_name'}.issubset(headers):
             return row_number, headers
     raise ValueError(
-        'Không tìm thấy dòng tiêu đề có cả cột Mã SP và Nhãn hiệu/NCC trong 20 dòng đầu.'
+        f'Không tìm thấy Mã SP và Nhãn hiệu/NCC trong 200 dòng đầu của sheet "{sheet.title}".'
     )
 
 
@@ -109,18 +141,60 @@ def row_value(row, headers, key):
     return row[column_number - 1]
 
 
-def load_rows(excel_path, sheet_name=None):
-    workbook = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+def _sheet_header_samples(sheet, max_rows=30, max_samples=5):
+    samples = []
+    for row_number, row in enumerate(
+        sheet.iter_rows(min_row=1, max_row=max_rows, values_only=True),
+        start=1,
+    ):
+        values = [clean_text(value) for value in row if clean_text(value)]
+        if values:
+            samples.append(f'dòng {row_number}: {" | ".join(values[:12])}')
+        if len(samples) >= max_samples:
+            break
+    return samples
+
+
+def _find_data_sheet(workbook, sheet_name=None):
     if sheet_name:
         if sheet_name not in workbook.sheetnames:
             raise ValueError(
                 f'Không có sheet "{sheet_name}". Các sheet hiện có: {", ".join(workbook.sheetnames)}'
             )
-        sheet = workbook[sheet_name]
+        sheets = [workbook[sheet_name]]
     else:
-        sheet = workbook[workbook.sheetnames[0]]
+        sheets = list(workbook.worksheets)
 
-    header_row, headers = find_header(sheet)
+    errors = []
+    for sheet in sheets:
+        try:
+            header_row, headers = find_header(sheet)
+            return sheet, header_row, headers
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    samples = []
+    for sheet in sheets:
+        rows = _sheet_header_samples(sheet)
+        sample_text = '; '.join(rows) if rows else 'không có dữ liệu trong 30 dòng đầu'
+        samples.append(f'[{sheet.title}] {sample_text}')
+    raise ValueError(
+        'Không tìm thấy dòng tiêu đề có cả cột mã sản phẩm và Nhãn hiệu/NCC. '
+        f'Đã kiểm tra {len(sheets)} sheet: {", ".join(sheet.title for sheet in sheets)}. '
+        'Các dòng đầu đã đọc được: ' + ' || '.join(samples)
+    )
+
+
+def load_rows(excel_path, sheet_name=None):
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            'ignore',
+            message='Workbook contains no default style.*',
+            category=UserWarning,
+        )
+        workbook = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+
+    sheet, header_row, headers = _find_data_sheet(workbook, sheet_name=sheet_name)
     rows = []
     skipped = []
     code_counts = Counter()

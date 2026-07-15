@@ -854,6 +854,28 @@ class ProductInventoryFlowTests(TestCase):
         self.product.refresh_from_db()
         self.assertEqual(self.product.supplier.name, 'NCC script độc lập')
 
+    def test_standalone_supplier_import_finds_data_sheet_and_alternate_headers(self):
+        from scripts import import_product_suppliers_excel
+
+        workbook = openpyxl.Workbook()
+        workbook.active.title = 'Bìa'
+        workbook.active.cell(row=1, column=1, value='BÁO CÁO SẢN PHẨM')
+        sheet = workbook.create_sheet('Dữ liệu')
+        sheet.cell(row=25, column=2, value='Mã hàng hóa')
+        sheet.cell(row=25, column=5, value='Tên nhãn hiệu')
+        sheet.cell(row=26, column=2, value=self.product.code)
+        sheet.cell(row=26, column=5, value='NCC ở sheet thứ hai')
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        loaded = import_product_suppliers_excel.load_rows(stream)
+
+        self.assertEqual(loaded['sheet'], 'Dữ liệu')
+        self.assertEqual(loaded['header_row'], 25)
+        self.assertEqual(loaded['rows'][0]['product_code'], self.product.code)
+        self.assertEqual(loaded['rows'][0]['supplier_name'], 'NCC ở sheet thứ hai')
+
     def test_import_products_excel_rejects_product_code_outside_user_store(self):
         upload = self._build_product_import_upload(
             rows=[[self.other_product.code, 'Khong duoc import']],

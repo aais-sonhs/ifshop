@@ -2991,6 +2991,7 @@ PRODUCT_IMPORT_HEADER_ALIASES = {
     'status': 'is_active',
     'ncc': 'supplier',
     'nha cung cap': 'supplier',
+    'nhan hieu': 'supplier',
     'supplier': 'supplier',
     'vi tri': 'location',
     'location': 'location',

@@ -806,6 +806,54 @@ class ProductInventoryFlowTests(TestCase):
         stock = ProductStock.objects.get(product=new_product, warehouse=self.warehouse_a)
         self.assertEqual(stock.quantity, Decimal('12.50'))
 
+    def test_import_products_excel_treats_brand_column_as_supplier(self):
+        upload = self._build_product_import_upload(
+            rows=[[self.product.code, self.product.name, 'NCC từ cột nhãn hiệu']],
+            headers=['Mã SP', 'Tên sản phẩm', 'Nhãn hiệu'],
+        )
+
+        response = self.client.post(
+            reverse('import_products_excel'),
+            data={'file': upload},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.product.refresh_from_db()
+        self.assertIsNotNone(self.product.supplier)
+        self.assertEqual(self.product.supplier.name, 'NCC từ cột nhãn hiệu')
+        self.assertTrue(Supplier.objects.filter(name='NCC từ cột nhãn hiệu').exists())
+
+    def test_standalone_supplier_import_uses_product_code_across_databases(self):
+        from scripts import import_product_suppliers_excel
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.cell(row=1, column=1, value='DANH SÁCH SẢN PHẨM')
+        sheet.cell(row=3, column=1, value='Mã sản phẩm')
+        sheet.cell(row=3, column=2, value='Nhãn hiệu')
+        sheet.cell(row=4, column=1, value=self.product.code)
+        sheet.cell(row=4, column=2, value='NCC script độc lập')
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        loaded = import_product_suppliers_excel.load_rows(stream)
+        plan = import_product_suppliers_excel.classify_rows(loaded['rows'], store=self.store)
+        applied = import_product_suppliers_excel.apply_rows(
+            loaded['rows'],
+            store=self.store,
+            creator=self.user,
+        )
+
+        self.assertEqual(loaded['header_row'], 3)
+        self.assertEqual(len(plan['planned']), 1)
+        self.assertEqual(plan['supplier_create_count'], 1)
+        self.assertEqual(applied['updated'], 1)
+        self.assertEqual(applied['suppliers_created'], 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.supplier.name, 'NCC script độc lập')
+
     def test_import_products_excel_rejects_product_code_outside_user_store(self):
         upload = self._build_product_import_upload(
             rows=[[self.other_product.code, 'Khong duoc import']],

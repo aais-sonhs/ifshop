@@ -7157,7 +7157,7 @@ function openWarrantyItemEditor(source, id){
         if(certificate){
             $('#warranty_save_notice').removeClass('alert-warning alert-info').addClass('alert-success').html(
                 '<strong><i class="fas fa-check-circle mr-1"></i>Đã lưu '+escapeHtml(certificate.code)+'</strong>'+
-                ' · Cập nhật: '+escapeHtml(certificate.updated_at||certificate.created_at||'')+
+                ' · Cập nhật: '+escapeHtml(certificate.updated_at||certificate.created_at||'')
             );
         } else if(window._warrantyCanSave){
             $('#warranty_save_notice').removeClass('alert-warning alert-success').addClass('alert-info').html(

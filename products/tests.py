@@ -217,6 +217,7 @@ class ProductInventoryFlowTests(TestCase):
         ):
             self.assertNotContains(response, f'data-col="{old_column_key}"')
         self.assertContains(response, 'function renderProductStackedCell(rows, extraClass)')
+        self.assertContains(response, '.product-combined-header small{margin-top:2px;color:#fff !important;')
         self.assertContains(response, 'colspan="15"')
 
     def test_product_list_exposes_and_updates_inline_note(self):

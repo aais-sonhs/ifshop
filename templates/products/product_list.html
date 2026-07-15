@@ -157,7 +157,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="code">Mã SP</th><th data-col="name">Tên sản phẩm</th><th data-col="spec_unit"><span class="product-combined-header">Quy cách<small>ĐVT</small></span></th><th data-col="location">Vị trí</th><th data-col="category_type"><span class="product-combined-header">Danh mục<small>Loại sản phẩm</small></span></th><th data-col="import_cost" title="Giá nhập gần nhất / Giá vốn tồn hiện tại" style="cursor:help;"><span class="product-combined-header">Giá nhập<small>Giá vốn</small></span></th><th data-col="purchase_history" title="Phiếu nhập gần nhất và nút xem chi tiết từng phiếu nhập" style="cursor:help;">Nhập gần nhất</th><th data-col="selling_price">Giá bán lẻ</th><th data-col="wholesale_prices" title="Giá sỉ không bảo hành / có bảo hành"><span class="product-combined-header">Giá sỉ KBH<small>Giá sỉ BH</small></span></th><th data-col="stock" aria-sort="none"><button type="button" class="btn btn-link btn-sm p-0 font-weight-bold text-dark text-nowrap" id="btn_sort_stock">Tồn kho <i class="fas fa-sort ml-1" id="stock_sort_icon"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="image">Ảnh</th><th data-col="product_identity"><span class="product-combined-header">Mã SP<small>Tên sản phẩm</small></span></th><th data-col="spec_unit"><span class="product-combined-header">Quy cách<small>ĐVT</small></span></th><th data-col="location">Vị trí</th><th data-col="category_type"><span class="product-combined-header">Danh mục<small>Loại sản phẩm</small></span></th><th data-col="import_cost" title="Giá nhập gần nhất / Giá vốn tồn hiện tại" style="cursor:help;"><span class="product-combined-header">Giá nhập<small>Giá vốn</small></span></th><th data-col="purchase_history" title="Phiếu nhập gần nhất và nút xem chi tiết từng phiếu nhập" style="cursor:help;">Nhập gần nhất</th><th data-col="selling_price">Giá bán lẻ</th><th data-col="wholesale_prices" title="Giá sỉ không bảo hành / có bảo hành"><span class="product-combined-header">Giá sỉ KBH<small>Giá sỉ BH</small></span></th><th data-col="stock" aria-sort="none"><button type="button" class="btn btn-link btn-sm p-0 font-weight-bold text-dark text-nowrap" id="btn_sort_stock">Tồn kho <i class="fas fa-sort ml-1" id="stock_sort_icon"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -664,8 +664,13 @@
 .product-stacked-value{min-width:0;text-align:right;word-break:break-word;}
 .product-stacked-cell-text .product-stacked-value{text-align:left;}
 .product-stacked-cell-money{min-width:150px;}
+.product-identity-cell{min-width:250px;}
+.product-identity-cell .product-stacked-label{flex-basis:58px;}
+.product-identity-cell .product-stacked-value{flex:1 1 auto;}
 .product-combined-header{display:inline-flex;flex-direction:column;line-height:1.2;white-space:nowrap;color:#fff !important;}
 .product-combined-header small{margin-top:2px;color:#fff !important;font-size:10px;font-weight:600;opacity:.9;}
+#data_tbl .btn-action-group{display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:104px;}
+#data_tbl .btn-action-group .btn{display:block;width:100%;margin:0 !important;white-space:nowrap;border-radius:5px;}
 </style>
 <script src="/static/js/column_config.js"></script>
 <script>
@@ -717,8 +722,7 @@ var productColConfig = new ColumnConfig({
     columns: [
         {key: 'stt',              label: 'STT',             default: true,  alwaysOn: true},
         {key: 'image',            label: 'Ảnh',             default: true},
-        {key: 'code',             label: 'Mã SP',           default: true,  alwaysOn: true},
-        {key: 'name',             label: 'Tên sản phẩm',    default: true,  alwaysOn: true},
+        {key: 'product_identity', label: 'Mã SP / Tên sản phẩm', default: true, alwaysOn: true},
         {key: 'spec_unit',        label: 'Quy cách / ĐVT',  default: true},
         {key: 'location',         label: 'Vị trí',          default: true},
         {key: 'category_type',    label: 'Danh mục / Loại SP', default: true},
@@ -798,7 +802,7 @@ function renderProductStackedCell(rows, extraClass){
     var html = (rows || []).map(function(row){
         return '<div class="product-stacked-line"'+(row.title ? ' title="'+escapeAttr(row.title)+'"' : '')+'>' +
             '<span class="product-stacked-label">'+escapeHtml(row.label || '')+'</span>' +
-            '<span class="product-stacked-value">'+(row.value || '<span class="text-muted">—</span>')+'</span>' +
+            '<div class="product-stacked-value">'+(row.value || '<span class="text-muted">—</span>')+'</div>' +
         '</div>';
     }).join('');
     return '<div class="product-stacked-cell '+(extraClass || '')+'">'+html+'</div>';
@@ -1681,6 +1685,10 @@ function loadData(done){
                 '<button type="button" class="btn btn-link p-0 text-left product-name-link" onclick="viewProductDetailById('+d.id+')" title="Xem chi tiết sản phẩm">' +
                     '<span title="'+escapeAttr(d.name)+'">'+escapeHtml(d.name)+'</span>' +
                 '</button>' + variantBadge + productInlineNoteHtml + renderComboInlineItems(d, 3);
+            var productIdentityHtml = renderProductStackedCell([
+                {label: 'Mã SP', value: '<strong>'+escapeHtml(d.code || '')+'</strong>'},
+                {label: 'Tên SP', value: productNameHtml}
+            ], 'product-stacked-cell-text product-identity-cell');
 
             var stockHtml = renderInlineStockBreakdown(d, productNameJs);
             var sellingDisplay = '<span class="text-success font-weight-bold">'+fmt(d.selling_price)+'đ</span>';
@@ -1718,8 +1726,7 @@ function loadData(done){
             h += '<tr id="product_row_'+d.id+'">'+
                 productColConfig.td('stt', (startIndex+i))+
                 productColConfig.td('image', imgTd, 'class="text-center"')+
-                productColConfig.td('code', d.code)+
-                productColConfig.td('name', productNameHtml, 'style="white-space:normal;min-width:220px;word-break:break-word;"')+
+                productColConfig.td('product_identity', productIdentityHtml, 'style="white-space:normal;word-break:break-word;"')+
                 productColConfig.td('spec_unit', specUnitHtml, 'style="white-space:normal;"')+
                 productColConfig.td('location', '<small>'+(d.location||'')+'</small>')+
                 productColConfig.td('category_type', categoryTypeHtml, 'style="white-space:normal;"')+
@@ -1738,7 +1745,7 @@ function loadData(done){
             var createHtml = searchTerm
                 ? '<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" id="btn_create_product_from_search"><i class="fas fa-plus"></i> Thêm sản phẩm từ thông tin đang tìm</button></div>'
                 : '';
-            h = '<tr><td colspan="15" class="text-center text-muted py-3">Không tìm thấy sản phẩm phù hợp' + createHtml + '</td></tr>';
+            h = '<tr><td colspan="14" class="text-center text-muted py-3">Không tìm thấy sản phẩm phù hợp' + createHtml + '</td></tr>';
         }
         $('#data_tbl tbody').html(h);
         productColConfig.apply();
@@ -1751,7 +1758,7 @@ function loadData(done){
         if(typeof done === 'function') done(filtered);
     }).fail(function(xhr, status){
         if(status === 'abort') return;
-        $('#data_tbl tbody').html('<tr><td colspan="15" class="text-center text-danger py-3">Không tải được danh sách sản phẩm.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="14" class="text-center text-danger py-3">Không tải được danh sách sản phẩm.</td></tr>');
         $('#product_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#product_pagination').html('');
     });

@@ -209,16 +209,20 @@ class ProductInventoryFlowTests(TestCase):
         response = self.client.get(reverse('product_tbl'))
 
         self.assertEqual(response.status_code, 200)
-        for column_key in ('spec_unit', 'category_type', 'import_cost', 'wholesale_prices'):
+        for column_key in (
+            'product_identity', 'spec_unit', 'category_type', 'import_cost', 'wholesale_prices',
+        ):
             self.assertContains(response, f'data-col="{column_key}"')
         for old_column_key in (
-            'spec', 'unit', 'category', 'product_type',
+            'code', 'name', 'spec', 'unit', 'category', 'product_type',
             'import_price', 'cost_price', 'ws_no_warranty', 'ws_warranty',
         ):
             self.assertNotContains(response, f'data-col="{old_column_key}"')
         self.assertContains(response, 'function renderProductStackedCell(rows, extraClass)')
         self.assertContains(response, '.product-combined-header small{margin-top:2px;color:#fff !important;')
-        self.assertContains(response, 'colspan="15"')
+        self.assertContains(response, '#data_tbl .btn-action-group{display:flex;flex-direction:column;')
+        self.assertContains(response, '#data_tbl .btn-action-group .btn{display:block;width:100%;')
+        self.assertContains(response, 'colspan="14"')
 
     def test_product_form_uses_near_full_width_dialog(self):
         response = self.client.get(reverse('product_tbl'))

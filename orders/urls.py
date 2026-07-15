@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/orders/bulk-collect/', views.api_bulk_collect_orders, name='api_bulk_collect_orders'),
     path('api/orders/collect-payment/', views.api_collect_order_payment, name='api_collect_order_payment'),
     path('api/orders/export-stock/', views.api_export_order_stock, name='api_export_order_stock'),
+    path('api/orders/warranty/save/', views.api_save_order_warranty, name='api_save_order_warranty'),
     path('api/orders/update-status/', views.api_update_order_status, name='api_update_order_status'),
     path('api/orders/update-note/', views.api_update_order_note, name='api_update_order_note'),
     path('api/orders/approve/', views.api_approve_order, name='api_approve_order'),

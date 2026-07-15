@@ -51,14 +51,22 @@
     <div class="w-info">
         <div class="col">
             <div class="label">Khách hàng</div>
+            {% if warranty_certificate %}
+            <div><strong>{{ warranty_certificate.customer_name|default:"Khách lẻ" }}</strong></div>
+            {% if warranty_certificate.customer_phone %}<div>SĐT: {{ warranty_certificate.customer_phone }}</div>{% endif %}
+            {% if warranty_certificate.customer_address %}<div>{{ warranty_certificate.customer_address }}</div>{% endif %}
+            {% else %}
             <div><strong>{{ order.customer.name|default:"Khách lẻ" }}</strong></div>
             {% if order.customer.phone %}<div>SĐT: {{ order.customer.phone }}</div>{% endif %}
             {% if order.customer.address %}<div>{{ order.customer.address }}</div>{% endif %}
+            {% endif %}
         </div>
         <div class="col">
             <div class="label">Thông tin đơn</div>
+            {% if warranty_certificate %}<div>Mã PBH: <strong>{{ warranty_certificate.code }}</strong></div>{% endif %}
             <div>Mã ĐH: <strong>{{ order.code }}</strong></div>
             <div>Ngày mua: <strong>{{ order.order_date|date:"d/m/Y" }}</strong></div>
+            {% if warranty_certificate %}<div>Ngày lập phiếu: <strong>{{ warranty_certificate.issue_date|date:"d/m/Y" }}</strong></div>{% endif %}
         </div>
     </div>
     {% endif %}
@@ -80,11 +88,11 @@
             <tr>
                 <td>{{ forloop.counter }}</td>
                 <td>{{ item.code|default:"—" }}</td>
-                <td><strong>{{ item.name }}</strong>{% if item.unit %}<div style="font-size:11px;color:#777;">ĐVT: {{ item.unit }}</div>{% endif %}</td>
+                <td><strong>{{ item.name }}</strong>{% if item.unit %}<div style="font-size:11px;color:#777;">ĐVT: {{ item.unit }}</div>{% endif %}{% if item.warranty_policy %}<div style="font-size:10px;color:#2e7d32;margin-top:3px;white-space:pre-line;">{{ item.warranty_policy }}</div>{% endif %}</td>
                 <td>{{ item.quantity|qty_vn }}</td>
                 <td>{{ item.serial|default:"—" }}</td>
-                <td>{{ item.warranty_term|default:"—" }}</td>
-                <td>{{ item.display_note|default:"" }}</td>
+                <td>{{ item.warranty_term|default:"—" }}{% if item.warranty_start_date %}<div style="font-size:10px;color:#777;">Từ {{ item.warranty_start_date|date:"d/m/Y" }}{% if item.warranty_end_date %}<br>đến {{ item.warranty_end_date|date:"d/m/Y" }}{% endif %}</div>{% endif %}</td>
+                <td>{{ item.note|default:"" }}</td>
             </tr>
         {% empty %}
             <tr>

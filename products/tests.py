@@ -189,6 +189,55 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['product']['code'], product.code)
         self.assertEqual(product.store_id, self.store.id)
 
+    def test_product_warranty_defaults_can_be_saved_and_are_exposed_in_product_list(self):
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'id': self.product.id,
+                'code': self.product.code,
+                'name': self.product.name,
+                'unit': 'Cái',
+                'warranty_period_months': '24',
+                'warranty_policy': 'Bảo hành lỗi kỹ thuật, không bảo hành rơi vỡ.',
+                'skip_variants': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.warranty_period_months, 24)
+        self.assertEqual(
+            self.product.warranty_policy,
+            'Bảo hành lỗi kỹ thuật, không bảo hành rơi vỡ.',
+        )
+
+        list_response = self.client.get(reverse('api_get_products'))
+        row = next(item for item in list_response.json()['data'] if item['id'] == self.product.id)
+        self.assertEqual(row['warranty_period_months'], 24)
+        self.assertEqual(row['warranty_policy'], self.product.warranty_policy)
+
+        page_response = self.client.get(reverse('product_tbl'))
+        self.assertContains(page_response, 'id="inp_warranty_period_months"')
+        self.assertContains(page_response, 'id="inp_warranty_policy"')
+
+        export_response = self.client.get(reverse('export_products_excel'))
+        workbook = openpyxl.load_workbook(BytesIO(export_response.content), data_only=True)
+        sheet = workbook.active
+        headers = [cell.value for cell in sheet[4]]
+        warranty_months_col = headers.index('Kỳ hạn bảo hành (tháng)') + 1
+        warranty_policy_col = headers.index('Chính sách bảo hành') + 1
+        product_row = next(
+            row
+            for row in range(5, sheet.max_row + 1)
+            if sheet.cell(row=row, column=2).value == self.product.code
+        )
+        self.assertEqual(sheet.cell(row=product_row, column=warranty_months_col).value, 24)
+        self.assertEqual(
+            sheet.cell(row=product_row, column=warranty_policy_col).value,
+            self.product.warranty_policy,
+        )
+
     def test_product_list_exposes_category_and_product_type_levels(self):
         category = ProductCategory.objects.create(name='May moc')
         product_type = ProductCategory.objects.create(name='May xay', parent=category)
@@ -823,6 +872,33 @@ class ProductInventoryFlowTests(TestCase):
         self.assertIsNotNone(self.product.supplier)
         self.assertEqual(self.product.supplier.name, 'NCC từ cột nhãn hiệu')
         self.assertTrue(Supplier.objects.filter(name='NCC từ cột nhãn hiệu').exists())
+
+    def test_import_products_excel_updates_warranty_defaults(self):
+        upload = self._build_product_import_upload(
+            rows=[[
+                self.product.code,
+                self.product.name,
+                18,
+                'Đổi mới 30 ngày, bảo hành kỹ thuật 18 tháng',
+            ]],
+            headers=[
+                'Mã SP',
+                'Tên sản phẩm',
+                'Kỳ hạn bảo hành (tháng)',
+                'Chính sách bảo hành',
+            ],
+        )
+
+        response = self.client.post(reverse('import_products_excel'), data={'file': upload})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.warranty_period_months, 18)
+        self.assertEqual(
+            self.product.warranty_policy,
+            'Đổi mới 30 ngày, bảo hành kỹ thuật 18 tháng',
+        )
 
     def test_standalone_supplier_import_uses_product_code_across_databases(self):
         from scripts import import_product_suppliers_excel

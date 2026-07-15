@@ -236,6 +236,84 @@ class OrderItem(models.Model):
         return self.product.note if self.product else ''
 
 
+class WarrantyCertificate(SoftDeleteModel):
+    """Phiếu bảo hành chính thức được lưu theo đơn đã xuất kho."""
+
+    code = models.CharField(max_length=80, unique=True, verbose_name='Mã phiếu bảo hành')
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.PROTECT,
+        related_name='warranty_certificate',
+        verbose_name='Đơn hàng',
+    )
+    issue_date = models.DateField(verbose_name='Ngày lập phiếu')
+    customer_name = models.CharField(max_length=255, blank=True, verbose_name='Tên khách hàng')
+    customer_phone = models.CharField(max_length=30, blank=True, verbose_name='Số điện thoại')
+    customer_address = models.TextField(blank=True, verbose_name='Địa chỉ')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='warranty_certificates_created',
+        verbose_name='Người tạo',
+    )
+
+    class Meta:
+        db_table = 'warranty_certificates'
+        verbose_name = 'Phiếu bảo hành'
+        verbose_name_plural = 'Phiếu bảo hành'
+        ordering = ['-issue_date', '-id']
+
+    def __str__(self):
+        return self.code
+
+
+class WarrantyCertificateItem(models.Model):
+    """Bản chụp thông tin bảo hành của sản phẩm tại thời điểm lập phiếu."""
+
+    certificate = models.ForeignKey(
+        WarrantyCertificate,
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name='Phiếu bảo hành',
+    )
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='warranty_items',
+        verbose_name='Dòng đơn hàng',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='warranty_certificate_items',
+        verbose_name='Sản phẩm',
+    )
+    product_code = models.CharField(max_length=80, blank=True, verbose_name='Mã sản phẩm')
+    product_name = models.CharField(max_length=255, verbose_name='Tên sản phẩm')
+    unit = models.CharField(max_length=50, blank=True, verbose_name='Đơn vị tính')
+    quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
+    serial = models.CharField(max_length=255, blank=True, verbose_name='Serial / lô')
+    warranty_period_months = models.PositiveIntegerField(default=0, verbose_name='Kỳ hạn bảo hành (tháng)')
+    warranty_term = models.CharField(max_length=120, blank=True, verbose_name='Thời hạn bảo hành')
+    warranty_policy = models.TextField(blank=True, verbose_name='Chính sách bảo hành')
+    warranty_start_date = models.DateField(verbose_name='Ngày bắt đầu bảo hành')
+    warranty_end_date = models.DateField(null=True, blank=True, verbose_name='Ngày hết hạn bảo hành')
+    note = models.CharField(max_length=255, blank=True, verbose_name='Ghi chú')
+
+    class Meta:
+        db_table = 'warranty_certificate_items'
+        verbose_name = 'Chi tiết phiếu bảo hành'
+        verbose_name_plural = 'Chi tiết phiếu bảo hành'
+        ordering = ['id']
+
+
 class OrderEditHistory(models.Model):
     """Lịch sử thao tác trên đơn hàng"""
     ACTION_CHOICES = [
@@ -248,6 +326,7 @@ class OrderEditHistory(models.Model):
         ('status', 'Đổi trạng thái'),
         ('payment', 'Thu tiền'),
         ('stock_export', 'Xuất kho'),
+        ('warranty', 'Phiếu bảo hành'),
         ('return', 'Hoàn hàng'),
         ('bulk_collect', 'Thanh toán nhanh'),
         ('bulk_cancel', 'Hủy nhanh'),

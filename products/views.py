@@ -885,6 +885,8 @@ def _serialize_product_list(products):
             'retail_price': float(p.selling_price),
             'wholesale_price_no_warranty': float(p.wholesale_price_no_warranty),
             'wholesale_price_warranty': float(p.wholesale_price_warranty),
+            'warranty_period_months': p.warranty_period_months,
+            'warranty_policy': p.warranty_policy or '',
             'min_stock': p.min_stock, 'max_stock': p.max_stock,
             'supplier': p.supplier.name if p.supplier else '',
             'supplier_id': p.supplier_id,
@@ -1315,6 +1317,13 @@ def api_save_product(request):
             product.selling_price = _to_money_decimal(request.POST.get('selling_price', 0))
             product.wholesale_price_no_warranty = _to_money_decimal(request.POST.get('wholesale_price_no_warranty', 0))
             product.wholesale_price_warranty = _to_money_decimal(request.POST.get('wholesale_price_warranty', 0))
+            product.warranty_period_months = _to_positive_int(
+                request.POST.get('warranty_period_months', 0),
+                default=0,
+                minimum=0,
+                maximum=1200,
+            )
+            product.warranty_policy = (request.POST.get('warranty_policy', '') or '').strip() or None
             product.min_stock = request.POST.get('min_stock', 0) or 0
             product.max_stock = request.POST.get('max_stock', 0) or 0
             product.description = request.POST.get('description', '')
@@ -2981,6 +2990,14 @@ PRODUCT_IMPORT_HEADER_ALIASES = {
     'gia si khong bao hanh': 'wholesale_price_no_warranty',
     'gia si bh': 'wholesale_price_warranty',
     'gia si co bao hanh': 'wholesale_price_warranty',
+    'ky han bao hanh': 'warranty_period_months',
+    'ky han bao hanh thang': 'warranty_period_months',
+    'thoi han bao hanh': 'warranty_period_months',
+    'thoi han bao hanh thang': 'warranty_period_months',
+    'bao hanh thang': 'warranty_period_months',
+    'warranty months': 'warranty_period_months',
+    'chinh sach bao hanh': 'warranty_policy',
+    'warranty policy': 'warranty_policy',
     'ton kho': 'stock',
     'ton': 'stock',
     'ton toi thieu': 'min_stock',
@@ -3291,6 +3308,15 @@ def _upsert_product_import_row(row, headers, request, default_store, default_war
         product.min_stock = _parse_import_int(_row_import_value(row, headers, 'min_stock'))
     if 'max_stock' in headers:
         product.max_stock = _parse_import_int(_row_import_value(row, headers, 'max_stock'))
+    if 'warranty_period_months' in headers:
+        product.warranty_period_months = min(
+            _parse_import_int(_row_import_value(row, headers, 'warranty_period_months')),
+            1200,
+        )
+    if 'warranty_policy' in headers:
+        product.warranty_policy = _excel_cell_text(
+            _row_import_value(row, headers, 'warranty_policy')
+        ) or None
     if 'is_active' in headers:
         product.is_active = _parse_import_active(_row_import_value(row, headers, 'is_active'), current=product.is_active)
     elif created:
@@ -3501,6 +3527,8 @@ def export_products_excel(request):
         {'key': 'selling_price', 'label': 'Giá bán lẻ', 'width': 14},
         {'key': 'wholesale_no_w', 'label': 'Giá sỉ KBH', 'width': 14},
         {'key': 'wholesale_w', 'label': 'Giá sỉ BH', 'width': 14},
+        {'key': 'warranty_months', 'label': 'Kỳ hạn bảo hành (tháng)', 'width': 22},
+        {'key': 'warranty_policy', 'label': 'Chính sách bảo hành', 'width': 32},
         {'key': 'stock', 'label': 'Tồn kho', 'width': 10},
         {'key': 'min_stock', 'label': 'Tồn tối thiểu', 'width': 12},
         {'key': 'max_stock', 'label': 'Tồn tối đa', 'width': 12},
@@ -3536,6 +3564,8 @@ def export_products_excel(request):
             'selling_price': float(p.selling_price),
             'wholesale_no_w': float(p.wholesale_price_no_warranty),
             'wholesale_w': float(p.wholesale_price_warranty),
+            'warranty_months': p.warranty_period_months,
+            'warranty_policy': p.warranty_policy or '',
             'stock': total_stock,
             'min_stock': p.min_stock,
             'max_stock': p.max_stock,

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import calendar
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
@@ -9,11 +10,12 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.utils import timezone
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
+    WarrantyCertificate, WarrantyCertificateItem,
 )
 from customers.models import Customer, CustomerAddress
 from products.models import Product, Warehouse, ProductStock, ProductVariant, ComboItem
@@ -544,13 +546,18 @@ def _build_default_warranty_items(items):
     for item in items:
         if not item.product_id or getattr(item, 'is_service_line', False):
             continue
+        warranty_months = int(getattr(item.product, 'warranty_period_months', 0) or 0)
         warranty_items.append({
+            'order_item_id': item.id,
+            'product_id': item.product_id,
             'code': _item_display_code(item),
             'name': _item_display_name(item),
             'unit': _item_display_unit(item),
             'quantity': item.quantity,
             'serial': '',
-            'warranty_term': '',
+            'warranty_period_months': warranty_months,
+            'warranty_term': f'{warranty_months} tháng' if warranty_months else '',
+            'warranty_policy': getattr(item.product, 'warranty_policy', '') or '',
             'note': '',
         })
     return warranty_items
@@ -574,15 +581,81 @@ def _parse_warranty_items_payload(raw_payload):
         if not name:
             continue
         warranty_items.append({
+            'order_item_id': row.get('order_item_id'),
+            'product_id': row.get('product_id'),
             'code': (row.get('code') or row.get('product_code') or '').strip()[:80],
             'name': name[:255],
             'unit': (row.get('unit') or '').strip()[:50],
             'quantity': _non_negative_decimal(row.get('quantity', 1)),
             'serial': (row.get('serial') or '').strip()[:255],
+            'warranty_period_months': max(_normalize_optional_int(row.get('warranty_period_months')) or 0, 0),
             'warranty_term': (row.get('warranty_term') or '').strip()[:120],
+            'warranty_policy': (row.get('warranty_policy') or '').strip(),
             'note': (row.get('note') or '').strip()[:255],
         })
     return warranty_items
+
+
+def _add_months(value, months):
+    if not value or not months:
+        return None
+    month_index = value.month - 1 + int(months)
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _warranty_start_date_for_order(order):
+    if order.delivery_date:
+        return order.delivery_date
+    export_history = OrderEditHistory.objects.filter(
+        order=order,
+        action='stock_export',
+    ).order_by('created_at', 'id').first()
+    if export_history and export_history.created_at:
+        created_at = export_history.created_at
+        if timezone.is_aware(created_at):
+            created_at = timezone.localtime(created_at)
+        return created_at.date()
+    return date.today()
+
+
+def _serialize_warranty_certificate(certificate):
+    if not certificate:
+        return None
+    items = []
+    for item in certificate.items.select_related('product', 'order_item').all():
+        items.append({
+            'id': item.id,
+            'order_item_id': item.order_item_id,
+            'product_id': item.product_id,
+            'product_code': item.product_code,
+            'product_name': item.product_name,
+            'code': item.product_code,
+            'name': item.product_name,
+            'unit': item.unit,
+            'quantity': float(item.quantity),
+            'serial': item.serial,
+            'warranty_period_months': item.warranty_period_months,
+            'warranty_term': item.warranty_term,
+            'warranty_policy': item.warranty_policy,
+            'warranty_start_date': item.warranty_start_date,
+            'warranty_end_date': item.warranty_end_date,
+            'note': item.note,
+        })
+    return {
+        'id': certificate.id,
+        'code': certificate.code,
+        'order_id': certificate.order_id,
+        'issue_date': certificate.issue_date,
+        'customer_name': certificate.customer_name,
+        'customer_phone': certificate.customer_phone,
+        'customer_address': certificate.customer_address,
+        'created_at': certificate.created_at.strftime('%d/%m/%Y %H:%M') if certificate.created_at else '',
+        'updated_at': certificate.updated_at.strftime('%d/%m/%Y %H:%M') if certificate.updated_at else '',
+        'items': items,
+    }
 
 
 def _get_reserved_stock_maps(request, exclude_order_id=None):
@@ -2702,6 +2775,7 @@ def _serialize_order_list(orders):
             'approval_status_display': o.get_approval_status_display(),
             'approved_at': o.approved_at.strftime('%d/%m/%Y %H:%M') if o.approved_at else '',
             'bonus_amount': float(o.bonus_amount),
+            'has_warranty_certificate': bool(getattr(o, 'has_warranty_certificate', False)),
         })
     return data
 
@@ -2721,7 +2795,11 @@ def api_get_orders(request):
     page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
     filters = _get_order_list_filters(request)
 
-    base_queryset = filter_by_store(Order.objects.all(), request)
+    base_queryset = filter_by_store(Order.objects.all(), request).annotate(
+        has_warranty_certificate=Exists(
+            WarrantyCertificate.objects.filter(order_id=OuterRef('pk'))
+        )
+    )
     total_all_count = base_queryset.count()
 
     status_scope_queryset = _apply_order_list_filters(base_queryset, filters, include_status=False)
@@ -2803,6 +2881,7 @@ def api_get_order_detail(request):
                 it.discount_percent,
             )
             items.append({
+                'order_item_id': it.id,
                 'product_id': it.product_id,
                 'variant_id': it.variant_id,
                 'product_code': _item_display_code(it),
@@ -2821,7 +2900,13 @@ def api_get_order_detail(request):
                 'discount_amount': float(line_discount_amount),
                 'discount_percent': float(line_discount_percent),
                 'total_price': float(it.total_price),
+                'warranty_period_months': product.warranty_period_months if product else 0,
+                'warranty_policy': (product.warranty_policy or '') if product else '',
             })
+        warranty_certificate = WarrantyCertificate.objects.filter(order=o).prefetch_related(
+            'items__product',
+            'items__order_item',
+        ).first()
         return JsonResponse({
             'status': 'ok',
             'order': {
@@ -2839,6 +2924,7 @@ def api_get_order_detail(request):
                 'shipping_address': o.shipping_address or '',
                 'warehouse_id': o.warehouse_id,
                 'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
+                'delivery_date': o.delivery_date.strftime('%Y-%m-%d') if o.delivery_date else '',
                 'created_date': _local_date_iso(o.created_at),
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
@@ -2877,6 +2963,8 @@ def api_get_order_detail(request):
                 'exchange_original_order_code': source_return.order.code if source_return and source_return.order else '',
             },
             'items': items,
+            'can_save_warranty': o.status in ORDER_STOCK_EXPORTED_STATUSES,
+            'warranty_certificate': _serialize_warranty_certificate(warranty_certificate),
             'available_print_brands': [
                 _serialize_print_brand(brand)
                 for brand in _get_print_brand_selection_queryset(request, record=o)
@@ -4019,6 +4107,162 @@ def api_export_order_stock(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
+def _warranty_months_from_payload(row, default=0):
+    raw_months = row.get('warranty_period_months')
+    if raw_months not in (None, ''):
+        try:
+            return min(max(int(raw_months), 0), 1200)
+        except (TypeError, ValueError):
+            pass
+
+    term = (row.get('warranty_term') or '').strip().lower()
+    match = re.search(r'\d+', term)
+    if match:
+        months = int(match.group())
+        if 'năm' in term or 'nam' in term or 'year' in term:
+            months *= 12
+        return min(months, 1200)
+    return min(max(int(default or 0), 0), 1200)
+
+
+@login_required(login_url="/login/")
+def api_save_order_warranty(request):
+    """Lưu hoặc cập nhật một phiếu bảo hành chính thức theo đơn đã xuất kho."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id') or data.get('id')
+        items_payload = data.get('items') or data.get('warranty_items') or []
+        if not isinstance(items_payload, list) or not items_payload:
+            return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một sản phẩm bảo hành.'})
+
+        with transaction.atomic():
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_for_update().select_related(
+                    'customer', 'warehouse', 'store',
+                ),
+            )
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng.'})
+            if order.status not in ORDER_STOCK_EXPORTED_STATUSES:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Chỉ lưu phiếu bảo hành khi đơn đã Xuất kho hoặc Hoàn thành.',
+                })
+
+            order_items = {
+                item.id: item
+                for item in order.items.select_related('product').all()
+                if item.product_id and not item.is_service_line
+            }
+            certificate = WarrantyCertificate.all_objects.select_for_update().filter(order=order).first()
+            created = certificate is None
+            if created:
+                certificate = WarrantyCertificate(
+                    order=order,
+                    code=f'PBH-{order.code}'[:80],
+                    created_by=request.user,
+                )
+            elif certificate.is_deleted:
+                certificate.is_deleted = False
+                certificate.deleted_at = None
+
+            customer = order.customer
+            certificate.issue_date = date.today()
+            certificate.customer_name = customer.name if customer else GUEST_CUSTOMER_NAME
+            certificate.customer_phone = customer.phone if customer and customer.phone else ''
+            certificate.customer_address = (
+                order.shipping_address
+                or (customer.address if customer else '')
+                or (customer.company_address if customer else '')
+                or ''
+            )
+            certificate.save()
+            certificate.items.all().delete()
+
+            start_date = _warranty_start_date_for_order(order)
+            saved_count = 0
+            seen_order_items = set()
+            for row in items_payload[:100]:
+                if not isinstance(row, dict):
+                    continue
+                order_item_id = _normalize_optional_int(row.get('order_item_id'))
+                order_item = order_items.get(order_item_id)
+                if not order_item:
+                    raise ValueError('Sản phẩm bảo hành phải thuộc đơn hàng đã xuất kho.')
+                if order_item_id in seen_order_items:
+                    raise ValueError(f'Sản phẩm "{order_item.product.name}" bị chọn trùng trong phiếu bảo hành.')
+                seen_order_items.add(order_item_id)
+
+                quantity = _non_negative_decimal(row.get('quantity', order_item.quantity))
+                if quantity <= 0 or quantity > order_item.quantity:
+                    raise ValueError(
+                        f'Số lượng bảo hành của "{order_item.product.name}" phải lớn hơn 0 '
+                        f'và không vượt quá số lượng đã bán.'
+                    )
+                months = _warranty_months_from_payload(
+                    row,
+                    default=order_item.product.warranty_period_months,
+                )
+                warranty_term = (row.get('warranty_term') or '').strip()[:120]
+                if not warranty_term and months:
+                    warranty_term = f'{months} tháng'
+                warranty_policy = (
+                    (row.get('warranty_policy') or '').strip()
+                    if 'warranty_policy' in row
+                    else (order_item.product.warranty_policy or '')
+                )
+
+                WarrantyCertificateItem.objects.create(
+                    certificate=certificate,
+                    order_item=order_item,
+                    product=order_item.product,
+                    product_code=order_item.product.code,
+                    product_name=order_item.product.name,
+                    unit=order_item.product.unit or '',
+                    quantity=quantity,
+                    serial=(row.get('serial') or '').strip()[:255],
+                    warranty_period_months=months,
+                    warranty_term=warranty_term,
+                    warranty_policy=warranty_policy,
+                    warranty_start_date=start_date,
+                    warranty_end_date=_add_months(start_date, months),
+                    note=(row.get('note') or '').strip()[:255],
+                )
+                saved_count += 1
+
+            if not saved_count:
+                raise ValueError('Vui lòng chọn ít nhất một sản phẩm hợp lệ trong đơn hàng.')
+
+            _log_order_history(
+                order=order,
+                actor=request.user,
+                action='warranty',
+                summary=(
+                    f'{"Tạo" if created else "Cập nhật"} phiếu bảo hành {certificate.code}; '
+                    f'{saved_count} sản phẩm; ngày bắt đầu {start_date.strftime("%d/%m/%Y")}.'
+                ),
+                status_before=order.status,
+                status_after=order.status,
+            )
+
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Đã lưu phiếu bảo hành {certificate.code} theo đơn {order.code}.',
+            'warranty_certificate': _serialize_warranty_certificate(certificate),
+        })
+    except ValueError as exc:
+        return JsonResponse({'status': 'error', 'message': str(exc)})
+    except IntegrityError:
+        return JsonResponse({'status': 'error', 'message': 'Mã phiếu bảo hành đã tồn tại.'})
+    except Exception as exc:
+        logger.exception('Không lưu được phiếu bảo hành cho đơn %s', request.POST.get('id', ''))
+        return JsonResponse({'status': 'error', 'message': str(exc)})
+
+
 @login_required(login_url="/login/")
 def api_update_order_status(request):
     """Cập nhật nhanh một bước trạng thái mà không lưu lại toàn bộ đơn."""
@@ -4166,6 +4410,7 @@ def api_get_quotation_detail(request):
                 it.discount_percent,
             )
             items.append({
+                'order_item_id': None,
                 'product_id': it.product_id,
                 'variant_id': it.variant_id,
                 'product_code': _item_display_code(it),
@@ -4184,6 +4429,8 @@ def api_get_quotation_detail(request):
                 'total_price': float(it.total_price),
                 'note': it.note,
                 'effective_note': it.display_note,
+                'warranty_period_months': product.warranty_period_months if product else 0,
+                'warranty_policy': (product.warranty_policy or '') if product else '',
             })
         return JsonResponse({
             'status': 'ok',
@@ -4213,6 +4460,8 @@ def api_get_quotation_detail(request):
                 'store_brand_id': q.store.brand_id if q.store and q.store.brand_id else None,
             },
             'items': items,
+            'can_save_warranty': False,
+            'warranty_certificate': None,
             'available_print_brands': [
                 _serialize_print_brand(brand)
                 for brand in _get_print_brand_selection_queryset(request, record=q)
@@ -5394,15 +5643,25 @@ def api_print_order(request):
     template_brand = _get_template_brand_for_print(request, record=print_record)
     print_template = _get_print_template(template_type, template_brand)
     warranty_items = None
+    warranty_certificate = None
     if print_type == 'warranty':
         warranty_items = _parse_warranty_items_payload(warranty_items_payload)
         if warranty_items is None:
-            warranty_items = _build_default_warranty_items(items)
+            if source == 'order':
+                warranty_certificate = WarrantyCertificate.objects.filter(order=order).prefetch_related(
+                    'items__product',
+                    'items__order_item',
+                ).first()
+            if warranty_certificate:
+                warranty_items = _serialize_warranty_certificate(warranty_certificate)['items']
+            else:
+                warranty_items = _build_default_warranty_items(items)
 
     context = {
         'order': order,
         'items': items,
         'warranty_items': warranty_items,
+        'warranty_certificate': warranty_certificate,
         'brand': brand,
         'remaining': remaining,
         'valid_until': valid_until,

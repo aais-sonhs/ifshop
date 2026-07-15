@@ -277,7 +277,7 @@
                             </div>
                         </section>
 
-                        <section class="product-form-section mb-lg-0">
+                        <section class="product-form-section">
                             <div class="product-form-section-header">
                                 <span class="product-form-section-icon bg-success-soft"><i class="fas fa-tags"></i></span>
                                 <div><strong>Giá sản phẩm</strong><small>Giá nhập, giá vốn và các mức giá bán</small></div>
@@ -291,6 +291,30 @@
                                 <div class="row" id="price_row_2">
                                     <div class="col-md-6"><div class="form-group mb-md-0"><label>Giá sỉ không bảo hành</label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_no_warranty" value="0"></div></div></div>
                                     <div class="col-md-6"><div class="form-group mb-0"><label>Giá sỉ có bảo hành</label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_wholesale_warranty" value="0"></div></div></div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="product-form-section mb-lg-0">
+                            <div class="product-form-section-header">
+                                <span class="product-form-section-icon bg-success-soft"><i class="fas fa-shield-alt"></i></span>
+                                <div><strong>Chính sách bảo hành</strong><small>Thông tin tự động điền khi lập phiếu bảo hành từ đơn hàng</small></div>
+                            </div>
+                            <div class="product-form-section-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group mb-md-0">
+                                            <label>Kỳ hạn bảo hành (tháng)</label>
+                                            <input type="number" min="0" max="1200" step="1" class="form-control form-control-sm" id="inp_warranty_period_months" value="0">
+                                            <small class="text-muted">Nhập 0 nếu sản phẩm không bảo hành.</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="form-group mb-0">
+                                            <label>Chính sách / điều kiện bảo hành</label>
+                                            <textarea class="form-control form-control-sm" id="inp_warranty_policy" rows="3" placeholder="Ví dụ: Bảo hành lỗi kỹ thuật, không áp dụng với rơi vỡ hoặc vào nước..."></textarea>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -1222,7 +1246,7 @@ function resetProductForm(){
     $('.btn-quick-master').show().prop('disabled', false);
     $('#btn_save').show().prop('disabled', false).html('<i class="fas fa-save"></i> Lưu');
     $('#edit_id').val('');
-    $('#inp_code,#inp_name,#inp_barcode,#inp_description,#inp_note').val('');
+    $('#inp_code,#inp_name,#inp_barcode,#inp_description,#inp_note,#inp_warranty_policy').val('');
     $('#inp_unit').val('Cái');
     $('#inp_is_weight_based').prop('checked', false);
     $('#inp_is_service').prop('checked', false);
@@ -1239,6 +1263,7 @@ function resetProductForm(){
     setMoneyValue('#inp_wholesale_no_warranty', 0);
     setMoneyValue('#inp_wholesale_warranty', 0);
     $('#inp_min_stock,#inp_max_stock').val(0);
+    $('#inp_warranty_period_months').val(0);
     $('#inp_category_id,#inp_product_type_id,#inp_supplier_id,#inp_location_id').val('').trigger('change');
     renderProductTypeOptions('', '');
     $('#inp_specification').val('');
@@ -1478,6 +1503,8 @@ $(document).ready(function(){
         fd.append('selling_price', getMoneyValue('#inp_selling_price'));
         fd.append('wholesale_price_no_warranty', getMoneyValue('#inp_wholesale_no_warranty'));
         fd.append('wholesale_price_warranty', getMoneyValue('#inp_wholesale_warranty'));
+        fd.append('warranty_period_months', $('#inp_warranty_period_months').val() || 0);
+        fd.append('warranty_policy', $('#inp_warranty_policy').val());
         fd.append('min_stock', $('#inp_min_stock').val());
         fd.append('max_stock', $('#inp_max_stock').val());
         fd.append('description', $('#inp_description').val());
@@ -1671,6 +1698,9 @@ function loadData(done){
             }
             if(d.is_service){
                 variantBadge += ' <span class="badge badge-secondary">DV</span>';
+            }
+            if(Number(d.warranty_period_months||0) > 0){
+                variantBadge += ' <span class="badge badge-success" title="'+escapeAttr(d.warranty_policy||'Có bảo hành')+'"><i class="fas fa-shield-alt mr-1"></i>'+fmt(d.warranty_period_months)+' tháng</span>';
             }
             if(d.combo_parent_count > 0){
                 var parentNames = (d.combo_parents || []).map(function(cp){ return cp.code + ' - ' + cp.name; }).join('\n');
@@ -2374,6 +2404,8 @@ function editItem(d){
     $('#inp_min_stock').val(d.min_stock); $('#inp_max_stock').val(d.max_stock); $('#inp_description').val(d.description); $('#inp_note').val(d.note || '');
     $('#inp_location_id').val(d.location_id || '').trigger('change');
     $('#inp_specification').val(d.specification || '');
+    $('#inp_warranty_period_months').val(d.warranty_period_months || 0);
+    $('#inp_warranty_policy').val(d.warranty_policy || '');
     $('#inp_is_weight_based').prop('checked', d.is_weight_based);
     $('#inp_is_service').prop('checked', d.is_service);
     $('#inp_is_combo').prop('checked', d.is_combo || false);
@@ -2516,6 +2548,8 @@ function viewCombo(d){
     $('#inp_location_id').val(d.location_id || '').prop('disabled', true).trigger('change');
     $('.btn-quick-master').hide();
     $('#inp_specification').val(d.specification || '').prop('disabled', true);
+    $('#inp_warranty_period_months').val(d.warranty_period_months || 0).prop('disabled', true);
+    $('#inp_warranty_policy').val(d.warranty_policy || '').prop('disabled', true);
     // Ảnh
     if(d.image){
         $('#img_preview').attr('src', d.image).show();

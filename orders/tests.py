@@ -1,4 +1,5 @@
 import json
+import calendar
 from io import BytesIO
 from datetime import date, timedelta
 
@@ -13,7 +14,7 @@ from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
 from orders.models import (
     Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem,
-    OrderReturnItem, Quotation,
+    OrderReturnItem, Quotation, WarrantyCertificate,
 )
 from products.models import ComboItem, Product, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, PrintTemplate, Store, UserProfile
@@ -3055,6 +3056,106 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('SN001', content)
         self.assertIn('12 tháng', content)
         self.assertNotIn('Sản phẩm test đơn hàng', content)
+
+    def test_saved_warranty_uses_product_defaults_and_keeps_historical_snapshot(self):
+        self.product.refresh_from_db()
+        self.product.warranty_period_months = 12
+        self.product.warranty_policy = 'Chính sách bảo hành tại thời điểm bán'
+        self.product.save(update_fields=['warranty_period_months', 'warranty_policy'])
+        order = self._create_order(code='DH-WARRANTY-SAVED', status=4)
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=100,
+            total_price=200,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order_warranty'),
+            data=json.dumps({
+                'order_id': order.id,
+                'items': [{
+                    'order_item_id': order_item.id,
+                    'quantity': 1,
+                    'serial': 'SERIAL-001',
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        certificate = WarrantyCertificate.objects.get(order=order)
+        warranty_item = certificate.items.get()
+        self.assertEqual(certificate.code, f'PBH-{order.code}')
+        self.assertEqual(warranty_item.order_item_id, order_item.id)
+        self.assertEqual(warranty_item.serial, 'SERIAL-001')
+        self.assertEqual(warranty_item.warranty_period_months, 12)
+        self.assertEqual(warranty_item.warranty_term, '12 tháng')
+        self.assertEqual(warranty_item.warranty_policy, 'Chính sách bảo hành tại thời điểm bán')
+        self.assertEqual(warranty_item.warranty_start_date, date.today())
+        expected_end_day = min(
+            date.today().day,
+            calendar.monthrange(date.today().year + 1, date.today().month)[1],
+        )
+        self.assertEqual(
+            warranty_item.warranty_end_date,
+            date(date.today().year + 1, date.today().month, expected_end_day),
+        )
+        self.assertTrue(order.history_entries.filter(action='warranty').exists())
+
+        self.product.warranty_period_months = 6
+        self.product.warranty_policy = 'Chính sách mới không được đổi phiếu cũ'
+        self.product.save(update_fields=['warranty_period_months', 'warranty_policy'])
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload['can_save_warranty'])
+        self.assertEqual(detail_payload['warranty_certificate']['code'], certificate.code)
+        self.assertEqual(
+            detail_payload['warranty_certificate']['items'][0]['warranty_policy'],
+            'Chính sách bảo hành tại thời điểm bán',
+        )
+
+        list_payload = self.client.get(reverse('api_get_orders')).json()
+        order_row = next(row for row in list_payload['data'] if row['id'] == order.id)
+        self.assertTrue(order_row['has_warranty_certificate'])
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'warranty', 'source': 'order'},
+        )
+        print_content = print_response.content.decode()
+        self.assertIn(certificate.code, print_content)
+        self.assertIn('SERIAL-001', print_content)
+        self.assertIn('Chính sách bảo hành tại thời điểm bán', print_content)
+        self.assertNotIn('Chính sách mới không được đổi phiếu cũ', print_content)
+
+    def test_warranty_cannot_be_saved_before_order_stock_export(self):
+        order = self._create_order(code='DH-WARRANTY-NOT-EXPORTED', status=3)
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_save_order_warranty'),
+            data=json.dumps({
+                'order_id': order.id,
+                'items': [{'order_item_id': order_item.id, 'quantity': 1}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Xuất kho', response.json()['message'])
+        self.assertFalse(WarrantyCertificate.objects.filter(order=order).exists())
 
     def test_print_warranty_empty_custom_items_does_not_fallback_to_all_products(self):
         order = self._create_order(code='DH-WARRANTY-EMPTY', status=5)

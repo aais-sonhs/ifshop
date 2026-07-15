@@ -129,6 +129,8 @@ class Product(SoftDeleteModel):
     location = models.ForeignKey(ProductLocation, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='products', verbose_name='Vị trí sản phẩm')
     specification = models.CharField(max_length=255, blank=True, null=True, verbose_name='Quy cách sản phẩm')
+    warranty_period_months = models.PositiveIntegerField(default=0, verbose_name='Kỳ hạn bảo hành (tháng)')
+    warranty_policy = models.TextField(blank=True, null=True, verbose_name='Chính sách bảo hành')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='products_created')

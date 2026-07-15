@@ -969,8 +969,9 @@
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
+                <div id="warranty_save_notice" class="alert alert-light border py-2 px-3 mb-2"></div>
                 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap" style="gap:8px;">
-                    <small class="text-muted">Chỉ tick những sản phẩm cần bảo hành. Có thể sửa mã, tên, số lượng, serial/lô và thời hạn trước khi in.</small>
+                    <small class="text-muted">Chọn sản phẩm cần bảo hành. Kỳ hạn và chính sách được lấy sẵn từ thông tin sản phẩm; có thể chỉnh trước khi lưu.</small>
                     <div class="btn-group btn-group-sm">
                         <button type="button" class="btn btn-outline-secondary" id="btn_warranty_select_all">Chọn tất cả</button>
                         <button type="button" class="btn btn-outline-secondary" id="btn_warranty_clear_all">Bỏ chọn</button>
@@ -982,12 +983,13 @@
                         <thead class="bg-light">
                             <tr>
                                 <th style="width:4%" class="text-center"></th>
-                                <th style="width:12%">Mã SP</th>
-                                <th style="width:26%">Tên sản phẩm</th>
-                                <th style="width:8%">ĐVT</th>
-                                <th style="width:8%">SL</th>
-                                <th style="width:16%">Serial / Lô</th>
-                                <th style="width:16%">Thời hạn BH</th>
+                                <th style="width:10%">Mã SP</th>
+                                <th style="width:20%">Tên sản phẩm</th>
+                                <th style="width:7%">ĐVT</th>
+                                <th style="width:7%">SL</th>
+                                <th style="width:13%">Serial / Lô</th>
+                                <th style="width:10%">Kỳ hạn (tháng)</th>
+                                <th style="width:19%">Chính sách BH</th>
                                 <th style="width:10%">Ghi chú</th>
                                 <th style="width:4%"></th>
                             </tr>
@@ -998,7 +1000,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
-                <button type="button" class="btn btn-success" id="btn_warranty_print"><i class="fas fa-print mr-1"></i>In phiếu bảo hành</button>
+                <button type="button" class="btn btn-success" id="btn_warranty_print"><i class="fas fa-save mr-1"></i>Lưu &amp; In phiếu bảo hành</button>
             </div>
         </div>
     </div>
@@ -1029,6 +1031,7 @@
 .print-option-card.print-option-skip:hover { border-color: #999; }
 #warranty_items_tbl input { min-width: 80px; }
 #warranty_items_tbl .warranty-name { min-width: 180px; }
+#warranty_items_tbl .warranty-policy { min-width: 220px; resize: vertical; }
 </style>
 {% endblock %}
 
@@ -5849,6 +5852,9 @@ function loadData(){
                 paymentHtml += '<div><small class="text-muted">Còn: ' + fmt(d.remaining_amount) + '</small></div>';
             }
             var productHtml = escapeHtml(d.product_display || '') + renderOrderReturnBadges(d);
+            if(d.has_warranty_certificate){
+                productHtml += ' <span class="badge badge-success" title="Đã lưu phiếu bảo hành"><i class="fas fa-shield-alt mr-1"></i>Đã có PBH</span>';
+            }
             // Hiển thị trạng thái + badge duyệt
             var statusHtml = getStatusBadgeHtml(d.status, d.status_display);
             if(d.approval_status === 1){
@@ -7087,28 +7093,36 @@ function getPrintDetailUrl(source, id){
 
 function normalizeWarrantyItem(item){
     var isService = item && (item.is_service_line || item.product_code === 'DV');
+    var months = Number(item.warranty_period_months||0);
     return {
-        include: !isService,
+        include: !!item._saved_warranty || (!isService && months > 0),
+        order_item_id: item.order_item_id || null,
+        product_id: item.product_id || null,
+        is_service: !!isService,
         code: item.product_code || '',
         name: item.product_name || item.item_name || '',
         unit: item.unit || '',
         quantity: item.quantity || 1,
-        serial: '',
-        warranty_term: '',
-        note: isService ? 'Dịch vụ/không bảo hành' : ''
+        serial: item.serial || '',
+        warranty_period_months: months,
+        warranty_policy: item.warranty_policy || '',
+        note: item.note || (isService ? 'Dịch vụ/không bảo hành' : '')
     };
 }
 
 function appendWarrantyItemRow(item){
-    item = item || {include:true, code:'', name:'', unit:'', quantity:1, serial:'', warranty_term:'', note:''};
-    var html = '<tr>' +
-        '<td class="text-center align-middle"><input type="checkbox" class="warranty-include" ' + (item.include ? 'checked' : '') + '></td>' +
-        '<td><input type="text" class="form-control form-control-sm warranty-code" value="' + escapeAttr(item.code || '') + '"></td>' +
-        '<td><input type="text" class="form-control form-control-sm warranty-name" value="' + escapeAttr(item.name || '') + '"></td>' +
-        '<td><input type="text" class="form-control form-control-sm warranty-unit" value="' + escapeAttr(item.unit || '') + '"></td>' +
+    item = item || {include:true, code:'', name:'', unit:'', quantity:1, serial:'', warranty_period_months:0, warranty_policy:'', note:''};
+    var disabled = item.is_service ? ' disabled' : '';
+    var fixedProductInfo = window._warrantyEditorSource === 'order' ? ' readonly' : '';
+    var html = '<tr data-order-item-id="'+escapeAttr(item.order_item_id||'')+'" data-product-id="'+escapeAttr(item.product_id||'')+'">' +
+        '<td class="text-center align-middle"><input type="checkbox" class="warranty-include" ' + (item.include ? 'checked' : '') + disabled + '></td>' +
+        '<td><input type="text" class="form-control form-control-sm warranty-code" value="' + escapeAttr(item.code || '') + '"'+fixedProductInfo+'></td>' +
+        '<td><input type="text" class="form-control form-control-sm warranty-name" value="' + escapeAttr(item.name || '') + '"'+fixedProductInfo+'></td>' +
+        '<td><input type="text" class="form-control form-control-sm warranty-unit" value="' + escapeAttr(item.unit || '') + '"'+fixedProductInfo+'></td>' +
         '<td><input type="number" class="form-control form-control-sm warranty-qty" value="' + (item.quantity || 1) + '" min="0" step="1"></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-serial" value="' + escapeAttr(item.serial || '') + '" placeholder="Serial / lô"></td>' +
-        '<td><input type="text" class="form-control form-control-sm warranty-term" value="' + escapeAttr(item.warranty_term || '') + '" placeholder="VD: 12 tháng"></td>' +
+        '<td><input type="number" min="0" max="1200" step="1" class="form-control form-control-sm warranty-months" value="' + Number(item.warranty_period_months||0) + '"></td>' +
+        '<td><textarea class="form-control form-control-sm warranty-policy" rows="2" placeholder="Chính sách bảo hành">' + escapeHtml(item.warranty_policy || '') + '</textarea></td>' +
         '<td><input type="text" class="form-control form-control-sm warranty-note" value="' + escapeAttr(item.note || '') + '"></td>' +
         '<td class="text-center align-middle"><button type="button" class="btn btn-xs btn-outline-danger btn-warranty-remove"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
@@ -7116,7 +7130,7 @@ function appendWarrantyItemRow(item){
 }
 
 function openWarrantyItemEditor(source, id){
-    $('#warranty_items_tbl tbody').html('<tr><td colspan="9" class="text-center text-muted py-3">Đang tải sản phẩm...</td></tr>');
+    $('#warranty_items_tbl tbody').html('<tr><td colspan="10" class="text-center text-muted py-3">Đang tải sản phẩm...</td></tr>');
     $('#modal_print_config').modal('hide');
     $('#modal_warranty_items').modal('show');
     $.get(getPrintDetailUrl(source, id), function(res){
@@ -7125,13 +7139,39 @@ function openWarrantyItemEditor(source, id){
             alert(res.message || 'Không tải được dữ liệu chứng từ');
             return;
         }
+        window._warrantyEditorSource = source;
+        window._warrantyEditorOrderId = id;
+        window._warrantyCanSave = source === 'order' && !!res.can_save_warranty;
         $('#warranty_items_tbl tbody').html('');
-        (res.items || []).forEach(function(item){
+        var certificate = res.warranty_certificate || null;
+        var sourceItems = certificate ? (certificate.items || []).map(function(item){
+            item._saved_warranty = true;
+            return item;
+        }) : (res.items || []);
+        sourceItems.forEach(function(item){
             appendWarrantyItemRow(normalizeWarrantyItem(item));
         });
         if(!$('#warranty_items_tbl tbody tr').length){
             appendWarrantyItemRow();
         }
+        if(certificate){
+            $('#warranty_save_notice').removeClass('alert-warning alert-info').addClass('alert-success').html(
+                '<strong><i class="fas fa-check-circle mr-1"></i>Đã lưu '+escapeHtml(certificate.code)+'</strong>'+
+                ' · Cập nhật: '+escapeHtml(certificate.updated_at||certificate.created_at||'')+
+            );
+        } else if(window._warrantyCanSave){
+            $('#warranty_save_notice').removeClass('alert-warning alert-success').addClass('alert-info').html(
+                '<i class="fas fa-info-circle mr-1"></i>Phiếu sẽ được lưu chính thức và liên kết với đơn hàng này.'
+            );
+        } else {
+            $('#warranty_save_notice').removeClass('alert-info alert-success').addClass('alert-warning').html(
+                '<i class="fas fa-exclamation-triangle mr-1"></i>Chỉ lưu phiếu chính thức khi đơn đã Xuất kho/Hoàn thành. Hiện tại chỉ có thể in xem trước.'
+            );
+        }
+        $('#btn_warranty_add_line').toggle(source !== 'order');
+        $('#btn_warranty_print').html(window._warrantyCanSave
+            ? '<i class="fas fa-save mr-1"></i>Lưu &amp; In phiếu bảo hành'
+            : '<i class="fas fa-print mr-1"></i>In xem trước');
     });
 }
 
@@ -7143,12 +7183,16 @@ function collectWarrantyItems(){
         var name = ($row.find('.warranty-name').val() || '').trim();
         if(!name) return;
         rows.push({
+            order_item_id: Number($row.data('order-item-id')) || null,
+            product_id: Number($row.data('product-id')) || null,
             code: ($row.find('.warranty-code').val() || '').trim(),
             name: name,
             unit: ($row.find('.warranty-unit').val() || '').trim(),
             quantity: parseFloat($row.find('.warranty-qty').val()) || 0,
             serial: ($row.find('.warranty-serial').val() || '').trim(),
-            warranty_term: ($row.find('.warranty-term').val() || '').trim(),
+            warranty_period_months: parseInt($row.find('.warranty-months').val(),10) || 0,
+            warranty_term: (parseInt($row.find('.warranty-months').val(),10) || 0) > 0 ? (parseInt($row.find('.warranty-months').val(),10) + ' tháng') : '',
+            warranty_policy: ($row.find('.warranty-policy').val() || '').trim(),
             note: ($row.find('.warranty-note').val() || '').trim()
         });
     });
@@ -7165,12 +7209,40 @@ $('#btn_warranty_print').click(function(){
         alert('Vui lòng chọn hoặc nhập ít nhất một sản phẩm bảo hành.');
         return;
     }
-    var orderId = window._lastSavedOrderId;
-    var source = window._lastSavedOrderSource || 'order';
-    var url = getPrintUrl('warranty', source, orderId, {
-        warranty_items: JSON.stringify(rows),
-        brand_id: getSelectedPrintBrandId()
-    });
+    var orderId = window._warrantyEditorOrderId || window._lastSavedOrderId;
+    var source = window._warrantyEditorSource || window._lastSavedOrderSource || 'order';
+    if(window._warrantyCanSave && source === 'order'){
+        var printWindow = window.open('about:blank', '_blank');
+        var $button = $('#btn_warranty_print').prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang lưu...');
+        $.ajax({
+            url: '/api/orders/warranty/save/',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{csrf_token}}'},
+            data: JSON.stringify({order_id: orderId, items: rows}),
+            success: function(res){
+                if(res.status !== 'ok'){
+                    if(printWindow) printWindow.close();
+                    alert(res.message || 'Không lưu được phiếu bảo hành.');
+                    return;
+                }
+                $('#modal_warranty_items').modal('hide');
+                var printUrl = getPrintUrl('warranty', 'order', orderId, {brand_id: getSelectedPrintBrandId()});
+                if(printWindow) printWindow.location = printUrl;
+                else window.open(printUrl, '_blank');
+                if(typeof toastr !== 'undefined') toastr.success(res.message);
+            },
+            error: function(){
+                if(printWindow) printWindow.close();
+                alert('Không kết nối được máy chủ để lưu phiếu bảo hành.');
+            },
+            complete: function(){
+                $button.prop('disabled', false).html('<i class="fas fa-save mr-1"></i>Lưu &amp; In phiếu bảo hành');
+            }
+        });
+        return;
+    }
+    var url = getPrintUrl('warranty', source, orderId, {warranty_items: JSON.stringify(rows), brand_id: getSelectedPrintBrandId()});
     $('#modal_warranty_items').modal('hide');
     window.open(url, '_blank');
 });

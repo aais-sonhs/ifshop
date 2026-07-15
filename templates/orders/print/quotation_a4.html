@@ -82,7 +82,7 @@
                 <td class="text-center">{{ item.display_unit }}</td>
                 <td class="text-right">{{ item.quantity|qty_vn }}</td>
                 {% if print_template.show_unit_price %}<td class="text-right">{{ item.unit_price|money_vnd }}</td>{% endif %}
-                {% if print_template.show_discount %}<td class="text-center">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}{% endif %}</td>{% endif %}
+                {% if print_template.show_discount %}<td class="text-center">{% if item.discount_mode == 'amount' and item.discount_amount %}{{ item.discount_amount|money_vnd }}đ{% elif item.discount_percent %}{{ item.discount_percent|floatformat:0 }}%{% endif %}</td>{% endif %}
                 <td class="text-right"><strong>{{ item.total_price|money_vnd }}</strong></td>
             </tr>
         {% endfor %}

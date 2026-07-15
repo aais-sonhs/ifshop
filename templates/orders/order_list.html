@@ -1161,6 +1161,28 @@
     color: #6c757d;
     font-weight: 600;
 }
+#items_tbl .order-line-discount-group {
+    min-width: 132px;
+    flex-wrap: nowrap;
+}
+#items_tbl .order-line-discount-group .inp_disc_mode {
+    flex: 0 0 58px;
+    max-width: 58px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+#items_tbl .order-line-discount-group .inp_disc {
+    min-width: 70px;
+}
+#items_tbl .order-line-discount-hint {
+    display: block;
+    min-height: 15px;
+    margin-top: 2px;
+    color: #6c757d;
+    font-size: 10px;
+    line-height: 1.2;
+    text-align: right;
+}
 #order_items_totals_tbl .order-total-quantity-row td {
     background: #f8fafc;
 }
@@ -4791,7 +4813,7 @@ $(document).ready(function(){
             var pid=$row.find('.sel_product').val();
             var qty=parseFloat($row.find('.inp_qty').val())||0;
             var price=getMoneyValue($row.find('.inp_price'))||0;
-            var disc=parseFloat($row.find('.inp_disc').val())||0;
+            var lineDiscount=getOrderLineDiscountData($row);
             if(isServiceLine){
                 var serviceName = ($row.find('.inp_service_name').val() || '').trim();
                 if(!serviceName){hasError=true;return;}
@@ -4803,7 +4825,9 @@ $(document).ready(function(){
                     unit: ($row.find('.inp_service_unit').val() || '').trim(),
                     quantity: qty,
                     unit_price: price,
-                    discount_percent: disc,
+                    discount_mode: lineDiscount.mode,
+                    discount_amount: Math.round(lineDiscount.amount),
+                    discount_percent: lineDiscount.percent,
                     note: ($row.find('.inp_item_note').val() || '').trim()
                 });
                 return;
@@ -4825,7 +4849,9 @@ $(document).ready(function(){
                 variant_id:variantId,
                 quantity:qty,
                 unit_price:price,
-                discount_percent:disc,
+                discount_mode:lineDiscount.mode,
+                discount_amount:Math.round(lineDiscount.amount),
+                discount_percent:lineDiscount.percent,
                 note:($row.find('.inp_item_note').val() || '').trim()
             });
         });
@@ -5109,6 +5135,8 @@ function addItemFromProduct(product){
         unit: product.unit,
         quantity: 1,
         unit_price: getProductRetailPrice(product),
+        discount_mode: 'percent',
+        discount_amount: 0,
         discount_percent: 0,
         image_url: product.image_url || '',
     };
@@ -5124,6 +5152,8 @@ function addServiceLine(item){
         unit: 'Lần',
         quantity: 1,
         unit_price: 0,
+        discount_mode: 'percent',
+        discount_amount: 0,
         discount_percent: 0
     }, item || {}));
 }
@@ -5131,6 +5161,97 @@ function addServiceLine(item){
 $(document).on('click', '#btn_add_service_line', function(){
     addServiceLine();
 });
+
+function normalizeOrderLineDiscountMode(mode){
+    return mode === 'amount' ? 'amount' : 'percent';
+}
+
+function getOrderLineDiscountData($row, modeOverride){
+    var qty = parseFloat($row.find('.inp_qty').val()) || 0;
+    var price = getMoneyValue($row.find('.inp_price')) || 0;
+    var gross = Math.max(qty * price, 0);
+    var mode = normalizeOrderLineDiscountMode(modeOverride || $row.find('.inp_disc_mode').val());
+    var rawValue = String($row.find('.inp_disc').val() || '0');
+    var percent = 0;
+    var amount = 0;
+    if(mode === 'amount'){
+        amount = Math.min(Math.max(getMoneyValue($row.find('.inp_disc')), 0), gross);
+        percent = gross > 0 ? amount / gross * 100 : 0;
+    } else {
+        percent = parseFloat(rawValue.replace(',', '.')) || 0;
+        percent = Math.min(Math.max(percent, 0), 100);
+        amount = gross * percent / 100;
+    }
+    return {
+        mode: mode,
+        percent: percent,
+        amount: amount,
+        gross: gross,
+        lineTotal: Math.max(gross - amount, 0)
+    };
+}
+
+function updateOrderLineDiscountHint($row, discountData){
+    discountData = discountData || getOrderLineDiscountData($row);
+    var hint = discountData.mode === 'amount'
+        ? '≈ ' + formatOrderDiscountPercent(discountData.percent) + '%'
+        : '= ' + fmt(Math.round(discountData.amount)) + 'đ';
+    $row.find('.order-line-discount-hint').text(hint);
+}
+
+function convertOrderLineDiscountMode($row, nextMode){
+    var $mode = $row.find('.inp_disc_mode');
+    var previousMode = normalizeOrderLineDiscountMode($mode.data('currentMode') || 'percent');
+    var currentData = getOrderLineDiscountData($row, previousMode);
+    nextMode = normalizeOrderLineDiscountMode(nextMode);
+    $mode.val(nextMode).data('currentMode', nextMode);
+    $row.find('.inp_disc').val(
+        nextMode === 'amount'
+            ? fmt(Math.round(currentData.amount))
+            : formatOrderDiscountPercent(currentData.percent)
+    );
+    calcLine($row, {syncDuplicates: true});
+}
+
+function formatOrderLineDiscountAmountInput(input){
+    var raw = String(input.value || '').replace(/[^0-9]/g, '');
+    input.value = raw ? Number(raw).toLocaleString('vi-VN') : '';
+}
+
+function bindOrderLineDiscountEditor($row){
+    var $mode = $row.find('.inp_disc_mode');
+    var $input = $row.find('.inp_disc');
+    $mode.on('change', function(){
+        convertOrderLineDiscountMode($row, $(this).val());
+    });
+    $input.on('input', function(){
+        if(normalizeOrderLineDiscountMode($mode.val()) === 'amount'){
+            formatOrderLineDiscountAmountInput(this);
+        }
+        calcLine($row, {deferTotal: true});
+    }).on('blur', function(){
+        var discountData = getOrderLineDiscountData($row);
+        $(this).val(
+            discountData.mode === 'amount'
+                ? fmt(Math.round(discountData.amount))
+                : formatOrderDiscountPercent(discountData.percent)
+        );
+        calcLine($row, {syncDuplicates: true});
+    });
+    updateOrderLineDiscountHint($row);
+}
+
+function renderOrderLineDiscountEditor(mode, amount, percent){
+    mode = normalizeOrderLineDiscountMode(mode);
+    var value = mode === 'amount' ? fmt(Math.round(Number(amount) || 0)) : formatOrderDiscountPercent(percent);
+    return '<div class="input-group input-group-sm order-line-discount-group">' +
+        '<select class="custom-select inp_disc_mode" data-current-mode="'+mode+'">' +
+            '<option value="percent"'+(mode === 'percent' ? ' selected' : '')+'>%</option>' +
+            '<option value="amount"'+(mode === 'amount' ? ' selected' : '')+'>Tiền</option>' +
+        '</select>' +
+        '<input type="text" inputmode="decimal" class="form-control text-right inp_disc" value="'+escapeAttr(value)+'" aria-label="Chiết khấu theo dòng">' +
+    '</div><small class="order-line-discount-hint"></small>';
+}
 
 function addItemRow(item, options){
     options = options || {};
@@ -5143,13 +5264,19 @@ function addItemRow(item, options){
         opts += buildOrderSelectedProductOption(item);
     }
     var qty=item?item.quantity:1,price=item?item.unit_price:0,disc=item?item.discount_percent:0;
+    var discMode=normalizeOrderLineDiscountMode(item && item.discount_mode);
+    var discAmount=item?item.discount_amount:0;
+    var discountEditorHtml=renderOrderLineDiscountEditor(discMode, discAmount, disc);
     var selectedProduct = hasSelectedProduct ? getOrderProductById(item.product_id) : null;
     var productNote = getOrderItemDisplayNote(item, selectedProduct);
     var unit=item?item.unit:'';
     if(!unit && selectedProduct){
         unit = selectedProduct.unit || '';
     }
-    var lineTotal=qty*price*(1-disc/100);
+    var lineGross=qty*price;
+    var lineTotal=discMode === 'amount'
+        ? Math.max(lineGross-Math.min(Math.max(Number(discAmount)||0,0),lineGross),0)
+        : lineGross*(1-disc/100);
 
 	    if(isServiceLine){
 	        var serviceName = item && item.item_name ? item.item_name : '';
@@ -5161,14 +5288,15 @@ function addItemRow(item, options){
             '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
             '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
-            '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>' +
+            '<td>'+discountEditorHtml+'</td>' +
             '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>' +
             '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td>' +
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
         var $serviceRow = $('#items_tbl tbody tr:last');
         ensureOrderItemSequence($serviceRow);
-        $serviceRow.find('.inp_qty,.inp_price,.inp_disc').on('input', function(){ calcLine($serviceRow, {deferTotal: true}); });
+        bindOrderLineDiscountEditor($serviceRow);
+        $serviceRow.find('.inp_qty,.inp_price').on('input', function(){ calcLine($serviceRow, {deferTotal: true}); });
         $serviceRow.find('.btn_remove_item').click(function(){ removeOrderItemRow($serviceRow); });
         syncStockInfoVisibility();
         calcLine($serviceRow, {syncDuplicates: true});
@@ -5193,7 +5321,7 @@ function addItemRow(item, options){
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
-        '<td><input type="number" class="form-control form-control-sm inp_disc" value="'+disc+'" step="0.1" min="0" max="100"></td>'+
+        '<td>'+discountEditorHtml+'</td>'+
         '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
         '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
     var $tbody = $('#items_tbl tbody');
@@ -5242,7 +5370,8 @@ function addItemRow(item, options){
         calcLine($row, {deferTotal: true});
         queueOrderRowVisualRefresh($row, {preservePrice: true});
     });
-    $row.find('.inp_price,.inp_disc').on('input',function(){calcLine($row, {deferTotal: true});});
+    bindOrderLineDiscountEditor($row);
+    $row.find('.inp_price').on('input',function(){calcLine($row, {deferTotal: true});});
     $row.find('.btn_remove_item').click(function(){removeOrderItemRow($row);});
     if(useLazySelect){
         queueOrderRowVisualRefresh($row, {preservePrice: true});
@@ -5271,10 +5400,9 @@ function scheduleCalcTotal(options){
 
 function calcLine($row, options){
     options = options || {};
-    var qty=parseFloat($row.find('.inp_qty').val())||0;
-    var price=getMoneyValue($row.find('.inp_price'))||0;
-    var disc=parseFloat($row.find('.inp_disc').val())||0;
-    $row.find('.lbl_line_total').text(fmt(qty*price*(1-disc/100)) + 'đ');
+    var lineDiscount=getOrderLineDiscountData($row);
+    $row.find('.lbl_line_total').text(fmt(Math.round(lineDiscount.lineTotal)) + 'đ');
+    updateOrderLineDiscountHint($row, lineDiscount);
     if(options.deferTotal){
         scheduleCalcTotal(options);
     } else {
@@ -5378,10 +5506,9 @@ function calcTotal(options){
         var $row=$(row);
         $row.find('.order-item-sequence').text($row.attr('data-item-sequence'));
         var qty=parseFloat($row.find('.inp_qty').val())||0;
-        var price=getMoneyValue($row.find('.inp_price'))||0;
-        var disc=parseFloat($row.find('.inp_disc').val())||0;
+        var lineDiscount=getOrderLineDiscountData($row);
         totalQuantity+=qty;
-        total+=qty*price*(1-disc/100);
+        total+=lineDiscount.lineTotal;
     });
     var discount=resolveOrderDiscountAmount(total);
     var shippingFee=getMoneyValue('#inp_shipping_fee');
@@ -5395,10 +5522,9 @@ function calcTotal(options){
         $row.find('.order-item-loss-warning').remove();
         if($row.hasClass('service-line-row') || $row.data('service-line') == 1) return;
         var qty=parseFloat($row.find('.inp_qty').val())||0;
-        var price=getMoneyValue($row.find('.inp_price'))||0;
-        var disc=parseFloat($row.find('.inp_disc').val())||0;
+        var lineDiscount=getOrderLineDiscountData($row);
         var costPrice=getOrderRowCostPrice($row);
-        var effectivePrice=price*(1-disc/100)*(1-orderDiscountRatio);
+        var effectivePrice=(qty>0?lineDiscount.lineTotal/qty:0)*(1-orderDiscountRatio);
         if(costPrice>0 && effectivePrice<costPrice){
             var warning={
                 label:getOrderRowProductLabel($row),
@@ -6116,11 +6242,11 @@ function rejectOrder(id, code){
 	        var itemsHtml = '';
 	        (res.items || []).forEach(function(it){
 	            var itemDiscountPercent = Number(it.discount_percent || 0);
-	            var itemDiscountAmount = Math.round(
-	                Number(it.quantity || 0) * Number(it.unit_price || 0) * itemDiscountPercent / 100
-	            );
-	            var itemDiscountDisplay = itemDiscountPercent > 0
-	                ? formatOrderDiscountPercent(itemDiscountPercent) + '% / ' + fmt(itemDiscountAmount) + 'đ'
+	            var itemDiscountAmount = Number(it.discount_amount || 0);
+	            var itemDiscountDisplay = itemDiscountAmount > 0
+	                ? (it.discount_mode === 'amount'
+	                    ? fmt(itemDiscountAmount) + 'đ'
+	                    : formatOrderDiscountPercent(itemDiscountPercent) + '% / ' + fmt(itemDiscountAmount) + 'đ')
 	                : '—';
 	            var img = it.image_url
 	                ? '<img src="' + escapeAttr(it.image_url) + '" class="quick-view-product-img" loading="lazy" decoding="async" alt="">'
@@ -6660,8 +6786,13 @@ function downloadOrderPDF(id){
         var itemsHtml = '';
         var total = 0;
         res.items.forEach(function(it, i){
-            var lineTotal = it.quantity * it.unit_price * (1 - it.discount_percent/100);
+            var lineTotal = Number(it.total_price || 0);
             total += lineTotal;
+            var lineDiscountDisplay = Number(it.discount_amount || 0) > 0
+                ? (it.discount_mode === 'amount'
+                    ? fmtMoney(it.discount_amount)
+                    : formatOrderDiscountPercent(it.discount_percent || 0) + '%')
+                : '—';
             var itemLabel = escapeHtml((it.product_code ? it.product_code + ' - ' : '') + (it.product_name || it.item_name || ''));
             var itemNote = getOrderItemDisplayNote(it);
             if(itemNote){
@@ -6670,7 +6801,7 @@ function downloadOrderPDF(id){
             itemsHtml += '<tr><td class="text-center">'+(i+1)+'</td><td>'+itemLabel+'</td>'+
                 '<td class="text-center">'+(it.unit||'')+'</td><td class="text-center">'+it.quantity+'</td>'+
                 '<td class="text-right">'+fmtMoney(it.unit_price)+'</td>'+
-                '<td class="text-center">'+(it.discount_percent||0)+'%</td>'+
+                '<td class="text-center">'+lineDiscountDisplay+'</td>'+
                 '<td class="text-right">'+fmtMoney(lineTotal)+'</td></tr>';
         });
         var discount = o.discount_amount || 0;

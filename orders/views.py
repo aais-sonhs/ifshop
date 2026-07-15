@@ -120,6 +120,11 @@ def _normalize_discount_mode(value):
     return 'percent' if str(value or '').strip().lower() == 'percent' else 'amount'
 
 
+def _normalize_line_discount_mode(value):
+    """Dữ liệu dòng cũ không có chế độ chiết khấu luôn được hiểu là phần trăm."""
+    return 'amount' if str(value or '').strip().lower() == 'amount' else 'percent'
+
+
 def _resolve_order_discount(total, mode, amount=0, percent=0):
     """Quy đổi chiết khấu tổng đơn về số tiền nguyên đồng để dùng chung cho báo cáo/công nợ."""
     normalized_mode = _normalize_discount_mode(mode)
@@ -131,6 +136,29 @@ def _resolve_order_discount(total, mode, amount=0, percent=0):
     else:
         normalized_amount = _non_negative_decimal(amount)
     return normalized_mode, normalized_percent, normalized_amount
+
+
+def _resolve_line_discount(quantity, unit_price, mode='percent', amount=0, percent=0):
+    """Chuẩn hóa CK theo dòng và trả cả % lẫn số tiền để hiển thị/lưu nhất quán."""
+    qty = _non_negative_decimal(quantity)
+    price = _non_negative_decimal(unit_price)
+    gross = qty * price
+    normalized_mode = _normalize_line_discount_mode(mode)
+
+    if normalized_mode == 'amount':
+        normalized_amount = min(_non_negative_decimal(amount), gross)
+        normalized_percent = (
+            (normalized_amount / gross * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if gross > 0 else Decimal('0')
+        )
+        line_total = gross - normalized_amount
+    else:
+        normalized_percent = _normalize_percentage(percent)
+        raw_amount = gross * normalized_percent / Decimal('100')
+        normalized_amount = raw_amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        line_total = gross * (Decimal('1') - normalized_percent / Decimal('100'))
+
+    return normalized_mode, normalized_percent, normalized_amount, max(line_total, Decimal('0'))
 
 
 def _adjust_stock_quantity(stock, delta):
@@ -1004,12 +1032,21 @@ def _order_workflow_payload(order):
     }
 
 
-def _calculate_line_total(quantity, unit_price, discount_percent):
+def _calculate_line_total(
+    quantity,
+    unit_price,
+    discount_percent=0,
+    discount_mode='percent',
+    discount_amount=0,
+):
     """Tính thành tiền của một dòng hàng sau khi trừ chiết khấu theo dòng."""
-    qty = _non_negative_decimal(quantity)
-    price = _non_negative_decimal(unit_price)
-    discount = _normalize_percentage(discount_percent)
-    return qty * price * (Decimal('1') - (discount / Decimal('100')))
+    return _resolve_line_discount(
+        quantity,
+        unit_price,
+        discount_mode,
+        discount_amount,
+        discount_percent,
+    )[3]
 
 
 def _effective_unit_cost(product, variant=None, visited_product_ids=None):
@@ -1115,7 +1152,9 @@ def _order_item_signature_from_queryset(items):
             bool(item.is_service_line),
             _to_decimal(item.quantity),
             _to_decimal(item.unit_price),
-            _to_decimal(item.discount_percent),
+            item.discount_mode or 'percent',
+            _to_decimal(item.discount_amount) if (item.discount_mode or 'percent') == 'amount' else Decimal('0'),
+            _to_decimal(item.discount_percent) if (item.discount_mode or 'percent') == 'percent' else Decimal('0'),
         )
         for item in items
     ])
@@ -1125,6 +1164,7 @@ def _order_item_signature_from_payload(items_data):
     """Tạo chữ ký item từ payload frontend theo cùng format với dữ liệu trong DB."""
     signature = []
     for item in items_data:
+        discount_mode = _normalize_line_discount_mode(item.get('discount_mode', 'percent'))
         signature.append((
             _normalize_optional_int(item.get('product_id')),
             _normalize_optional_int(item.get('variant_id')),
@@ -1133,7 +1173,9 @@ def _order_item_signature_from_payload(items_data):
             bool(_payload_is_service_line(item)),
             _to_decimal(item.get('quantity', 0)),
             _to_decimal(item.get('unit_price', 0)),
-            _to_decimal(item.get('discount_percent', 0)),
+            discount_mode,
+            _to_decimal(item.get('discount_amount', 0)) if discount_mode == 'amount' else Decimal('0'),
+            _to_decimal(item.get('discount_percent', 0)) if discount_mode == 'percent' else Decimal('0'),
         ))
     return sorted(signature)
 
@@ -1148,6 +1190,8 @@ def _order_items_payload_from_order(order):
         'is_service_line': bool(item.is_service_line or not item.product_id),
         'quantity': item.quantity,
         'unit_price': item.unit_price,
+        'discount_mode': item.discount_mode or 'percent',
+        'discount_amount': item.discount_amount,
         'discount_percent': item.discount_percent,
         'note': item.note,
     } for item in order.items.all()]
@@ -1263,6 +1307,8 @@ def _history_item_from_model(item):
         'label': _history_item_label(product, item_name, variant),
         'quantity': _to_decimal(item.quantity),
         'unit_price': _to_decimal(item.unit_price),
+        'discount_mode': item.discount_mode or 'percent',
+        'discount_amount': _to_decimal(item.discount_amount),
         'discount_percent': _to_decimal(item.discount_percent),
         'total_price': _to_decimal(item.total_price),
         'note': item.note,
@@ -1274,14 +1320,22 @@ def _history_item_from_payload(item_data, product, variant):
     unit = _payload_service_unit(item_data) if not product else ''
     qty = _non_negative_decimal(item_data.get('quantity', 0))
     price = _non_negative_decimal(item_data.get('unit_price', 0))
-    discount = _normalize_percentage(item_data.get('discount_percent', 0))
+    discount_mode, discount_percent, discount_amount, line_total = _resolve_line_discount(
+        qty,
+        price,
+        item_data.get('discount_mode', 'percent'),
+        item_data.get('discount_amount', 0),
+        item_data.get('discount_percent', 0),
+    )
     return {
         'key': _history_item_key(product.id if product else None, variant.id if variant else None, item_name, unit, not bool(product)),
         'label': _history_item_label(product, item_name, variant),
         'quantity': qty,
         'unit_price': price,
-        'discount_percent': discount,
-        'total_price': _calculate_line_total(qty, price, discount),
+        'discount_mode': discount_mode,
+        'discount_amount': discount_amount,
+        'discount_percent': discount_percent,
+        'total_price': line_total,
         'note': _payload_item_note(item_data, product),
     }
 
@@ -1328,6 +1382,8 @@ def _history_normalized_items_from_order(order):
             'is_service_line': bool(item.is_service_line or not item.product_id),
             'quantity': item.quantity,
             'unit_price': item.unit_price,
+            'discount_mode': item.discount_mode or 'percent',
+            'discount_amount': item.discount_amount,
             'discount_percent': item.discount_percent,
             'note': item.note,
         }, item.product, item.variant))
@@ -1370,9 +1426,30 @@ def _describe_item_history_changes(before_items, after_items):
             changes.append(
                 f'đơn giá {_format_money_for_history(before["unit_price"])} → {_format_money_for_history(after["unit_price"])}'
             )
-        if before['discount_percent'] != after['discount_percent']:
+        discount_changed = (
+            before.get('discount_mode', 'percent') != after.get('discount_mode', 'percent')
+            or (
+                after.get('discount_mode', 'percent') == 'amount'
+                and before.get('discount_amount') != after.get('discount_amount')
+            )
+            or (
+                after.get('discount_mode', 'percent') == 'percent'
+                and before.get('discount_percent') != after.get('discount_percent')
+            )
+        )
+        if discount_changed:
+            before_discount = (
+                _format_money_for_history(before.get('discount_amount', 0))
+                if before.get('discount_mode', 'percent') == 'amount'
+                else _format_percent_for_history(before.get('discount_percent', 0))
+            )
+            after_discount = (
+                _format_money_for_history(after.get('discount_amount', 0))
+                if after.get('discount_mode', 'percent') == 'amount'
+                else _format_percent_for_history(after.get('discount_percent', 0))
+            )
             changes.append(
-                f'CK {_format_percent_for_history(before["discount_percent"])} → {_format_percent_for_history(after["discount_percent"])}'
+                f'CK {before_discount} → {after_discount}'
             )
         if before.get('note') != after.get('note'):
             changes.append(
@@ -2718,6 +2795,13 @@ def api_get_order_detail(request):
         items = []
         for it in o.items.select_related('product', 'variant').all():
             product = it.product
+            line_discount_mode, line_discount_percent, line_discount_amount, _ = _resolve_line_discount(
+                it.quantity,
+                it.unit_price,
+                it.discount_mode or 'percent',
+                it.discount_amount,
+                it.discount_percent,
+            )
             items.append({
                 'product_id': it.product_id,
                 'variant_id': it.variant_id,
@@ -2733,7 +2817,9 @@ def api_get_order_detail(request):
                 'item_name': it.item_name or '',
                 'quantity': float(it.quantity),
                 'unit_price': float(it.unit_price),
-                'discount_percent': float(it.discount_percent),
+                'discount_mode': line_discount_mode,
+                'discount_amount': float(line_discount_amount),
+                'discount_percent': float(line_discount_percent),
                 'total_price': float(it.total_price),
             })
         return JsonResponse({
@@ -3069,6 +3155,8 @@ def api_save_order(request):
                     item_data.get('quantity', 0),
                     item_data.get('unit_price', 0),
                     item_data.get('discount_percent', 0),
+                    item_data.get('discount_mode', 'percent'),
+                    item_data.get('discount_amount', 0),
                 )
 
             o.total_amount = total
@@ -3147,15 +3235,20 @@ def api_save_order(request):
             for item_data, product, variant in normalized_items:
                 qty = _non_negative_decimal(item_data.get('quantity', 0))
                 price = _non_negative_decimal(item_data.get('unit_price', 0))
-                disc = _normalize_percentage(item_data.get('discount_percent', 0))
-                line_total = _calculate_line_total(qty, price, disc)
+                line_discount_mode, disc, line_discount_amount, line_total = _resolve_line_discount(
+                    qty,
+                    price,
+                    item_data.get('discount_mode', 'percent'),
+                    item_data.get('discount_amount', 0),
+                    item_data.get('discount_percent', 0),
+                )
                 variant_id = variant.id if variant else None
                 cost = Decimal('0')
                 is_below_cost = False
                 if product:
                     cost = _effective_unit_cost(product, variant)
                     compare_cost = cost
-                    unit_after_line_discount = price * (Decimal('1') - disc / Decimal('100'))
+                    unit_after_line_discount = line_total / qty if qty > 0 else Decimal('0')
                     unit_after_order_discount = unit_after_line_discount * (Decimal('1') - order_discount_ratio)
                     is_below_cost = compare_cost > 0 and unit_after_order_discount < compare_cost
                 else:
@@ -3174,6 +3267,8 @@ def api_save_order(request):
                     quantity=qty,
                     unit_price=price,
                     cost_price=cost,
+                    discount_mode=line_discount_mode,
+                    discount_amount=line_discount_amount,
                     discount_percent=disc,
                     total_price=line_total,
                     is_below_listed=is_below_cost,
@@ -4063,6 +4158,13 @@ def api_get_quotation_detail(request):
         items = []
         for it in q.items.select_related('product', 'variant').all():
             product = it.product
+            line_discount_mode, line_discount_percent, line_discount_amount, _ = _resolve_line_discount(
+                it.quantity,
+                it.unit_price,
+                it.discount_mode or 'percent',
+                it.discount_amount,
+                it.discount_percent,
+            )
             items.append({
                 'product_id': it.product_id,
                 'variant_id': it.variant_id,
@@ -4076,7 +4178,9 @@ def api_get_quotation_detail(request):
                 'item_name': it.item_name or '',
                 'quantity': float(it.quantity),
                 'unit_price': float(it.unit_price),
-                'discount_percent': float(it.discount_percent),
+                'discount_mode': line_discount_mode,
+                'discount_amount': float(line_discount_amount),
+                'discount_percent': float(line_discount_percent),
                 'total_price': float(it.total_price),
                 'note': it.note,
                 'effective_note': it.display_note,
@@ -4241,8 +4345,13 @@ def api_save_quotation(request):
             for it in items_data:
                 qty = _non_negative_decimal(it.get('quantity', 0))
                 price = _non_negative_decimal(it.get('unit_price', 0))
-                disc = _normalize_percentage(it.get('discount_percent', 0))
-                line_total = _calculate_line_total(qty, price, disc)
+                line_total = _calculate_line_total(
+                    qty,
+                    price,
+                    it.get('discount_percent', 0),
+                    it.get('discount_mode', 'percent'),
+                    it.get('discount_amount', 0),
+                )
                 total += line_total
 
             q.total_amount = total
@@ -4263,12 +4372,18 @@ def api_save_quotation(request):
             for it, product, variant in normalized_items:
                 qty = _non_negative_decimal(it.get('quantity', 0))
                 price = _non_negative_decimal(it.get('unit_price', 0))
-                disc = _normalize_percentage(it.get('discount_percent', 0))
-                line_total = _calculate_line_total(qty, price, disc)
+                line_discount_mode, disc, line_discount_amount, line_total = _resolve_line_discount(
+                    qty,
+                    price,
+                    it.get('discount_mode', 'percent'),
+                    it.get('discount_amount', 0),
+                    it.get('discount_percent', 0),
+                )
                 variant_id = variant.id if variant else None
                 if product:
                     compare_cost = _effective_unit_cost(product, variant)
-                    effective_unit_price = price * (Decimal('1') - disc / Decimal('100')) * (Decimal('1') - quotation_discount_ratio)
+                    unit_after_line_discount = line_total / qty if qty > 0 else Decimal('0')
+                    effective_unit_price = unit_after_line_discount * (Decimal('1') - quotation_discount_ratio)
                     if compare_cost > 0 and effective_unit_price < compare_cost:
                         loss_warnings.append(
                             f'{product.code} - {product.name}: bán {int(effective_unit_price):,}đ < vốn {int(compare_cost):,}đ'
@@ -4282,6 +4397,8 @@ def api_save_quotation(request):
                     is_service_line=not bool(product),
                     quantity=qty,
                     unit_price=price,
+                    discount_mode=line_discount_mode,
+                    discount_amount=line_discount_amount,
                     discount_percent=disc,
                     total_price=line_total,
                     note=_payload_item_note(it, product),

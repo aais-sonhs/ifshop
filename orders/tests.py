@@ -666,7 +666,9 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'class="order-summary-value-column"')
         self.assertContains(response, 'order-discount-input-group')
         self.assertContains(response, 'Chiết khấu (% hoặc tiền)')
-        self.assertContains(response, 'var itemDiscountAmount = Math.round(')
+        self.assertContains(response, 'class="custom-select inp_disc_mode"')
+        self.assertContains(response, '<option value="amount"', count=2)
+        self.assertContains(response, 'var itemDiscountAmount = Number(it.discount_amount || 0);')
 
     def test_create_and_edit_order_persist_custom_shipping_address(self):
         self.customer.address = 'Địa chỉ mặc định của khách'
@@ -1140,6 +1142,106 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(detail['discount_mode'], 'percent')
         self.assertEqual(detail['discount_percent'], 5.0)
         self.assertEqual(detail['discount_amount'], 50.0)
+
+    def test_save_order_line_accepts_amount_discount_and_preserves_mode(self):
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-LINE-DISCOUNT-AMOUNT',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'discount_mode': 'amount',
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'other_fee': 0,
+                'status': 1,
+                'payment_lines': [],
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 2,
+                    'unit_price': 500,
+                    'discount_mode': 'amount',
+                    'discount_amount': 150,
+                    'discount_percent': 99,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        order = Order.objects.get(code='DH-LINE-DISCOUNT-AMOUNT')
+        item = order.items.get()
+        self.assertEqual(float(order.total_amount), 850.0)
+        self.assertEqual(float(order.final_amount), 850.0)
+        self.assertEqual(item.discount_mode, 'amount')
+        self.assertEqual(float(item.discount_amount), 150.0)
+        self.assertEqual(float(item.discount_percent), 15.0)
+        self.assertEqual(float(item.total_price), 850.0)
+
+        detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
+        detail_item = detail_response.json()['items'][0]
+        self.assertEqual(detail_item['discount_mode'], 'amount')
+        self.assertEqual(detail_item['discount_amount'], 150.0)
+        self.assertEqual(detail_item['discount_percent'], 15.0)
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+        self.assertContains(print_response, '150đ')
+
+    def test_save_quotation_line_accepts_amount_discount_and_preserves_mode(self):
+        response = self.client.post(
+            reverse('api_save_quotation'),
+            data=json.dumps({
+                'code': 'BG-LINE-DISCOUNT-AMOUNT',
+                'customer_id': self.customer.id,
+                'quotation_date': date.today().isoformat(),
+                'discount_mode': 'amount',
+                'discount_amount': 0,
+                'shipping_fee': 0,
+                'other_fee': 0,
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 2,
+                    'unit_price': 300,
+                    'discount_mode': 'amount',
+                    'discount_amount': 120,
+                    'discount_percent': 88,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+
+        quotation = Quotation.objects.get(code='BG-LINE-DISCOUNT-AMOUNT')
+        item = quotation.items.get()
+        self.assertEqual(float(quotation.total_amount), 480.0)
+        self.assertEqual(float(quotation.final_amount), 480.0)
+        self.assertEqual(item.discount_mode, 'amount')
+        self.assertEqual(float(item.discount_amount), 120.0)
+        self.assertEqual(float(item.discount_percent), 20.0)
+        self.assertEqual(float(item.total_price), 480.0)
+
+        detail_response = self.client.get(reverse('api_get_quotation_detail'), {'id': quotation.id})
+        detail_item = detail_response.json()['items'][0]
+        self.assertEqual(detail_item['discount_mode'], 'amount')
+        self.assertEqual(detail_item['discount_amount'], 120.0)
+        self.assertEqual(detail_item['discount_percent'], 20.0)
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': quotation.id, 'type': 'quotation_a4', 'source': 'quotation'},
+        )
+        self.assertContains(print_response, '120đ')
 
     def test_partial_payment_converts_quote_status_to_order(self):
         response = self.client.post(

@@ -73,6 +73,10 @@ class QuotationItem(models.Model):
     is_service_line = models.BooleanField(default=False, verbose_name='Dòng dịch vụ/thẻ trống')
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
+    discount_mode = models.CharField(
+        max_length=10, choices=DISCOUNT_MODE_CHOICES, default='percent', verbose_name='Cách chiết khấu dòng'
+    )
+    discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu dòng')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
@@ -199,6 +203,10 @@ class OrderItem(models.Model):
     quantity = models.DecimalField(max_digits=15, decimal_places=2, default=1, verbose_name='Số lượng')
     unit_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Đơn giá')
     cost_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá vốn')
+    discount_mode = models.CharField(
+        max_length=10, choices=DISCOUNT_MODE_CHOICES, default='percent', verbose_name='Cách chiết khấu dòng'
+    )
+    discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu dòng')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
     is_below_listed = models.BooleanField(default=False, verbose_name='Dưới giá niêm yết')

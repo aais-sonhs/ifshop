@@ -930,7 +930,7 @@
 
                     <div class="doc-cover-stats">
                         <div class="doc-cover-stat">
-                            <strong>15</strong>
+                            <strong>16</strong>
                             <span>trang nội dung hướng dẫn</span>
                         </div>
                         <div class="doc-cover-stat">
@@ -938,7 +938,7 @@
                             <span>vai trò sử dụng chính</span>
                         </div>
                         <div class="doc-cover-stat">
-                            <strong>9</strong>
+                            <strong>10+</strong>
                             <span>nghiệp vụ thao tác chi tiết</span>
                         </div>
                     </div>
@@ -967,6 +967,7 @@
                         </div>
                     </div>
                     <p class="doc-muted mt-2 mb-0">{{ demo_account.note }}</p>
+                    <p class="doc-muted mt-1 mb-0"><strong>Cập nhật tài liệu:</strong> {{ document_revision.date }}</p>
                 </div>
 
                 <div>
@@ -1015,6 +1016,30 @@
                     </div>
                     <div class="doc-image-caption">Minh họa giao diện web: dashboard, KPI, biểu đồ và cảnh báo tồn kho.</div>
                 </div>
+            </div>
+        </section>
+
+        <section class="doc-page">
+            <div class="doc-section-head">
+                <div>
+                    <span class="doc-kicker">{{ document_revision.date }}</span>
+                    <h2>{{ document_revision.title }}</h2>
+                </div>
+                <p>{{ document_revision.summary }}</p>
+            </div>
+
+            <div class="doc-grid">
+                {% for update in document_updates %}
+                <div class="doc-card">
+                    <span class="doc-icon"><i class="{{ update.icon }}"></i></span>
+                    <h3>{{ update.title }}</h3>
+                    <ul class="doc-check-list">
+                        {% for item in update.items %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
             </div>
         </section>
 
@@ -1141,7 +1166,7 @@
             </div>
 
             <div class="doc-callout">
-                <p><strong>Triển khai nhiều lĩnh vực:</strong> tài liệu này dùng chung cấu trúc, còn phần chuyên ngành ở trang 7 sẽ đổi theo lĩnh vực đang chọn.</p>
+                <p><strong>Triển khai nhiều lĩnh vực:</strong> tài liệu này dùng chung cấu trúc, còn phần chuyên ngành sẽ đổi theo lĩnh vực đang chọn.</p>
             </div>
         </section>
 

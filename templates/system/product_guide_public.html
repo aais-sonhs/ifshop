@@ -1104,6 +1104,7 @@
             <ul class="sidebar-nav">
                 <li><a href="#overview" class="active"><i class="fas fa-home"></i> Tổng quan</a></li>
                 <li><a href="#toc"><i class="fas fa-list-ol"></i> Mục lục chi tiết</a></li>
+                <li><a href="#updates"><i class="fas fa-history"></i> Cập nhật {{ document_revision.date }}</a></li>
                 <li><a href="#modules"><i class="fas fa-cubes"></i> Module chính</a></li>
                 <li><a href="#setup"><i class="fas fa-cog"></i> Thiết lập ban đầu</a></li>
                 <li><a href="#daily"><i class="fas fa-calendar-day"></i> Luồng hàng ngày</a></li>
@@ -1143,7 +1144,7 @@
                                     <div class="stat-label">Vai trò sử dụng chính</div>
                                 </div>
                                 <div class="stat-card">
-                                    <div class="stat-value">9+</div>
+                                    <div class="stat-value">10+</div>
                                     <div class="stat-label">Nghiệp vụ thao tác chi tiết</div>
                                 </div>
                             </div>
@@ -1172,6 +1173,7 @@
                                 </div>
                             </div>
                             <p style="color: var(--text-light); font-size: 0.88rem; margin-top: 12px;">{{ demo_account.note }}</p>
+                            <p style="color: var(--text-light); font-size: 0.88rem; margin-top: 6px;"><strong>Cập nhật tài liệu:</strong> {{ document_revision.date }}</p>
                         </div>
 
                         <div>
@@ -1317,6 +1319,29 @@
                                     <p><strong>Điểm nhấn khi demo:</strong> khách nhìn được toàn bộ hành trình từ báo giá, đơn hàng, thanh toán, trừ kho tới báo cáo mà không phải nhập lại dữ liệu nhiều lần.</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Latest Updates -->
+                <section id="updates" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-history"></i> {{ document_revision.date }}</span>
+                        <h2>{{ document_revision.title }}</h2>
+                        <p class="lead">{{ document_revision.summary }}</p>
+
+                        <div class="card-grid">
+                            {% for update in document_updates %}
+                            <div class="card">
+                                <div class="card-icon"><i class="{{ update.icon }}"></i></div>
+                                <h3>{{ update.title }}</h3>
+                                <ul class="check-list">
+                                    {% for item in update.items %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
                         </div>
                     </div>
                 </section>

@@ -19,6 +19,78 @@ DEMO_ACCOUNT = {
     'note': 'Tài khoản đăng nhập demo được cấp riêng trong buổi giới thiệu hoặc bàn giao.',
 }
 
+DOCUMENT_REVISION = {
+    'date': '15/07/2026',
+    'title': 'Cập nhật nghiệp vụ ngày 15/07/2026',
+    'summary': (
+        'Tài liệu đã được đối chiếu với toàn bộ thay đổi Git trong ngày, tập trung vào '
+        'khách hàng, báo giá, đơn hàng, sản phẩm, kho, báo cáo nhập hàng và bảo hành.'
+    ),
+}
+
+DOCUMENT_UPDATES = [
+    {
+        'icon': 'fas fa-map-marked-alt',
+        'title': 'Khách hàng và địa chỉ giao hàng',
+        'items': [
+            'Mỗi khách hàng có thể lưu địa chỉ mặc định và nhiều điểm nhận phụ như kho, chi nhánh hoặc địa chỉ công trình.',
+            'Khi tạo đơn, chọn nhanh một địa chỉ đã lưu hoặc chuyển sang nhập địa chỉ giao hàng khác.',
+        ],
+    },
+    {
+        'icon': 'fas fa-file-invoice-dollar',
+        'title': 'Báo giá, đơn hàng và chiết khấu',
+        'items': [
+            'Chiết khấu từng dòng và toàn đơn hỗ trợ nhập theo phần trăm hoặc số tiền; hệ thống tự quy đổi để tính thành tiền.',
+            'Có thể sao chép đơn cũ thành đơn nháp mới, sắp xếp dòng hàng theo STT và nhập ngày thanh toán trong quá khứ.',
+            'Tùy chọn Hiệu lực báo giá quyết định việc hiển thị trường, cột danh sách và nội dung hiệu lực trên bản in.',
+        ],
+    },
+    {
+        'icon': 'fas fa-box-open',
+        'title': 'Sản phẩm và nhập Excel',
+        'items': [
+            'Danh sách sản phẩm hiển thị gọn theo nhóm thông tin, hỗ trợ sắp xếp tồn kho trên toàn bộ dữ liệu trước khi phân trang.',
+            'Form sản phẩm được mở rộng và bổ sung kỳ hạn, chính sách bảo hành.',
+            'Nhập Excel nhận diện các cột Nhãn hiệu, Thương hiệu, NCC hoặc Nhà cung cấp để gắn nhà cung cấp cho sản phẩm; đồng thời hỗ trợ dữ liệu bảo hành.',
+        ],
+    },
+    {
+        'icon': 'fas fa-exclamation-triangle',
+        'title': 'Cảnh báo tồn kho',
+        'items': [
+            'BC Kho tách rõ sản phẩm dưới tồn tối thiểu và trên tồn tối đa.',
+            'Cột Cần nhập tối thiểu cho biết số lượng cần bổ sung; bấm thẻ Cảnh báo để lọc nhanh các mã cần xử lý.',
+        ],
+    },
+    {
+        'icon': 'fas fa-truck-loading',
+        'title': 'Báo cáo nhập hàng theo nhà cung cấp',
+        'items': [
+            'Vào Báo cáo → BC Nhập hàng, chọn tháng hoặc khoảng ngày để xem đã nhập của từng nhà cung cấp bao nhiêu phiếu và bao nhiêu tiền hàng.',
+            'Có thể lọc riêng một nhà cung cấp; file Excel có thêm sheet Tổng hợp NCC.',
+        ],
+    },
+    {
+        'icon': 'fas fa-shield-alt',
+        'title': 'Phiếu bảo hành theo đơn',
+        'items': [
+            'Sản phẩm lưu sẵn kỳ hạn và chính sách bảo hành để tự động điền khi lập phiếu.',
+            'Đơn đã Xuất kho hoặc Hoàn thành có thể Lưu & In phiếu bảo hành, chọn sản phẩm, số lượng, serial/lô và điều chỉnh chính sách trước khi lưu.',
+            'Phiếu được liên kết với đơn, giữ bản chụp chính sách tại thời điểm bán và hiển thị nhãn Đã có PBH trong danh sách.',
+        ],
+    },
+    {
+        'icon': 'fas fa-desktop',
+        'title': 'Giao diện thao tác và mẫu in',
+        'items': [
+            'Form đơn hàng và sản phẩm được mở rộng, các vùng nhập hàng có cuộn độc lập để thao tác tốt hơn với chứng từ dài.',
+            'Hóa đơn K80 tách tên hàng khỏi dòng số lượng, đơn giá và thành tiền để dễ đọc hơn.',
+            'Cảnh báo bán dưới giá vốn vẫn cho lưu đơn, phù hợp trường hợp hàng tặng hoặc khuyến mãi giá 0.',
+        ],
+    },
+]
+
 COMMON_MODULES = [
     {
         'icon': 'fas fa-tachometer-alt',
@@ -28,17 +100,17 @@ COMMON_MODULES = [
     {
         'icon': 'fas fa-shopping-cart',
         'title': 'Bán hàng, báo giá, đơn hàng',
-        'body': 'Tạo báo giá cho khách trước khi chốt đơn, chuyển báo giá thành đơn bán khi khách đồng ý. Hỗ trợ thêm sản phẩm, giảm giá, phí giao hàng, ghi chú nội bộ, trạng thái đóng gói, phê duyệt đơn và in nhiều loại chứng từ khác nhau.',
+        'body': 'Tạo báo giá cho khách trước khi chốt đơn, chuyển báo giá thành đơn bán khi khách đồng ý. Hỗ trợ chiết khấu theo tiền hoặc %, sao chép đơn, địa chỉ giao hàng, phí phát sinh, phê duyệt, xuất kho và lưu/in phiếu bảo hành.',
     },
     {
         'icon': 'fas fa-tags',
         'title': 'Sản phẩm và kho',
-        'body': 'Quản lý danh mục sản phẩm, biến thể (size, màu, dung tích), đơn vị tính, giá bán, giá nhập, giá vốn. Nhập hàng từ nhà cung cấp, kiểm kê định kỳ, chuyển kho giữa các cửa hàng và theo dõi tồn kho realtime.',
+        'body': 'Quản lý danh mục sản phẩm, biến thể, đơn vị tính, giá bán, giá nhập, giá vốn, nhà cung cấp và chính sách bảo hành. Nhập Excel, nhập hàng, kiểm kê, chuyển kho và theo dõi cảnh báo tồn tối thiểu/tối đa.',
     },
     {
         'icon': 'fas fa-users',
         'title': 'Khách hàng',
-        'body': 'Lưu hồ sơ khách cá nhân và doanh nghiệp, nhóm khách, thông tin liên hệ, lịch sử mua hàng, công nợ, điểm thưởng và dữ liệu chăm sóc sau bán. Hỗ trợ phân nhóm khách theo hạng, nguồn, khu vực.',
+        'body': 'Lưu hồ sơ khách cá nhân và doanh nghiệp, địa chỉ mặc định, nhiều điểm nhận hàng, nhóm khách, thông tin liên hệ, lịch sử mua, công nợ, điểm thưởng và dữ liệu chăm sóc sau bán.',
     },
     {
         'icon': 'fas fa-hand-holding-usd',
@@ -48,7 +120,7 @@ COMMON_MODULES = [
     {
         'icon': 'fas fa-chart-line',
         'title': 'Báo cáo quản trị',
-        'body': 'Báo cáo bán hàng theo ngày/tháng/nhân viên, báo cáo nhập hàng, tồn kho, tài chính, công nợ khách hàng, hiệu quả nhân viên bán hàng. Hỗ trợ lọc theo cửa hàng, kho, thời gian và xuất dữ liệu.',
+        'body': 'Báo cáo bán hàng theo ngày/tháng/nhân viên, nhập hàng theo nhà cung cấp, cảnh báo tồn kho, tài chính, công nợ và hiệu quả nhân viên. Hỗ trợ lọc theo cửa hàng, kho, thời gian, nhà cung cấp và xuất Excel.',
     },
 ]
 
@@ -97,6 +169,8 @@ COMMON_WORKFLOW_SECTIONS = [
             'Khai báo mã sản phẩm, tên, đơn vị tính, quy cách, vị trí lưu kho, ảnh và giá bán theo từng cửa hàng.',
             'Theo dõi giá nhập gần nhất, giá vốn tồn hiện tại và lịch sử nhập để kiểm soát biên lợi nhuận.',
             'Dùng biến thể cho sản phẩm có màu, size, dung tích hoặc nhiều phiên bản bán.',
+            'Khai báo kỳ hạn và chính sách bảo hành để dùng tự động khi lập phiếu bảo hành theo đơn.',
+            'Khi nhập Excel, có thể dùng cột Nhãn hiệu/Thương hiệu/NCC/Nhà cung cấp để gắn nhà cung cấp cho sản phẩm.',
             'Cập nhật giá bán khi có chương trình khuyến mãi hoặc thay đổi giá theo thị trường.',
         ],
     },
@@ -104,8 +178,9 @@ COMMON_WORKFLOW_SECTIONS = [
         'title': 'Quản lý bán hàng và chứng từ',
         'items': [
             'Lập báo giá cho khách trước khi chốt đơn, sau đó chuyển sang đơn bán khi khách đồng ý.',
-            'Tạo đơn trực tiếp từ màn hình bán hàng, thêm sản phẩm, giảm giá, phí giao hàng và ghi chú.',
+            'Tạo hoặc sao chép đơn từ màn hình bán hàng, thêm sản phẩm, chọn địa chỉ giao, giảm giá theo tiền hoặc %, phí giao hàng và ghi chú.',
             'Theo dõi trạng thái đơn: chờ xử lý, đã duyệt, đang đóng gói, đã giao, hoàn thành, trả hàng.',
+            'Sau khi xuất kho, lưu và in phiếu bảo hành có serial/lô, kỳ hạn, ngày bắt đầu/kết thúc và chính sách tại thời điểm bán.',
             'In hóa đơn A4, phiếu xuất, phiếu bảo hành hoặc hóa đơn khổ K80 tùy cách vận hành.',
             'Nếu doanh nghiệp bật duyệt đơn, nhân viên tạo đơn và quản lý duyệt trước khi giao hàng.',
         ],
@@ -117,13 +192,13 @@ COMMON_WORKFLOW_SECTIONS = [
             'Tạo phiếu nhập khi nhận hàng, cập nhật tồn kho và giá nhập thực tế theo từng sản phẩm.',
             'Kiểm kê định kỳ để phát hiện chênh lệch tồn, thất thoát hoặc sai lệch nhập xuất.',
             'Chuyển kho khi có nhiều cửa hàng hoặc nhiều điểm lưu hàng.',
-            'Theo dõi hàng tồn thấp, hàng tồn âm và cảnh báo cần nhập bổ sung.',
+            'Theo dõi hàng dưới tồn tối thiểu, trên tồn tối đa, tồn âm và số lượng cần nhập bổ sung trên BC Kho.',
         ],
     },
     {
         'title': 'Quản lý khách hàng và chăm sóc',
         'items': [
-            'Lưu hồ sơ cá nhân hoặc công ty, số điện thoại, địa chỉ, ngày sinh, giới tính và nhóm khách.',
+            'Lưu hồ sơ cá nhân hoặc công ty, số điện thoại, địa chỉ mặc định, nhiều điểm nhận phụ, ngày sinh, giới tính và nhóm khách.',
             'Tra cứu lịch sử mua hàng để tư vấn lại, bảo hành, đổi trả hoặc chăm sóc khách thân thiết.',
             'Phân nhóm khách theo hạng (VIP, Thân thiết, Thường), nguồn (Online, Cửa hàng, Giới thiệu) và khu vực.',
             'Theo dõi công nợ của từng khách và nhắc thu đúng thời điểm.',
@@ -135,7 +210,8 @@ COMMON_WORKFLOW_SECTIONS = [
             'Ghi nhận phiếu thu theo đơn hàng, phiếu chi cho nhập hàng hoặc chi phí vận hành.',
             'Theo dõi công nợ còn lại của khách và tình trạng thanh toán theo từng đơn.',
             'Xem sổ quỹ theo ngày để kiểm soát dòng tiền vào/ra.',
-            'Xem báo cáo bán hàng, nhập hàng, tồn kho, tài chính và khách hàng để kiểm soát hiệu quả kinh doanh.',
+            'Xem BC Nhập hàng theo tháng để biết nhập của nhà cung cấp nào, số phiếu hoàn thành và tổng tiền hàng của từng nhà cung cấp.',
+            'Xem báo cáo bán hàng, cảnh báo tồn kho, tài chính và khách hàng để kiểm soát hiệu quả kinh doanh.',
         ],
     },
 ]
@@ -234,14 +310,16 @@ DETAILED_OPERATION_GUIDES = [
             'Nhấn nút "Tạo mới" để mở form nhập thông tin khách hàng.',
             'Nhập tên khách, số điện thoại (bắt buộc để tìm nhanh), email, địa chỉ, nhóm khách và thông tin bổ sung.',
             'Nếu khách là doanh nghiệp, nhập thêm tên công ty, mã số thuế, địa chỉ xuất hóa đơn và người liên hệ.',
+            'Tại phần Địa chỉ / điểm nhận phụ, thêm tên điểm nhận và địa chỉ cho từng kho, chi nhánh hoặc công trình của khách.',
             'Lưu khách hàng. Hệ thống tự động tạo hồ sơ khách để dùng cho các đơn hàng sau.',
-            'Khi tạo đơn hàng, tìm khách bằng tên hoặc số điện thoại để tự động gắn lịch sử mua và công nợ.',
+            'Khi tạo đơn hàng, tìm khách bằng tên hoặc số điện thoại rồi chọn nhanh địa chỉ đã lưu; chọn Địa chỉ khác nếu cần nhập thủ công.',
             'Định kỳ phân nhóm khách để chạy chương trình chăm sóc, chính sách giá hoặc báo cáo khách hàng.',
         ],
         'checks': [
             'Không tạo trùng khách nếu số điện thoại đã tồn tại.',
             'Luôn kiểm tra nhóm khách trước khi áp dụng chính sách giá.',
             'Với khách công nợ, cần nhập đúng thông tin liên hệ để nhắc thu sau này.',
+            'Kiểm tra đúng điểm nhận trước khi lưu đơn, nhất là khách có nhiều kho hoặc chi nhánh.',
             'Sau khi tạo khách mới, kiểm tra lại thông tin trước khi dùng cho đơn hàng quan trọng.',
         ],
     },
@@ -251,13 +329,16 @@ DETAILED_OPERATION_GUIDES = [
         'steps': [
             'Vào DS báo giá hoặc màn hình báo giá.',
             'Chọn khách hàng từ danh sách hoặc tạo mới nếu khách chưa có.',
-            'Nhập ngày báo giá, thời hạn hiệu lực và người phụ trách nếu doanh nghiệp bật tùy chọn này.',
-            'Thêm sản phẩm hoặc dịch vụ, kiểm tra đơn vị tính, số lượng, giá bán, giảm giá và ghi chú.',
+            'Nhập ngày báo giá, thời hạn hiệu lực và người phụ trách nếu doanh nghiệp bật các tùy chọn này.',
+            'Thêm sản phẩm hoặc dịch vụ; tại mỗi dòng có thể chọn chiết khấu theo % hoặc số tiền rồi kiểm tra thành tiền.',
+            'Ở phần tổng đơn, chọn Số tiền hoặc Phần trăm cho chiết khấu chung; hệ thống hiển thị số tiền quy đổi.',
             'Lưu báo giá. In hoặc gửi cho khách theo quy trình nội bộ (email, Zalo, in giấy).',
             'Khi khách đồng ý, chọn chức năng "Chuyển thành đơn hàng" để tiếp tục thanh toán, xuất kho và in hóa đơn.',
         ],
         'checks': [
-            'Kiểm tra hiệu lực báo giá trước khi chuyển đơn.',
+            'Nếu cần ẩn hiệu lực, Chủ thương hiệu vào Cấu hình → Cấu hình báo giá và tắt Hiển thị hiệu lực báo giá.',
+            'Khi hiệu lực đang bật, kiểm tra ngày hết hạn trước khi chuyển đơn.',
+            'Đối chiếu cả chiết khấu từng dòng và chiết khấu toàn báo giá trước khi gửi khách.',
             'Nếu giá bán đã thay đổi, xác nhận lại với quản lý trước khi dùng báo giá cũ.',
             'Không sửa trực tiếp đơn đã chốt nếu doanh nghiệp yêu cầu lưu lịch sử báo giá ban đầu.',
             'Đơn hàng chuyển từ báo giá sẽ giữ lại thông tin báo giá gốc để truy xuất.',
@@ -270,14 +351,18 @@ DETAILED_OPERATION_GUIDES = [
             'Mở Bán hàng / BG hoặc POS Bán hàng nếu cửa hàng bật POS.',
             'Kiểm tra đúng cửa hàng, kho bán và tài khoản nhân viên đang đăng nhập.',
             'Chọn khách hàng nếu cần lưu lịch sử; với khách lẻ có thể dùng khách mặc định theo quy trình cửa hàng.',
-            'Thêm sản phẩm, biến thể, combo hoặc dịch vụ; kiểm tra tồn kho trước khi chốt.',
-            'Nhập số lượng, giảm giá (tính bằng % hoặc số tiền cố định), phí giao hàng, ghi chú, nhân viên bán hàng hoặc nhân viên phục vụ nếu có.',
-            'Chọn phương thức thanh toán (tiền mặt, chuyển khoản, thẻ, ví điện tử), nhập số tiền đã thu và lưu đơn.',
-            'In hóa đơn A4, phiếu xuất, phiếu bảo hành hoặc hóa đơn K80 tùy mẫu chứng từ đang dùng.',
+            'Chọn địa chỉ giao hàng đã lưu của khách hoặc nhập một địa chỉ khác cho riêng đơn này.',
+            'Thêm sản phẩm, biến thể, combo hoặc dịch vụ; có thể đổi thứ tự STT và cuộn riêng vùng dòng hàng khi đơn dài.',
+            'Nhập số lượng và chiết khấu từng dòng theo % hoặc số tiền; nhập tiếp chiết khấu toàn đơn, phí giao hàng, chi phí khác và ghi chú.',
+            'Chọn phương thức thanh toán, ngày thanh toán (có thể là ngày trong quá khứ nhưng không được sau hôm nay), số tiền đã thu rồi lưu đơn.',
+            'Nếu muốn tạo đơn tương tự, chọn Sao chép tại danh sách hoặc Xem nhanh; hệ thống tạo bản nháp mới và không sao chép khoản đã thu.',
+            'In hóa đơn A4, phiếu xuất hoặc hóa đơn K80. Khi đơn đã Xuất kho/Hoàn thành, chọn Phiếu bảo hành, nhập serial/lô rồi bấm Lưu & In.',
         ],
         'checks': [
             'Nếu tồn kho không đủ, kiểm tra cấu hình có cho phép bán âm hay không.',
+            'Cảnh báo bán dưới giá vốn không chặn lưu; cần xác nhận đây là giá được duyệt, hàng tặng hoặc khuyến mãi.',
             'Nếu khách trả thiếu, đơn phải thể hiện đúng công nợ còn lại.',
+            'Phiếu bảo hành chỉ lưu được cho sản phẩm thuộc đơn đã xuất kho và số lượng bảo hành không vượt số lượng đã bán.',
             'Nếu đơn cần duyệt, nhân viên không tự ý giao hàng trước khi trạng thái được duyệt.',
             'Kiểm tra lại tổng tiền trước khi lưu để tránh sai số tiền.',
         ],
@@ -309,13 +394,15 @@ DETAILED_OPERATION_GUIDES = [
             'Khi nhận hàng, tạo phiếu nhập, chọn kho nhận và nhà cung cấp.',
             'Thêm từng sản phẩm, biến thể, số lượng thực nhận, giá nhập và ghi chú chênh lệch nếu có.',
             'Lưu phiếu nhập để hệ thống cập nhật tồn kho và lịch sử giá nhập.',
-            'Kiểm tra lại báo cáo nhập hàng hoặc lịch sử nhập của sản phẩm sau khi lưu.',
+            'Vào Báo cáo → BC Nhập hàng, chọn từ đầu tháng đến cuối tháng hoặc ngày hiện tại để xem tổng hợp theo từng nhà cung cấp.',
+            'Có thể lọc một nhà cung cấp và Xuất Excel; sheet Tổng hợp NCC ghi số phiếu hoàn thành và tổng tiền hàng.',
         ],
         'checks': [
             'Giá nhập phải nhập đúng trước thuế/sau thuế theo quy định nội bộ của doanh nghiệp.',
             'Số lượng thực nhận có thể khác số lượng đặt, cần ghi chú để đối chiếu nhà cung cấp.',
             'Không nhập nhầm kho nếu doanh nghiệp có nhiều cửa hàng hoặc kho tổng.',
             'Kiểm tra lại tổng tiền phiếu nhập trước khi xác nhận.',
+            'Bảng tổng hợp nhà cung cấp chỉ cộng các phiếu ở trạng thái Hoàn thành; phiếu nháp hoặc hủy không được tính vào tiền hàng.',
         ],
     },
     {
@@ -328,11 +415,13 @@ DETAILED_OPERATION_GUIDES = [
             'Kiểm tra cột chênh lệch, ghi lý do: bán thiếu ghi nhận, nhập thiếu, hỏng, mất, trả hàng hoặc chuyển kho chưa cập nhật.',
             'Chỉ xác nhận phiếu kiểm khi quản lý đã đồng ý với chênh lệch.',
             'Sau khi xác nhận, kiểm tra lại tồn kho và báo cáo tồn.',
+            'Trên BC Kho, bấm thẻ Cảnh báo hoặc chọn bộ lọc thiếu/vượt tồn để xem các mã cần xử lý và cột Cần nhập tối thiểu.',
         ],
         'checks': [
             'Nên kiểm các sản phẩm bán chạy, giá trị cao hoặc hay lệch tồn trước.',
             'Không dùng kiểm hàng để che lỗi quy trình; cần ghi chú nguyên nhân để cải thiện vận hành.',
             'Nếu chênh lệch lớn, nên kiểm lại lần hai trước khi xác nhận.',
+            'Cần khai báo tồn tối thiểu/tối đa trên sản phẩm để cảnh báo và số lượng đề xuất nhập có ý nghĩa.',
             'Phiếu kiểm hàng đã xác nhận không thể sửa, chỉ có thể tạo phiếu bổ sung.',
         ],
     },
@@ -399,12 +488,15 @@ DETAILED_OPERATION_GUIDES = [
             'Vào nhóm Báo cáo trên sidebar.',
             'Chọn báo cáo phù hợp: bán hàng, nhập hàng, tồn kho, tài chính, khách hàng hoặc nhân viên bán hàng.',
             'Chọn khoảng thời gian (ngày, tuần, tháng, tùy chỉnh), cửa hàng, kho hoặc bộ lọc liên quan.',
+            'Tại BC Nhập hàng, xem bảng Tổng hợp theo nhà cung cấp để biết số phiếu hoàn thành và tổng tiền hàng; có thể lọc riêng một nhà cung cấp.',
+            'Tại BC Kho, bấm thẻ Cảnh báo để lọc hàng dưới tồn tối thiểu hoặc trên tồn tối đa và xem số lượng cần nhập bổ sung.',
             'Đọc số tổng trước, sau đó xem chi tiết theo sản phẩm, khách hàng, nhân viên hoặc chứng từ.',
             'Đối chiếu báo cáo với sổ quỹ, tồn kho và đơn hàng khi có số liệu bất thường.',
             'Xuất dữ liệu (Excel, PDF) nếu cần gửi kế toán, chủ doanh nghiệp hoặc lưu hồ sơ nội bộ.',
         ],
         'checks': [
             'Báo cáo chỉ chính xác khi đơn hàng, nhập hàng và thu chi được nhập đúng thời điểm.',
+            'BC Nhập hàng theo nhà cung cấp chỉ tính tiền của phiếu nhập Hoàn thành trong khoảng ngày đã chọn.',
             'Nếu doanh thu và tiền thu lệch nhau, kiểm tra công nợ và phương thức thanh toán.',
             'Nếu tồn kho âm hoặc lệch, kiểm tra đơn bán, phiếu nhập, phiếu trả và phiếu kiểm hàng.',
         ],
@@ -417,8 +509,8 @@ IMPLEMENTATION_CHECKLIST = [
         'items': [
             'Xác định lĩnh vực của khách: bán lẻ, F&B, spa, thời trang, nhà thuốc hoặc mô hình tùy chỉnh.',
             'Chốt danh sách module sẽ dùng ngay trong giai đoạn đầu và module để mở rộng sau.',
-            'Thu thập dữ liệu sản phẩm/dịch vụ (tên, mã, đơn vị tính, giá bán, giá nhập, ảnh).',
-            'Thu thập danh sách khách hàng, nhà cung cấp, tồn kho đầu kỳ và tài khoản nhân viên.',
+            'Thu thập dữ liệu sản phẩm/dịch vụ (tên, mã, đơn vị tính, giá bán, giá nhập, nhà cung cấp, kỳ hạn/chính sách bảo hành và ảnh).',
+            'Thu thập danh sách khách hàng, địa chỉ/điểm nhận, nhà cung cấp, tồn kho đầu kỳ và tài khoản nhân viên.',
             'Xác định quy trình bán hàng: bán trực tiếp, báo giá trước, duyệt đơn, giao hàng, trả hàng, công nợ.',
             'Xác định mẫu in: hóa đơn K80, A4, phiếu xuất, phiếu bảo hành, báo giá hoặc chứng từ nội bộ.',
         ],
@@ -438,9 +530,10 @@ IMPLEMENTATION_CHECKLIST = [
         'phase': 'Chạy thử',
         'items': [
             'Tạo một khách hàng mẫu và một đơn bán mẫu từ đầu tới cuối.',
-            'Thử báo giá, chuyển đơn, thanh toán, in hóa đơn và kiểm tra công nợ.',
+            'Thử báo giá, chiết khấu theo tiền/%, chuyển hoặc sao chép đơn, thanh toán, in hóa đơn và kiểm tra công nợ.',
             'Thử nhập hàng, kiểm hàng, trả hàng và xem tồn kho sau mỗi thao tác.',
-            'Thử phiếu thu, phiếu chi, sổ quỹ và báo cáo bán hàng trong ngày.',
+            'Thử lưu/in phiếu bảo hành từ một đơn đã xuất kho.',
+            'Thử phiếu thu, phiếu chi, sổ quỹ, BC Bán hàng, BC Nhập hàng theo NCC và cảnh báo trên BC Kho.',
             'Ghi lại các điểm chưa đúng quy trình thực tế để điều chỉnh trước khi vận hành thật.',
         ],
     },

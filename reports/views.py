@@ -1398,24 +1398,28 @@ def api_report_inventory(request):
     data = []
     for s in stocks:
         qty = float(s.quantity)
+        min_stock = float(s.product.min_stock or 0)
+        max_stock = float(s.product.max_stock or 0)
         alert = ''
         alert_type = ''
-        if s.product.min_stock and qty < s.product.min_stock:
+        if qty < min_stock:
             alert = 'Dưới tối thiểu'
             alert_type = 'danger'
-        elif s.product.max_stock and qty > s.product.max_stock:
+        elif max_stock > 0 and qty > max_stock:
             alert = 'Trên tối đa'
             alert_type = 'warning'
 
         data.append({
+            'product_id': s.product_id,
             'product_code': s.product.code,
             'product_name': s.product.name,
             'category': s.product.category.name if s.product.category else '',
             'warehouse': s.warehouse.name,
             'warehouse_id': s.warehouse_id,
             'quantity': qty,
-            'min_stock': s.product.min_stock or 0,
-            'max_stock': s.product.max_stock or 0,
+            'min_stock': min_stock,
+            'max_stock': max_stock,
+            'restock_needed': max(min_stock - qty, 0) if alert_type == 'danger' else 0,
             'unit': s.product.unit or '',
             'cost_price': float(s.product.cost_price),
             'stock_value': float(s.product.cost_price) * qty,
@@ -1441,10 +1445,18 @@ def api_report_inventory(request):
     total_value = sum(d['stock_value'] for d in data)
     total_items = sum(d['quantity'] for d in data)
     alert_count = len([d for d in data if d['alert']])
+    low_stock_count = len([d for d in data if d['alert_type'] == 'danger'])
+    high_stock_count = len([d for d in data if d['alert_type'] == 'warning'])
 
     return JsonResponse({
         'status': 'ok', 'data': data, 'warehouses': warehouses, 'categories': categories,
-        'summary': {'total_value': total_value, 'total_items': total_items, 'alert_count': alert_count}
+        'summary': {
+            'total_value': total_value,
+            'total_items': total_items,
+            'alert_count': alert_count,
+            'low_stock_count': low_stock_count,
+            'high_stock_count': high_stock_count,
+        }
     })
 
 

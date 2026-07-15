@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
-from products.models import Product, ProductCategory, ProductVariant, Warehouse
+from products.models import Product, ProductCategory, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -66,6 +66,64 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok')
+
+    def test_inventory_report_alert_card_controls_are_available(self):
+        owner = User.objects.create_user(username='owner_inventory_report', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        self.client.force_login(owner)
+
+        response = self.client.get(reverse('report_inventory'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="alert_box"')
+        self.assertContains(response, '<option value="all">Tất cả cảnh báo</option>', html=True)
+        self.assertContains(response, 'Cần nhập tối thiểu')
+        self.assertContains(response, 'id="inventory_alert_filter_notice"')
+        self.assertContains(response, 'activateInventoryAlertCard')
+
+    def test_api_inventory_report_identifies_low_stock_and_restock_quantity(self):
+        low_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-LOW',
+            name='Sản phẩm thiếu tồn',
+            min_stock=10,
+            max_stock=30,
+            created_by=self.user,
+        )
+        negative_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-NEGATIVE',
+            name='Sản phẩm tồn âm',
+            min_stock=0,
+            created_by=self.user,
+        )
+        high_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-HIGH',
+            name='Sản phẩm vượt tồn',
+            min_stock=2,
+            max_stock=20,
+            created_by=self.user,
+        )
+        ProductStock.objects.create(product=low_product, warehouse=self.warehouse, quantity=4)
+        ProductStock.objects.create(product=negative_product, warehouse=self.warehouse, quantity=-2)
+        ProductStock.objects.create(product=high_product, warehouse=self.warehouse, quantity=25)
+
+        response = self.client.get(reverse('api_report_inventory'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        rows = {row['product_code']: row for row in payload['data']}
+        self.assertEqual(rows[low_product.code]['alert_type'], 'danger')
+        self.assertEqual(rows[low_product.code]['restock_needed'], 6.0)
+        self.assertEqual(rows[negative_product.code]['alert_type'], 'danger')
+        self.assertEqual(rows[negative_product.code]['restock_needed'], 2.0)
+        self.assertEqual(rows[high_product.code]['alert_type'], 'warning')
+        self.assertEqual(rows[high_product.code]['restock_needed'], 0)
+        self.assertEqual(payload['summary']['alert_count'], 3)
+        self.assertEqual(payload['summary']['low_stock_count'], 2)
+        self.assertEqual(payload['summary']['high_stock_count'], 1)
 
     def test_api_report_sales_defaults_to_realized_orders(self):
         today = date.today()

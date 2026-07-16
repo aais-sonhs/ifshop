@@ -1446,14 +1446,26 @@ def api_save_product(request):
                 if len(allowed_warehouses) != len(set(warehouse_ids)):
                     return JsonResponse({'status': 'error', 'message': 'Có kho không thuộc cửa hàng của sản phẩm.'})
 
+                existing_stocks = {
+                    row.warehouse_id: _to_decimal(row.quantity)
+                    for row in ProductStock.objects.select_for_update().filter(
+                        product=product,
+                        warehouse_id__in=warehouse_ids,
+                    )
+                }
+
                 for warehouse_id, quantity in normalized_stocks:
-                    if quantity < 0 and not _allow_negative_stock_for_warehouse_id(warehouse_id):
+                    previous_quantity = existing_stocks.get(warehouse_id, Decimal('0'))
+                    quantity_changed = quantity != previous_quantity
+                    if quantity_changed and quantity < 0 and not _allow_negative_stock_for_warehouse_id(warehouse_id):
                         return JsonResponse({
                             'status': 'error',
                             'message': f'Kho "{allowed_warehouses[warehouse_id].name}" chưa bật cấu hình cho phép tồn âm.'
                         })
 
                 for warehouse_id, quantity in normalized_stocks:
+                    if quantity == existing_stocks.get(warehouse_id, Decimal('0')):
+                        continue
                     stock, _ = ProductStock.objects.select_for_update().get_or_create(
                         product=product,
                         warehouse_id=warehouse_id,

@@ -508,6 +508,41 @@ class ProductInventoryFlowTests(TestCase):
         stock.refresh_from_db()
         self.assertEqual(stock.quantity, Decimal('2'))
 
+    def test_edit_product_price_keeps_existing_negative_stock_when_disabled(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Keep existing negative stock on price edit',
+            opt_allow_negative_stock=False,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('-2'),
+        )
+
+        response = self.client.post(
+            reverse('api_save_product'),
+            data={
+                'id': self.product.id,
+                'code': self.product.code,
+                'name': self.product.name,
+                'unit': self.product.unit,
+                'selling_price': '250000',
+                'skip_variants': '1',
+                'combo_items': '[]',
+                'stocks': json.dumps([
+                    {'warehouse_id': self.warehouse_a.id, 'quantity': '-2'},
+                ]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.product.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(self.product.selling_price, Decimal('250000'))
+        self.assertEqual(stock.quantity, Decimal('-2'))
+
     def test_edit_product_rejects_stock_from_another_store(self):
         response = self.client.post(
             reverse('api_save_product'),

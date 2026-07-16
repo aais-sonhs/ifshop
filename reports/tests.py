@@ -205,6 +205,41 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['low_stock_count'], 2)
         self.assertEqual(payload['summary']['high_stock_count'], 1)
 
+    def test_inventory_value_sums_positive_stock_times_cost_without_negative_offset(self):
+        positive_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-VALUE-POS',
+            name='Sản phẩm còn tồn',
+            cost_price=120000,
+            created_by=self.user,
+        )
+        negative_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-VALUE-NEG',
+            name='Sản phẩm âm kho',
+            cost_price=50000,
+            created_by=self.user,
+        )
+        deleted_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-VALUE-DELETED',
+            name='Sản phẩm đã xóa',
+            cost_price=999999,
+            created_by=self.user,
+        )
+        ProductStock.objects.create(product=positive_product, warehouse=self.warehouse, quantity=3)
+        ProductStock.objects.create(product=negative_product, warehouse=self.warehouse, quantity=-2)
+        ProductStock.objects.create(product=deleted_product, warehouse=self.warehouse, quantity=10)
+        deleted_product.delete()
+
+        payload = self.client.get(reverse('api_report_inventory')).json()
+        rows = {row['product_code']: row for row in payload['data']}
+
+        self.assertEqual(rows[positive_product.code]['stock_value'], 360000.0)
+        self.assertEqual(rows[negative_product.code]['stock_value'], 0.0)
+        self.assertNotIn(deleted_product.code, rows)
+        self.assertEqual(payload['summary']['total_value'], 360000.0)
+
     def test_api_report_sales_defaults_to_realized_orders(self):
         today = date.today()
         created_orders = []

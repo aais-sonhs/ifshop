@@ -2,6 +2,7 @@ import logging
 import unicodedata
 from collections import defaultdict
 from datetime import datetime
+from decimal import Decimal
 from functools import wraps
 from django.shortcuts import render
 from django.contrib import messages
@@ -1425,7 +1426,9 @@ def api_report_inventory(request):
     category_id = request.GET.get('category_id')
     stock_status = request.GET.get('stock_status', '')  # positive, zero, negative
 
-    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').all()
+    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').filter(
+        product__is_deleted=False,
+    )
     stocks = filter_by_store(stocks, request, field_name='warehouse__store')
     if warehouse_id:
         stocks = stocks.filter(warehouse_id=warehouse_id)
@@ -1440,7 +1443,12 @@ def api_report_inventory(request):
 
     data = []
     for s in stocks:
-        qty = float(s.quantity)
+        quantity = Decimal(str(s.quantity or 0))
+        cost_price = Decimal(str(s.product.cost_price or 0))
+        # Tồn âm là chênh lệch cần xử lý, không phải tài sản âm để khấu trừ
+        # khỏi giá trị của các hàng hóa thực tế đang còn trong kho.
+        stock_value = max(quantity, Decimal('0')) * cost_price
+        qty = float(quantity)
         min_stock = float(s.product.min_stock or 0)
         max_stock = float(s.product.max_stock or 0)
         alert = ''
@@ -1464,8 +1472,8 @@ def api_report_inventory(request):
             'max_stock': max_stock,
             'restock_needed': max(min_stock - qty, 0) if alert_type == 'danger' else 0,
             'unit': s.product.unit or '',
-            'cost_price': float(s.product.cost_price),
-            'stock_value': float(s.product.cost_price) * qty,
+            'cost_price': float(cost_price),
+            'stock_value': float(stock_value),
             'alert': alert,
             'alert_type': alert_type,
         })

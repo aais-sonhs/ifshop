@@ -127,6 +127,9 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+function escapeHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
 function moneyDigits(value){
     if(typeof value === 'number'){
         return String(Math.round(value));

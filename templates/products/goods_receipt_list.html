@@ -62,9 +62,16 @@
 
                 <!-- Chi tiết sản phẩm nhập -->
                 <hr>
+                <div class="mb-3">
+                    <h6 class="mb-2"><i class="fas fa-search mr-1"></i>Tìm và thêm sản phẩm</h6>
+                    <select class="form-control" id="quick_receipt_product" style="width:100%">
+                        <option value="">Gõ tên, mã hoặc barcode sản phẩm...</option>
+                    </select>
+                    <small class="form-text text-muted">Chọn sản phẩm để thêm vào danh sách. Sau khi chọn, ô tìm kiếm sẽ sẵn sàng cho sản phẩm tiếp theo.</small>
+                </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết sản phẩm nhập</h6>
-                    <button type="button" class="btn btn-sm btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
+                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Danh sách sản phẩm nhập</h6>
+                    <span class="badge badge-light border" id="receipt_item_count">0 sản phẩm</span>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="items_tbl">
@@ -184,21 +191,31 @@ $(document).ready(function(){
         $('#goods_receipt_extra').collapse('hide');
         itemRowIndex = 0;
         updateTotal();
+        updateReceiptItemCount();
         $('#modal_title').text('Tạo phiếu nhập');
         $('#modal_form').modal('show');
         setTimeout(function(){
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
             presetWarehouseForQuickEntry();
             ensureProductsLoaded(function(){
-                addItemRow();
+                initializeQuickReceiptProductSearch();
+                setTimeout(function(){ $('#quick_receipt_product').select2('open'); }, 100);
             });
         }, 200);
     });
 
-    $('#btn_add_item').click(function(){
-        ensureProductsLoaded(function(){
-            addItemRow();
-        });
+    $('#quick_receipt_product').on('select2:select', function(e){
+        var option = e.params.data.element ? $(e.params.data.element) : $(this).find('option:selected');
+        var productId = Number(option.val());
+        var variantId = option.data('variant-id') || null;
+        var product = PRODUCTS.find(function(item){ return Number(item.id) === productId; });
+        if(product){
+            var unitPrice = Number(option.data('cost') || product.cost_price || product.import_price || 0);
+            addOrIncrementReceiptProduct(product, variantId, unitPrice);
+        }
+        $(this).val('').trigger('change.select2');
+        var select = this;
+        setTimeout(function(){ $(select).select2('open'); }, 80);
     });
 
     $('#btn_quick_supplier').click(function(){
@@ -327,7 +344,8 @@ function addItemRow(data){
             p.variants.forEach(function(v){
                 var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
                 if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
-                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" '+selected+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+                var variantSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
+                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(variantSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
             });
         } else {
             var selected = (data && data.product_id == p.id) ? 'selected' : '';
@@ -382,6 +400,53 @@ function addItemRow(data){
     }
 
     updateTotal();
+    updateReceiptItemCount();
+}
+
+function initializeQuickReceiptProductSearch(){
+    var $select = $('#quick_receipt_product');
+    if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+    var options = '<option value="">Gõ tên, mã hoặc barcode sản phẩm...</option>';
+    PRODUCTS.forEach(function(p){
+        if(p.variants && p.variants.length){
+            p.variants.forEach(function(v){
+                var search = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
+                options += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
+            });
+        } else {
+            var search = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
+            options += '<option value="'+p.id+'" data-cost="'+(p.cost_price || p.import_price || 0)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name)+'</option>';
+        }
+    });
+    $select.html(options).select2({
+        dropdownParent: $('#modal_form'),
+        width: '100%',
+        placeholder: 'Gõ tên, mã hoặc barcode sản phẩm...',
+        matcher: goodsReceiptProductMatcher
+    });
+}
+
+function addOrIncrementReceiptProduct(product, variantId, unitPrice){
+    var existingRow = null;
+    $('#items_body tr').each(function(){
+        var $selected = $(this).find('.item-product-select option:selected');
+        var sameProduct = Number($selected.val()) === Number(product.id);
+        var sameVariant = String($selected.data('variant-id') || '') === String(variantId || '');
+        if(sameProduct && sameVariant) existingRow = $(this);
+    });
+    if(existingRow){
+        var $qty = existingRow.find('.item-qty');
+        $qty.val((parseFloat($qty.val()) || 0) + 1).trigger('input');
+        existingRow.addClass('table-success');
+        setTimeout(function(){ existingRow.removeClass('table-success'); }, 500);
+        return;
+    }
+    addItemRow({product_id: product.id, variant_id: variantId, quantity: 1, unit_price: unitPrice});
+}
+
+function updateReceiptItemCount(){
+    var count = $('#items_body tr').length;
+    $('#receipt_item_count').text(count + ' sản phẩm');
 }
 
 function ensureProductsLoaded(callback){
@@ -391,6 +456,7 @@ function ensureProductsLoaded(callback){
     }
     $.get('/api/products-select/', function(res){
         PRODUCTS = res.data || [];
+        initializeQuickReceiptProductSearch();
         if(typeof callback === 'function') callback();
     });
 }
@@ -441,6 +507,7 @@ function reindexRows(){
         $(this).find('.item-index').text(i+1);
     });
     itemRowIndex = $('#items_body tr').length;
+    updateReceiptItemCount();
 }
 
 function getItemsData(){
@@ -586,6 +653,7 @@ function editItem(d){
     // Clear items first
     $('#items_body').html('');
     itemRowIndex = 0;
+    updateReceiptItemCount();
 
     $('#modal_title').text('Sửa phiếu nhập: ' + d.code);
     $('#modal_form').modal('show');
@@ -593,12 +661,14 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+        initializeQuickReceiptProductSearch();
         if(d.items && d.items.length > 0){
             d.items.forEach(function(item){
                 addItemRow(item);
             });
         }
         updateTotal();
+        setTimeout(function(){ $('#quick_receipt_product').select2('open'); }, 100);
     });
 }
 

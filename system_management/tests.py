@@ -729,7 +729,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Bảo mật giá nhập và giá vốn khi bán hàng')
         self.assertContains(response, 'Quản lý tồn kho và số lượng có thể bán')
         self.assertContains(response, 'Có thể bán = Tồn kho thực tế − số lượng đang giữ')
-        self.assertContains(response, 'có thể đặt ngưỡng chung của sản phẩm')
+        self.assertContains(response, 'Tồn kho tối thiểu và Tồn kho tối đa là ngưỡng riêng của từng sản phẩm')
         self.assertContains(response, 'Tổng giá trị tồn kho = tổng của từng sản phẩm có tồn dương × giá vốn')
         self.assertContains(response, 'Sinh mã tự động và xử lý mã trùng')
         self.assertContains(response, 'đặt Thứ tự ưu tiên bằng số')

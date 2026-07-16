@@ -68,6 +68,8 @@
                         <th class="text-center" style="width:50px;">STT</th>
                         <th class="text-center" style="width:56px;">Ảnh</th>
                         <th>Sản phẩm</th>
+                        <th class="text-right" style="width:130px;">Tồn tối thiểu</th>
+                        <th class="text-right" style="width:130px;">Tồn tối đa</th>
                         <th class="text-right th-sortable" style="width:130px;">
                             Có thể bán
                             <span class="sort-btn" data-target="inventory_sellable_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
@@ -91,7 +93,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="6" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -453,7 +455,7 @@ function loadInventoryData() {
         WAREHOUSE_INVENTORY_DATA = [];
         WAREHOUSE_INVENTORY_MAP = {};
         $('#warehouse_inventory_tbl tbody').html(
-            '<tr><td colspan="6" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
+            '<tr><td colspan="8" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
         );
     });
 }
@@ -507,6 +509,8 @@ function renderInventoryTable() {
             '<td class="text-center align-middle">' + imageHtml + '</td>' +
             '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
                 '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
+            '<td class="text-right align-middle">' + formatQuantity(item.min_stock) + '</td>' +
+            '<td class="text-right align-middle">' + formatQuantity(item.max_stock) + '</td>' +
             '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +
             '<td class="text-right align-middle">' + formatQuantity(item.total_stock) + '</td>' +
             '<td class="text-center align-middle"><button type="button" class="btn btn-xs ' +
@@ -516,8 +520,8 @@ function renderInventoryTable() {
     });
     if (!html) {
         html = stockSort === 'negative'
-            ? '<tr><td colspan="6" class="text-center text-muted">Không có sản phẩm tồn kho âm</td></tr>'
-            : '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
+            ? '<tr><td colspan="8" class="text-center text-muted">Không có sản phẩm tồn kho âm</td></tr>'
+            : '<tr><td colspan="8" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
     }
     $('#warehouse_inventory_tbl tbody').html(html);
 }

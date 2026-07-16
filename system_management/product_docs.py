@@ -83,11 +83,11 @@ DOCUMENT_UPDATES = [
         'icon': 'fas fa-warehouse',
         'title': 'Quản lý tồn kho và số lượng có thể bán',
         'items': [
-            'Màn hình Quản lý kho hiển thị Tồn kho thực tế và Có thể bán của từng sản phẩm.',
+            'Màn hình Quản lý kho hiển thị Tồn kho tối thiểu, Tồn kho tối đa, Tồn kho thực tế và Có thể bán của từng sản phẩm.',
             'Có thể bán = Tồn kho thực tế − số lượng đang giữ cho các đơn ở trạng thái Đơn hàng, Đang xử lý hoặc Đang đóng gói và đã đủ điều kiện duyệt.',
             'Có thể sắp xếp Có thể bán hoặc Tồn kho theo thứ tự tăng/giảm; bộ chọn Tồn kho còn hỗ trợ lọc riêng các sản phẩm đang âm kho.',
             'Bấm Sửa tại sản phẩm để điều chỉnh tồn theo từng kho và xem lịch sử nhập; tồn combo chỉ xem vì được tính tự động từ thành phần.',
-            'Trong cửa sổ Sửa tồn kho, có thể đặt ngưỡng chung của sản phẩm: Tồn kho tối thiểu được phép là số âm; Tồn kho tối đa bằng 0 nếu không giới hạn. Đây không phải số lượng của từng kho.',
+            'Hai cột Tồn kho tối thiểu và Tồn kho tối đa là ngưỡng riêng của từng sản phẩm. Bấm Sửa để điều chỉnh: mức tối thiểu được phép là số âm; mức tối đa bằng 0 nếu không giới hạn. Đây không phải số lượng của từng kho.',
             'Chỉ được lưu số lượng âm khi thương hiệu đã bật cấu hình Cho phép tồn âm; nếu chưa bật, hệ thống giữ nguyên tồn cũ và báo rõ kho cần cấu hình.',
         ],
     },
@@ -496,7 +496,7 @@ DETAILED_OPERATION_GUIDES = [
         'goal': 'Đối chiếu tồn hệ thống với tồn thực tế, phát hiện thất thoát, sai lệch nhập xuất hoặc hàng hỏng.',
         'steps': [
             'Vào Kho & Sản phẩm → Quản lý kho để xem bảng tồn của toàn bộ sản phẩm trong phạm vi cửa hàng được quản lý.',
-            'Đọc cột Tồn kho là số lượng thực tế đang ghi nhận; cột Có thể bán bằng Tồn kho trừ số lượng đang giữ cho đơn chưa xuất kho.',
+            'Đọc cột Tồn tối thiểu và Tồn tối đa để biết ngưỡng của sản phẩm; cột Tồn kho là số lượng thực tế đang ghi nhận; cột Có thể bán bằng Tồn kho trừ số lượng đang giữ cho đơn chưa xuất kho.',
             'Bấm Sửa ở cột Thao tác để chỉnh tồn theo từng kho hoặc xem lịch sử nhập của sản phẩm.',
             'Tại Ngưỡng tồn của sản phẩm, nhập Tồn kho tối thiểu để cảnh báo và tính số lượng cần nhập; nhập Tồn kho tối đa để cảnh báo vượt ngưỡng, hoặc để 0 nếu không giới hạn. Hai ngưỡng áp dụng chung cho sản phẩm.',
             'Dùng bộ chọn tại cột Có thể bán hoặc Tồn kho để sắp xếp tăng/giảm; chọn Tồn kho âm để chỉ xem các mã đang âm kho.',

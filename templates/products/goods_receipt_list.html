@@ -206,7 +206,7 @@ $(document).ready(function(){
         var productId = Number($option.val());
         var variantId = $option.data('variant-id') || null;
         var product = PRODUCTS.find(function(item){ return Number(item.id) === productId; });
-        if(product){
+        if(product && !focusExistingGoodsReceiptProduct(productId, variantId)){
             addItemRow({
                 product_id: product.id,
                 variant_id: variantId,
@@ -437,6 +437,24 @@ function initializeQuickReceiptProductSelect(){
         allowClear: true,
         matcher: goodsReceiptProductMatcher
     });
+}
+
+function focusExistingGoodsReceiptProduct(productId, variantId){
+    var $existing = $();
+    $('#items_body tr').each(function(){
+        var $selected = $(this).find('.item-product-select option:selected');
+        if(Number($selected.val()) === Number(productId) &&
+                String($selected.data('variant-id') || '') === String(variantId || '')){
+            $existing = $(this);
+            return false;
+        }
+    });
+    if(!$existing.length) return false;
+    $existing.addClass('table-warning');
+    var $quantity = $existing.find('.item-qty');
+    $quantity.focus().select();
+    setTimeout(function(){ $existing.removeClass('table-warning'); }, 900);
+    return true;
 }
 
 function normalizeGoodsReceiptProductSearch(value){

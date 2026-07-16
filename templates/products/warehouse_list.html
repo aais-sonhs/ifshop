@@ -29,6 +29,18 @@
     </div>
 </div>
 
+<style>
+.th-sortable { position:relative; white-space:nowrap; }
+.th-sortable .sort-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1px solid #dee2e6; border-radius:4px; margin-left:5px; font-size:11px; color:#888; background:#f8f9fa; cursor:pointer; transition:all .15s; vertical-align:middle; }
+.th-sortable .sort-btn:hover { background:#e2e6ea; color:#007bff; border-color:#007bff; }
+.th-sortable .sort-btn.active { background:#007bff; color:#fff; border-color:#007bff; }
+.sort-dropdown { display:none; position:absolute; right:0; top:100%; margin-top:4px; min-width:130px; background:#fff; border:1px solid #dee2e6; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.15); z-index:100; overflow:hidden; }
+.sort-dropdown.show { display:block; }
+.sort-dropdown .sort-option { display:flex; align-items:center; gap:6px; padding:7px 12px; font-size:13px; color:#495057; cursor:pointer; transition:background .1s; white-space:nowrap; }
+.sort-dropdown .sort-option:hover { background:#f0f4ff; }
+.sort-dropdown .sort-option.active { background:#e8f0fe; color:#007bff; font-weight:600; }
+.sort-dropdown .sort-option i { width:14px; text-align:center; font-size:12px; }
+</style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">
@@ -41,27 +53,29 @@
             <table id="warehouse_inventory_tbl" class="table table-bordered table-striped table-sm">
                 <thead>
                     <tr>
-                        <th class="text-center" style="width:70px;">STT</th>
-                        <th class="text-center" style="width:90px;">Ảnh</th>
-                        <th>Tên sản phẩm</th>
-                        <th style="width:170px;">
-                            <label for="inventory_sellable_sort" class="d-block mb-1 text-right">Có thể bán</label>
-                            <select class="form-control form-control-sm" id="inventory_sellable_sort">
-                                <option value="">-- Chọn --</option>
-                                <option value="asc">Tăng dần</option>
-                                <option value="desc">Giảm dần</option>
-                            </select>
+                        <th class="text-center" style="width:50px;">STT</th>
+                        <th class="text-center" style="width:56px;">Ảnh</th>
+                        <th>Sản phẩm</th>
+                        <th class="text-right th-sortable" style="width:130px;">
+                            Có thể bán
+                            <span class="sort-btn" data-target="inventory_sellable_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
+                            <div class="sort-dropdown" id="dd_sellable">
+                                <div class="sort-option" data-value="asc" data-select="inventory_sellable_sort"><i class="fas fa-sort-amount-up-alt"></i> Tăng dần</div>
+                                <div class="sort-option" data-value="desc" data-select="inventory_sellable_sort"><i class="fas fa-sort-amount-down"></i> Giảm dần</div>
+                                <div class="sort-option" data-value="" data-select="inventory_sellable_sort"><i class="fas fa-times"></i> Bỏ sắp xếp</div>
+                            </div>
                         </th>
-                        <th style="width:170px;">
-                            <label for="inventory_stock_sort" class="d-block mb-1 text-right">Tồn kho</label>
-                            <select class="form-control form-control-sm" id="inventory_stock_sort">
-                                <option value="">-- Chọn --</option>
-                                <option value="asc">Tăng dần</option>
-                                <option value="desc">Giảm dần</option>
-                                <option value="negative">Tồn kho âm</option>
-                            </select>
+                        <th class="text-right th-sortable" style="width:130px;">
+                            Tồn kho
+                            <span class="sort-btn" data-target="inventory_stock_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
+                            <div class="sort-dropdown" id="dd_stock">
+                                <div class="sort-option" data-value="asc" data-select="inventory_stock_sort"><i class="fas fa-sort-amount-up-alt"></i> Tăng dần</div>
+                                <div class="sort-option" data-value="desc" data-select="inventory_stock_sort"><i class="fas fa-sort-amount-down"></i> Giảm dần</div>
+                                <div class="sort-option" data-value="negative" data-select="inventory_stock_sort"><i class="fas fa-filter"></i> Tồn kho âm</div>
+                                <div class="sort-option" data-value="" data-select="inventory_stock_sort"><i class="fas fa-times"></i> Bỏ sắp xếp</div>
+                            </div>
                         </th>
-                        <th class="text-center" style="width:100px;">Thao tác</th>
+                        <th class="text-center" style="width:60px;">TT</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -71,6 +85,9 @@
         </div>
     </div>
 </div>
+<!-- Hidden selects to keep JS compatibility -->
+<select id="inventory_sellable_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option></select>
+<select id="inventory_stock_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option><option value="negative"></option></select>
 
 <div class="modal fade" id="modal_inventory_product" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -181,6 +198,56 @@ $(document).ready(function() {
     $('#inventory_stock_sort').change(function() {
         if ($(this).val()) $('#inventory_sellable_sort').val('');
         renderInventoryTable();
+    });
+
+    // Sort icon → open dropdown popup
+    $(document).on('click', '.sort-btn', function(e) {
+        e.stopPropagation();
+        var $btn = $(this);
+        var $dropdown = $btn.siblings('.sort-dropdown');
+        // Close all other dropdowns
+        $('.sort-dropdown').not($dropdown).removeClass('show');
+        $dropdown.toggleClass('show');
+    });
+
+    // Pick a sort option from dropdown
+    $(document).on('click', '.sort-option', function(e) {
+        e.stopPropagation();
+        var $opt = $(this);
+        var selectId = $opt.data('select');
+        var value = $opt.data('value');
+        // Update hidden select & trigger existing logic
+        $('#' + selectId).val(value).trigger('change');
+        // Update active state in dropdown
+        $opt.closest('.sort-dropdown').find('.sort-option').removeClass('active');
+        if (value) $opt.addClass('active');
+        // Update sort-btn icon & state
+        var $btn = $opt.closest('.th-sortable').find('.sort-btn');
+        if (value) {
+            $btn.addClass('active');
+            var iconMap = {asc:'fas fa-sort-amount-up-alt', desc:'fas fa-sort-amount-down', negative:'fas fa-filter'};
+            $btn.find('i').attr('class', iconMap[value] || 'fas fa-sort');
+        } else {
+            $btn.removeClass('active');
+            $btn.find('i').attr('class', 'fas fa-sort');
+        }
+        // Reset the OTHER column's btn state
+        var otherSelectId = selectId === 'inventory_sellable_sort' ? 'inventory_stock_sort' : 'inventory_sellable_sort';
+        if (value && !$('#' + otherSelectId).val()) {
+            // already cleared by hidden select .change handler
+        }
+        var $otherBtn = $('.sort-btn[data-target="' + otherSelectId + '"]');
+        if (value) {
+            $otherBtn.removeClass('active').find('i').attr('class', 'fas fa-sort');
+            $otherBtn.siblings('.sort-dropdown').find('.sort-option').removeClass('active');
+        }
+        // Close dropdown
+        $opt.closest('.sort-dropdown').removeClass('show');
+    });
+
+    // Close dropdown when clicking outside
+    $(document).on('click', function() {
+        $('.sort-dropdown').removeClass('show');
     });
 
     $('#btn_add_warehouse').click(function() {

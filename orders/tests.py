@@ -964,6 +964,20 @@ class OrderRiskFlowTests(TestCase):
         expected_ids = [order.id for order in list(reversed(created_orders))[10:12]]
         self.assertEqual([row['id'] for row in payload['data']], expected_ids)
 
+    def test_get_orders_finds_order_code_without_separators(self):
+        matching_order = self._create_order(code='DH-CODE-045', status=1)
+        self._create_order(code='DH-CODE-046', status=1)
+
+        for search_term in ('dhcode045', '# DH-CODE-045'):
+            with self.subTest(search_term=search_term):
+                response = self.client.get(reverse('api_get_orders'), {'text': search_term})
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    [row['id'] for row in response.json()['data']],
+                    [matching_order.id],
+                )
+
     def test_get_orders_sorts_by_created_at_not_latest_update(self):
         first_created = self._create_order(code='DH-CREATED-FIRST', status=1)
         second_created = self._create_order(code='DH-CREATED-SECOND', status=1)

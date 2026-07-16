@@ -10,7 +10,8 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Value
+from django.db.models.functions import Lower, Replace
 from django.utils import timezone
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
@@ -2696,7 +2697,7 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
         need_distinct = True
     if filters.get('text'):
         text = filters['text']
-        queryset = queryset.filter(
+        text_query = (
             Q(code__icontains=text) |
             Q(customer__name__icontains=text) |
             Q(customer__phone__icontains=text) |
@@ -2717,6 +2718,24 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
             Q(source_return_exchange__code__icontains=text) |
             Q(source_return_exchange__order__code__icontains=text)
         )
+
+        # Cho phép tìm mã đơn linh hoạt: DH-045, DH045, "# DH-045"...
+        # đều khớp cùng một mã mà không làm thay đổi cách tìm các trường khác.
+        normalized_code_term = re.sub(r'[^a-z0-9]+', '', text.casefold())
+        if normalized_code_term:
+            normalized_code_expression = Lower('code')
+            for separator in ('-', ' ', '/', '.', '_', '#'):
+                normalized_code_expression = Replace(
+                    normalized_code_expression,
+                    Value(separator),
+                    Value(''),
+                )
+            queryset = queryset.annotate(
+                _normalized_order_code=normalized_code_expression,
+            )
+            text_query |= Q(_normalized_order_code__icontains=normalized_code_term)
+
+        queryset = queryset.filter(text_query)
         need_distinct = True
 
     if need_distinct:

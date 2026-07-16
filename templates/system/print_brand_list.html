@@ -12,13 +12,14 @@
     <div class="card-body">
         <div class="alert alert-info">
             <i class="fas fa-info-circle mr-1"></i>
-            Danh sách này chỉ dùng để đổi logo, tên và thông tin đơn vị hiển thị trên phiếu in. Không tạo thêm công ty, không ảnh hưởng cửa hàng, máy in hay mẫu in.
+            Danh sách này chỉ dùng để đổi logo, tên và thông tin đơn vị hiển thị trên phiếu in. Thứ tự ưu tiên quyết định vị trí nhãn hàng trong các danh sách chọn khi in; số nhỏ đứng trước.
         </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped table-sm" id="print_brand_tbl">
                 <thead>
                     <tr>
                         <th style="width:60px;">STT</th>
+                        <th class="text-center" style="width:100px;">Ưu tiên</th>
                         <th style="width:90px;">Logo</th>
                         <th>Tên nhãn hàng</th>
                         <th>MST</th>
@@ -58,9 +59,16 @@
                         </div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Tên nhãn hàng <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="inp_print_brand_name">
+                <div class="form-row">
+                    <div class="form-group col-md-8">
+                        <label>Tên nhãn hàng <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="inp_print_brand_name">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label>Thứ tự ưu tiên</label>
+                        <input type="number" class="form-control" id="inp_print_brand_priority" min="0" max="9999" step="1" value="100">
+                        <small class="text-muted">Số nhỏ đứng trước.</small>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Mã số thuế</label>
@@ -118,6 +126,7 @@ function setPrintBrandLogoPreview(url){
 function resetPrintBrandForm(){
     $('#print_brand_id').val('');
     $('#inp_print_brand_name,#inp_print_brand_tax,#inp_print_brand_phone,#inp_print_brand_email,#inp_print_brand_website,#inp_print_brand_address,#inp_print_brand_desc,#inp_print_brand_logo').val('');
+    $('#inp_print_brand_priority').val('100');
     printBrandLogoRemoved = false;
     setPrintBrandLogoPreview('');
 }
@@ -141,6 +150,7 @@ function renderPrintBrands(){
             : '<span class="text-muted">Chưa có</span>';
         html += '<tr>' +
             '<td class="text-center">' + (index + 1) + '</td>' +
+            '<td class="text-center font-weight-bold">' + escapeHtml(item.print_priority) + '</td>' +
             '<td class="text-center">' + logoHtml + '</td>' +
             '<td><strong>' + escapeHtml(item.name) + '</strong>' + (item.description ? '<br><small class="text-muted">' + escapeHtml(item.description) + '</small>' : '') + '</td>' +
             '<td>' + escapeHtml(item.tax_code || '') + '</td>' +
@@ -153,7 +163,7 @@ function renderPrintBrands(){
         '</tr>';
     });
     $('#print_brand_tbl tbody').html(
-        html || '<tr><td colspan="7" class="text-center text-muted">Chưa có nhãn hàng nào. Bấm "Thêm nhãn hàng" để bắt đầu.</td></tr>'
+        html || '<tr><td colspan="8" class="text-center text-muted">Chưa có nhãn hàng nào. Bấm "Thêm nhãn hàng" để bắt đầu.</td></tr>'
     );
 }
 
@@ -174,6 +184,7 @@ function editPrintBrandById(id){
 function editPrintBrand(item){
     $('#print_brand_id').val(item.id);
     $('#inp_print_brand_name').val(item.name || '');
+    $('#inp_print_brand_priority').val(item.print_priority == null ? 100 : item.print_priority);
     $('#inp_print_brand_tax').val(item.tax_code || '');
     $('#inp_print_brand_phone').val(item.phone || '');
     $('#inp_print_brand_email').val(item.email || '');
@@ -229,9 +240,15 @@ $(document).ready(function(){
             alert('Vui lòng nhập tên nhãn hàng');
             return;
         }
+        var priority = Number($('#inp_print_brand_priority').val());
+        if(!Number.isInteger(priority) || priority < 0 || priority > 9999){
+            alert('Thứ tự ưu tiên phải là số nguyên từ 0 đến 9999');
+            return;
+        }
         var fd = new FormData();
         fd.append('id', $('#print_brand_id').val() || '');
         fd.append('name', name);
+        fd.append('print_priority', String(priority));
         fd.append('tax_code', $('#inp_print_brand_tax').val());
         fd.append('phone', $('#inp_print_brand_phone').val());
         fd.append('email', $('#inp_print_brand_email').val());

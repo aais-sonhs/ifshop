@@ -224,6 +224,7 @@ class SystemManagementScopeTests(TestCase):
                 'name': 'Nhãn hiệu hóa đơn',
                 'tax_code': '0312345678',
                 'phone': '0900000000',
+                'print_priority': 7,
             }),
             content_type='application/json',
         )
@@ -233,6 +234,47 @@ class SystemManagementScopeTests(TestCase):
         label = Brand.objects.get(name='Nhãn hiệu hóa đơn')
         self.assertEqual(label.owner_id, self.owner.id)
         self.assertEqual(label.brand_type, Brand.TYPE_PRINT_LABEL)
+        self.assertEqual(label.print_priority, 7)
+
+    def test_print_brands_follow_priority_in_management_and_template_setting(self):
+        Brand.objects.create(
+            name='Nhãn Z ưu tiên đầu',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+            print_priority=1,
+        )
+        Brand.objects.create(
+            name='Nhãn A cùng ưu tiên',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+            print_priority=1,
+        )
+        Brand.objects.create(
+            name='Nhãn ưu tiên sau',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+            print_priority=20,
+        )
+
+        api_response = self.client.get(reverse('api_get_print_brands'))
+        template_response = self.client.get(reverse('print_template_setting'))
+        management_response = self.client.get(reverse('print_brand_tbl'))
+
+        expected_names = [
+            'Nhãn A cùng ưu tiên',
+            'Nhãn Z ưu tiên đầu',
+            'Nhãn ưu tiên sau',
+        ]
+        self.assertEqual(
+            [item['name'] for item in api_response.json()['data']],
+            expected_names,
+        )
+        self.assertEqual(
+            [item.name for item in template_response.context['preview_brands']],
+            expected_names,
+        )
+        self.assertContains(management_response, 'id="inp_print_brand_priority"')
+        self.assertContains(management_response, 'Số nhỏ đứng trước')
 
     def test_regular_staff_cannot_create_brand(self):
         self.client.force_login(self.staff_a)
@@ -689,6 +731,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Có thể bán = Tồn kho thực tế − số lượng đang giữ')
         self.assertContains(response, 'Tổng giá trị tồn kho = tổng của từng sản phẩm có tồn dương × giá vốn')
         self.assertContains(response, 'Sinh mã tự động và xử lý mã trùng')
+        self.assertContains(response, 'đặt Thứ tự ưu tiên bằng số')
         self.assertContains(response, 'Báo cáo nhập hàng theo nhà cung cấp')
         self.assertContains(response, 'Phiếu bảo hành theo đơn')
         self.assertContains(response, 'Địa chỉ / điểm nhận phụ')

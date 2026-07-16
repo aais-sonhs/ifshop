@@ -270,14 +270,16 @@ def _serialize_print_brand(brand):
 
 def _get_print_brand_queryset(request, record=None, store=None):
     current_store = store or getattr(record, 'store', None) or _get_default_store_for_request(request)
-    return get_related_brands_for_user(request.user, store=current_store).order_by('name')
+    return get_related_brands_for_user(request.user, store=current_store).order_by(
+        'brand_type', 'print_priority', 'name', 'id'
+    )
 
 
 def _get_print_brand_selection_queryset(request, record=None, store=None):
     """Danh sách nhãn hàng hiển thị cho user chọn khi in."""
     return _get_print_brand_queryset(request, record=record, store=store).filter(
         brand_type=Brand.TYPE_PRINT_LABEL
-    )
+    ).order_by('print_priority', 'name', 'id')
 
 
 def _resolve_issuing_brand(

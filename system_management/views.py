@@ -238,7 +238,7 @@ def _get_print_label_queryset_for_user(request):
     return Brand.objects.filter(
         owner=request.user,
         brand_type=Brand.TYPE_PRINT_LABEL,
-    ).order_by('name')
+    ).order_by('print_priority', 'name', 'id')
 
 
 def _get_print_label_for_user(request, brand_id):
@@ -253,7 +253,7 @@ def _get_print_brand_queryset_for_request(request, store=None):
         return Brand.objects.none()
     return get_related_brands_for_user(request.user, store=store).filter(
         brand_type=Brand.TYPE_PRINT_LABEL
-    )
+    ).order_by('print_priority', 'name', 'id')
 
 
 def _get_selected_print_brand(request, brand_id=None, store=None, fallback_brand=None):
@@ -1155,6 +1155,7 @@ def api_get_print_brands(request):
         'website': item.website or '',
         'address': item.address or '',
         'description': item.description or '',
+        'print_priority': item.print_priority,
         'is_active': item.is_active,
     } for item in _get_print_label_queryset_for_user(request)]
     return JsonResponse({'data': data})
@@ -1194,6 +1195,16 @@ def api_save_print_brand(request):
         brand.website = data.get('website', '')
         brand.address = data.get('address', '')
         brand.tax_code = data.get('tax_code', '')
+        try:
+            print_priority = int(data.get('print_priority', 100))
+        except (TypeError, ValueError):
+            return JsonResponse({'status': 'error', 'message': 'Thứ tự ưu tiên phải là số nguyên.'})
+        if print_priority < 0 or print_priority > 9999:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Thứ tự ưu tiên phải nằm trong khoảng từ 0 đến 9999.',
+            })
+        brand.print_priority = print_priority
         brand.is_active = _to_bool(data.get('is_active'), True)
         if not brand.name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên nhãn hàng'})

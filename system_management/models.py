@@ -361,6 +361,7 @@ class Brand(models.Model):
     website = models.URLField(blank=True, null=True, verbose_name='Website')
     address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ trụ sở')
     tax_code = models.CharField(max_length=20, blank=True, null=True, verbose_name='Mã số thuế')
+    print_priority = models.PositiveIntegerField(default=100, verbose_name='Thứ tự ưu tiên khi in')
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='owned_brands', verbose_name='Chủ sở hữu')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')

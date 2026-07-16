@@ -123,7 +123,9 @@ def get_related_brands_for_user(user, store=None):
                 brand_type=Brand.TYPE_PRINT_LABEL,
             ).values_list('id', flat=True)
         )
-    return Brand.objects.filter(id__in=allowed_ids).order_by('brand_type', 'name')
+    return Brand.objects.filter(id__in=allowed_ids).order_by(
+        'brand_type', 'print_priority', 'name', 'id'
+    )
 
 
 def get_managed_store_ids(user):

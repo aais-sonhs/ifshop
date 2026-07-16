@@ -132,6 +132,7 @@ DOCUMENT_UPDATES = [
         'icon': 'fas fa-desktop',
         'title': 'Giao diện thao tác và mẫu in',
         'items': [
+            'Tại Cấu hình → Nhãn hàng, đặt Thứ tự ưu tiên bằng số; số nhỏ đứng trước trong danh sách chọn nhãn hàng ở Cấu hình in chứng từ và khi in.',
             'Form đơn hàng và sản phẩm được mở rộng, các vùng nhập hàng có cuộn độc lập để thao tác tốt hơn với chứng từ dài.',
             'Hóa đơn K80 tách tên hàng khỏi dòng số lượng, đơn giá và thành tiền để dễ đọc hơn.',
             'Cảnh báo bán dưới giá vốn vẫn cho lưu đơn, phù hợp trường hợp hàng tặng hoặc khuyến mãi giá 0.',
@@ -618,6 +619,7 @@ IMPLEMENTATION_CHECKLIST = [
             'Tạo tài khoản người dùng theo vai trò, gán cửa hàng và phân quyền phù hợp.',
             'Nhập danh mục sản phẩm, dịch vụ, nhóm khách hàng, nhà cung cấp và phương thức thanh toán.',
             'Nhập tồn đầu kỳ hoặc phiếu nhập đầu tiên để hệ thống có dữ liệu kho chính xác.',
+            'Khai báo các nhãn hàng dùng trên chứng từ và đặt Thứ tự ưu tiên; dùng số nhỏ cho nhãn cần xuất hiện trước.',
             'Cấu hình mẫu in, máy in và phương thức thanh toán mặc định.',
         ],
     },

@@ -119,6 +119,13 @@ class OrderRiskFlowTests(TestCase):
             name='Z Brand Print',
             owner=self.owner,
             brand_type=Brand.TYPE_PRINT_LABEL,
+            print_priority=20,
+        )
+        priority_label = Brand.objects.create(
+            name='A Priority Brand Print',
+            owner=self.owner,
+            brand_type=Brand.TYPE_PRINT_LABEL,
+            print_priority=1,
         )
         order = self._create_order(code='DH-BRAND-001')
 
@@ -127,8 +134,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
-        brand_ids = {item['id'] for item in payload['available_print_brands']}
-        self.assertIn(print_label.id, brand_ids)
+        brand_ids = [item['id'] for item in payload['available_print_brands']]
+        self.assertEqual(brand_ids, [priority_label.id, print_label.id])
         self.assertNotIn(self.brand.id, brand_ids)
         self.assertEqual(payload['order']['store_brand_id'], self.brand.id)
 

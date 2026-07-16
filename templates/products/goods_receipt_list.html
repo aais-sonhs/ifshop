@@ -131,6 +131,12 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+/* Select2 giữ select gốc cho dữ liệu; không để Bootstrap làm nó hiện thành ô thứ hai. */
+#quick_receipt_product.select2-hidden-accessible {
+    display: none !important;
+}
+</style>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}

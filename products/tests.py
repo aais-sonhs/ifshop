@@ -379,9 +379,19 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'id="warehouse_tbl"')
         self.assertContains(response, 'id="warehouse_inventory_tbl"')
         self.assertContains(response, '<th>Tên sản phẩm</th>', html=True)
-        self.assertContains(response, '>Có thể bán</th>')
-        self.assertContains(response, '>Tồn kho</th>')
+        self.assertContains(response, '>Có thể bán</label>')
+        self.assertContains(response, '>Tồn kho</label>')
         self.assertContains(response, '>Thao tác</th>')
+        self.assertContains(response, 'id="inventory_sellable_sort"')
+        self.assertContains(response, '<option value="asc">Tăng dần</option>', html=True, count=2)
+        self.assertContains(response, '<option value="desc">Giảm dần</option>', html=True, count=2)
+        self.assertContains(response, 'id="inventory_stock_sort"')
+        self.assertContains(response, '<option value="negative">Tồn kho âm</option>', html=True)
+        self.assertContains(response, 'function renderInventoryTable()')
+        self.assertContains(
+            response,
+            'Có thể bán = Tồn kho − số lượng đang giữ trong đơn chưa xuất kho',
+        )
         self.assertContains(response, 'id="modal_inventory_product"')
         self.assertContains(response, 'id="inventory_stock_edit_tbl"')
         self.assertContains(response, 'id="inventory_purchase_history_body"')

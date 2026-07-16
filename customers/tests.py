@@ -170,6 +170,70 @@ class CustomerScopeTests(TestCase):
             [('Điểm mới', 'Địa chỉ mới')],
         )
 
+    def test_get_customers_returns_unique_shipping_addresses_from_order_history(self):
+        Order.objects.create(
+            code='DH-CUST-ADDRESS-OLD',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            shipping_address='12 Nguyễn Trãi, Hà Nội',
+            order_date=date(2026, 7, 14),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-CUST-ADDRESS-LATEST',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            shipping_address='  12 Nguyễn Trãi,   Hà Nội  ',
+            order_date=date(2026, 7, 16),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-CUST-ADDRESS-SECOND',
+            store=self.store,
+            customer=self.customer,
+            status=4,
+            shipping_address='Kho công trình Quận 7',
+            order_date=date(2026, 7, 15),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-CUST-ADDRESS-FOREIGN',
+            store=self.other_store,
+            customer=self.customer,
+            status=5,
+            shipping_address='Địa chỉ ngoài phạm vi',
+            order_date=date(2026, 7, 16),
+            created_by=self.other_user,
+        )
+
+        response = self.client.get(reverse('api_get_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['id'] == self.customer.id)
+        history = row['historical_shipping_addresses']
+        self.assertEqual(
+            [item['address'] for item in history],
+            ['12 Nguyễn Trãi, Hà Nội', 'Kho công trình Quận 7'],
+        )
+        self.assertEqual(history[0]['last_order_code'], 'DH-CUST-ADDRESS-LATEST')
+        self.assertEqual(history[0]['last_order_date'], '16/07/2026')
+        self.assertEqual(history[0]['order_count'], 2)
+
+    def test_customer_edit_form_includes_shipping_address_history_section(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('customer_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="shipping_address_history_section"')
+        self.assertContains(response, 'Địa chỉ giao hàng đã dùng')
+        self.assertContains(response, 'function renderHistoricalShippingAddresses(')
+        self.assertContains(response, 'customer-code-under-name')
+        self.assertNotContains(response, '<th data-col="code">Mã KH</th>', html=True)
+        self.assertNotContains(response, "customerColConfig.td('code'")
+
     def test_save_customer_rejects_foreign_customer_edit(self):
         response = self.client.post(
             reverse('api_save_customer'),

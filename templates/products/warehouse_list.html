@@ -31,7 +31,10 @@
 
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-boxes mr-2"></i>Tồn kho</h3>
+        <h3 class="card-title">
+            <i class="fas fa-boxes mr-2"></i>Tồn kho
+            <small class="text-danger ml-2 font-weight-bold">* Có thể bán = Tồn kho − số lượng đang giữ trong đơn chưa xuất kho</small>
+        </h3>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -41,8 +44,23 @@
                         <th class="text-center" style="width:70px;">STT</th>
                         <th class="text-center" style="width:90px;">Ảnh</th>
                         <th>Tên sản phẩm</th>
-                        <th class="text-right" style="width:150px;">Có thể bán</th>
-                        <th class="text-right" style="width:150px;">Tồn kho</th>
+                        <th style="width:170px;">
+                            <label for="inventory_sellable_sort" class="d-block mb-1 text-right">Có thể bán</label>
+                            <select class="form-control form-control-sm" id="inventory_sellable_sort">
+                                <option value="">-- Chọn --</option>
+                                <option value="asc">Tăng dần</option>
+                                <option value="desc">Giảm dần</option>
+                            </select>
+                        </th>
+                        <th style="width:170px;">
+                            <label for="inventory_stock_sort" class="d-block mb-1 text-right">Tồn kho</label>
+                            <select class="form-control form-control-sm" id="inventory_stock_sort">
+                                <option value="">-- Chọn --</option>
+                                <option value="asc">Tăng dần</option>
+                                <option value="desc">Giảm dần</option>
+                                <option value="negative">Tồn kho âm</option>
+                            </select>
+                        </th>
                         <th class="text-center" style="width:100px;">Thao tác</th>
                     </tr>
                 </thead>
@@ -150,10 +168,20 @@
 {% block extra_js %}
 <script>
 var WAREHOUSE_INVENTORY_MAP = {};
+var WAREHOUSE_INVENTORY_DATA = [];
 
 $(document).ready(function() {
     loadData();
     loadInventoryData();
+
+    $('#inventory_sellable_sort').change(function() {
+        if ($(this).val()) $('#inventory_stock_sort').val('');
+        renderInventoryTable();
+    });
+    $('#inventory_stock_sort').change(function() {
+        if ($(this).val()) $('#inventory_sellable_sort').val('');
+        renderInventoryTable();
+    });
 
     $('#btn_add_warehouse').click(function() {
         $('#edit_id').val('');
@@ -269,34 +297,65 @@ function inventoryStockStatus(quantity) {
 
 function loadInventoryData() {
     $.get('/api/warehouses/inventory/', function(res) {
-        var html = '';
         WAREHOUSE_INVENTORY_MAP = {};
-        (res.data || []).forEach(function(item, idx) {
+        WAREHOUSE_INVENTORY_DATA = res.data || [];
+        WAREHOUSE_INVENTORY_DATA.forEach(function(item) {
             WAREHOUSE_INVENTORY_MAP[String(item.id)] = item;
-            var imageHtml = item.image_url
-                ? '<img src="' + escapeHtml(item.image_url) + '" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;">'
-                : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border rounded" style="width:48px;height:48px;"><i class="fas fa-image"></i></span>';
-            html += '<tr>' +
-                '<td class="text-center align-middle">' + (idx + 1) + '</td>' +
-                '<td class="text-center align-middle">' + imageHtml + '</td>' +
-                '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
-                    '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
-                '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +
-                '<td class="text-right align-middle">' + formatQuantity(item.total_stock) + '</td>' +
-                '<td class="text-center align-middle"><button type="button" class="btn btn-xs ' +
-                    (item.is_combo ? 'btn-outline-secondary' : 'btn-info') + '" onclick="openInventoryEdit(' + item.id + ')">' +
-                    (item.is_combo ? 'Xem' : 'Sửa') + '</button></td>' +
-                '</tr>';
         });
-        if (!html) {
-            html = '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
-        }
-        $('#warehouse_inventory_tbl tbody').html(html);
+        renderInventoryTable();
     }).fail(function() {
+        WAREHOUSE_INVENTORY_DATA = [];
+        WAREHOUSE_INVENTORY_MAP = {};
         $('#warehouse_inventory_tbl tbody').html(
             '<tr><td colspan="6" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
         );
     });
+}
+
+function renderInventoryTable() {
+    var sellableSort = $('#inventory_sellable_sort').val() || '';
+    var stockSort = $('#inventory_stock_sort').val() || '';
+    var rows = WAREHOUSE_INVENTORY_DATA.slice();
+
+    if (stockSort === 'negative') {
+        rows = rows.filter(function(item) { return Number(item.total_stock || 0) < 0; });
+    }
+
+    var sortField = sellableSort ? 'sellable_stock' : (stockSort === 'asc' || stockSort === 'desc' ? 'total_stock' : '');
+    var sortDirection = sellableSort || (stockSort === 'asc' || stockSort === 'desc' ? stockSort : '');
+    if (sortField) {
+        rows.sort(function(a, b) {
+            var difference = Number(a[sortField] || 0) - Number(b[sortField] || 0);
+            if (difference === 0) {
+                difference = String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+            }
+            return sortDirection === 'desc' ? -difference : difference;
+        });
+    }
+
+    var html = '';
+    rows.forEach(function(item, idx) {
+        var imageHtml = item.image_url
+            ? '<img src="' + escapeHtml(item.image_url) + '" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;">'
+            : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border rounded" style="width:48px;height:48px;"><i class="fas fa-image"></i></span>';
+        html += '<tr>' +
+            '<td class="text-center align-middle">' + (idx + 1) + '</td>' +
+            '<td class="text-center align-middle">' + imageHtml + '</td>' +
+            '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
+                '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
+            '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +
+            '<td class="text-right align-middle">' + formatQuantity(item.total_stock) + '</td>' +
+            '<td class="text-center align-middle"><button type="button" class="btn btn-xs ' +
+                (item.is_combo ? 'btn-outline-secondary' : 'btn-info') + '" onclick="openInventoryEdit(' + item.id + ')">' +
+                (item.is_combo ? 'Xem' : 'Sửa') + '</button></td>' +
+            '</tr>';
+    });
+    if (!html) {
+        html = stockSort === 'negative'
+            ? '<tr><td colspan="6" class="text-center text-muted">Không có sản phẩm tồn kho âm</td></tr>'
+            : '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
+    }
+    $('#warehouse_inventory_tbl tbody').html(html);
 }
 
 function openInventoryEdit(productId) {

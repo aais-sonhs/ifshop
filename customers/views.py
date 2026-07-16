@@ -64,6 +64,50 @@ def _serialize_delivery_addresses(customer):
     ]
 
 
+def _address_history_key(value):
+    return re.sub(r'\s+', ' ', str(value or '')).strip().casefold()
+
+
+def _build_customer_shipping_address_map(request, customers):
+    """Collect unique addresses used on orders without changing saved customer addresses."""
+    customer_ids = list(customers.values_list('id', flat=True))
+    if not customer_ids:
+        return {}
+
+    orders = Order.objects.filter(
+        customer_id__in=customer_ids,
+        shipping_address__isnull=False,
+    ).exclude(shipping_address='')
+    orders = filter_by_store(orders, request)
+
+    history_map = {}
+    history_index = {}
+    for row in orders.order_by('customer_id', '-order_date', '-id').values(
+        'customer_id', 'code', 'order_date', 'shipping_address'
+    ):
+        address = re.sub(r'\s+', ' ', (row['shipping_address'] or '')).strip()
+        key = _address_history_key(address)
+        if not key:
+            continue
+
+        customer_id = row['customer_id']
+        customer_index = history_index.setdefault(customer_id, {})
+        if key in customer_index:
+            customer_index[key]['order_count'] += 1
+            continue
+
+        item = {
+            'address': address,
+            'last_order_code': row['code'] or '',
+            'last_order_date': row['order_date'].strftime('%d/%m/%Y') if row['order_date'] else '',
+            'order_count': 1,
+        }
+        customer_index[key] = item
+        history_map.setdefault(customer_id, []).append(item)
+
+    return history_map
+
+
 def _get_default_store_for_request(request):
     """Lấy store mặc định để gán cho bản ghi mới khi user không phải nhân viên một store cố định."""
     store = get_user_store(request)
@@ -327,6 +371,7 @@ def api_get_customers(request):
     customers = filter_by_store(customers, request)
     metrics_map = _build_customer_order_metrics_map(request, customers)
     product_history_map = _build_customer_product_history_map(request, customers)
+    shipping_address_map = _build_customer_shipping_address_map(request, customers)
     data = []
     for c in customers:
         metrics = _customer_metrics_for_display(c, metrics_map)
@@ -341,6 +386,7 @@ def api_get_customers(request):
             'phone': c.phone or '', 'email': c.email or '',
             'address': c.address or '',
             'delivery_addresses': _serialize_delivery_addresses(c),
+            'historical_shipping_addresses': shipping_address_map.get(c.id, []),
             'id_number': c.id_number or '',
             'company': c.company or '',
             'tax_code': c.tax_code or '',

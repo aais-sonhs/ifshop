@@ -41,9 +41,15 @@
 
                 <!-- Chi tiết sản phẩm đặt -->
                 <hr>
+                <div class="form-group mb-3">
+                    <label for="quick_purchase_order_product"><i class="fas fa-search mr-1"></i>Chọn sản phẩm để thêm</label>
+                    <select class="form-control no-select2" id="quick_purchase_order_product" data-searchable="false" style="width:100%">
+                        <option value="">-- Tìm và chọn sản phẩm --</option>
+                    </select>
+                    <small class="form-text text-muted">Tìm theo tên, mã, barcode hoặc quy cách; chọn xong sản phẩm sẽ được thêm vào bảng dưới.</small>
+                </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết sản phẩm đặt</h6>
-                    <button type="button" class="btn btn-sm btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="items_tbl">
@@ -82,6 +88,7 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+function escapeHtml(value){return $('<div>').text(value == null ? '' : String(value)).html();}
 function moneyDigits(value){
     if(typeof value === 'number'){
         return String(Math.round(value));
@@ -108,7 +115,7 @@ var itemRowIndex = 0;
 
 $(document).ready(function(){
     // Load products with variants
-    $.get('/api/products-select/', function(res){ PRODUCTS = res.data; });
+    ensurePurchaseOrderProductsLoaded();
     loadData();
 
     $('#btn_add').click(function(){
@@ -122,11 +129,26 @@ $(document).ready(function(){
         updateTotal();
         $('#modal_title').text('Tạo đơn đặt hàng');
         $('#modal_form').modal('show');
-        setTimeout(function(){ $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'}); }, 200);
+        setTimeout(function(){
+            $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+            ensurePurchaseOrderProductsLoaded(initializeQuickPurchaseOrderProductSelect);
+        }, 200);
     });
 
-    $('#btn_add_item').click(function(){
-        addItemRow();
+    $('#quick_purchase_order_product').on('select2:select', function(e){
+        var $option = e.params.data.element ? $(e.params.data.element) : $(this).find('option:selected');
+        var productId = Number($option.val());
+        var variantId = $option.data('variant-id') || null;
+        var product = PRODUCTS.find(function(item){ return Number(item.id) === productId; });
+        if(product){
+            addItemRow({
+                product_id: product.id,
+                variant_id: variantId,
+                quantity: 1,
+                unit_price: Number($option.data('cost') || product.cost_price || product.import_price || 0)
+            });
+        }
+        $(this).val('').trigger('change.select2');
     });
 
     $('#btn_save').click(function(){
@@ -257,6 +279,55 @@ function addItemRow(data){
     updateTotal();
 }
 
+function ensurePurchaseOrderProductsLoaded(callback){
+    if(PRODUCTS.length){
+        if(typeof callback === 'function') callback();
+        return;
+    }
+    $.get('/api/products-select/', function(res){
+        PRODUCTS = res.data || [];
+        if(typeof callback === 'function') callback();
+    });
+}
+
+function normalizePurchaseOrderProductSearch(value){
+    var text = String(value || '').toLowerCase().trim();
+    if(text.normalize) text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return text.replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function purchaseOrderProductMatcher(params, data){
+    var term = normalizePurchaseOrderProductSearch(params.term || '');
+    if(!term) return data;
+    var $option = data.element ? $(data.element) : null;
+    var text = normalizePurchaseOrderProductSearch(($option && $option.attr('data-search')) || data.text || '');
+    var compactMatched = text.replace(/\s/g, '').indexOf(term.replace(/\s/g, '')) >= 0;
+    var tokenMatched = term.split(' ').every(function(token){ return text.indexOf(token) >= 0; });
+    return compactMatched || tokenMatched ? data : null;
+}
+
+function initializeQuickPurchaseOrderProductSelect(){
+    var $select = $('#quick_purchase_order_product');
+    if($select.hasClass('select2-hidden-accessible')) return;
+    var options = '<option value="">-- Tìm và chọn sản phẩm --</option>';
+    PRODUCTS.forEach(function(p){
+        if(p.variants && p.variants.length){
+            p.variants.forEach(function(v){
+                var search = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
+                options += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
+            });
+        } else {
+            var search = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
+            options += '<option value="'+p.id+'" data-cost="'+(p.cost_price || p.import_price || 0)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name)+'</option>';
+        }
+    });
+    $select.html(options).select2({
+        dropdownParent: $('#modal_form'), width:'100%', theme:'bootstrap4',
+        placeholder:'-- Tìm và chọn sản phẩm --', allowClear:true,
+        matcher:purchaseOrderProductMatcher
+    });
+}
+
 function calcRowTotal(row){
     var qty = parseInt(row.find('.item-qty').val()) || 0;
     var price = parseMoneyInput(row.find('.item-unit-price').val());
@@ -354,12 +425,13 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        if(d.items && d.items.length > 0){
-            d.items.forEach(function(item){
-                addItemRow(item);
-            });
-        }
-        updateTotal();
+        ensurePurchaseOrderProductsLoaded(function(){
+            initializeQuickPurchaseOrderProductSelect();
+            if(d.items && d.items.length > 0){
+                d.items.forEach(function(item){ addItemRow(item); });
+            }
+            updateTotal();
+        });
     });
 }
 

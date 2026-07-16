@@ -1702,6 +1702,7 @@ var ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
+var CAN_VIEW_ORDER_COSTS = {{ can_view_sales_report|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
 var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
 var ORDER_PAYMENT_PREFERENCE_STORAGE_KEY = 'ifshop_order_payment_preferences';
@@ -2127,6 +2128,9 @@ function getProductRetailPrice(product){
 
 function renderProductPriceSummary(product){
     var retail = getProductRetailPrice(product);
+    if(!CAN_VIEW_ORDER_COSTS){
+        return '<span class="text-success font-weight-bold">Giá bán lẻ: ' + fmt(retail) + 'đ</span>';
+    }
     var importPrice = Number((product && product.import_price) || 0);
     var costPrice = Number((product && product.cost_price) || 0);
     return '<span class="text-success font-weight-bold">Giá bán lẻ: ' + fmt(retail) + 'đ</span>' +
@@ -2141,13 +2145,15 @@ function formatOrderProductOption(option){
     var importPrice = Number($option.data('import') || 0);
     var costPrice = Number($option.data('cost') || 0);
     var product = getOrderProductById(option.id);
+    var costHtml = CAN_VIEW_ORDER_COSTS
+        ? ' · <span class="text-muted">Nhập: ' + fmt(importPrice) + 'đ</span>' +
+          ' · <span class="text-primary">Vốn: ' + fmt(costPrice) + 'đ</span>'
+        : '';
     return $(
         '<div class="order-product-option">' +
             '<div>' + escapeHtml(option.text || '') + '</div>' +
             '<div class="small">' +
-                '<span class="text-success font-weight-bold">Bán: ' + fmt(retail) + 'đ</span>' +
-                ' · <span class="text-muted">Nhập: ' + fmt(importPrice) + 'đ</span>' +
-                ' · <span class="text-primary">Vốn: ' + fmt(costPrice) + 'đ</span>' +
+                '<span class="text-success font-weight-bold">Bán: ' + fmt(retail) + 'đ</span>' + costHtml +
             '</div>' +
             renderOrderComboComponents(product, 3) +
         '</div>'

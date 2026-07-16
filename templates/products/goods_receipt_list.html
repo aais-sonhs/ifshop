@@ -328,7 +328,8 @@ function addItemRow(data){
             });
         } else {
             var selected = (data && data.product_id == p.id) ? 'selected' : '';
-            productOptions += '<option value="'+p.id+'" data-cost="'+p.cost_price+'" '+selected+'>'+p.code+' - '+p.name+'</option>';
+            var productSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
+            productOptions += '<option value="'+p.id+'" data-cost="'+p.cost_price+'" data-search="'+escapeHtml(productSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name)+'</option>';
         }
     });
 
@@ -360,7 +361,8 @@ function addItemRow(data){
         dropdownParent: $('#modal_form'),
         width: '100%',
         placeholder: '-- Chọn sản phẩm --',
-        allowClear: true
+        allowClear: true,
+        matcher: goodsReceiptProductMatcher
     });
     // Set value if editing
     if(data && data.product_id){
@@ -388,6 +390,29 @@ function ensureProductsLoaded(callback){
         PRODUCTS = res.data || [];
         if(typeof callback === 'function') callback();
     });
+}
+
+function normalizeGoodsReceiptProductSearch(value){
+    var text = String(value || '').toLowerCase().trim();
+    if(text.normalize){
+        text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    return text.replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function goodsReceiptProductMatcher(params, data){
+    var term = normalizeGoodsReceiptProductSearch(params.term || '');
+    if(!term) return data;
+    var $option = data.element ? $(data.element) : null;
+    var searchText = normalizeGoodsReceiptProductSearch(
+        ($option && $option.attr('data-search')) || data.text || ''
+    );
+    var compactText = searchText.replace(/\s/g, '');
+    var compactTerm = term.replace(/\s/g, '');
+    var matched = compactText.indexOf(compactTerm) >= 0 || term.split(' ').every(function(token){
+        return searchText.indexOf(token) >= 0;
+    });
+    return matched ? data : null;
 }
 
 function calcRowTotal(row){

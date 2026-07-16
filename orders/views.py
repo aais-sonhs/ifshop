@@ -2436,6 +2436,7 @@ def api_get_products_for_select(request):
             'code': p.code,
             'barcode': p.barcode or '',
             'name': p.name,
+            'specification': p.specification or '',
             'note': p.note or '',
             'unit': p.unit,
             'image': p.image.url if p.image else '',

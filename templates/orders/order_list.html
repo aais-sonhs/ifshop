@@ -1743,6 +1743,9 @@ function matchesOrderProductSearch(searchText, searchTerm){
     var normalizedText = normalizeOrderProductSearch(searchText);
     var normalizedTerm = normalizeOrderProductSearch(searchTerm);
     if(!normalizedTerm) return true;
+    var compactText = normalizedText.replace(/\s/g, '');
+    var compactTerm = normalizedTerm.replace(/\s/g, '');
+    if(compactText.indexOf(compactTerm) >= 0) return true;
     return normalizedTerm.split(' ').every(function(token){
         return normalizedText.indexOf(token) >= 0;
     });
@@ -1758,7 +1761,9 @@ function applyOrderProductDataset(products, cacheKey){
         product._orderSearchText = [
             product.name || '',
             product.code || '',
-            product.barcode || ''
+            product.barcode || '',
+            product.specification || '',
+            product.category_name || ''
         ].join(' ');
         product._orderSearchTextNormalized = normalizeOrderProductSearch(product._orderSearchText);
         ORDER_PRODUCT_BY_ID[String(product.id)] = product;

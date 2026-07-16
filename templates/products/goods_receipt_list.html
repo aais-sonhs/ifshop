@@ -199,7 +199,6 @@ $(document).ready(function(){
             presetWarehouseForQuickEntry();
             ensureProductsLoaded(function(){
                 initializeQuickReceiptProductSearch();
-                setTimeout(function(){ $('#quick_receipt_product').select2('open'); }, 100);
             });
         }, 200);
     });
@@ -214,8 +213,6 @@ $(document).ready(function(){
             addOrIncrementReceiptProduct(product, variantId, unitPrice);
         }
         $(this).val('').trigger('change.select2');
-        var select = this;
-        setTimeout(function(){ $(select).select2('open'); }, 80);
     });
 
     $('#btn_quick_supplier').click(function(){
@@ -668,7 +665,6 @@ function editItem(d){
             });
         }
         updateTotal();
-        setTimeout(function(){ $('#quick_receipt_product').select2('open'); }, 100);
     });
 }
 

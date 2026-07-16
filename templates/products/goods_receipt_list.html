@@ -62,16 +62,15 @@
 
                 <!-- Chi tiết sản phẩm nhập -->
                 <hr>
-                <div class="mb-3">
-                    <h6 class="mb-2"><i class="fas fa-search mr-1"></i>Tìm và thêm sản phẩm</h6>
-                    <select class="form-control" id="quick_receipt_product" style="width:100%">
-                        <option value="">Gõ tên, mã hoặc barcode sản phẩm...</option>
+                <div class="form-group mb-3">
+                    <label for="quick_receipt_product"><i class="fas fa-search mr-1"></i>Chọn sản phẩm để thêm</label>
+                    <select id="quick_receipt_product" style="width:100%">
+                        <option value=""></option>
                     </select>
-                    <small class="form-text text-muted">Chọn sản phẩm để thêm vào danh sách. Sau khi chọn, ô tìm kiếm sẽ sẵn sàng cho sản phẩm tiếp theo.</small>
+                    <small class="form-text text-muted">Tìm theo tên, mã, barcode hoặc quy cách; chọn xong sản phẩm sẽ được thêm vào bảng dưới.</small>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Danh sách sản phẩm nhập</h6>
-                    <span class="badge badge-light border" id="receipt_item_count">0 sản phẩm</span>
+                    <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết sản phẩm nhập</h6>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="items_tbl">
@@ -191,26 +190,29 @@ $(document).ready(function(){
         $('#goods_receipt_extra').collapse('hide');
         itemRowIndex = 0;
         updateTotal();
-        updateReceiptItemCount();
         $('#modal_title').text('Tạo phiếu nhập');
         $('#modal_form').modal('show');
         setTimeout(function(){
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
             presetWarehouseForQuickEntry();
             ensureProductsLoaded(function(){
-                initializeQuickReceiptProductSearch();
+                initializeQuickReceiptProductSelect();
             });
         }, 200);
     });
 
     $('#quick_receipt_product').on('select2:select', function(e){
-        var option = e.params.data.element ? $(e.params.data.element) : $(this).find('option:selected');
-        var productId = Number(option.val());
-        var variantId = option.data('variant-id') || null;
+        var $option = e.params.data.element ? $(e.params.data.element) : $(this).find('option:selected');
+        var productId = Number($option.val());
+        var variantId = $option.data('variant-id') || null;
         var product = PRODUCTS.find(function(item){ return Number(item.id) === productId; });
         if(product){
-            var unitPrice = Number(option.data('cost') || product.cost_price || product.import_price || 0);
-            addOrIncrementReceiptProduct(product, variantId, unitPrice);
+            addItemRow({
+                product_id: product.id,
+                variant_id: variantId,
+                quantity: 1,
+                unit_price: Number($option.data('cost') || product.cost_price || product.import_price || 0)
+            });
         }
         $(this).val('').trigger('change.select2');
     });
@@ -397,16 +399,26 @@ function addItemRow(data){
     }
 
     updateTotal();
-    updateReceiptItemCount();
 }
 
-function initializeQuickReceiptProductSearch(){
+function ensureProductsLoaded(callback){
+    if(PRODUCTS.length){
+        if(typeof callback === 'function') callback();
+        return;
+    }
+    $.get('/api/products-select/', function(res){
+        PRODUCTS = res.data || [];
+        if(typeof callback === 'function') callback();
+    });
+}
+
+function initializeQuickReceiptProductSelect(){
     var $select = $('#quick_receipt_product');
-    // Chỉ khởi tạo một lần. Re-init làm Select2 cũ còn container trong DOM
-    // và tạo thêm một ô chọn sau mỗi lần mở modal.
+    // Control này không mang class .select2 nên không bị bộ khởi tạo chung init chồng.
+    // Sau lần đầu, chỉ tái sử dụng instance hiện có.
     if($select.hasClass('select2-hidden-accessible')) return;
-    $select.siblings('.select2-container').remove();
-    var options = '<option value="">Gõ tên, mã hoặc barcode sản phẩm...</option>';
+
+    var options = '<option value=""></option>';
     PRODUCTS.forEach(function(p){
         if(p.variants && p.variants.length){
             p.variants.forEach(function(v){
@@ -421,43 +433,9 @@ function initializeQuickReceiptProductSearch(){
     $select.html(options).select2({
         dropdownParent: $('#modal_form'),
         width: '100%',
-        placeholder: 'Gõ tên, mã hoặc barcode sản phẩm...',
+        placeholder: '-- Tìm và chọn sản phẩm --',
+        allowClear: true,
         matcher: goodsReceiptProductMatcher
-    });
-}
-
-function addOrIncrementReceiptProduct(product, variantId, unitPrice){
-    var existingRow = null;
-    $('#items_body tr').each(function(){
-        var $selected = $(this).find('.item-product-select option:selected');
-        var sameProduct = Number($selected.val()) === Number(product.id);
-        var sameVariant = String($selected.data('variant-id') || '') === String(variantId || '');
-        if(sameProduct && sameVariant) existingRow = $(this);
-    });
-    if(existingRow){
-        var $qty = existingRow.find('.item-qty');
-        $qty.val((parseFloat($qty.val()) || 0) + 1).trigger('input');
-        existingRow.addClass('table-success');
-        setTimeout(function(){ existingRow.removeClass('table-success'); }, 500);
-        return;
-    }
-    addItemRow({product_id: product.id, variant_id: variantId, quantity: 1, unit_price: unitPrice});
-}
-
-function updateReceiptItemCount(){
-    var count = $('#items_body tr').length;
-    $('#receipt_item_count').text(count + ' sản phẩm');
-}
-
-function ensureProductsLoaded(callback){
-    if(PRODUCTS.length){
-        if(typeof callback === 'function') callback();
-        return;
-    }
-    $.get('/api/products-select/', function(res){
-        PRODUCTS = res.data || [];
-        initializeQuickReceiptProductSearch();
-        if(typeof callback === 'function') callback();
     });
 }
 
@@ -507,7 +485,6 @@ function reindexRows(){
         $(this).find('.item-index').text(i+1);
     });
     itemRowIndex = $('#items_body tr').length;
-    updateReceiptItemCount();
 }
 
 function getItemsData(){
@@ -653,7 +630,6 @@ function editItem(d){
     // Clear items first
     $('#items_body').html('');
     itemRowIndex = 0;
-    updateReceiptItemCount();
 
     $('#modal_title').text('Sửa phiếu nhập: ' + d.code);
     $('#modal_form').modal('show');
@@ -661,13 +637,13 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        initializeQuickReceiptProductSearch();
-        if(d.items && d.items.length > 0){
-            d.items.forEach(function(item){
-                addItemRow(item);
-            });
-        }
-        updateTotal();
+        ensureProductsLoaded(function(){
+            initializeQuickReceiptProductSelect();
+            if(d.items && d.items.length > 0){
+                d.items.forEach(function(item){ addItemRow(item); });
+            }
+            updateTotal();
+        });
     });
 }
 

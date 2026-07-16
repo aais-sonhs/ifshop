@@ -432,6 +432,41 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['code'], 'DH-017')
 
+    def test_order_list_always_labels_legacy_guest_customers(self):
+        blank_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-LEGACY-BLANK',
+            name='',
+            created_by=self.user,
+        )
+        without_customer = Order.objects.create(
+            code='DH-GUEST-NULL',
+            store=self.store,
+            customer=None,
+            warehouse=self.warehouse,
+            status=5,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        blank_customer_order = Order.objects.create(
+            code='DH-GUEST-BLANK',
+            store=self.store,
+            customer=blank_customer,
+            warehouse=self.warehouse,
+            status=5,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+
+        rows = {
+            row['code']: row
+            for row in self.client.get(reverse('api_get_orders')).json()['data']
+        }
+        self.assertEqual(rows[without_customer.code]['customer'], 'Khách lẻ / khách vãng lai')
+        self.assertEqual(rows[blank_customer_order.code]['customer'], 'Khách lẻ / khách vãng lai')
+        self.assertTrue(rows[without_customer.code]['customer_is_guest'])
+        self.assertFalse(rows[blank_customer_order.code]['customer_is_guest'])
+
     def test_save_order_auto_advances_when_requested_code_belongs_to_deleted_order(self):
         order = self._create_order(code='DH-016', status=0)
         order.delete()

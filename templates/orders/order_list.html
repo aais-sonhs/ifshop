@@ -5799,7 +5799,13 @@ function loadData(){
 
         var startIndex = Number(meta.start_index || 1);
         var h='';filtered.forEach(function(d,i){
-            var customerHtml = d.customer;
+            var customerNameHtml = escapeHtml(d.customer || 'Khách lẻ / khách vãng lai');
+            var customerHtml = customerNameHtml;
+            if(d.customer_id && !d.customer_is_guest){
+                customerHtml = '<a href="/customer-tbl/?edit_customer_id='+encodeURIComponent(d.customer_id)+'"' +
+                    ' class="font-weight-bold text-primary" title="Mở trang chỉnh sửa khách hàng">' +
+                    customerNameHtml + ' <i class="fas fa-external-link-alt fa-xs ml-1"></i></a>';
+            }
             if(d.customer_group){
                 customerHtml += '<br><small class="badge badge-outline-info" style="border:1px solid #17a2b8;color:#17a2b8;font-weight:normal;">' + d.customer_group + '</small>';
             }

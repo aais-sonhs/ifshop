@@ -1375,7 +1375,21 @@ function loadData(){
         populateCustomerProductSuggestions(allCustomers);
         resetCustomerPagination();
         renderTable();
+        openRequestedCustomerEditor();
     });
+}
+
+var _requestedCustomerEditorOpened = false;
+function openRequestedCustomerEditor(){
+    if(_requestedCustomerEditorOpened) return;
+    var requestedId = new URLSearchParams(window.location.search).get('edit_customer_id');
+    if(!requestedId) return;
+    var customer = allCustomers.find(function(item){
+        return String(item.id) === String(requestedId);
+    });
+    if(!customer) return;
+    _requestedCustomerEditorOpened = true;
+    editItem(customer);
 }
 
 function renderTable(){

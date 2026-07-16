@@ -238,6 +238,14 @@ def _is_guest_customer(customer):
     return bool(customer and customer.code and customer.code.startswith(GUEST_CUSTOMER_CODE_PREFIX))
 
 
+def _order_customer_label(order_or_customer):
+    """Return one consistent label for null, legacy and canonical guest customers."""
+    customer = getattr(order_or_customer, 'customer', order_or_customer)
+    if not customer or _is_guest_customer(customer):
+        return GUEST_CUSTOMER_NAME
+    return (customer.name or '').strip() or GUEST_CUSTOMER_NAME
+
+
 def _get_default_store_for_request(request):
     from core.store_utils import get_managed_store_ids as _get_store_ids
     from system_management.models import Store as _Store
@@ -1418,7 +1426,7 @@ def _capture_order_history_snapshot(order):
     return {
         'code': order.code or '',
         'customer_id': order.customer_id,
-        'customer_label': order.customer.name if order.customer else GUEST_CUSTOMER_NAME,
+        'customer_label': _order_customer_label(order),
         'warehouse_id': order.warehouse_id,
         'warehouse_label': order.warehouse.name if order.warehouse else '',
         'order_date': _format_date_value_for_history(order.order_date),
@@ -1556,7 +1564,7 @@ def _describe_order_history_changes(before, order, normalized_items):
     money_parts = []
     _append_history_field_change(field_parts, before['code'], order.code or '', 'Mã đơn')
     if before['customer_id'] != order.customer_id:
-        after_customer = order.customer.name if order.customer else GUEST_CUSTOMER_NAME
+        after_customer = _order_customer_label(order)
         field_parts.append(f'Khách hàng: {before["customer_label"] or "(trống)"} → {after_customer or "(trống)"}')
     if before['warehouse_id'] != order.warehouse_id:
         after_warehouse = order.warehouse.name if order.warehouse else '(trống)'
@@ -2254,7 +2262,7 @@ def api_pending_approvals(request):
         return [{
             'id': o.id,
             'code': o.code,
-            'customer': o.customer.name if o.customer else '',
+            'customer': _order_customer_label(o),
             'order_date': o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
             'final_amount': float(o.final_amount),
             'paid_amount': float(o.paid_amount),
@@ -2757,8 +2765,9 @@ def _serialize_order_list(orders):
         source_return = getattr(o, 'source_return_exchange', None)
         data.append({
             'id': o.id, 'code': o.code,
-            'customer': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
+            'customer': _order_customer_label(o),
             'customer_id': o.customer_id,
+            'customer_is_guest': not o.customer or _is_guest_customer(o.customer),
             'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
             'warehouse': o.warehouse.name if o.warehouse else '',
             'warehouse_id': o.warehouse_id,
@@ -2953,7 +2962,7 @@ def api_get_order_detail(request):
                 'id': o.id,
                 'code': o.code,
                 'customer_id': None if _is_guest_customer(o.customer) else o.customer_id,
-                'customer_label': o.customer.name if o.customer else GUEST_CUSTOMER_NAME,
+                'customer_label': _order_customer_label(o),
                 'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
                 'customer_address': (
                     o.shipping_address
@@ -4212,7 +4221,7 @@ def api_save_order_warranty(request):
 
             customer = order.customer
             certificate.issue_date = date.today()
-            certificate.customer_name = customer.name if customer else GUEST_CUSTOMER_NAME
+            certificate.customer_name = _order_customer_label(customer)
             certificate.customer_phone = customer.phone if customer and customer.phone else ''
             certificate.customer_address = (
                 order.shipping_address
@@ -4396,7 +4405,7 @@ def api_get_quotations(request):
             ])
         data.append({
             'id': q.id, 'code': q.code,
-            'customer': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
+            'customer': _order_customer_label(q),
             'customer_id': q.customer_id,
             'customer_phone': q.customer.phone if q.customer and q.customer.phone else '',
             'customer_group': q.customer.group.name if q.customer and q.customer.group else '',
@@ -4478,7 +4487,7 @@ def api_get_quotation_detail(request):
                 'id': q.id,
                 'code': q.code,
                 'customer_id': None if _is_guest_customer(q.customer) else q.customer_id,
-                'customer_label': q.customer.name if q.customer else GUEST_CUSTOMER_NAME,
+                'customer_label': _order_customer_label(q),
                 'customer_phone': q.customer.phone if q.customer and q.customer.phone else '',
                 'customer_address': (
                     (q.customer.address if q.customer else '')
@@ -4752,7 +4761,7 @@ def api_get_order_returns(request):
             'order_id': r.order_id,
             'exchange_order_id': r.exchange_order_id,
             'exchange_order_code': r.exchange_order.code if r.exchange_order else '',
-            'customer': r.customer.name if r.customer else '',
+            'customer': _order_customer_label(r),
             'customer_id': r.customer_id,
             'warehouse_id': r.warehouse_id,
             'return_date': r.return_date.strftime('%Y-%m-%d') if r.return_date else '',
@@ -5543,7 +5552,7 @@ def export_orders_excel(request):
             'code': o.code,
             'date': o.order_date,
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
-            'customer': o.customer.name if o.customer else '',
+            'customer': _order_customer_label(o),
             'products': ', '.join(products),
             'warehouse': o.warehouse.name if o.warehouse else '',
             'total': float(o.total_amount),

@@ -114,6 +114,30 @@
                 <div class="alert alert-info py-2" id="inventory_combo_notice" style="display:none;">
                     Tồn combo được tự động tính từ tồn của các sản phẩm thành phần nên không sửa trực tiếp.
                 </div>
+                <div class="card card-outline card-secondary">
+                    <div class="card-header py-2">
+                        <h6 class="card-title mb-0"><i class="fas fa-bell mr-1"></i>Ngưỡng tồn của sản phẩm</h6>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="small text-info mb-2">Hai ngưỡng này áp dụng chung cho sản phẩm, không phải số lượng của từng kho.</div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-md-0">
+                                    <label for="inventory_min_stock">Tồn kho tối thiểu</label>
+                                    <input type="number" class="form-control" id="inventory_min_stock" step="1" value="0">
+                                    <small class="text-muted">Dùng để cảnh báo và tính số lượng cần nhập; có thể nhập số âm.</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-0">
+                                    <label for="inventory_max_stock">Tồn kho tối đa</label>
+                                    <input type="number" class="form-control" id="inventory_max_stock" min="0" step="1" value="0">
+                                    <small class="text-muted">Nhập 0 nếu không giới hạn tồn tối đa.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="card card-outline card-info">
                     <div class="card-header py-2">
                         <h6 class="card-title mb-0"><i class="fas fa-warehouse mr-1"></i>Tồn theo kho</h6>
@@ -338,6 +362,16 @@ $(document).ready(function() {
                 quantity: Number($(this).val() || 0)
             });
         });
+        var minStock = Number($('#inventory_min_stock').val());
+        var maxStock = Number($('#inventory_max_stock').val());
+        if (!Number.isInteger(minStock) || !Number.isInteger(maxStock) || maxStock < 0) {
+            alert('Tồn kho tối thiểu phải là số nguyên; tồn kho tối đa phải là số nguyên không âm');
+            return;
+        }
+        if (maxStock > 0 && maxStock < minStock) {
+            alert('Tồn kho tối đa phải bằng 0 hoặc lớn hơn hay bằng tồn kho tối thiểu');
+            return;
+        }
         var $button = $(this);
         $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang lưu...');
         $.ajax({
@@ -347,6 +381,8 @@ $(document).ready(function() {
             headers: {'X-CSRFToken': '{{ csrf_token }}'},
             data: JSON.stringify({
                 product_id: $('#inventory_product_id').val(),
+                min_stock: minStock,
+                max_stock: maxStock,
                 stocks: stocks
             }),
             success: function(res) {
@@ -539,7 +575,9 @@ function openInventoryEdit(productId) {
     $('#inventory_product_id').val(product.id);
     $('#inventory_product_name').text((product.name || '') + ' (' + (product.code || '') + ')');
     $('#inventory_combo_notice').toggle(!!product.is_combo);
-    $('#btn_save_inventory_stock').toggle(!product.is_combo && (product.stock_by_warehouse || []).length > 0);
+    $('#inventory_min_stock').val(Number(product.min_stock || 0)).prop('disabled', !!product.is_combo);
+    $('#inventory_max_stock').val(Number(product.max_stock || 0)).prop('disabled', !!product.is_combo);
+    $('#btn_save_inventory_stock').toggle(!product.is_combo);
 
     var rows = '';
     (product.stock_by_warehouse || []).forEach(function(stock) {

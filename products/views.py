@@ -1730,6 +1730,8 @@ def api_get_warehouse_inventory(request):
             'name': product.name,
             'image_url': product.image.url if product.image else '',
             'is_combo': product.is_combo,
+            'min_stock': product.min_stock,
+            'max_stock': product.max_stock,
             'stock_by_warehouse': stock_by_warehouse,
             'sellable_stock': float(total_sellable),
             'total_stock': float(total_stock),
@@ -1740,7 +1742,7 @@ def api_get_warehouse_inventory(request):
 
 @login_required(login_url="/login/")
 def api_save_warehouse_inventory(request):
-    """Điều chỉnh tồn theo kho mà không cập nhật các thông tin khác của sản phẩm."""
+    """Điều chỉnh tồn theo kho và ngưỡng tồn chung của sản phẩm."""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
 
@@ -1761,8 +1763,27 @@ def api_save_warehouse_inventory(request):
             return JsonResponse({'status': 'error', 'message': 'Sản phẩm dịch vụ không quản lý tồn kho.'})
 
         stocks_data = data.get('stocks') or []
-        if not isinstance(stocks_data, list) or not stocks_data:
+        if not isinstance(stocks_data, list):
             return JsonResponse({'status': 'error', 'message': 'Dữ liệu tồn theo kho không hợp lệ.'})
+
+        try:
+            min_stock = int(str(data.get('min_stock', product.min_stock)).strip())
+            max_stock = int(str(data.get('max_stock', product.max_stock)).strip())
+        except (TypeError, ValueError, AttributeError):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tồn kho tối thiểu và tối đa phải là số nguyên.',
+            })
+        if max_stock < 0:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tồn kho tối đa không được âm.',
+            })
+        if max_stock > 0 and max_stock < min_stock:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tồn kho tối đa phải bằng 0 (không giới hạn) hoặc lớn hơn hay bằng tồn kho tối thiểu.',
+            })
 
         normalized_stocks = {}
         for row in stocks_data:
@@ -1770,9 +1791,6 @@ def api_save_warehouse_inventory(request):
                 continue
             warehouse_id = int(row['warehouse_id'])
             normalized_stocks[warehouse_id] = _to_decimal(row.get('quantity', 0))
-        if not normalized_stocks:
-            return JsonResponse({'status': 'error', 'message': 'Chưa có kho để cập nhật tồn.'})
-
         allowed_warehouses = {
             warehouse.id: warehouse
             for warehouse in filter_by_store(
@@ -1797,12 +1815,18 @@ def api_save_warehouse_inventory(request):
                 })
 
         with transaction.atomic():
+            product.min_stock = min_stock
+            product.max_stock = max_stock
+            product.save(update_fields=['min_stock', 'max_stock'])
             for warehouse_id, quantity in normalized_stocks.items():
                 stock = _get_locked_stock(product.id, warehouse_id)
                 stock.quantity = quantity
                 stock.save(update_fields=['quantity'])
 
-        return JsonResponse({'status': 'ok', 'message': 'Đã cập nhật tồn theo kho.'})
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã cập nhật tồn theo kho và ngưỡng cảnh báo.',
+        })
     except (TypeError, ValueError, json.JSONDecodeError):
         return JsonResponse({'status': 'error', 'message': 'Dữ liệu tồn theo kho không hợp lệ.'})
     except Exception as exc:

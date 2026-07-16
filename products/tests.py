@@ -378,27 +378,33 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, '<i class="fas fa-warehouse mr-2"></i>DS kho', html=True)
         self.assertContains(response, 'id="warehouse_tbl"')
         self.assertContains(response, 'id="warehouse_inventory_tbl"')
-        self.assertContains(response, '<th>Tên sản phẩm</th>', html=True)
-        self.assertContains(response, '>Có thể bán</label>')
-        self.assertContains(response, '>Tồn kho</label>')
-        self.assertContains(response, '>Thao tác</th>')
+        self.assertContains(response, '<th>Sản phẩm</th>', html=True)
+        self.assertContains(response, 'data-target="inventory_sellable_sort"')
+        self.assertContains(response, 'data-target="inventory_stock_sort"')
         self.assertContains(response, 'id="inventory_sellable_sort"')
-        self.assertContains(response, '<option value="asc">Tăng dần</option>', html=True, count=2)
-        self.assertContains(response, '<option value="desc">Giảm dần</option>', html=True, count=2)
+        self.assertContains(response, 'data-value="asc"', count=2)
+        self.assertContains(response, 'data-value="desc"', count=2)
         self.assertContains(response, 'id="inventory_stock_sort"')
-        self.assertContains(response, '<option value="negative">Tồn kho âm</option>', html=True)
+        self.assertContains(response, 'data-value="negative"')
         self.assertContains(response, 'function renderInventoryTable()')
         self.assertContains(
             response,
             'Có thể bán = Tồn kho − số lượng đang giữ trong đơn chưa xuất kho',
         )
         self.assertContains(response, 'id="modal_inventory_product"')
+        self.assertContains(response, 'Ngưỡng tồn của sản phẩm')
+        self.assertContains(response, 'không phải số lượng của từng kho')
+        self.assertContains(response, 'id="inventory_min_stock"')
+        self.assertContains(response, 'id="inventory_max_stock"')
         self.assertContains(response, 'id="inventory_stock_edit_tbl"')
         self.assertContains(response, 'id="inventory_purchase_history_body"')
 
     def test_warehouse_inventory_returns_actual_and_sellable_stock_in_user_scope(self):
         from orders.models import Order, OrderItem
 
+        self.product.min_stock = 3
+        self.product.max_stock = 20
+        self.product.save(update_fields=['min_stock', 'max_stock'])
         ProductStock.objects.create(
             product=self.product,
             warehouse=self.warehouse_a,
@@ -451,6 +457,8 @@ class ProductInventoryFlowTests(TestCase):
         rows = {row['id']: row for row in response.json()['data']}
         self.assertEqual(rows[self.product.id]['total_stock'], 12.0)
         self.assertEqual(rows[self.product.id]['sellable_stock'], 9.0)
+        self.assertEqual(rows[self.product.id]['min_stock'], 3)
+        self.assertEqual(rows[self.product.id]['max_stock'], 20)
         stock_by_warehouse = {
             row['warehouse_id']: row['quantity']
             for row in rows[self.product.id]['stock_by_warehouse']
@@ -475,6 +483,8 @@ class ProductInventoryFlowTests(TestCase):
             reverse('api_save_warehouse_inventory'),
             data=json.dumps({
                 'product_id': self.product.id,
+                'min_stock': -4,
+                'max_stock': 30,
                 'stocks': [
                     {'warehouse_id': self.warehouse_a.id, 'quantity': '7.5'},
                     {'warehouse_id': self.warehouse_b.id, 'quantity': '2'},
@@ -488,6 +498,8 @@ class ProductInventoryFlowTests(TestCase):
         stock_a.refresh_from_db()
         self.product.refresh_from_db()
         self.assertEqual(stock_a.quantity, Decimal('7.5'))
+        self.assertEqual(self.product.min_stock, -4)
+        self.assertEqual(self.product.max_stock, 30)
         self.assertEqual(
             ProductStock.objects.get(product=self.product, warehouse=self.warehouse_b).quantity,
             Decimal('2'),
@@ -535,6 +547,33 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(response.json()['status'], 'error')
         self.assertIn('chưa bật cấu hình cho phép tồn âm', response.json()['message'])
         stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('2'))
+
+    def test_warehouse_inventory_save_rejects_invalid_min_max_thresholds_atomically(self):
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('2'),
+        )
+
+        response = self.client.post(
+            reverse('api_save_warehouse_inventory'),
+            data=json.dumps({
+                'product_id': self.product.id,
+                'min_stock': 10,
+                'max_stock': 5,
+                'stocks': [{'warehouse_id': self.warehouse_a.id, 'quantity': '9'}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Tồn kho tối đa', response.json()['message'])
+        self.product.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(self.product.min_stock, 0)
+        self.assertEqual(self.product.max_stock, 0)
         self.assertEqual(stock.quantity, Decimal('2'))
 
     def test_product_list_sorts_total_stock_before_pagination(self):

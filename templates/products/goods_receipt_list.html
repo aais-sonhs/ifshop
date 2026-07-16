@@ -131,12 +131,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-/* Select2 giữ select gốc cho dữ liệu; không để Bootstrap làm nó hiện thành ô thứ hai. */
-#quick_receipt_product.select2-hidden-accessible {
-    display: none !important;
-}
-</style>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
@@ -408,7 +402,10 @@ function addItemRow(data){
 
 function initializeQuickReceiptProductSearch(){
     var $select = $('#quick_receipt_product');
-    if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+    // Chỉ khởi tạo một lần. Re-init làm Select2 cũ còn container trong DOM
+    // và tạo thêm một ô chọn sau mỗi lần mở modal.
+    if($select.hasClass('select2-hidden-accessible')) return;
+    $select.siblings('.select2-container').remove();
     var options = '<option value="">Gõ tên, mã hoặc barcode sản phẩm...</option>';
     PRODUCTS.forEach(function(p){
         if(p.variants && p.variants.length){

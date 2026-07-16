@@ -240,6 +240,32 @@ class SalesReportTests(TestCase):
         self.assertNotIn(deleted_product.code, rows)
         self.assertEqual(payload['summary']['total_value'], 360000.0)
 
+    def test_inventory_filters_separate_root_categories_and_product_types(self):
+        root = ProductCategory.objects.create(name='Danh mục thiết bị')
+        product_type = ProductCategory.objects.create(name='Loại máy xay', parent=root)
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-CATEGORY-TYPE',
+            name='Máy xay báo cáo',
+            category=product_type,
+            created_by=self.user,
+        )
+        ProductStock.objects.create(product=product, warehouse=self.warehouse, quantity=2)
+
+        payload = self.client.get(reverse('api_report_inventory')).json()
+        self.assertIn(root.id, [item['id'] for item in payload['categories']])
+        self.assertNotIn(product_type.id, [item['id'] for item in payload['categories']])
+        self.assertIn(product_type.id, [item['id'] for item in payload['product_types']])
+
+        by_category = self.client.get(reverse('api_report_inventory'), {
+            'category_id': root.id,
+        }).json()
+        by_type = self.client.get(reverse('api_report_inventory'), {
+            'product_type_id': product_type.id,
+        }).json()
+        self.assertIn(product.code, [item['product_code'] for item in by_category['data']])
+        self.assertEqual([item['product_code'] for item in by_type['data']], [product.code])
+
     def test_api_report_sales_defaults_to_realized_orders(self):
         today = date.today()
         created_orders = []

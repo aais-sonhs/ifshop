@@ -9,7 +9,7 @@
     </div>
     <div class="card-body">
         <div class="row mb-3" style="gap:6px 0;">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="🔍 Tìm theo tên SP, mã SP, barcode...">
             </div>
             <div class="col-md-2">
@@ -18,11 +18,16 @@
                 </select>
             </div>
             <div class="col-md-2">
+                <select class="form-control form-control-sm" id="filter_product_type">
+                    <option value="">-- Loại sản phẩm --</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_warehouse">
                     <option value="">-- Tất cả kho --</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <select class="form-control form-control-sm" id="filter_stock_status">
                     <option value="">-- Tồn kho --</option>
                     <option value="positive">Còn hàng (> 0)</option>
@@ -121,13 +126,19 @@ function escapeHtml(value){
 
 var _categoriesLoaded = false;
 var _warehousesLoaded = false;
+var _inventoryProductTypes = [];
 var _scrollToAlertRowsAfterLoad = false;
 
 $(document).ready(function(){
     loadReport();
     $('#btn_search').click(function(){ loadReport(); });
     $('#filter_search').on('keydown', function(e){ if(e.keyCode===13) loadReport(); });
-    $('#filter_category, #filter_warehouse, #filter_stock_status, #filter_alert').on('change', function(){
+    $('#filter_category').on('change', function(){
+        renderInventoryProductTypes('');
+        syncInventoryAlertCardState();
+        loadReport();
+    });
+    $('#filter_product_type, #filter_warehouse, #filter_stock_status, #filter_alert').on('change', function(){
         syncInventoryAlertCardState();
         loadReport();
     });
@@ -145,6 +156,8 @@ $(document).ready(function(){
     $('#btn_clear_filter').click(function(){
         $('#filter_search').val('');
         $('#filter_category').val('');
+        $('#filter_product_type').val('');
+        renderInventoryProductTypes('');
         $('#filter_warehouse').val('');
         $('#filter_stock_status').val('');
         $('#filter_alert').val('');
@@ -166,17 +179,30 @@ function activateInventoryAlertCard(){
     loadReport();
 }
 
+function renderInventoryProductTypes(selectedId){
+    var categoryId = $('#filter_category').val() || '';
+    var options = '<option value="">-- Loại sản phẩm --</option>';
+    _inventoryProductTypes.forEach(function(item){
+        if(categoryId && String(item.parent_id) !== String(categoryId)) return;
+        var label = categoryId ? item.name : ((item.parent_name ? item.parent_name + ' — ' : '') + item.name);
+        options += '<option value="'+item.id+'">'+escapeHtml(label)+'</option>';
+    });
+    $('#filter_product_type').html(options).val(selectedId || '');
+}
+
 function loadReport(){
     var params = [];
     var wh = $('#filter_warehouse').val();
     var search = $('#filter_search').val().trim();
     var category = $('#filter_category').val();
+    var productType = $('#filter_product_type').val();
     var stockStatus = $('#filter_stock_status').val();
     var alert_filter = $('#filter_alert').val();
 
     if(wh) params.push('warehouse_id='+wh);
     if(search) params.push('search='+encodeURIComponent(search));
     if(category) params.push('category_id='+category);
+    if(productType) params.push('product_type_id='+productType);
     if(stockStatus) params.push('stock_status='+stockStatus);
 
     var url = '/api/report-inventory/?' + params.join('&');
@@ -197,6 +223,11 @@ function loadReport(){
                 $('#filter_category').append('<option value="'+c.id+'">'+c.name+'</option>');
             });
             _categoriesLoaded = true;
+        }
+        if(res.product_types){
+            var selectedType = $('#filter_product_type').val() || '';
+            _inventoryProductTypes = res.product_types;
+            renderInventoryProductTypes(selectedType);
         }
 
         var data = res.data.slice();
@@ -252,9 +283,11 @@ $('#btn_export').click(function(){
     var wh = $('#filter_warehouse').val();
     var search = $('#filter_search').val().trim();
     var category = $('#filter_category').val();
+    var productType = $('#filter_product_type').val();
     if(wh) params.push('warehouse_id='+wh);
     if(search) params.push('search='+encodeURIComponent(search));
     if(category) params.push('category_id='+category);
+    if(productType) params.push('product_type_id='+productType);
     var url = '/api/export-inventory-excel/';
     if(params.length) url += '?' + params.join('&');
     window.location.href = url;

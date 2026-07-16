@@ -1424,6 +1424,7 @@ def api_report_inventory(request):
     warehouse_id = request.GET.get('warehouse_id')
     search = request.GET.get('search', '').strip()
     category_id = request.GET.get('category_id')
+    product_type_id = request.GET.get('product_type_id')
     stock_status = request.GET.get('stock_status', '')  # positive, zero, negative
 
     stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').filter(
@@ -1439,7 +1440,12 @@ def api_report_inventory(request):
             Q(product__barcode__icontains=search)
         )
     if category_id:
-        stocks = stocks.filter(product__category_id=category_id)
+        stocks = stocks.filter(
+            Q(product__category_id=category_id) |
+            Q(product__category__parent_id=category_id)
+        )
+    if product_type_id:
+        stocks = stocks.filter(product__category_id=product_type_id)
 
     data = []
     for s in stocks:
@@ -1490,8 +1496,19 @@ def api_report_inventory(request):
     warehouses_qs = filter_by_store(warehouses_qs, request)
     warehouses = [{'id': w.id, 'name': w.name} for w in warehouses_qs]
 
-    categories_qs = ProductCategory.objects.filter(is_active=True).order_by('name')
+    categories_qs = ProductCategory.objects.filter(is_active=True, parent__isnull=True).order_by('name')
     categories = [{'id': c.id, 'name': c.name} for c in categories_qs]
+    product_types_qs = ProductCategory.objects.filter(
+        is_active=True,
+        parent__isnull=False,
+        parent__is_deleted=False,
+    ).select_related('parent').order_by('parent__name', 'name')
+    product_types = [{
+        'id': item.id,
+        'name': item.name,
+        'parent_id': item.parent_id,
+        'parent_name': item.parent.name,
+    } for item in product_types_qs]
 
     total_value = sum(d['stock_value'] for d in data)
     total_items = sum(d['quantity'] for d in data)
@@ -1500,7 +1517,8 @@ def api_report_inventory(request):
     high_stock_count = len([d for d in data if d['alert_type'] == 'warning'])
 
     return JsonResponse({
-        'status': 'ok', 'data': data, 'warehouses': warehouses, 'categories': categories,
+        'status': 'ok', 'data': data, 'warehouses': warehouses,
+        'categories': categories, 'product_types': product_types,
         'summary': {
             'total_value': total_value,
             'total_items': total_items,
@@ -2512,8 +2530,11 @@ def export_inventory_excel(request):
     warehouse_id = request.GET.get('warehouse_id')
     search = request.GET.get('search', '').strip()
     category_id = request.GET.get('category_id')
+    product_type_id = request.GET.get('product_type_id')
 
-    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').all()
+    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').filter(
+        product__is_deleted=False,
+    )
     stocks = filter_by_store(stocks, request, field_name='warehouse__store')
     if warehouse_id:
         stocks = stocks.filter(warehouse_id=warehouse_id)
@@ -2524,7 +2545,12 @@ def export_inventory_excel(request):
             Q(product__barcode__icontains=search)
         )
     if category_id:
-        stocks = stocks.filter(product__category_id=category_id)
+        stocks = stocks.filter(
+            Q(product__category_id=category_id) |
+            Q(product__category__parent_id=category_id)
+        )
+    if product_type_id:
+        stocks = stocks.filter(product__category_id=product_type_id)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2564,7 +2590,7 @@ def export_inventory_excel(request):
     for idx, s in enumerate(stocks, 1):
         qty = float(s.quantity)
         cost = float(s.product.cost_price)
-        value = cost * qty
+        value = cost * max(qty, 0)
         total_value += value
         total_qty += qty
 

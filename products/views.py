@@ -1564,6 +1564,252 @@ def api_get_warehouses(request):
 
 
 @login_required(login_url="/login/")
+def api_get_warehouse_inventory(request):
+    """Tóm tắt tồn và số lượng có thể bán của sản phẩm trong các kho được quản lý."""
+    from orders.models import OrderItem
+
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return JsonResponse({'data': []})
+
+    products = list(
+        filter_by_store(
+            Product.objects.filter(is_active=True, is_service=False).prefetch_related(
+                Prefetch(
+                    'combo_items',
+                    queryset=ComboItem.objects.select_related('product'),
+                ),
+            ),
+            request,
+        ).order_by('name', 'code', 'id')
+    )
+    if not products:
+        return JsonResponse({'data': []})
+
+    warehouses = list(
+        Warehouse.objects
+        .filter(store_id__in=store_ids)
+        .values('id', 'name', 'store_id', 'is_active')
+        .order_by('name', 'id')
+    )
+    warehouses_by_store = {}
+    for warehouse in warehouses:
+        warehouses_by_store.setdefault(warehouse['store_id'], []).append(warehouse)
+
+    product_ids = [product.id for product in products]
+    combo_components = {}
+    stock_product_ids = set(product_ids)
+    for product in products:
+        if not product.is_combo:
+            continue
+        components = []
+        for combo_item in product.combo_items.all():
+            component = combo_item.product
+            required_quantity = _to_decimal(combo_item.quantity)
+            if not component or component.is_service or required_quantity <= 0:
+                continue
+            components.append((component.id, required_quantity))
+            stock_product_ids.add(component.id)
+        combo_components[product.id] = components
+
+    actual_by_product = {}
+    stock_rows = (
+        ProductStock.objects
+        .filter(
+            product_id__in=stock_product_ids,
+            warehouse__store_id__in=store_ids,
+        )
+        .values('product_id', 'warehouse_id')
+        .annotate(quantity=Coalesce(
+            Sum('quantity'),
+            Value(Decimal('0'), output_field=DecimalField(max_digits=15, decimal_places=2)),
+        ))
+    )
+    for row in stock_rows:
+        product_stock = actual_by_product.setdefault(row['product_id'], {})
+        product_stock[row['warehouse_id']] = _to_decimal(row['quantity'])
+
+    reserved_by_product = {}
+    reserved_items = (
+        OrderItem.objects
+        .filter(
+            product_id__in=product_ids,
+            order__is_deleted=False,
+            order__store_id__in=store_ids,
+            order__warehouse__store_id__in=store_ids,
+            order__status__in=[1, 2, 3],
+        )
+        .filter(Q(order__approver_id__isnull=True) | Q(order__approval_status=2))
+        .values('product_id', 'order__warehouse_id')
+        .annotate(quantity=Sum('quantity'))
+    )
+    for row in reserved_items:
+        product_id = row['product_id']
+        warehouse_id = row['order__warehouse_id']
+        quantity = _to_decimal(row['quantity'])
+        components = combo_components.get(product_id)
+        if components is not None:
+            for component_id, required_quantity in components:
+                component_reserved = reserved_by_product.setdefault(component_id, {})
+                component_reserved[warehouse_id] = (
+                    component_reserved.get(warehouse_id, Decimal('0'))
+                    + quantity * required_quantity
+                )
+            continue
+        product_reserved = reserved_by_product.setdefault(product_id, {})
+        product_reserved[warehouse_id] = (
+            product_reserved.get(warehouse_id, Decimal('0')) + quantity
+        )
+
+    data = []
+    for product in products:
+        product_warehouses = warehouses_by_store.get(product.store_id, [])
+        stock_by_warehouse = []
+        if product.is_combo:
+            total_stock = Decimal('0')
+            total_sellable = Decimal('0')
+            components = combo_components.get(product.id, [])
+            if components:
+                for warehouse in product_warehouses:
+                    warehouse_id = warehouse['id']
+                    actual_capacities = []
+                    sellable_capacities = []
+                    for component_id, required_quantity in components:
+                        actual_quantity = actual_by_product.get(component_id, {}).get(
+                            warehouse_id, Decimal('0')
+                        )
+                        reserved_quantity = reserved_by_product.get(component_id, {}).get(
+                            warehouse_id, Decimal('0')
+                        )
+                        actual_capacities.append(
+                            (actual_quantity / required_quantity).to_integral_value(rounding=ROUND_FLOOR)
+                        )
+                        sellable_capacities.append(
+                            ((actual_quantity - reserved_quantity) / required_quantity).to_integral_value(
+                                rounding=ROUND_FLOOR
+                            )
+                        )
+                    warehouse_stock = min(actual_capacities)
+                    warehouse_sellable = min(sellable_capacities)
+                    total_stock += warehouse_stock
+                    total_sellable += warehouse_sellable
+                    stock_by_warehouse.append({
+                        'warehouse_id': warehouse_id,
+                        'warehouse': warehouse['name'],
+                        'is_active': warehouse['is_active'],
+                        'quantity': float(warehouse_stock),
+                    })
+            else:
+                stock_by_warehouse = [{
+                    'warehouse_id': warehouse['id'],
+                    'warehouse': warehouse['name'],
+                    'is_active': warehouse['is_active'],
+                    'quantity': 0.0,
+                } for warehouse in product_warehouses]
+        else:
+            product_actual = actual_by_product.get(product.id, {})
+            product_reserved = reserved_by_product.get(product.id, {})
+            total_stock = Decimal('0')
+            total_reserved = Decimal('0')
+            for warehouse in product_warehouses:
+                warehouse_id = warehouse['id']
+                quantity = product_actual.get(warehouse_id, Decimal('0'))
+                total_stock += quantity
+                total_reserved += product_reserved.get(warehouse_id, Decimal('0'))
+                stock_by_warehouse.append({
+                    'warehouse_id': warehouse_id,
+                    'warehouse': warehouse['name'],
+                    'is_active': warehouse['is_active'],
+                    'quantity': float(quantity),
+                })
+            total_sellable = total_stock - total_reserved
+
+        data.append({
+            'id': product.id,
+            'code': product.code,
+            'name': product.name,
+            'image_url': product.image.url if product.image else '',
+            'is_combo': product.is_combo,
+            'stock_by_warehouse': stock_by_warehouse,
+            'sellable_stock': float(total_sellable),
+            'total_stock': float(total_stock),
+        })
+
+    return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_save_warehouse_inventory(request):
+    """Điều chỉnh tồn theo kho mà không cập nhật các thông tin khác của sản phẩm."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+
+    try:
+        data = json.loads(request.body)
+        product = _product_queryset_for_request(request).filter(
+            id=data.get('product_id'),
+            is_active=True,
+        ).first()
+        if not product:
+            return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
+        if product.is_combo:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Tồn combo được tính từ thành phần nên không thể sửa trực tiếp.',
+            })
+        if product.is_service:
+            return JsonResponse({'status': 'error', 'message': 'Sản phẩm dịch vụ không quản lý tồn kho.'})
+
+        stocks_data = data.get('stocks') or []
+        if not isinstance(stocks_data, list) or not stocks_data:
+            return JsonResponse({'status': 'error', 'message': 'Dữ liệu tồn theo kho không hợp lệ.'})
+
+        normalized_stocks = {}
+        for row in stocks_data:
+            if not isinstance(row, dict) or not row.get('warehouse_id'):
+                continue
+            warehouse_id = int(row['warehouse_id'])
+            normalized_stocks[warehouse_id] = _to_decimal(row.get('quantity', 0))
+        if not normalized_stocks:
+            return JsonResponse({'status': 'error', 'message': 'Chưa có kho để cập nhật tồn.'})
+
+        allowed_warehouses = {
+            warehouse.id: warehouse
+            for warehouse in filter_by_store(
+                Warehouse.objects.select_related('store__brand').filter(
+                    id__in=normalized_stocks,
+                    store_id=product.store_id,
+                ),
+                request,
+            )
+        }
+        if len(allowed_warehouses) != len(normalized_stocks):
+            return JsonResponse({'status': 'error', 'message': 'Có kho không thuộc cửa hàng của sản phẩm.'})
+
+        for warehouse_id, quantity in normalized_stocks.items():
+            if quantity < 0 and not _allow_negative_stock_for_warehouse_id(warehouse_id):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': (
+                        f'Kho "{allowed_warehouses[warehouse_id].name}" chưa bật cấu hình '
+                        'cho phép tồn âm.'
+                    ),
+                })
+
+        with transaction.atomic():
+            for warehouse_id, quantity in normalized_stocks.items():
+                stock = _get_locked_stock(product.id, warehouse_id)
+                stock.quantity = quantity
+                stock.save(update_fields=['quantity'])
+
+        return JsonResponse({'status': 'ok', 'message': 'Đã cập nhật tồn theo kho.'})
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'status': 'error', 'message': 'Dữ liệu tồn theo kho không hợp lệ.'})
+    except Exception as exc:
+        return JsonResponse({'status': 'error', 'message': str(exc)})
+
+
+@login_required(login_url="/login/")
 def api_save_warehouse(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})

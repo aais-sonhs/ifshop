@@ -271,7 +271,8 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, '.product-combined-header small{margin-top:2px;color:#fff !important;')
         self.assertContains(response, '#data_tbl .btn-action-group{display:flex;flex-direction:column;')
         self.assertContains(response, '#data_tbl .btn-action-group .btn{display:block;width:100%;')
-        self.assertContains(response, 'colspan="14"')
+        self.assertContains(response, 'colspan="13"')
+        self.assertNotContains(response, 'data-col="stock"')
 
     def test_product_form_uses_near_full_width_dialog(self):
         response = self.client.get(reverse('product_tbl'))
@@ -287,9 +288,12 @@ class ProductInventoryFlowTests(TestCase):
         )
         for section_title in (
             'Thông tin cơ bản', 'Phân loại &amp; kho', 'Giá sản phẩm',
-            'Hình ảnh', 'Tồn theo kho', 'Mô tả &amp; ghi chú',
+            'Hình ảnh', 'Chính sách bảo hành', 'Mô tả &amp; ghi chú',
         ):
             self.assertContains(response, section_title)
+        self.assertNotContains(response, 'Tồn theo kho')
+        self.assertNotContains(response, 'id="stock_detail_section"')
+        self.assertNotContains(response, "fd.append('stocks'")
         self.assertContains(response, 'class="product-option-grid"')
         self.assertContains(response, 'class="product-money-input is-primary"')
         for field_id in (
@@ -365,6 +369,162 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock_by_warehouse[self.warehouse_a.id], 0.0)
         self.assertEqual(stock_by_warehouse[self.warehouse_b.id], -2.0)
         self.assertEqual(row['total_stock'], -2.0)
+
+    def test_warehouse_page_keeps_warehouse_list_and_adds_inventory_table(self):
+        response = self.client.get(reverse('warehouse_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<p>Quản lý kho</p>', html=True)
+        self.assertContains(response, '<i class="fas fa-warehouse mr-2"></i>DS kho', html=True)
+        self.assertContains(response, 'id="warehouse_tbl"')
+        self.assertContains(response, 'id="warehouse_inventory_tbl"')
+        self.assertContains(response, '<th>Tên sản phẩm</th>', html=True)
+        self.assertContains(response, '>Có thể bán</th>')
+        self.assertContains(response, '>Tồn kho</th>')
+        self.assertContains(response, 'id="modal_inventory_product"')
+        self.assertContains(response, 'id="inventory_stock_edit_tbl"')
+        self.assertContains(response, 'id="inventory_purchase_history_body"')
+
+    def test_warehouse_inventory_returns_actual_and_sellable_stock_in_user_scope(self):
+        from orders.models import Order, OrderItem
+
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('10'),
+        )
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_b,
+            quantity=Decimal('2'),
+        )
+        ProductStock.objects.create(
+            product=self.other_product,
+            warehouse=self.other_warehouse,
+            quantity=Decimal('99'),
+        )
+        combo = Product.objects.create(
+            store=self.store,
+            code='COMBO-WAREHOUSE-STOCK',
+            name='Combo tồn kho',
+            is_combo=True,
+            created_by=self.user,
+        )
+        ComboItem.objects.create(combo=combo, product=self.product, quantity=Decimal('2'))
+        service = Product.objects.create(
+            store=self.store,
+            code='SERVICE-NO-STOCK',
+            name='Dịch vụ không quản lý tồn',
+            is_service=True,
+            created_by=self.user,
+        )
+        order = Order.objects.create(
+            code='DH-WAREHOUSE-RESERVED',
+            store=self.store,
+            warehouse=self.warehouse_a,
+            order_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=Decimal('3'),
+            unit_price=Decimal('100'),
+            total_price=Decimal('300'),
+        )
+
+        response = self.client.get(reverse('api_get_warehouse_inventory'))
+
+        self.assertEqual(response.status_code, 200)
+        rows = {row['id']: row for row in response.json()['data']}
+        self.assertEqual(rows[self.product.id]['total_stock'], 12.0)
+        self.assertEqual(rows[self.product.id]['sellable_stock'], 9.0)
+        stock_by_warehouse = {
+            row['warehouse_id']: row['quantity']
+            for row in rows[self.product.id]['stock_by_warehouse']
+        }
+        self.assertEqual(stock_by_warehouse[self.warehouse_a.id], 10.0)
+        self.assertEqual(stock_by_warehouse[self.warehouse_b.id], 2.0)
+        self.assertEqual(rows[combo.id]['total_stock'], 6.0)
+        self.assertEqual(rows[combo.id]['sellable_stock'], 4.0)
+        self.assertTrue(rows[combo.id]['is_combo'])
+        self.assertNotIn(self.other_product.id, rows)
+        self.assertNotIn(service.id, rows)
+
+    def test_warehouse_inventory_save_updates_only_stock_in_product_store(self):
+        stock_a = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('3'),
+        )
+        original_name = self.product.name
+
+        response = self.client.post(
+            reverse('api_save_warehouse_inventory'),
+            data=json.dumps({
+                'product_id': self.product.id,
+                'stocks': [
+                    {'warehouse_id': self.warehouse_a.id, 'quantity': '7.5'},
+                    {'warehouse_id': self.warehouse_b.id, 'quantity': '2'},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        stock_a.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(stock_a.quantity, Decimal('7.5'))
+        self.assertEqual(
+            ProductStock.objects.get(product=self.product, warehouse=self.warehouse_b).quantity,
+            Decimal('2'),
+        )
+        self.assertEqual(self.product.name, original_name)
+
+    def test_warehouse_inventory_save_rejects_foreign_warehouse(self):
+        response = self.client.post(
+            reverse('api_save_warehouse_inventory'),
+            data=json.dumps({
+                'product_id': self.product.id,
+                'stocks': [{'warehouse_id': self.other_warehouse.id, 'quantity': '9'}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertFalse(
+            ProductStock.objects.filter(product=self.product, warehouse=self.other_warehouse).exists()
+        )
+
+    def test_warehouse_inventory_save_respects_negative_stock_setting(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Warehouse inventory negative disabled',
+            opt_allow_negative_stock=False,
+        )
+        stock = ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('2'),
+        )
+
+        response = self.client.post(
+            reverse('api_save_warehouse_inventory'),
+            data=json.dumps({
+                'product_id': self.product.id,
+                'stocks': [{'warehouse_id': self.warehouse_a.id, 'quantity': '-1'}],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('chưa bật cấu hình cho phép tồn âm', response.json()['message'])
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, Decimal('2'))
 
     def test_product_list_sorts_total_stock_before_pagination(self):
         for index in range(12):

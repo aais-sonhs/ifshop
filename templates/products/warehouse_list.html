@@ -49,6 +49,18 @@
         </h3>
     </div>
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="inventory_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="inventory_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="inventory_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50" selected>50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="warehouse_inventory_tbl" class="table table-bordered table-striped table-sm">
                 <thead>
@@ -83,6 +95,7 @@
                 </tbody>
             </table>
         </div>
+        <div id="inventory_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 <!-- Hidden selects to keep JS compatibility -->
@@ -187,16 +200,28 @@
 var WAREHOUSE_INVENTORY_MAP = {};
 var WAREHOUSE_INVENTORY_DATA = [];
 
+var INVENTORY_PAGE_SIZE_KEY = 'ifshop_inventory_page_size';
+var INVENTORY_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(INVENTORY_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })()
+};
+
 $(document).ready(function() {
+    $('#inventory_page_size').val(String(INVENTORY_PAGE_STATE.page_size));
     loadData();
     loadInventoryData();
 
     $('#inventory_sellable_sort').change(function() {
         if ($(this).val()) $('#inventory_stock_sort').val('');
+        INVENTORY_PAGE_STATE.page = 1;
         renderInventoryTable();
     });
     $('#inventory_stock_sort').change(function() {
         if ($(this).val()) $('#inventory_sellable_sort').val('');
+        INVENTORY_PAGE_STATE.page = 1;
         renderInventoryTable();
     });
 
@@ -248,6 +273,24 @@ $(document).ready(function() {
     // Close dropdown when clicking outside
     $(document).on('click', function() {
         $('.sort-dropdown').removeClass('show');
+    });
+
+    // Pagination controls
+    $('#inventory_page_size').change(function() {
+        INVENTORY_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        localStorage.setItem(INVENTORY_PAGE_SIZE_KEY, String(INVENTORY_PAGE_STATE.page_size));
+        INVENTORY_PAGE_STATE.page = 1;
+        renderInventoryTable();
+    });
+
+    $(document).on('click', '.inventory-page-btn', function() {
+        if ($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if (!page || page < 1 || page === INVENTORY_PAGE_STATE.page) return;
+        INVENTORY_PAGE_STATE.page = page;
+        renderInventoryTable();
+        // Scroll to top of inventory table
+        $('html, body').animate({scrollTop: $('#warehouse_inventory_tbl').offset().top - 80}, 200);
     });
 
     $('#btn_add_warehouse').click(function() {
@@ -400,13 +443,31 @@ function renderInventoryTable() {
         });
     }
 
+    // Pagination
+    var totalRows = rows.length;
+    var pageSize = INVENTORY_PAGE_STATE.page_size || 50;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    if (INVENTORY_PAGE_STATE.page > totalPages) INVENTORY_PAGE_STATE.page = totalPages;
+    if (INVENTORY_PAGE_STATE.page < 1) INVENTORY_PAGE_STATE.page = 1;
+    var startIndex = (INVENTORY_PAGE_STATE.page - 1) * pageSize;
+    var endIndex = Math.min(startIndex + pageSize, totalRows);
+    var pagedRows = rows.slice(startIndex, endIndex);
+
+    renderInventoryPagination({
+        total: totalRows,
+        page: INVENTORY_PAGE_STATE.page,
+        total_pages: totalPages,
+        start_index: totalRows > 0 ? startIndex + 1 : 0,
+        end_index: endIndex
+    });
+
     var html = '';
-    rows.forEach(function(item, idx) {
+    pagedRows.forEach(function(item, idx) {
         var imageHtml = item.image_url
             ? '<img src="' + escapeHtml(item.image_url) + '" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;">'
             : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border rounded" style="width:48px;height:48px;"><i class="fas fa-image"></i></span>';
         html += '<tr>' +
-            '<td class="text-center align-middle">' + (idx + 1) + '</td>' +
+            '<td class="text-center align-middle">' + (startIndex + idx + 1) + '</td>' +
             '<td class="text-center align-middle">' + imageHtml + '</td>' +
             '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
                 '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
@@ -423,6 +484,52 @@ function renderInventoryTable() {
             : '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
     }
     $('#warehouse_inventory_tbl tbody').html(html);
+}
+
+function renderInventoryPagination(meta) {
+    var total = Number(meta.total || 0);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+
+    if (total === 0) {
+        $('#inventory_pagination_summary').html('<span class="text-muted small">Không có sản phẩm.</span>');
+        $('#inventory_pagination').html('');
+        return;
+    }
+
+    $('#inventory_pagination_summary').html(
+        '<span>Hiển thị <strong>' + startIndex + '-' + endIndex + '</strong> / <strong>' + total + '</strong> sản phẩm' +
+        ' · Trang <strong>' + currentPage + '/' + totalPages + '</strong></span>'
+    );
+
+    if (totalPages <= 1) {
+        $('#inventory_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for (var p = Math.max(2, currentPage - 2); p <= Math.min(totalPages - 1, currentPage + 2); p++) {
+        pages.push(p);
+    }
+    if (totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(p, i, arr) {
+        return arr.indexOf(p) === i;
+    }).sort(function(a, b) { return a - b; });
+
+    var html = '';
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary inventory-page-btn" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var prevPage = 0;
+    pages.forEach(function(page) {
+        if (prevPage && page - prevPage > 1) {
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' + (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') + ' inventory-page-btn" data-page="' + page + '">' + page + '</button>';
+        prevPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary inventory-page-btn" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#inventory_pagination').html(html);
 }
 
 function openInventoryEdit(productId) {

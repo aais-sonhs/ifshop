@@ -1002,6 +1002,43 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(payload['meta']['total_filtered_count'], 1)
         self.assertEqual([row['id'] for row in payload['data']], [second_order.id])
 
+    def test_get_orders_filters_by_variant_and_multiple_product_terms(self):
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-AO-001',
+            barcode='893000000001',
+            name='Áo thun cổ tròn',
+            specification='Cotton co giãn',
+            sapo_id='SAPO-7788',
+            created_by=self.user,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            size_name='Size XL',
+            sku='SKU-AO-XL',
+            barcode='VARIANT-893',
+        )
+        matching_order = self._create_order(code='DH-VARIANT-FILTER', status=1)
+        OrderItem.objects.create(
+            order=matching_order,
+            product=product,
+            variant=variant,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+            note='in logo sau lưng',
+        )
+        self._create_order(code='DH-VARIANT-NOT-MATCH', status=1)
+
+        for search_term in ('SKU-AO-XL', 'VARIANT-893', 'Size XL', 'Cotton giãn', 'SAPO-7788', 'logo lưng'):
+            with self.subTest(search_term=search_term):
+                response = self.client.get(reverse('api_get_orders'), {'product': search_term})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    [row['id'] for row in response.json()['data']],
+                    [matching_order.id],
+                )
+
     def test_get_orders_combines_customer_product_and_pending_export_filters(self):
         selected_customer = Customer.objects.create(
             store=self.store,

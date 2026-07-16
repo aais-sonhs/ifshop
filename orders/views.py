@@ -2674,13 +2674,25 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
     if filters.get('creator'):
         queryset = queryset.filter(created_by_id=filters['creator'])
     if filters.get('product'):
-        product = filters['product']
-        queryset = queryset.filter(
-            Q(items__product__code__icontains=product) |
-            Q(items__product__name__icontains=product) |
-            Q(items__product__barcode__icontains=product) |
-            Q(items__item_name__icontains=product)
-        )
+        # Người dùng có thể cầm mã hàng, barcode, SKU biến thể hoặc chỉ nhớ
+        # một vài từ trong tên/quy cách. Mỗi từ khóa phải khớp ít nhất một
+        # trường của cùng danh sách dòng hàng, thay vì buộc cả chuỗi nằm liền.
+        product_query = Q()
+        for product_term in filters['product'].split():
+            product_query &= (
+                Q(items__product__code__icontains=product_term) |
+                Q(items__product__name__icontains=product_term) |
+                Q(items__product__barcode__icontains=product_term) |
+                Q(items__product__sapo_id__icontains=product_term) |
+                Q(items__product__specification__icontains=product_term) |
+                Q(items__product__category__name__icontains=product_term) |
+                Q(items__variant__sku__icontains=product_term) |
+                Q(items__variant__barcode__icontains=product_term) |
+                Q(items__variant__size_name__icontains=product_term) |
+                Q(items__item_name__icontains=product_term) |
+                Q(items__note__icontains=product_term)
+            )
+        queryset = queryset.filter(product_query)
         need_distinct = True
     if filters.get('text'):
         text = filters['text']

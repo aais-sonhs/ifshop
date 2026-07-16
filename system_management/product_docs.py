@@ -84,6 +84,7 @@ DOCUMENT_UPDATES = [
         'title': 'Quản lý tồn kho và số lượng có thể bán',
         'items': [
             'Màn hình Quản lý kho hiển thị Tồn kho tối thiểu, Tồn kho tối đa, Tồn kho thực tế và Có thể bán của từng sản phẩm.',
+            'Ô tìm kiếm trên bảng tồn kho hỗ trợ tìm theo tên hoặc mã sản phẩm, kể cả khi nhập không dấu.',
             'Có thể bán = Tồn kho thực tế − số lượng đang giữ cho các đơn ở trạng thái Đơn hàng, Đang xử lý hoặc Đang đóng gói và đã đủ điều kiện duyệt.',
             'Có thể sắp xếp Có thể bán hoặc Tồn kho theo thứ tự tăng/giảm; bộ chọn Tồn kho còn hỗ trợ lọc riêng các sản phẩm đang âm kho.',
             'Bấm Sửa tại sản phẩm để điều chỉnh tồn theo từng kho và xem lịch sử nhập; tồn combo chỉ xem vì được tính tự động từ thành phần.',

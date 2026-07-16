@@ -677,6 +677,36 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'Kho Hà Nội')
         self.assertContains(response, 'Chi nhánh 2')
 
+    def test_order_page_exposes_distinct_shipping_addresses_from_previous_orders(self):
+        first = self._create_order(code='DH-ADDRESS-HISTORY-1')
+        first.shipping_address = 'Kho công trình Quận 7'
+        first.save(update_fields=['shipping_address'])
+        duplicate = self._create_order(code='DH-ADDRESS-HISTORY-2')
+        duplicate.shipping_address = 'Kho công trình Quận 7'
+        duplicate.save(update_fields=['shipping_address'])
+        second = self._create_order(code='DH-ADDRESS-HISTORY-3')
+        second.shipping_address = 'Chi nhánh Thủ Đức'
+        second.save(update_fields=['shipping_address'])
+        other_customer_order = self._create_order(
+            code='DH-ADDRESS-OTHER-CUSTOMER', customer=self.other_customer,
+            store=self.other_store, warehouse=self.other_warehouse,
+            created_by=self.other_user,
+        )
+        other_customer_order.shipping_address = 'Địa chỉ không thuộc khách này'
+        other_customer_order.save(update_fields=['shipping_address'])
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        customer = next(item for item in response.context['customers'] if item['id'] == self.customer.id)
+        self.assertEqual(
+            [item['address'] for item in customer['historical_addresses']],
+            ['Chi nhánh Thủ Đức', 'Kho công trình Quận 7'],
+        )
+        self.assertContains(response, 'Chi nhánh Thủ Đức')
+        self.assertContains(response, 'Kho công trình Quận 7')
+        self.assertNotContains(response, 'Địa chỉ không thuộc khách này')
+
     def test_order_page_exposes_copy_action_for_every_order_and_quick_view(self):
         self.client.force_login(self.owner)
 

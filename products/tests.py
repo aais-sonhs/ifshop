@@ -1249,6 +1249,70 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock.quantity, Decimal('0'))
         self.assertTrue(deleted_receipt.is_deleted)
 
+    def test_auto_goods_receipt_code_skips_soft_deleted_receipts(self):
+        deleted_receipt = GoodsReceipt.objects.create(
+            code='P00001',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+        deleted_receipt.delete()
+
+        response = self.client.post(
+            reverse('api_save_goods_receipt'),
+            data=json.dumps({
+                'code': '',
+                'supplier_id': self.supplier.id,
+                'warehouse_id': self.warehouse_a.id,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 10,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(response.json()['code'], 'P00002')
+        self.assertTrue(GoodsReceipt.objects.filter(code='P00002').exists())
+
+    def test_save_goods_receipt_returns_clear_error_for_duplicate_code(self):
+        GoodsReceipt.objects.create(
+            code='P00001',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_goods_receipt'),
+            data=json.dumps({
+                'code': 'P00001',
+                'supplier_id': self.supplier.id,
+                'warehouse_id': self.warehouse_a.id,
+                'receipt_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 10,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('đã tồn tại', response.json()['message'])
+
     def test_save_completed_goods_receipt_moves_stock_to_new_warehouse(self):
         receipt = GoodsReceipt.objects.create(
             code='P00002',

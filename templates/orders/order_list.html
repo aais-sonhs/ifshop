@@ -4058,6 +4058,8 @@ var allCustomers = [
     {% for c in customers %}
     {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}", address:"{{ c.address|default:''|escapejs }}", company_address:"{{ c.company_address|default:''|escapejs }}", delivery_addresses:[
         {% for item in c.delivery_addresses %}{label:"{{ item.label|default:''|escapejs }}", address:"{{ item.address|default:''|escapejs }}"},{% endfor %}
+    ], historical_addresses:[
+        {% for item in c.historical_addresses %}{address:"{{ item.address|default:''|escapejs }}"},{% endfor %}
     ]},
     {% endfor %}
 ];
@@ -4126,17 +4128,20 @@ var currentCustomerAddressOptions = [];
 function getCustomerAddressOptions(customer){
     var options = [];
     var seen = {};
-    function addOption(label, address){
+    function addOption(address, isDefault){
         address = String(address || '').trim();
         if(!address || seen[address]) return;
         seen[address] = true;
-        options.push({label: label, address: address});
+        options.push({address: address, isDefault: !!isDefault});
     }
     if(customer){
-        addOption('Mặc định', customer.address);
-        addOption('Địa chỉ công ty', customer.company_address);
-        (customer.delivery_addresses || []).forEach(function(item, index){
-            addOption(item.label || ('Điểm nhận ' + (index + 1)), item.address);
+        addOption(customer.address, true);
+        addOption(customer.company_address, false);
+        (customer.delivery_addresses || []).forEach(function(item){
+            addOption(item.address, false);
+        });
+        (customer.historical_addresses || []).forEach(function(item){
+            addOption(item.address, false);
         });
     }
     return options;
@@ -4146,9 +4151,9 @@ function renderCustomerAddressChoices(customer, selectedAddress){
     currentCustomerAddressOptions = getCustomerAddressOptions(customer);
     var html = '';
     currentCustomerAddressOptions.forEach(function(item, index){
-        html += '<option value="'+index+'">'+escapeHtml(item.label)+' — '+escapeHtml(item.address)+'</option>';
+        html += '<option value="'+index+'">'+escapeHtml(item.address)+(item.isDefault ? ' (mặc định)' : '')+'</option>';
     });
-    html += '<option value="custom">Địa chỉ khác / nhập thủ công</option>';
+    html += '<option value="custom">Nhập địa chỉ khác</option>';
     $('#inp_customer_address_choice').html(html).prop('disabled', !currentCustomerAddressOptions.length);
     setShippingAddressValue(selectedAddress || (currentCustomerAddressOptions[0] ? currentCustomerAddressOptions[0].address : ''));
 }

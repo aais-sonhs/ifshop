@@ -18,6 +18,7 @@ from customers.models import Customer
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier
 from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required, can_manage_users
+from core.unique_codes import save_with_generated_code
 
 logger = logging.getLogger(__name__)
 
@@ -858,7 +859,9 @@ def api_save_payment(request):
                 p.created_by = request.user
 
             # 2. Gán dữ liệu cơ bản từ payload.
-            p.code = (data.get('code', '') or '').strip() or (p.code or _generate_next_payment_code())
+            requested_code = (data.get('code', '') or '').strip()
+            auto_code = not requested_code and not p.code
+            p.code = requested_code or (p.code or _generate_next_payment_code())
             p.category_id = data.get('category_id') or None
             p.cash_book_id = data.get('cash_book_id') or None
             p.supplier_id = data.get('supplier_id') or None
@@ -892,7 +895,7 @@ def api_save_payment(request):
                     validate_non_negative=True,
                 )
 
-            p.save()
+            save_with_generated_code(p, _generate_next_payment_code, auto_code)
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except ValueError as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

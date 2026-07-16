@@ -36,6 +36,7 @@ from core.store_utils import (
     get_related_brands_for_user,
     get_user_store,
 )
+from core.unique_codes import save_with_generated_code
 
 logger = logging.getLogger(__name__)
 
@@ -2138,8 +2139,29 @@ def order_tbl(request):
             'label': item['label'] or '',
             'address': item['address'],
         })
+
+    # Địa chỉ giao là dữ liệu theo từng đơn, vì vậy một khách có thể đã dùng
+    # nhiều địa chỉ mà chưa lưu vào hồ sơ. Đưa các địa chỉ từ đơn gần nhất vào
+    # danh sách chọn để lần tạo đơn tiếp theo có thể dùng lại ngay.
+    historical_address_map = defaultdict(list)
+    historical_address_seen = defaultdict(set)
+    for item in Order.objects.filter(
+        customer_id__in=[customer['id'] for customer in customers],
+        shipping_address__isnull=False,
+    ).exclude(shipping_address='').order_by(
+        'customer_id', '-order_date', '-id'
+    ).values('customer_id', 'code', 'shipping_address'):
+        address = (item['shipping_address'] or '').strip()
+        if not address or address in historical_address_seen[item['customer_id']]:
+            continue
+        historical_address_seen[item['customer_id']].add(address)
+        historical_address_map[item['customer_id']].append({
+            'address': address,
+        })
+
     for customer in customers:
         customer['delivery_addresses'] = delivery_address_map.get(customer['id'], [])
+        customer['historical_addresses'] = historical_address_map.get(customer['id'], [])
     warehouses = list(Warehouse.objects.filter(is_active=True, store_id__in=store_ids).values('id', 'name'))
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
     payment_methods = list(PaymentMethodOption.objects.filter(is_active=True).values(
@@ -2455,6 +2477,51 @@ def _auto_next_order_code():
         next_num += 1
 
 
+def _auto_next_quotation_code():
+    prefix = 'BG-'
+    max_num = 0
+    for code in Quotation.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.fullmatch(r'BG-(\d+)', (code or '').strip(), re.IGNORECASE)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    next_num = max_num + 1
+    while True:
+        candidate = f'{prefix}{next_num:03d}'
+        if not Quotation.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
+
+
+def _auto_next_pos_code():
+    max_num = 0
+    for code in Order.all_objects.filter(code__istartswith='POS-').values_list('code', flat=True):
+        match = re.fullmatch(r'POS-(\d+)', code or '', re.IGNORECASE)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    next_num = max_num + 1
+    while True:
+        candidate = f'POS-{next_num:04d}'
+        if not Order.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
+
+
+def _auto_next_customer_code():
+    max_num = 0
+    for code in Customer.all_objects.filter(code__startswith='KH').exclude(
+        code__startswith=GUEST_CUSTOMER_CODE_PREFIX
+    ).values_list('code', flat=True):
+        match = re.fullmatch(r'KH(\d+)', code or '', re.IGNORECASE)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    next_num = max_num + 1
+    while True:
+        candidate = f'KH{next_num:03d}'
+        if not Customer.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
+
+
 @login_required(login_url="/login/")
 def api_next_order_code(request):
     """Sinh mã đơn hàng tiếp theo: DH-001, DH-002, ... (luôn tăng tiến, không tái sử dụng)"""
@@ -2465,17 +2532,7 @@ def api_next_order_code(request):
 @login_required(login_url="/login/")
 def api_next_quotation_code(request):
     """Sinh mã báo giá tiếp theo: BG-001, BG-002, ... (luôn tăng tiến)"""
-    prefix = 'BG-'
-    max_num = 0
-    for code in Quotation.all_objects.filter(code__startswith=prefix).values_list('code', flat=True):
-        match = re.search(r'BG-(\d+)', code)
-        if match:
-            num = int(match.group(1))
-            if num > max_num:
-                max_num = num
-    next_num = max_num + 1
-    code = f'{prefix}{next_num:03d}'
-    return JsonResponse({'code': code})
+    return JsonResponse({'code': _auto_next_quotation_code()})
 
 # ============ API: QUICK CREATE CUSTOMER ============
 
@@ -2513,25 +2570,8 @@ def api_quick_create_customer(request):
                 }
             })
 
-        # Tự sinh mã khách hàng
-        import re
-        prefix = 'KH'
-        last_cust = Customer.all_objects.filter(code__startswith=prefix).exclude(
-            code__startswith=GUEST_CUSTOMER_CODE_PREFIX
-        ).order_by('-id').first()
-        next_num = 1
-        if last_cust:
-            match = re.search(r'KH(\d+)', last_cust.code)
-            if match:
-                next_num = int(match.group(1)) + 1
-        while True:
-            cust_code = f'{prefix}{next_num:03d}'
-            if not Customer.all_objects.filter(code=cust_code).exists():
-                break
-            next_num += 1
-
         c = Customer()
-        c.code = cust_code
+        c.code = _auto_next_customer_code()
         c.name = name
         c.phone = phone
         c.email = data.get('email', '').strip()
@@ -2549,7 +2589,7 @@ def api_quick_create_customer(request):
         note = data.get('note', '').strip()
         if note:
             c.note = note
-        c.save()
+        save_with_generated_code(c, _auto_next_customer_code, auto_generated=True)
 
         return JsonResponse({
             'status': 'ok',
@@ -4502,6 +4542,8 @@ def api_save_quotation(request):
                 q.created_by = request.user
                 q.store = _get_default_store_for_request(request)
             requested_code = (data.get('code', '') or '').strip()
+            auto_code = not requested_code and not q.code
+            requested_code = requested_code or q.code or _auto_next_quotation_code()
             # Kiểm tra trùng mã (kể cả record đã soft-delete)
             dup = Quotation.all_objects.filter(code=requested_code)
             if qid:
@@ -4614,7 +4656,7 @@ def api_save_quotation(request):
             quotation_discount_ratio = Decimal('0')
             if total > 0 and _to_decimal(q.discount_amount) > 0:
                 quotation_discount_ratio = min(_to_decimal(q.discount_amount) / total, Decimal('1'))
-            q.save()
+            save_with_generated_code(q, _auto_next_quotation_code, auto_code)
 
             # Lưu items
             loss_warnings = []
@@ -4876,6 +4918,7 @@ def api_save_order_return(request):
                 return JsonResponse({'status': 'error', 'message': 'Trạng thái phiếu trả không hợp lệ.'})
 
             r.code = (data.get('code', '') or '').strip()
+            auto_code = not r.code and not r.id
             if not r.code:
                 r.code = _auto_next_order_return_code()
             duplicate = OrderReturn.all_objects.filter(code=r.code)
@@ -5028,7 +5071,7 @@ def api_save_order_return(request):
             r.reason = data.get('reason', '')
             r.exchange_note = data.get('exchange_note', '') or ''
             r.status = status
-            r.save()
+            save_with_generated_code(r, _auto_next_order_return_code, auto_code)
 
             if has_item_payload:
                 r.items.all().delete()
@@ -5290,16 +5333,7 @@ def api_pos_checkout(request):
                 store = StoreModel.objects.filter(id__in=sids).first() if sids else None
 
             # Auto generate code
-            prefix = 'POS'
-            last = Order.objects.filter(code__startswith=prefix).order_by('-id').first()
-            if last:
-                try:
-                    num = int(last.code.replace(prefix + '-', '')) + 1
-                except (TypeError, ValueError):
-                    num = 1
-            else:
-                num = 1
-            code = f'{prefix}-{num:04d}'
+            code = _auto_next_pos_code()
 
             # Get default warehouse
             warehouse = Warehouse.objects.filter(
@@ -5348,7 +5382,7 @@ def api_pos_checkout(request):
                 created_by=request.user,
                 creator_name=request.user.get_full_name() or request.user.username,
             )
-            order.save()
+            save_with_generated_code(order, _auto_next_pos_code, auto_generated=True)
 
             # Create items + deduct stock
             allow_negative_stock = _allow_negative_stock_for_warehouse_id(

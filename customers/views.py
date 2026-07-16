@@ -16,6 +16,7 @@ from core.store_utils import (
     get_user_store,
     brand_owner_required,
 )
+from core.unique_codes import save_with_generated_code
 
 logger = logging.getLogger(__name__)
 
@@ -407,7 +408,9 @@ def api_save_customer(request):
             c.created_by = request.user
             # Khách hàng mới luôn được gán về store mặc định user đang quản lý.
             c.store = _get_default_store_for_request(request)
-        c.code = (data.get('code') or '').strip() or _generate_next_customer_code()
+        requested_code = (data.get('code') or '').strip()
+        auto_code = not requested_code and not c.code
+        c.code = requested_code or c.code or _generate_next_customer_code()
         c.name = (data.get('name') or '').strip()
         if not c.name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên khách hàng'})
@@ -453,7 +456,7 @@ def api_save_customer(request):
         c.gender = data.get('gender', c.gender or 0) or 0
         c.is_active = data.get('is_active', True)
         with transaction.atomic():
-            c.save()
+            save_with_generated_code(c, _generate_next_customer_code, auto_code)
             if delivery_addresses is not None:
                 c.delivery_addresses.all().delete()
                 CustomerAddress.objects.bulk_create([

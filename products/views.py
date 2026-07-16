@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Case,
     Count,
@@ -39,6 +39,7 @@ from core.store_utils import (
     get_managed_store_ids,
     brand_owner_required,
 )
+from core.unique_codes import save_with_generated_code
 
 logger = logging.getLogger(__name__)
 
@@ -48,26 +49,38 @@ def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'
 
 
 def _generate_next_goods_receipt_code():
-    last_receipt = (
-        GoodsReceipt.objects
+    prefix = 'P'
+    max_number = 0
+    for code in (
+        GoodsReceipt.all_objects
         .select_for_update()
-        .filter(code__startswith='P')
-        .order_by('-id')
-        .first()
-    )
-    if last_receipt and last_receipt.code and last_receipt.code.startswith('P'):
-        try:
-            next_number = int(last_receipt.code[1:]) + 1
-        except ValueError:
-            next_number = GoodsReceipt.objects.filter(code__startswith='P').count() + 1
-    else:
-        next_number = 1
+        .filter(code__startswith=prefix)
+        .values_list('code', flat=True)
+    ):
+        match = re.match(r'^P(\d+)$', code or '', re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
 
-    candidate = f'P{next_number:05d}'
-    while GoodsReceipt.objects.filter(code=candidate).exists():
+    next_number = max_number + 1
+    candidate = f'{prefix}{next_number:05d}'
+    while GoodsReceipt.all_objects.filter(code=candidate).exists():
         next_number += 1
-        candidate = f'P{next_number:05d}'
+        candidate = f'{prefix}{next_number:05d}'
     return candidate
+
+
+def _is_goods_receipt_code_conflict(error):
+    cause = getattr(error, '__cause__', None)
+    constraint_name = getattr(getattr(cause, 'diag', None), 'constraint_name', '')
+    if constraint_name:
+        return constraint_name == 'goods_receipts_code_key'
+
+    # SQLite does not expose PostgreSQL's constraint metadata in local tests.
+    error_message = str(error).lower()
+    return (
+        'goods_receipts_code_key' in error_message
+        or 'goods_receipts.code' in error_message
+    )
 
 
 def _generate_next_stock_check_code():
@@ -1306,7 +1319,9 @@ def api_save_product(request):
                 was_combo = False
                 existing_combo_signature = set()
 
-            product.code = (request.POST.get('code', '') or '').strip() or (product.code or _generate_next_product_code())
+            requested_product_code = (request.POST.get('code', '') or '').strip()
+            auto_product_code = not requested_product_code and not product.code
+            product.code = requested_product_code or (product.code or _generate_next_product_code())
             product.name = (request.POST.get('name', '') or '').strip()
             if not product.name:
                 return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên SP'})
@@ -1368,7 +1383,7 @@ def api_save_product(request):
             if 'image' in request.FILES:
                 product.image = request.FILES['image']
 
-            product.save()
+            save_with_generated_code(product, _generate_next_product_code, auto_product_code)
 
             # Luồng form mới không còn chỉnh biến thể/kích thước.
             # Nếu client không yêu cầu sửa biến thể, giữ nguyên dữ liệu cũ.
@@ -1622,7 +1637,9 @@ def api_save_supplier(request):
         else:
             sup = Supplier()
             sup.created_by = request.user
-        code = (data.get('code') or '').strip() or (sup.code or _generate_next_supplier_code())
+        requested_code = (data.get('code') or '').strip()
+        auto_code = not requested_code and not sup.code
+        code = requested_code or (sup.code or _generate_next_supplier_code())
         name = (data.get('name') or '').strip()
         if not name:
             return JsonResponse({'status': 'error', 'message': 'Vui lòng nhập tên NCC'})
@@ -1641,7 +1658,7 @@ def api_save_supplier(request):
         sup.contact_person = data.get('contact_person', '')
         sup.note = data.get('note', '')
         sup.is_active = data.get('is_active', True)
-        sup.save()
+        save_with_generated_code(sup, _generate_next_supplier_code, auto_code)
         return JsonResponse({
             'status': 'ok',
             'message': 'Lưu thành công',
@@ -1682,7 +1699,7 @@ def api_quick_create_supplier(request):
                 'message': 'Nhà cung cấp đã tồn tại, hệ thống đã chọn lại.',
                 'supplier': {'id': duplicate.id, 'code': duplicate.code, 'name': duplicate.name},
             })
-        supplier = Supplier.objects.create(
+        supplier = Supplier(
             code=_generate_next_supplier_code(),
             name=name,
             phone=phone,
@@ -1693,6 +1710,7 @@ def api_quick_create_supplier(request):
             note=(data.get('note') or '').strip(),
             created_by=request.user,
         )
+        save_with_generated_code(supplier, _generate_next_supplier_code, auto_generated=True)
         return JsonResponse({
             'status': 'ok',
             'message': 'Đã tạo nhà cung cấp mới.',
@@ -1896,6 +1914,7 @@ def api_save_goods_receipt(request):
 
             # Mã phiếu được giữ nguyên khi sửa; chỉ tự tăng khi tạo mới hoặc chưa có mã.
             code = (data.get('code', '') or '').strip()
+            auto_generated_code = not code and not gr.code
             if not code:
                 code = gr.code or _generate_next_goods_receipt_code()
             gr.code = code
@@ -1939,7 +1958,20 @@ def api_save_goods_receipt(request):
                         'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
                     })
             gr.total_amount = total_amount
-            gr.save()
+            save_attempts = 5 if auto_generated_code else 1
+            for save_attempt in range(save_attempts):
+                try:
+                    # A savepoint keeps the outer transaction usable if another
+                    # request inserts the same generated code concurrently.
+                    with transaction.atomic():
+                        gr.save()
+                    break
+                except IntegrityError as error:
+                    if not _is_goods_receipt_code_conflict(error):
+                        raise
+                    if not auto_generated_code or save_attempt == save_attempts - 1:
+                        raise
+                    gr.code = _generate_next_goods_receipt_code()
 
             # 3. Nếu phiếu cũ đã hoàn thành thì hoàn tác tồn theo kho cũ trước khi ghi item mới.
             if old_status == 1 and old_warehouse_id:
@@ -1959,6 +1991,13 @@ def api_save_goods_receipt(request):
                     )
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
+    except IntegrityError as e:
+        if _is_goods_receipt_code_conflict(e):
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Mã phiếu nhập "{gr.code}" đã tồn tại. Vui lòng thử lại.'
+            })
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -2176,7 +2215,9 @@ def api_save_purchase_return(request):
             if return_id and purchase_return.stock_applied:
                 _reverse_purchase_return_stock(purchase_return)
 
-            code = (data.get('code') or '').strip() or purchase_return.code or _generate_next_purchase_return_code()
+            requested_code = (data.get('code') or '').strip()
+            auto_code = not requested_code and not purchase_return.code
+            code = requested_code or purchase_return.code or _generate_next_purchase_return_code()
             purchase_return.code = code
             purchase_return.goods_receipt = receipt
             purchase_return.supplier = receipt.supplier
@@ -2187,7 +2228,7 @@ def api_save_purchase_return(request):
             purchase_return.note = (data.get('note') or '').strip()
             purchase_return.total_amount = total_amount
             purchase_return.stock_applied = False
-            purchase_return.save()
+            save_with_generated_code(purchase_return, _generate_next_purchase_return_code, auto_code)
             purchase_return.items.all().delete()
             for receipt_item, quantity, unit_price, line_total, note in normalized_items:
                 PurchaseReturnItem.objects.create(
@@ -2462,6 +2503,7 @@ def api_save_stock_check(request):
                 sc.created_by = request.user
 
             code = (data.get('code', '') or '').strip()
+            auto_code = not code and not sc.code
             if not code:
                 code = sc.code or _generate_next_stock_check_code()
             sc.code = code
@@ -2534,7 +2576,7 @@ def api_save_stock_check(request):
             sc.status = new_status
             sc.note = data.get('note', '')
             sc.stock_applied = False
-            sc.save()
+            save_with_generated_code(sc, _generate_next_stock_check_code, auto_code)
 
             # Save items
             sc.items.all().delete()
@@ -3376,7 +3418,11 @@ def _upsert_product_import_row(row, headers, request, default_store, default_war
     if 'cost_price' in headers and not product.is_combo:
         product.cost_price = _parse_import_decimal(_row_import_value(row, headers, 'cost_price'), integer=True)
 
-    product.save()
+    save_with_generated_code(
+        product,
+        _generate_next_product_code,
+        auto_generated=created and not code,
+    )
     variants_synced = _sync_variant_prices_from_product_import(product, headers)
 
     stock_initialized = 0

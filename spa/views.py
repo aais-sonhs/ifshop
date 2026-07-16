@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -7,8 +8,25 @@ from django.http import JsonResponse
 from .models import Staff, Room, Service, ServiceCategory, Booking, BookingItem
 from customers.models import Customer
 from core.store_utils import can_manage_users, filter_by_store, get_managed_store_ids, get_user_store
+from core.unique_codes import save_with_generated_code
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_next_booking_code():
+    today = datetime.now().strftime('%d%m')
+    prefix = f'BK-{today}-'
+    max_num = 0
+    for code in Booking.objects.filter(code__startswith=prefix).values_list('code', flat=True):
+        match = re.fullmatch(rf'{re.escape(prefix)}(\d+)', code or '', re.IGNORECASE)
+        if match:
+            max_num = max(max_num, int(match.group(1)))
+    next_num = max_num + 1
+    while True:
+        candidate = f'{prefix}{next_num:03d}'
+        if not Booking.objects.filter(code=candidate).exists():
+            return candidate
+        next_num += 1
 
 
 def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'):
@@ -354,7 +372,9 @@ def api_save_booking(request):
         if not bid:
             b.created_by = request.user
 
-        b.code = data.get('code', '')
+        requested_code = (data.get('code', '') or '').strip()
+        auto_code = not bid and (not requested_code or requested_code.startswith('BK-'))
+        b.code = requested_code or (b.code if bid else _generate_next_booking_code())
         customer_id = data.get('customer_id') or None
         customer = _get_customer_for_user(request, customer_id) if customer_id else None
         if customer_id and not customer:
@@ -396,7 +416,7 @@ def api_save_booking(request):
         b.total_amount = total
         b.final_amount = total - float(b.discount_amount)
         b.commission_amount = total_commission
-        b.save()
+        save_with_generated_code(b, _generate_next_booking_code, auto_code)
 
         # Save items
         b.items.all().delete()
@@ -447,14 +467,4 @@ def api_delete_booking(request):
 
 @login_required(login_url="/login/")
 def api_generate_booking_code(request):
-    today = datetime.now().strftime('%d%m')
-    last = Booking.objects.filter(code__startswith=f'BK-{today}').order_by('-code').first()
-    if last:
-        try:
-            num = int(last.code.split('-')[-1]) + 1
-        except (IndexError, TypeError, ValueError):
-            num = 1
-    else:
-        num = 1
-    code = f'BK-{today}-{num:03d}'
-    return JsonResponse({'code': code})
+    return JsonResponse({'code': _generate_next_booking_code()})

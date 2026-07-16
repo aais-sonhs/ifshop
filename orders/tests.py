@@ -755,6 +755,7 @@ class OrderRiskFlowTests(TestCase):
         response = self.client.get(reverse('order_tbl'))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Mã đơn, tên khách hàng, SĐT, ghi chú, tag...')
         self.assertContains(response, 'Tạo đơn mới giống đơn này')
         self.assertContains(response, 'id="btn_quick_view_copy"')
         self.assertContains(response, "$('#inp_status').val('1')")

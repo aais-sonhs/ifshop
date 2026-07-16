@@ -43,10 +43,11 @@
                         <th>Tên sản phẩm</th>
                         <th class="text-right" style="width:150px;">Có thể bán</th>
                         <th class="text-right" style="width:150px;">Tồn kho</th>
+                        <th class="text-center" style="width:100px;">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="5" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -278,21 +279,22 @@ function loadInventoryData() {
             html += '<tr>' +
                 '<td class="text-center align-middle">' + (idx + 1) + '</td>' +
                 '<td class="text-center align-middle">' + imageHtml + '</td>' +
-                '<td class="align-middle"><div class="d-flex align-items-center justify-content-between" style="gap:10px;"><div><strong>' + escapeHtml(item.name) + '</strong><br>' +
-                    '<small class="text-muted">' + escapeHtml(item.code) + '</small></div>' +
-                    '<button type="button" class="btn btn-xs ' + (item.is_combo ? 'btn-outline-secondary' : 'btn-info') + '" onclick="openInventoryEdit(' + item.id + ')">' +
-                    (item.is_combo ? 'Xem' : 'Sửa') + '</button></div></td>' +
+                '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
+                    '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
                 '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +
                 '<td class="text-right align-middle">' + formatQuantity(item.total_stock) + '</td>' +
+                '<td class="text-center align-middle"><button type="button" class="btn btn-xs ' +
+                    (item.is_combo ? 'btn-outline-secondary' : 'btn-info') + '" onclick="openInventoryEdit(' + item.id + ')">' +
+                    (item.is_combo ? 'Xem' : 'Sửa') + '</button></td>' +
                 '</tr>';
         });
         if (!html) {
-            html = '<tr><td colspan="5" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
+            html = '<tr><td colspan="6" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
         }
         $('#warehouse_inventory_tbl tbody').html(html);
     }).fail(function() {
         $('#warehouse_inventory_tbl tbody').html(
-            '<tr><td colspan="5" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
+            '<tr><td colspan="6" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
         );
     });
 }

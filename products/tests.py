@@ -381,6 +381,7 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, '<th>Tên sản phẩm</th>', html=True)
         self.assertContains(response, '>Có thể bán</th>')
         self.assertContains(response, '>Tồn kho</th>')
+        self.assertContains(response, '>Thao tác</th>')
         self.assertContains(response, 'id="modal_inventory_product"')
         self.assertContains(response, 'id="inventory_stock_edit_tbl"')
         self.assertContains(response, 'id="inventory_purchase_history_body"')

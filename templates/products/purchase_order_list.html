@@ -124,6 +124,8 @@ var PURCHASE_ORDER_PRODUCTS_LOAD_ACTIVE = false;
 var PURCHASE_ORDER_PRODUCTS_LOAD_XHR = null;
 var PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = null;
 var PURCHASE_ORDER_PRODUCTS_CALLBACKS = [];
+var PURCHASE_ORDER_PRODUCT_CHOICES = [];
+var PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE = 20;
 
 var itemRowIndex = 0;
 
@@ -163,19 +165,20 @@ $(document).ready(function(){
     });
 
     $('#quick_purchase_order_product').on('select2:select', function(e){
-        var $option = e.params.data.element ? $(e.params.data.element) : $(this).find('option:selected');
-        var productId = Number($option.val());
-        var variantId = $option.data('variant-id') || null;
+        var selectedData = (e.params && e.params.data) || {};
+        var $option = selectedData.element ? $(selectedData.element) : $(this).find('option:selected');
+        var productId = Number(selectedData.product_id || $option.val());
+        var variantId = selectedData.variant_id || $option.data('variant-id') || null;
         var product = PRODUCTS.find(function(item){ return Number(item.id) === productId; });
         if(product && !focusExistingPurchaseOrderProduct(productId, variantId)){
             addItemRow({
                 product_id: product.id,
                 variant_id: variantId,
                 quantity: 1,
-                unit_price: Number($option.data('cost') || product.cost_price || product.import_price || 0)
+                unit_price: Number(selectedData.cost || $option.data('cost') || product.cost_price || product.import_price || 0)
             });
         }
-        $(this).val('').trigger('change.select2');
+        $(this).val(null).trigger('change.select2');
     });
 
     $('#btn_save').click(function(){
@@ -207,6 +210,7 @@ $(document).ready(function(){
             success: function(r){
                 if(r.status === 'ok'){
                     PRODUCTS = [];
+                    PURCHASE_ORDER_PRODUCT_CHOICES = [];
                     PURCHASE_ORDER_PRODUCTS_LOADED = false;
                     $('#modal_form').modal('hide');
                     loadData();
@@ -220,11 +224,12 @@ $(document).ready(function(){
     $(document).on('change', '.item-product-select', function(){
         var row = $(this).closest('tr');
         var $opt = $(this).find('option:selected');
-        var productId = $(this).val();
-        var product = PRODUCTS.find(function(p){ return p.id == productId; });
+        var selectedChoice = parsePurchaseOrderProductChoice($(this).val(), $opt);
+        var product = getPurchaseOrderProductById(selectedChoice.productId);
         if(product){
             row.find('.item-unit').text(product.unit);
-            var cost = $opt.data('cost') || product.cost_price;
+            var variant = getPurchaseOrderProductVariant(product, selectedChoice.variantId);
+            var cost = (variant && variant.cost_price) || product.cost_price || product.import_price || 0;
             row.find('.item-unit-price').val(fmtMoneyInput(cost));
             row.find('.item-qty').attr('step', product.is_weight_based ? '0.01' : '1');
             calcRowTotal(row);
@@ -257,18 +262,42 @@ function getPurchaseOrderProductById(productId){
     }) || null;
 }
 
+function buildPurchaseOrderProductChoiceId(productId, variantId){
+    return String(productId || '') + ':' + String(variantId || '');
+}
+
+function parsePurchaseOrderProductChoice(value, $option){
+    var optionProductId = $option && $option.length ? $option.data('product-id') : null;
+    var optionVariantId = $option && $option.length ? $option.data('variant-id') : null;
+    if(optionProductId){
+        return {
+            productId: Number(optionProductId),
+            variantId: optionVariantId ? Number(optionVariantId) : null
+        };
+    }
+    var parts = String(value || '').split(':');
+    return {
+        productId: Number(parts[0] || 0),
+        variantId: parts.length > 1 && parts[1] ? Number(parts[1]) : null
+    };
+}
+
+function getPurchaseOrderProductVariant(product, variantId){
+    if(!product || !variantId || !(product.variants && product.variants.length)) return null;
+    return product.variants.find(function(variant){
+        return Number(variant.id) === Number(variantId);
+    }) || null;
+}
+
 function getPurchaseOrderProductOptionInfo(data){
     if(!data || !data.id) return null;
     var $option = data.element ? $(data.element) : null;
-    var product = getPurchaseOrderProductById(data.id);
+    var parsedChoice = parsePurchaseOrderProductChoice(data.id, $option);
+    var productId = data.product_id || parsedChoice.productId;
+    var product = getPurchaseOrderProductById(productId);
     if(!product) return null;
-    var variantId = $option ? $option.data('variant-id') : null;
-    var variant = null;
-    if(variantId && product.variants){
-        variant = product.variants.find(function(item){
-            return Number(item.id) === Number(variantId);
-        }) || null;
-    }
+    var variantId = data.variant_id || parsedChoice.variantId;
+    var variant = getPurchaseOrderProductVariant(product, variantId);
     return {product: product, variant: variant};
 }
 
@@ -336,27 +365,27 @@ function formatPurchaseOrderProductSelection(data){
 function addItemRow(data){
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
-    PRODUCTS.forEach(function(p){
-        if(p.variants && p.variants.length > 0){
-            p.variants.forEach(function(v){
-                var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
-                if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
-                var variantSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
-                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(variantSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
-            });
-        } else {
-            var selected = (data && data.product_id == p.id) ? 'selected' : '';
-            var productSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
-            productOptions += '<option value="'+p.id+'" data-cost="'+p.cost_price+'" data-search="'+escapeHtml(productSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name)+'</option>';
-        }
-    });
 
     var unit = '';
     var unitPrice = 0;
+    var selectedProduct = null;
+    var selectedVariant = null;
     if(data){
         unitPrice = data.unit_price || 0;
-        var prod = PRODUCTS.find(function(p){ return p.id == data.product_id; });
-        unit = prod ? prod.unit : '';
+        selectedProduct = getPurchaseOrderProductById(data.product_id);
+        if(selectedProduct){
+            selectedVariant = getPurchaseOrderProductVariant(selectedProduct, data.variant_id);
+            if(!selectedVariant && !data.variant_id && selectedProduct.variants && selectedProduct.variants.length === 1){
+                selectedVariant = selectedProduct.variants[0];
+            }
+            unit = selectedProduct.unit || '';
+            var selectedVariantId = selectedVariant ? selectedVariant.id : null;
+            var selectedLabel = (selectedProduct.code || '') + ' - ' + (selectedProduct.name || '') +
+                (selectedVariant ? ' [' + (selectedVariant.size_name || selectedVariant.sku || '') + ']' : '');
+            productOptions += '<option value="' + buildPurchaseOrderProductChoiceId(selectedProduct.id, selectedVariantId) +
+                '" data-product-id="' + selectedProduct.id + '" data-variant-id="' + (selectedVariantId || '') +
+                '" selected>' + escapeHtml(selectedLabel) + '</option>';
+        }
     }
 
     var qty = data ? data.quantity : 1;
@@ -380,24 +409,11 @@ function addItemRow(data){
         width: '100%',
         placeholder: '-- Chọn sản phẩm --',
         allowClear: true,
-        matcher: purchaseOrderProductMatcher,
+        ajax: buildPurchaseOrderProductAjaxConfig(),
         templateResult: formatPurchaseOrderProductOption,
         templateSelection: formatPurchaseOrderProductSelection,
         dropdownCssClass: 'purchase-order-product-dropdown'
     });
-    // Set value if editing
-    if(data && data.product_id){
-        if(data.variant_id){
-            lastRow.find('.select2-item option').each(function(){
-                if($(this).val() == data.product_id && $(this).data('variant-id') == data.variant_id){
-                    $(this).prop('selected', true);
-                }
-            });
-            lastRow.find('.select2-item').trigger('change.select2');
-        } else {
-            lastRow.find('.select2-item').val(data.product_id).trigger('change.select2');
-        }
-    }
 
     updateTotal();
 }
@@ -432,6 +448,7 @@ function requestPurchaseOrderProducts(attempt){
             return;
         }
         PRODUCTS = res.data;
+        buildPurchaseOrderProductChoices();
         PURCHASE_ORDER_PRODUCTS_LOADED = true;
         finishPurchaseOrderProductLoad(true);
     }).fail(function(){
@@ -528,32 +545,89 @@ function purchaseOrderProductMatcher(params, data){
     if(!term) return data;
     var $option = data.element ? $(data.element) : null;
     var text = normalizePurchaseOrderProductSearch(($option && $option.attr('data-search')) || data.text || '');
+    return matchesPurchaseOrderProductSearch(text, term) ? data : null;
+}
+
+function matchesPurchaseOrderProductSearch(searchText, normalizedTerm){
+    var text = normalizePurchaseOrderProductSearch(searchText);
+    var term = normalizePurchaseOrderProductSearch(normalizedTerm);
+    return matchesNormalizedPurchaseOrderProductSearch(text, term);
+}
+
+function matchesNormalizedPurchaseOrderProductSearch(text, term){
+    if(!term) return true;
     var compactMatched = text.replace(/\s/g, '').indexOf(term.replace(/\s/g, '')) >= 0;
     var tokenMatched = term.split(' ').every(function(token){ return text.indexOf(token) >= 0; });
-    return compactMatched || tokenMatched ? data : null;
+    return compactMatched || tokenMatched;
+}
+
+function buildPurchaseOrderProductChoices(){
+    var choices = [];
+    PRODUCTS.forEach(function(product){
+        if(product.variants && product.variants.length){
+            product.variants.forEach(function(variant){
+                var label = (product.code || '') + ' - ' + (product.name || '') + ' [' + (variant.size_name || variant.sku || '') + ']';
+                choices.push({
+                    id: buildPurchaseOrderProductChoiceId(product.id, variant.id),
+                    product_id: product.id,
+                    variant_id: variant.id,
+                    cost: Number(variant.cost_price || product.cost_price || product.import_price || 0),
+                    text: label,
+                    search_text: normalizePurchaseOrderProductSearch([
+                        product.code || '', product.name || '', product.barcode || '', product.specification || '',
+                        variant.sku || '', variant.size_name || ''
+                    ].join(' '))
+                });
+            });
+        } else {
+            choices.push({
+                id: buildPurchaseOrderProductChoiceId(product.id, null),
+                product_id: product.id,
+                variant_id: null,
+                cost: Number(product.cost_price || product.import_price || 0),
+                text: (product.code || '') + ' - ' + (product.name || ''),
+                search_text: normalizePurchaseOrderProductSearch([
+                    product.code || '', product.name || '', product.barcode || '', product.specification || ''
+                ].join(' '))
+            });
+        }
+    });
+    PURCHASE_ORDER_PRODUCT_CHOICES = choices;
+}
+
+function queryPurchaseOrderProductChoices(term, page){
+    var normalizedTerm = normalizePurchaseOrderProductSearch(term || '');
+    var matched = normalizedTerm ? PURCHASE_ORDER_PRODUCT_CHOICES.filter(function(choice){
+        return matchesNormalizedPurchaseOrderProductSearch(choice.search_text, normalizedTerm);
+    }) : PURCHASE_ORDER_PRODUCT_CHOICES;
+    var currentPage = Math.max(Number(page) || 1, 1);
+    var start = (currentPage - 1) * PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE;
+    var end = start + PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE;
+    return {
+        results: matched.slice(start, end),
+        pagination: {more: end < matched.length}
+    };
+}
+
+function buildPurchaseOrderProductAjaxConfig(){
+    return {
+        delay:80,
+        transport:function(params, success){
+            var query = params.data || {};
+            success(queryPurchaseOrderProductChoices(query.term, query.page));
+            return {abort:function(){}};
+        },
+        processResults:function(data){ return data; }
+    };
 }
 
 function initializeQuickPurchaseOrderProductSelect(){
     var $select = $('#quick_purchase_order_product');
-    if($select.hasClass('select2-hidden-accessible')){
-        $select.select2('destroy');
-    }
-    var options = '<option value="">-- Tìm và chọn sản phẩm --</option>';
-    PRODUCTS.forEach(function(p){
-        if(p.variants && p.variants.length){
-            p.variants.forEach(function(v){
-                var search = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
-                options += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
-            });
-        } else {
-            var search = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
-            options += '<option value="'+p.id+'" data-cost="'+(p.cost_price || p.import_price || 0)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name)+'</option>';
-        }
-    });
-    $select.prop('disabled', false).html(options).select2({
+    if($select.hasClass('select2-hidden-accessible')) return;
+    $select.prop('disabled', false).html('<option value=""></option>').select2({
         dropdownParent: $('#modal_form'), width:'100%', theme:'bootstrap4',
         placeholder:'-- Tìm và chọn sản phẩm --', allowClear:true,
-        matcher:purchaseOrderProductMatcher,
+        ajax:buildPurchaseOrderProductAjaxConfig(),
         templateResult:formatPurchaseOrderProductOption,
         templateSelection:formatPurchaseOrderProductSelection,
         dropdownCssClass:'purchase-order-product-dropdown'
@@ -564,8 +638,9 @@ function focusExistingPurchaseOrderProduct(productId, variantId){
     var $existing = $();
     $('#items_body tr').each(function(){
         var $selected = $(this).find('.item-product-select option:selected');
-        if(Number($selected.val()) === Number(productId) &&
-                String($selected.data('variant-id') || '') === String(variantId || '')){
+        var selectedChoice = parsePurchaseOrderProductChoice($selected.val(), $selected);
+        if(Number(selectedChoice.productId) === Number(productId) &&
+                String(selectedChoice.variantId || '') === String(variantId || '')){
             $existing = $(this);
             return false;
         }
@@ -606,14 +681,16 @@ function reindexRows(){
 function getItemsData(){
     var items = [];
     $('#items_body tr').each(function(){
-        var productId = $(this).find('.item-product-select').val();
+        var $productSelect = $(this).find('.item-product-select');
+        var $selectedOption = $productSelect.find('option:selected');
+        var selectedChoice = parsePurchaseOrderProductChoice($productSelect.val(), $selectedOption);
+        var productId = selectedChoice.productId;
         var qty = parseInt($(this).find('.item-qty').val()) || 0;
         var unitPrice = parseMoneyInput($(this).find('.item-unit-price').val());
         if(productId && qty > 0){
-            var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
             items.push({
                 product_id: parseInt(productId),
-                variant_id: variantId,
+                variant_id: selectedChoice.variantId,
                 quantity: qty,
                 unit_price: unitPrice
             });

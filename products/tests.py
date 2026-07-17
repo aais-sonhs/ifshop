@@ -947,6 +947,12 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(page_response, "dropdownCssClass: 'purchase-order-product-dropdown'")
         self.assertContains(page_response, 'id="quick_purchase_order_product_status"')
         self.assertContains(page_response, 'function retryPurchaseOrderProductLoad(attempt)')
+        self.assertContains(page_response, 'var PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE = 20;')
+        self.assertContains(page_response, 'function queryPurchaseOrderProductChoices(term, page)')
+        self.assertContains(page_response, 'results: matched.slice(start, end)')
+        self.assertContains(page_response, 'transport:function(params, success)')
+        self.assertContains(page_response, 'function buildPurchaseOrderProductAjaxConfig()')
+        self.assertContains(page_response, 'ajax: buildPurchaseOrderProductAjaxConfig()')
 
         row = next(
             item for item in product_response.json()['data']

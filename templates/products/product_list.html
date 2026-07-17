@@ -285,7 +285,7 @@
                             <div class="product-form-section-body">
                                 <div class="row" id="price_row">
                                     <div class="col-md-4"><div class="form-group"><label>Giá nhập <small class="text-muted">(gần nhất)</small></label><div class="product-money-input"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_import_price" value="0" title="Giá đang nhập được tại một thời điểm, thường là giá nhập gần nhất"></div></div></div>
-                                    <div class="col-md-4"><div class="form-group"><label>Giá vốn <small class="text-muted">(tự tính)</small></label><div class="product-money-input is-readonly"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_cost_price" value="0" readonly title="Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại. Hệ thống ưu tiên lô nhập mới nhất để tính phần hàng còn tồn."></div></div></div>
+                                    <div class="col-md-4"><div class="form-group"><label>Giá vốn <small class="text-muted">(tự tính)</small></label><div class="product-money-input is-readonly"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_cost_price" value="0" readonly title="Giá vốn bình quân gia quyền = tổng giá trị nhập hợp lệ còn lại sau trả hàng / tổng số lượng nhập hợp lệ còn lại sau trả hàng."></div></div></div>
                                     <div class="col-md-4"><div class="form-group"><label>Giá bán lẻ <span class="text-danger">*</span></label><div class="product-money-input is-primary"><span>₫</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-right money-format" id="inp_selling_price" value="0"></div></div></div>
                                 </div>
                                 <div class="row" id="price_row_2">
@@ -1602,10 +1602,7 @@ function loadData(done){
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
             var costDisplay = '<span class="text-primary font-weight-bold">'+fmt(d.cost_price)+'đ</span>';
-            var costTooltip = 'Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại.\nVí dụ tồn 300 = 150c giá A + 50c giá B + 100c giá C rồi chia 300.';
-            if(d.cost_price_stored && d.cost_price !== d.cost_price_stored){
-                costTooltip += '\n(Giá vốn DB dự phòng: ' + fmt(d.cost_price_stored) + 'đ)';
-            }
+            var costTooltip = 'Giá vốn bình quân gia quyền = tổng giá trị nhập hợp lệ còn lại sau trả hàng / tổng số lượng nhập hợp lệ còn lại sau trả hàng.';
             var importDisplay = '<div class="font-weight-bold">'+fmt(d.import_price)+'đ</div>';
             var wsNoWDisplay = fmt(d.wholesale_price_no_warranty) + 'đ';
             var wsWDisplay = fmt(d.wholesale_price_warranty) + 'đ';

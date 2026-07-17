@@ -225,7 +225,7 @@ COMMON_WORKFLOW_SECTIONS = [
         'items': [
             'Tạo danh mục để nhóm sản phẩm theo ngành hàng hoặc nhóm dịch vụ (ví dụ: Đồ uống, Món chính, Combo).',
             'Khai báo mã sản phẩm, tên, đơn vị tính, quy cách, vị trí lưu kho, ảnh và giá bán theo từng cửa hàng.',
-            'Theo dõi giá nhập gần nhất, giá vốn tồn hiện tại và lịch sử nhập để kiểm soát biên lợi nhuận.',
+            'Theo dõi giá nhập gần nhất, giá vốn bình quân gia quyền từ lịch sử nhập và biên lợi nhuận.',
             'Giá nhập và giá vốn trong ô tìm sản phẩm khi tạo đơn chỉ hiển thị cho Chủ thương hiệu, Giám đốc và Kế toán; các vai trò khác chỉ thấy giá bán.',
             'Dùng biến thể cho sản phẩm có màu, size, dung tích hoặc nhiều phiên bản bán.',
             'Khai báo kỳ hạn và chính sách bảo hành để dùng tự động khi lập phiếu bảo hành theo đơn.',

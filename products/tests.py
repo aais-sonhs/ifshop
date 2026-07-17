@@ -166,6 +166,38 @@ class ProductInventoryFlowTests(TestCase):
             content_type='application/json',
         )
 
+    def _post_goods_receipt(
+        self,
+        code,
+        quantity,
+        unit_price,
+        status=1,
+        receipt_id=None,
+        product=None,
+        warehouse=None,
+        variant=None,
+    ):
+        product = product or self.product
+        warehouse = warehouse or self.warehouse_a
+        return self.client.post(
+            reverse('api_save_goods_receipt'),
+            data=json.dumps({
+                'id': receipt_id,
+                'code': code,
+                'supplier_id': self.supplier.id,
+                'warehouse_id': warehouse.id,
+                'receipt_date': date.today().isoformat(),
+                'status': status,
+                'items': [{
+                    'product_id': product.id,
+                    'variant_id': variant.id if variant else None,
+                    'quantity': str(quantity),
+                    'unit_price': str(unit_price),
+                }],
+            }),
+            content_type='application/json',
+        )
+
     def test_save_product_auto_generates_code_when_blank(self):
         response = self.client.post(
             reverse('api_save_product'),
@@ -1502,6 +1534,138 @@ class ProductInventoryFlowTests(TestCase):
         deleted_receipt = GoodsReceipt.all_objects.get(id=receipt.id)
         self.assertEqual(stock.quantity, Decimal('0'))
         self.assertTrue(deleted_receipt.is_deleted)
+
+    def test_completed_receipts_set_weighted_average_cost_and_latest_import_price(self):
+        for code, quantity, unit_price in (
+            ('P-COST-AVG-001', Decimal('1'), Decimal('10')),
+            ('P-COST-AVG-002', Decimal('8'), Decimal('11')),
+            ('P-COST-AVG-003', Decimal('1'), Decimal('8')),
+        ):
+            response = self._post_goods_receipt(code, quantity, unit_price)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+
+        self.product.refresh_from_db()
+        # (1×10 + 8×11 + 1×8) / 10 = 10.6, làm tròn theo đơn vị đồng.
+        self.assertEqual(self.product.cost_price, Decimal('11'))
+        self.assertEqual(self.product.import_price, Decimal('8'))
+
+        product_payload = self.client.get(reverse('api_get_products')).json()['data']
+        product_row = next(row for row in product_payload if row['id'] == self.product.id)
+        self.assertEqual(product_row['cost_price'], 11.0)
+        self.assertEqual(product_row['cost_price_stored'], 11.0)
+
+        order_product_payload = self.client.get(reverse('api_get_products_for_select')).json()['data']
+        order_product_row = next(row for row in order_product_payload if row['id'] == self.product.id)
+        self.assertEqual(order_product_row['cost_price'], 11.0)
+
+    def test_draft_receipt_does_not_change_existing_product_cost(self):
+        self.product.cost_price = Decimal('120')
+        self.product.import_price = Decimal('100')
+        self.product.save(update_fields=['cost_price', 'import_price'])
+
+        response = self._post_goods_receipt(
+            'P-COST-DRAFT-001',
+            Decimal('5'),
+            Decimal('80'),
+            status=0,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.cost_price, Decimal('120'))
+        self.assertEqual(self.product.import_price, Decimal('100'))
+
+    def test_completed_variant_receipts_sync_product_and_variant_weighted_cost(self):
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size_name='Size A',
+            sku='SP-001-A',
+        )
+        first_response = self._post_goods_receipt(
+            'P-COST-VARIANT-001', Decimal('1'), Decimal('10'), variant=variant,
+        )
+        second_response = self._post_goods_receipt(
+            'P-COST-VARIANT-002', Decimal('3'), Decimal('20'), variant=variant,
+        )
+
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        self.product.refresh_from_db()
+        variant.refresh_from_db()
+        self.assertEqual(self.product.cost_price, Decimal('18'))
+        self.assertEqual(variant.cost_price, Decimal('18'))
+        self.assertEqual(self.product.import_price, Decimal('20'))
+        self.assertEqual(variant.import_price, Decimal('20'))
+
+    def test_edit_and_delete_completed_receipt_recalculate_weighted_cost(self):
+        first_response = self._post_goods_receipt('P-COST-EDIT-001', Decimal('10'), Decimal('10'))
+        second_response = self._post_goods_receipt('P-COST-EDIT-002', Decimal('10'), Decimal('20'))
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        second_receipt = GoodsReceipt.objects.get(code='P-COST-EDIT-002')
+
+        edit_response = self._post_goods_receipt(
+            second_receipt.code,
+            Decimal('10'),
+            Decimal('30'),
+            receipt_id=second_receipt.id,
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        self.product.refresh_from_db()
+        stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a)
+        self.assertEqual(self.product.cost_price, Decimal('20'))
+        self.assertEqual(self.product.import_price, Decimal('30'))
+        self.assertEqual(stock.quantity, Decimal('20'))
+
+        delete_response = self.client.post(
+            reverse('api_delete_goods_receipt'),
+            data=json.dumps({'id': second_receipt.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()['status'], 'ok', msg=delete_response.content.decode())
+        self.product.refresh_from_db()
+        stock.refresh_from_db()
+        self.assertEqual(self.product.cost_price, Decimal('10'))
+        self.assertEqual(self.product.import_price, Decimal('10'))
+        self.assertEqual(stock.quantity, Decimal('10'))
+
+    def test_completed_purchase_return_recalculates_and_delete_restores_weighted_cost(self):
+        first_response = self._post_goods_receipt('P-COST-RETURN-001', Decimal('10'), Decimal('10'))
+        second_response = self._post_goods_receipt('P-COST-RETURN-002', Decimal('10'), Decimal('20'))
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        second_receipt = GoodsReceipt.objects.get(code='P-COST-RETURN-002')
+        second_item = second_receipt.items.get()
+
+        return_response = self._post_purchase_return(
+            second_receipt,
+            second_item,
+            Decimal('5'),
+            status=1,
+        )
+
+        self.assertEqual(return_response.status_code, 200)
+        self.assertEqual(return_response.json()['status'], 'ok', msg=return_response.content.decode())
+        self.product.refresh_from_db()
+        # Còn 10×10 và 5×20: 200 / 15 = 13.33.
+        self.assertEqual(self.product.cost_price, Decimal('13'))
+
+        delete_response = self.client.post(
+            reverse('api_delete_purchase_return'),
+            data=json.dumps({'id': return_response.json()['id']}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()['status'], 'ok', msg=delete_response.content.decode())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.cost_price, Decimal('15'))
 
     def test_auto_goods_receipt_code_skips_soft_deleted_receipts(self):
         deleted_receipt = GoodsReceipt.objects.create(

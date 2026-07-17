@@ -370,29 +370,83 @@ def _apply_goods_receipt_stock_adjustment(receipt, warehouse_id, multiplier):
         )
 
 
-def _sync_product_cost_after_goods_receipt(product_id, received_quantity, received_price):
-    """Cập nhật giá vốn tham chiếu và giá nhập mới nhất sau khi nhập hàng hoàn thành."""
-    try:
-        product = Product.objects.get(id=product_id)
-    except Product.DoesNotExist:
-        return
+def _purchase_history_cost(product_id, variant_id=None):
+    """Tính giá vốn bình quân gia quyền từ các phiếu nhập đã hoàn thành.
 
-    total_old_stock = Decimal(str(sum(
-        float(stock.quantity) for stock in ProductStock.objects.filter(product_id=product_id)
-    ))) - received_quantity
-    if total_old_stock < 0:
-        total_old_stock = Decimal('0')
+    Lượng đã trả nhà cung cấp được loại khỏi cả số lượng và giá trị nhập theo
+    đúng đơn giá của dòng nhập gốc. ``variant_id`` chỉ được truyền khi cần
+    tính riêng giá vốn của một biến thể.
+    """
+    receipt_items = GoodsReceiptItem.objects.filter(
+        product_id=product_id,
+        goods_receipt__status=1,
+        goods_receipt__is_deleted=False,
+    )
+    returned_items = PurchaseReturnItem.objects.filter(
+        product_id=product_id,
+        purchase_return__status=1,
+        purchase_return__is_deleted=False,
+        goods_receipt_item__goods_receipt__status=1,
+        goods_receipt_item__goods_receipt__is_deleted=False,
+    )
+    if variant_id is not None:
+        receipt_items = receipt_items.filter(variant_id=variant_id)
+        returned_items = returned_items.filter(goods_receipt_item__variant_id=variant_id)
 
-    total_new_stock = total_old_stock + received_quantity
-    if total_new_stock > 0:
-        old_cost = product.cost_price or Decimal('0')
-        weighted_avg = (
-            (total_old_stock * old_cost) + (received_quantity * received_price)
-        ) / total_new_stock
-        product.cost_price = round(weighted_avg)
+    received_quantity = Decimal('0')
+    received_value = Decimal('0')
+    for quantity, unit_price in receipt_items.values_list('quantity', 'unit_price'):
+        quantity = _to_decimal(quantity)
+        received_quantity += quantity
+        received_value += quantity * _to_decimal(unit_price)
 
-    product.import_price = received_price
-    product.save(update_fields=['cost_price', 'import_price'])
+    returned_quantity = Decimal('0')
+    returned_value = Decimal('0')
+    for quantity, original_unit_price in returned_items.values_list(
+        'quantity',
+        'goods_receipt_item__unit_price',
+    ):
+        quantity = _to_decimal(quantity)
+        returned_quantity += quantity
+        returned_value += quantity * _to_decimal(original_unit_price)
+
+    net_quantity = received_quantity - returned_quantity
+    if net_quantity <= 0:
+        return Decimal('0')
+    return round((received_value - returned_value) / net_quantity)
+
+
+def _latest_completed_import_price(product_id, variant_id=None):
+    receipt_items = GoodsReceiptItem.objects.filter(
+        product_id=product_id,
+        goods_receipt__status=1,
+        goods_receipt__is_deleted=False,
+    )
+    if variant_id is not None:
+        receipt_items = receipt_items.filter(variant_id=variant_id)
+    latest_price = (
+        receipt_items
+        .order_by('-goods_receipt__receipt_date', '-goods_receipt__id', '-id')
+        .values_list('unit_price', flat=True)
+        .first()
+    )
+    return _to_decimal(latest_price) if latest_price is not None else Decimal('0')
+
+
+def _sync_purchase_costs(product_ids, variant_ids=()):
+    """Đồng bộ giá nhập gần nhất và giá vốn từ lịch sử nhập hàng hợp lệ."""
+    normalized_product_ids = sorted({int(product_id) for product_id in product_ids if product_id})
+    normalized_variant_ids = sorted({int(variant_id) for variant_id in variant_ids if variant_id})
+
+    for product in Product.objects.select_for_update().filter(id__in=normalized_product_ids):
+        product.cost_price = _purchase_history_cost(product.id)
+        product.import_price = _latest_completed_import_price(product.id)
+        product.save(update_fields=['cost_price', 'import_price'])
+
+    for variant in ProductVariant.objects.select_for_update().filter(id__in=normalized_variant_ids):
+        variant.cost_price = _purchase_history_cost(variant.product_id, variant.id)
+        variant.import_price = _latest_completed_import_price(variant.product_id, variant.id)
+        variant.save(update_fields=['cost_price', 'import_price'])
 
 
 def _recreate_goods_receipt_items(receipt, normalized_items):
@@ -407,6 +461,10 @@ def _recreate_goods_receipt_items(receipt, normalized_items):
             unit_price=item['unit_price'],
             total_price=item['total_price'],
         )
+    # Phiếu được prefetch khi sửa. Xóa cache để các bước cộng tồn sau đó đọc
+    # đúng danh sách dòng vừa tạo thay vì danh sách cũ.
+    if hasattr(receipt, '_prefetched_objects_cache'):
+        receipt._prefetched_objects_cache.pop('items', None)
 
 
 def _normalize_stock_transfer_items(items_data):
@@ -842,8 +900,10 @@ def _serialize_product_list(products):
         else:
             total_stock = float(sum(s.quantity for s in p.stocks.all()))
 
-        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
-        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
+        # Giá vốn trên sản phẩm đã được đồng bộ từ toàn bộ lịch sử nhập hợp lệ.
+        # Không tính lại theo các lô mới nhất vì cách đó tạo ra một giá LIFO
+        # khác với giá bình quân dùng khi ghi nhận đơn bán.
+        effective_cost = float(p.cost_price)
 
         latest_purchase = None
         recent_import_prices = []
@@ -1047,36 +1107,6 @@ def _summarize_purchase_receipts(receipt_items, limit=None):
     if limit:
         return receipts[:limit]
     return receipts
-
-
-def _calc_on_hand_cost_price(product_id, total_stock, receipt_map):
-    """
-    Giá vốn tồn hiện tại = tổng giá trị các lô nhập còn lại / tổng SL tồn hiện tại.
-    Duyệt phiếu nhập mới nhất -> cũ nhất để xác định những lô còn nằm trong số tồn.
-    """
-    total_stock = _to_decimal(total_stock)
-    if total_stock <= 0:
-        return 0
-
-    receipt_items = receipt_map.get(product_id, [])
-    if not receipt_items:
-        return 0
-
-    remaining = total_stock
-    weighted_sum = Decimal('0')
-    for receipt_item in receipt_items:
-        quantity = _to_decimal(receipt_item.quantity)
-        unit_price = _to_decimal(receipt_item.unit_price)
-        if quantity <= 0:
-            continue
-
-        allocated = min(remaining, quantity)
-        weighted_sum += allocated * unit_price
-        remaining -= allocated
-        if remaining <= 0:
-            break
-
-    return round(weighted_sum / total_stock) if total_stock > 0 else 0
 
 
 # ============ PAGE VIEWS ============
@@ -2175,6 +2205,8 @@ def api_save_goods_receipt(request):
             gr_id = data.get('id')
             old_status = None
             old_warehouse_id = None
+            affected_product_ids = set()
+            affected_variant_ids = set()
             if gr_id:
                 gr = _get_goods_receipt_for_user(
                     request,
@@ -2186,10 +2218,14 @@ def api_save_goods_receipt(request):
                 if PurchaseReturn.all_objects.filter(goods_receipt=gr).exists():
                     return JsonResponse({
                         'status': 'error',
-                        'message': 'Phiếu nhập đã phát sinh lịch sử trả hàng nên không thể sửa để đảm bảo đối soát.'
+                        'message': 'Phiếu nhập đã phát sinh trả hàng nên không thể sửa để đảm bảo đối soát.'
                     })
                 old_status = gr.status
                 old_warehouse_id = gr.warehouse_id
+                for old_item in gr.items.all():
+                    affected_product_ids.add(old_item.product_id)
+                    if old_item.variant_id:
+                        affected_variant_ids.add(old_item.variant_id)
             else:
                 gr = GoodsReceipt()
                 gr.created_by = request.user
@@ -2233,12 +2269,16 @@ def api_save_goods_receipt(request):
                         'status': 'error',
                         'message': 'Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.'
                     })
+                affected_product_ids.add(product.id)
                 _ensure_product_matches_store(product, warehouse.store_id if warehouse else None, 'kho nhập')
-                if item['variant_id'] and not _get_variant_for_product(product, item['variant_id']):
-                    return JsonResponse({
-                        'status': 'error',
-                        'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
-                    })
+                if item['variant_id']:
+                    variant = _get_variant_for_product(product, item['variant_id'])
+                    if not variant:
+                        return JsonResponse({
+                            'status': 'error',
+                            'message': f'Biến thể không thuộc sản phẩm "{product.name}".'
+                        })
+                    affected_variant_ids.add(variant.id)
             gr.total_amount = total_amount
             save_attempts = 5 if auto_generated_code else 1
             for save_attempt in range(save_attempts):
@@ -2265,12 +2305,11 @@ def api_save_goods_receipt(request):
             # 5. Với phiếu hoàn thành, cộng tồn và đồng bộ giá vốn tham chiếu của sản phẩm.
             if new_status == 1 and gr.warehouse_id:
                 _apply_goods_receipt_stock_adjustment(gr, gr.warehouse_id, multiplier=1)
-                for item in normalized_items:
-                    _sync_product_cost_after_goods_receipt(
-                        item['product_id'],
-                        item['quantity'],
-                        item['unit_price'],
-                    )
+
+            # Một lần đồng bộ sau cùng giúp nhiều dòng cùng sản phẩm vẫn được
+            # tính chung và cũng xử lý đúng khi phiếu bị sửa hoặc chuyển hủy.
+            if old_status == 1 or new_status == 1:
+                _sync_purchase_costs(affected_product_ids, affected_variant_ids)
 
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
     except IntegrityError as e:
@@ -2304,11 +2343,19 @@ def api_delete_goods_receipt(request):
                     'message': 'Phiếu nhập đã phát sinh trả hàng nên không thể xóa.'
                 })
 
+            affected_product_ids = {item.product_id for item in receipt.items.all()}
+            affected_variant_ids = {
+                item.variant_id for item in receipt.items.all() if item.variant_id
+            }
+
             # Phiếu nhập đã hoàn thành thì xóa phải hoàn tác phần tồn đã cộng trước đó.
             if receipt.status == 1 and receipt.warehouse_id:
                 _apply_goods_receipt_stock_adjustment(receipt, receipt.warehouse_id, multiplier=-1)
 
+            was_completed = receipt.status == 1
             receipt.delete()
+            if was_completed:
+                _sync_purchase_costs(affected_product_ids, affected_variant_ids)
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -2424,6 +2471,9 @@ def api_save_purchase_return(request):
         data = json.loads(request.body)
         with transaction.atomic():
             return_id = data.get('id')
+            old_return_status = None
+            affected_product_ids = set()
+            affected_variant_ids = set()
             if return_id:
                 purchase_return = _get_purchase_return_for_user(
                     request,
@@ -2432,6 +2482,11 @@ def api_save_purchase_return(request):
                 )
                 if not purchase_return:
                     return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng nhập.'})
+                old_return_status = purchase_return.status
+                for old_item in purchase_return.items.all():
+                    affected_product_ids.add(old_item.product_id)
+                    if old_item.variant_id:
+                        affected_variant_ids.add(old_item.variant_id)
             else:
                 purchase_return = PurchaseReturn(created_by=request.user)
 
@@ -2492,6 +2547,9 @@ def api_save_purchase_return(request):
                 unit_price = _to_decimal(row.get('unit_price', receipt_item.unit_price))
                 line_total = quantity * unit_price
                 total_amount += line_total
+                affected_product_ids.add(receipt_item.product_id)
+                if receipt_item.variant_id:
+                    affected_variant_ids.add(receipt_item.variant_id)
                 normalized_items.append((receipt_item, quantity, unit_price, line_total, row.get('note', '')))
 
             if return_id and purchase_return.stock_applied:
@@ -2532,6 +2590,9 @@ def api_save_purchase_return(request):
                 purchase_return.stock_applied = True
                 purchase_return.save(update_fields=['stock_applied'])
 
+            if old_return_status == 1 or status == 1:
+                _sync_purchase_costs(affected_product_ids, affected_variant_ids)
+
         message = 'Đã hoàn thành phiếu trả và trừ tồn kho.' if status == 1 else 'Đã lưu phiếu trả hàng nhập.'
         return JsonResponse({'status': 'ok', 'message': message, 'id': purchase_return.id, 'code': purchase_return.code})
     except Exception as e:
@@ -2552,8 +2613,15 @@ def api_delete_purchase_return(request):
             )
             if not purchase_return:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu trả hàng nhập.'})
+            affected_product_ids = {item.product_id for item in purchase_return.items.all()}
+            affected_variant_ids = {
+                item.variant_id for item in purchase_return.items.all() if item.variant_id
+            }
             _reverse_purchase_return_stock(purchase_return)
+            was_completed = purchase_return.status == 1
             purchase_return.delete()
+            if was_completed:
+                _sync_purchase_costs(affected_product_ids, affected_variant_ids)
         return JsonResponse({'status': 'ok', 'message': 'Đã xóa phiếu trả và hoàn tác tồn kho.'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -3838,7 +3906,6 @@ def export_products_excel(request):
         'combo_items__product__stocks__warehouse',
     ).all()
     products = filter_by_store(products, request)
-    receipt_map = _build_receipt_history_map(products)
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
@@ -3875,8 +3942,7 @@ def export_products_excel(request):
             _, total_stock = _combo_stock_by_warehouse(p)
         else:
             total_stock = float(sum(s.quantity for s in p.stocks.all()))
-        current_cost = _calc_on_hand_cost_price(p.id, total_stock, receipt_map)
-        effective_cost = current_cost if current_cost > 0 else float(p.cost_price)
+        effective_cost = float(p.cost_price)
         rows.append({
             'stt': i,
             'code': p.code,

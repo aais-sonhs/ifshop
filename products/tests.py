@@ -889,6 +889,44 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="btn_quick_supplier" style="margin-top:3px;"')
 
+    def test_goods_receipt_product_picker_shows_code_name_and_stock_metrics(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('12'),
+        )
+
+        page_response = self.client.get(reverse('goods_receipt_tbl'))
+        product_response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'Tồn kho / Có thể bán')
+        self.assertContains(page_response, 'function formatGoodsReceiptProductOption(data)')
+        self.assertContains(page_response, 'templateResult: formatGoodsReceiptProductOption')
+        self.assertContains(page_response, 'class="item-stock align-middle"')
+
+        row = next(
+            item for item in product_response.json()['data']
+            if item['id'] == self.product.id
+        )
+        warehouse_key = str(self.warehouse_a.id)
+        self.assertEqual(row['code'], self.product.code)
+        self.assertEqual(row['name'], self.product.name)
+        self.assertEqual(row['stocks'][warehouse_key], 12.0)
+        self.assertEqual(row['sellable_stocks'][warehouse_key], 12.0)
+
+    def test_goods_receipt_product_picker_retries_load_without_page_refresh(self):
+        response = self.client.get(reverse('goods_receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="quick_receipt_product_status"')
+        self.assertContains(response, 'var PRODUCTS_LOAD_ACTIVE = false;')
+        self.assertContains(response, 'if(PRODUCTS_LOAD_ACTIVE) return;')
+        self.assertContains(response, 'function retryGoodsReceiptProductLoad(attempt)')
+        self.assertContains(response, 'cache: false')
+        self.assertContains(response, 'Đang tải danh sách sản phẩm, vui lòng chờ...')
+        self.assertContains(response, 'id="btn_retry_receipt_products"')
+
     def test_brand_owner_can_quick_create_product_location(self):
         self.client.force_login(self.owner)
 

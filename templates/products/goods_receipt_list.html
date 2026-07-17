@@ -67,6 +67,7 @@
                     <select class="form-control no-select2" id="quick_receipt_product" data-searchable="false" style="width:100%">
                         <option value="">-- Tìm và chọn sản phẩm --</option>
                     </select>
+                    <small id="quick_receipt_product_status" class="form-text" style="display:none;"></small>
                     <small class="form-text text-muted">Tìm theo tên, mã, barcode hoặc quy cách; chọn xong sản phẩm sẽ được thêm vào bảng dưới.</small>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -77,18 +78,19 @@
                         <thead class="bg-light">
                             <tr>
                                 <th style="width:5%">#</th>
-                                <th style="width:35%">Sản phẩm</th>
+                                <th style="width:27%">Sản phẩm</th>
                                 <th style="width:10%">ĐVT</th>
-                                <th style="width:15%">Số lượng</th>
-                                <th style="width:15%">Đơn giá</th>
-                                <th style="width:15%">Thành tiền</th>
+                                <th style="width:18%">Tồn kho / Có thể bán</th>
+                                <th style="width:12%">Số lượng</th>
+                                <th style="width:13%">Đơn giá</th>
+                                <th style="width:10%">Thành tiền</th>
                                 <th style="width:5%"></th>
                             </tr>
                         </thead>
                         <tbody id="items_body"></tbody>
                         <tfoot>
                             <tr class="bg-light font-weight-bold">
-                                <td colspan="5" class="text-right">Tổng cộng:</td>
+                                <td colspan="6" class="text-right">Tổng cộng:</td>
                                 <td class="text-right" id="total_display">0</td>
                                 <td></td>
                             </tr>
@@ -163,6 +165,11 @@ function localDateInputValue(date){
 
 // Product data from API (loaded with variants)
 var PRODUCTS = [];
+var PRODUCTS_LOADED = false;
+var PRODUCTS_LOAD_ACTIVE = false;
+var PRODUCTS_LOAD_XHR = null;
+var PRODUCTS_LOAD_RETRY_TIMER = null;
+var PRODUCTS_LOAD_CALLBACKS = [];
 
 var itemRowIndex = 0;
 var GOODS_RECEIPT_PAGE_SIZE_KEY = 'ifshop_goods_receipt_page_size';
@@ -191,14 +198,25 @@ $(document).ready(function(){
         itemRowIndex = 0;
         updateTotal();
         $('#modal_title').text('Tạo phiếu nhập');
-        $('#modal_form').modal('show');
-        setTimeout(function(){
+        setQuickReceiptProductLoadState(PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        $('#modal_form').one('shown.bs.modal', function(){
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
             presetWarehouseForQuickEntry();
-            ensureProductsLoaded(function(){
+            if(PRODUCTS_LOADED){
                 initializeQuickReceiptProductSelect();
-            });
-        }, 200);
+            }
+            ensureProductsLoaded(function(usable, refreshed){
+                handleQuickReceiptProductsLoaded(usable, refreshed);
+            }, true);
+        });
+        $('#modal_form').modal('show');
+    });
+
+    $(document).on('click', '#btn_retry_receipt_products', function(){
+        setQuickReceiptProductLoadState(PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        ensureProductsLoaded(function(usable, refreshed){
+            handleQuickReceiptProductsLoaded(usable, refreshed);
+        }, true);
     });
 
     $('#quick_receipt_product').on('select2:select', function(e){
@@ -281,6 +299,8 @@ $(document).ready(function(){
             data: JSON.stringify(data),
             success: function(r){
                 if(r.status === 'ok'){
+                    PRODUCTS = [];
+                    PRODUCTS_LOADED = false;
                     $('#modal_form').modal('hide');
                     if(!data.id) resetGoodsReceiptPage();
                     loadData();
@@ -298,11 +318,19 @@ $(document).ready(function(){
         var product = PRODUCTS.find(function(p){ return p.id == productId; });
         if(product){
             row.find('.item-unit').text(product.unit);
+            row.find('.item-stock').html(renderGoodsReceiptStockHtml(product));
             var cost = $opt.data('cost') || product.cost_price;
             row.find('.item-unit-price').val(fmtMoneyInput(cost));
             // Set qty step
             row.find('.item-qty').attr('step', product.is_weight_based ? '0.01' : '1');
             calcRowTotal(row);
+        }
+    });
+
+    $('#inp_warehouse_id').on('change', function(){
+        updateGoodsReceiptStockDisplays();
+        if($('#quick_receipt_product').hasClass('select2-hidden-accessible')){
+            $('#quick_receipt_product').select2('close');
         }
     });
 
@@ -335,6 +363,96 @@ $(document).ready(function(){
     });
 });
 
+function getGoodsReceiptProductById(productId){
+    return PRODUCTS.find(function(product){
+        return Number(product.id) === Number(productId);
+    }) || null;
+}
+
+function getGoodsReceiptProductOptionInfo(data){
+    if(!data || !data.id) return null;
+    var $option = data.element ? $(data.element) : null;
+    var product = getGoodsReceiptProductById(data.id);
+    if(!product) return null;
+    var variantId = $option ? $option.data('variant-id') : null;
+    var variant = null;
+    if(variantId && product.variants){
+        variant = product.variants.find(function(item){
+            return Number(item.id) === Number(variantId);
+        }) || null;
+    }
+    return {product: product, variant: variant};
+}
+
+function getGoodsReceiptStockInfo(product){
+    if(!product || product.is_service){
+        return {isService: true, actual: 0, sellable: 0, scope: 'Dịch vụ'};
+    }
+    var warehouseId = String($('#inp_warehouse_id').val() || '');
+    var actual;
+    var sellable;
+    var scope;
+    if(warehouseId){
+        actual = Number((product.stocks || {})[warehouseId] || 0);
+        sellable = product.sellable_stocks && product.sellable_stocks[warehouseId] !== undefined
+            ? Number(product.sellable_stocks[warehouseId])
+            : actual;
+        scope = $('#inp_warehouse_id option:selected').text() || 'Kho đang chọn';
+    } else {
+        actual = Number(product.total_stock || 0);
+        sellable = product.total_sellable_stock !== undefined
+            ? Number(product.total_sellable_stock)
+            : actual;
+        scope = 'Tổng tất cả kho';
+    }
+    return {isService: false, actual: actual, sellable: sellable, scope: scope};
+}
+
+function goodsReceiptStockValueClass(value){
+    if(value < 0) return 'text-danger font-weight-bold';
+    if(value > 0) return 'text-success font-weight-bold';
+    return 'text-muted';
+}
+
+function renderGoodsReceiptStockHtml(product){
+    var stock = getGoodsReceiptStockInfo(product);
+    if(stock.isService){
+        return '<span class="text-muted">Không theo dõi tồn</span>';
+    }
+    return '<div class="small" title="' + escapeHtml(stock.scope) + '">' +
+        '<div><span class="text-muted">Tồn kho:</span> <span class="' + goodsReceiptStockValueClass(stock.actual) + '">' + fmt(stock.actual) + '</span></div>' +
+        '<div><span class="text-muted">Có thể bán:</span> <span class="' + goodsReceiptStockValueClass(stock.sellable) + '">' + fmt(stock.sellable) + '</span></div>' +
+        '</div>';
+}
+
+function formatGoodsReceiptProductOption(data){
+    var info = getGoodsReceiptProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var product = info.product;
+    var variantLabel = info.variant ? ' [' + escapeHtml(info.variant.size_name || info.variant.sku || '') + ']' : '';
+    return $(
+        '<div class="goods-receipt-product-option py-1">' +
+            '<div><strong class="text-dark">' + escapeHtml(product.code || '') + '</strong> — ' + escapeHtml(product.name || '') + variantLabel + '</div>' +
+            renderGoodsReceiptStockHtml(product) +
+        '</div>'
+    );
+}
+
+function formatGoodsReceiptProductSelection(data){
+    var info = getGoodsReceiptProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var variantLabel = info.variant ? ' [' + (info.variant.size_name || info.variant.sku || '') + ']' : '';
+    return (info.product.code || '') + ' - ' + (info.product.name || '') + variantLabel;
+}
+
+function updateGoodsReceiptStockDisplays(){
+    $('#items_body tr').each(function(){
+        var productId = $(this).find('.item-product-select').val();
+        var product = getGoodsReceiptProductById(productId);
+        $(this).find('.item-stock').html(product ? renderGoodsReceiptStockHtml(product) : '<span class="text-muted">-</span>');
+    });
+}
+
 function addItemRow(data){
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
@@ -363,11 +481,14 @@ function addItemRow(data){
 
     var qty = data ? data.quantity : 1;
     var totalPrice = qty * unitPrice;
+    var selectedProduct = data ? getGoodsReceiptProductById(data.product_id) : null;
+    var stockHtml = selectedProduct ? renderGoodsReceiptStockHtml(selectedProduct) : '<span class="text-muted">-</span>';
 
     var html = '<tr>' +
         '<td class="text-center item-index">' + itemRowIndex + '</td>' +
         '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
         '<td class="text-center item-unit">' + unit + '</td>' +
+        '<td class="item-stock align-middle">' + stockHtml + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-qty" value="' + qty + '" min="0.01" step="1"></td>' +
         '<td><input type="text" inputmode="numeric" autocomplete="off" class="form-control form-control-sm item-unit-price text-right" value="' + fmtMoneyInput(unitPrice) + '"></td>' +
         '<td class="text-right item-total-price">' + fmtD(totalPrice) + '</td>' +
@@ -382,7 +503,9 @@ function addItemRow(data){
         width: '100%',
         placeholder: '-- Chọn sản phẩm --',
         allowClear: true,
-        matcher: goodsReceiptProductMatcher
+        matcher: goodsReceiptProductMatcher,
+        templateResult: formatGoodsReceiptProductOption,
+        templateSelection: formatGoodsReceiptProductSelection
     });
     // Set value if editing
     if(data && data.product_id){
@@ -401,22 +524,127 @@ function addItemRow(data){
     updateTotal();
 }
 
-function ensureProductsLoaded(callback){
-    if(PRODUCTS.length){
-        if(typeof callback === 'function') callback();
+function flushGoodsReceiptProductCallbacks(refreshed){
+    var callbacks = PRODUCTS_LOAD_CALLBACKS.splice(0);
+    callbacks.forEach(function(callback){
+        callback(PRODUCTS_LOADED, refreshed);
+    });
+}
+
+function finishGoodsReceiptProductLoad(refreshed){
+    PRODUCTS_LOAD_ACTIVE = false;
+    PRODUCTS_LOAD_XHR = null;
+    if(PRODUCTS_LOAD_RETRY_TIMER){
+        clearTimeout(PRODUCTS_LOAD_RETRY_TIMER);
+        PRODUCTS_LOAD_RETRY_TIMER = null;
+    }
+    flushGoodsReceiptProductCallbacks(refreshed);
+}
+
+function requestGoodsReceiptProducts(attempt){
+    PRODUCTS_LOAD_XHR = $.ajax({
+        url: '/api/products-select/',
+        type: 'GET',
+        dataType: 'json',
+        cache: false,
+        timeout: 20000
+    }).done(function(res){
+        if(!res || !Array.isArray(res.data)){
+            retryGoodsReceiptProductLoad(attempt);
+            return;
+        }
+        PRODUCTS = res.data;
+        PRODUCTS_LOADED = true;
+        finishGoodsReceiptProductLoad(true);
+    }).fail(function(){
+        retryGoodsReceiptProductLoad(attempt);
+    });
+}
+
+function retryGoodsReceiptProductLoad(attempt){
+    PRODUCTS_LOAD_XHR = null;
+    if(attempt < 2){
+        PRODUCTS_LOAD_RETRY_TIMER = setTimeout(function(){
+            PRODUCTS_LOAD_RETRY_TIMER = null;
+            requestGoodsReceiptProducts(attempt + 1);
+        }, 500 * (attempt + 1));
         return;
     }
-    $.get('/api/products-select/', function(res){
-        PRODUCTS = res.data || [];
-        if(typeof callback === 'function') callback();
-    });
+    finishGoodsReceiptProductLoad(false);
+}
+
+function ensureProductsLoaded(callback, forceRefresh){
+    if(typeof callback === 'function'){
+        if(PRODUCTS_LOADED && !forceRefresh){
+            callback(true, true);
+            return;
+        }
+        PRODUCTS_LOAD_CALLBACKS.push(callback);
+    } else if(PRODUCTS_LOADED && !forceRefresh){
+        return;
+    }
+
+    // Một yêu cầu đang chạy sẽ phục vụ tất cả nơi cùng chờ, tránh gọi API chồng nhau.
+    if(PRODUCTS_LOAD_ACTIVE) return;
+    PRODUCTS_LOAD_ACTIVE = true;
+    requestGoodsReceiptProducts(0);
+}
+
+function setQuickReceiptProductLoadState(state){
+    var $select = $('#quick_receipt_product');
+    var $status = $('#quick_receipt_product_status');
+    if(state === 'loading'){
+        if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+        $select.prop('disabled', true).html('<option value="">Đang tải danh sách sản phẩm...</option>');
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Đang tải danh sách sản phẩm, vui lòng chờ...').show();
+        return;
+    }
+    if(state === 'refreshing'){
+        $status.removeClass('text-danger text-muted').addClass('text-warning')
+            .text('Đang cập nhật tồn kho mới nhất...').show();
+        return;
+    }
+    if(state === 'error'){
+        if(!PRODUCTS_LOADED){
+            if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+            $select.prop('disabled', true).html('<option value="">Chưa tải được danh sách sản phẩm</option>');
+        }
+        $status.removeClass('text-muted text-warning').addClass('text-danger').html(
+            'Chưa tải được danh sách sản phẩm. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_receipt_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(state === 'stale'){
+        $status.removeClass('text-muted text-danger').addClass('text-warning').html(
+            'Không cập nhật được tồn kho mới nhất; đang dùng danh sách gần nhất. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_receipt_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(PRODUCTS.length === 0){
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Chưa có sản phẩm đang hoạt động.').show();
+    } else {
+        $status.hide().empty();
+    }
+}
+
+function handleQuickReceiptProductsLoaded(usable, refreshed){
+    if(usable){
+        initializeQuickReceiptProductSelect();
+        setQuickReceiptProductLoadState(refreshed ? 'ready' : 'stale');
+    } else {
+        setQuickReceiptProductLoadState('error');
+    }
 }
 
 function initializeQuickReceiptProductSelect(){
     var $select = $('#quick_receipt_product');
-    // Control này không mang class .select2 nên không bị bộ khởi tạo chung init chồng.
-    // Sau lần đầu, chỉ tái sử dụng instance hiện có.
-    if($select.hasClass('select2-hidden-accessible')) return;
+    if($select.hasClass('select2-hidden-accessible')){
+        $select.select2('destroy');
+    }
 
     var options = '<option value=""></option>';
     PRODUCTS.forEach(function(p){
@@ -430,12 +658,14 @@ function initializeQuickReceiptProductSelect(){
             options += '<option value="'+p.id+'" data-cost="'+(p.cost_price || p.import_price || 0)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name)+'</option>';
         }
     });
-    $select.html(options).select2({
+    $select.prop('disabled', false).html(options).select2({
         dropdownParent: $('#modal_form'),
         width: '100%',
         placeholder: '-- Tìm và chọn sản phẩm --',
         allowClear: true,
-        matcher: goodsReceiptProductMatcher
+        matcher: goodsReceiptProductMatcher,
+        templateResult: formatGoodsReceiptProductOption,
+        templateSelection: formatGoodsReceiptProductSelection
     });
 }
 
@@ -655,13 +885,18 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        ensureProductsLoaded(function(){
+        setQuickReceiptProductLoadState(PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        if(PRODUCTS_LOADED){
             initializeQuickReceiptProductSelect();
+        }
+        ensureProductsLoaded(function(usable, refreshed){
+            handleQuickReceiptProductsLoaded(usable, refreshed);
+            if(!usable) return;
             if(d.items && d.items.length > 0){
                 d.items.forEach(function(item){ addItemRow(item); });
             }
             updateTotal();
-        });
+        }, true);
     });
 }
 

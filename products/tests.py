@@ -929,6 +929,18 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'Đang tải danh sách sản phẩm, vui lòng chờ...')
         self.assertContains(response, 'id="btn_retry_receipt_products"')
 
+    def test_goods_receipt_product_picker_only_renders_five_results_per_search(self):
+        response = self.client.get(reverse('goods_receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var GOODS_RECEIPT_PRODUCT_RESULT_PAGE_SIZE = 5;')
+        self.assertContains(response, 'function queryGoodsReceiptProductChoices(term)')
+        self.assertContains(response, 'results: matched.slice(0, GOODS_RECEIPT_PRODUCT_RESULT_PAGE_SIZE)')
+        self.assertContains(response, 'pagination: {more: false}')
+        self.assertContains(response, 'function buildGoodsReceiptProductAjaxConfig()')
+        self.assertContains(response, 'transport:function(params, success)')
+        self.assertContains(response, 'ajax: buildGoodsReceiptProductAjaxConfig()')
+
     def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
         ProductStock.objects.create(
             product=self.product,

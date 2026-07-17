@@ -331,6 +331,27 @@
                         </div>
                     </div>
                 </div>
+                <div class="row mt-2" id="order_item_search_section">
+                    <div class="col-md-12">
+                        <div class="form-group mb-1">
+                            <label for="order_item_search" class="mb-1">
+                                <i class="fas fa-search text-info mr-1"></i>Tìm sản phẩm đã có trong đơn
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-white"><i class="fas fa-list"></i></span>
+                                </div>
+                                <input type="search" class="form-control" id="order_item_search"
+                                       placeholder="Tìm theo mã hoặc tên sản phẩm đã có trong đơn..." autocomplete="off">
+                                <div class="input-group-append">
+                                    <button type="button" class="btn btn-outline-secondary" id="btn_clear_order_item_search"
+                                            title="Xóa nội dung tìm kiếm"><i class="fas fa-times"></i></button>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted" id="order_item_search_hint">Ô này chỉ lọc các dòng đã thêm; dùng ô Tìm &amp; thêm sản phẩm bên dưới để thêm dòng mới.</small>
+                        </div>
+                    </div>
+                </div>
                 <!-- Lịch sử thanh toán -->
                 <div id="payment_history_section" style="display:none;">
                     <div class="d-flex align-items-center mt-2 mb-1">
@@ -5078,6 +5099,9 @@ function syncOrderItemsScrollHeight(){
     var $viewport = $('#order_items_scroll');
     if(!$viewport.length) return;
     var $rows = $('#items_tbl tbody tr').not('.order-items-loading-row');
+    if(($('#order_item_search').val() || '').trim()){
+        $rows = $rows.filter(':visible');
+    }
     if($rows.length <= 3){
         $viewport.css('max-height', '').removeClass('is-scrollable');
         if($rows.length === 0) $viewport.scrollTop(0);
@@ -5100,6 +5124,41 @@ function scheduleOrderItemsViewportRefresh(){
     });
 }
 
+function getOrderItemRowSearchText($row){
+    if($row.hasClass('service-line-row')){
+        return $row.find('.inp_service_name').val() || '';
+    }
+    var selectedText = $row.find('.sel_product option:selected').text() || '';
+    var product = getOrderProductById($row.find('.sel_product').val());
+    if(product){
+        selectedText += ' ' + (product.code || '') + ' ' + (product.name || '');
+    }
+    return selectedText;
+}
+
+function filterOrderItemRows(){
+    var term = ($('#order_item_search').val() || '').trim();
+    var $rows = $('#items_tbl tbody tr').not('.order-items-loading-row');
+    var matchedCount = 0;
+    $rows.each(function(){
+        var $row = $(this);
+        var matched = !term || matchesOrderProductSearch(getOrderItemRowSearchText($row), term);
+        $row.toggle(matched);
+        if(matched) matchedCount += 1;
+    });
+    if(term){
+        $('#order_item_search_hint').html(
+            'Tìm thấy <strong>' + matchedCount + '/' + $rows.length + '</strong> dòng đã có trong đơn. ' +
+            'Dùng ô Tìm &amp; thêm sản phẩm bên dưới để thêm dòng mới.'
+        );
+    } else {
+        $('#order_item_search_hint').html(
+            'Ô này chỉ lọc các dòng đã thêm; dùng ô Tìm &amp; thêm sản phẩm bên dưới để thêm dòng mới.'
+        );
+    }
+    scheduleOrderItemsViewportRefresh();
+}
+
 function applyOrderItemDisplayOrder(){
     var rows = getOrderItemRowsInSequenceOrder();
     var displayRows = ORDER_ITEM_SORT_DIRECTION === 'desc' ? rows.slice().reverse() : rows;
@@ -5112,8 +5171,19 @@ function applyOrderItemDisplayOrder(){
         $row.find('.order-item-sequence').text($row.attr('data-item-sequence'));
     });
     $('#order_item_sort').val(ORDER_ITEM_SORT_DIRECTION);
+    filterOrderItemRows();
     scheduleOrderItemsViewportRefresh();
 }
+
+$(document).on('input', '#order_item_search', filterOrderItemRows);
+$(document).on('click', '#btn_clear_order_item_search', function(){
+    $('#order_item_search').val('');
+    filterOrderItemRows();
+    $('#order_item_search').trigger('focus');
+});
+$(document).on('change input', '#items_tbl .sel_product, #items_tbl .inp_service_name', function(){
+    filterOrderItemRows();
+});
 
 function setOrderItemSortDirection(direction){
     ORDER_ITEM_SORT_DIRECTION = direction === 'desc' ? 'desc' : 'asc';
@@ -5635,35 +5705,23 @@ function resetOrderPage(){
     ORDER_PAGE_STATE.page = 1;
 }
 
-function focusOrderSalespersonSearch(){
-    var $salesperson = $('#inp_salesperson');
-    if(!$salesperson.length || $salesperson.prop('disabled') || !$salesperson.is(':visible')){
+function focusExistingOrderItemSearch(){
+    var $search = $('#order_item_search');
+    if(!$search.length || $search.prop('disabled') || !$search.is(':visible')){
         return false;
     }
-    try {
-        if(!$salesperson.hasClass('select2-hidden-accessible') && window.initSelect2){
-            window.initSelect2($salesperson, $('#modal_form'));
-        }
-        if($salesperson.hasClass('select2-hidden-accessible')){
-            $salesperson.select2('open');
-            setTimeout(function(){
-                $('.select2-container--open .select2-search__field').last().trigger('focus');
-            }, 0);
-        } else {
-            $salesperson.trigger('focus');
-        }
-        return true;
-    } catch(error) {
-        $salesperson.trigger('focus');
-        return true;
-    }
+    $search.trigger('focus');
+    if($search[0] && typeof $search[0].select === 'function') $search[0].select();
+    return true;
 }
 
 function setOrderFormInitialFocus(mode){
+    $('#order_item_search').val('');
+    filterOrderItemRows();
     $('#modal_form')
         .off('shown.bs.modal.orderInitialFocus')
         .one('shown.bs.modal.orderInitialFocus', function(){
-            if(mode === 'edit' && focusOrderSalespersonSearch()) return;
+            if(mode === 'edit' && focusExistingOrderItemSearch()) return;
             setTimeout(function(){ $('#quick_search_product').trigger('focus'); }, 0);
         });
 }

@@ -938,9 +938,15 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'Nhân viên lịch sử')
         self.assertNotContains(response, 'Nhân viên cửa hàng khác')
         self.assertNotContains(response, 'id="order_staff_section"')
+        self.assertContains(response, 'id="order_item_search_section"')
+        self.assertContains(response, 'id="order_item_search"')
+        self.assertContains(response, 'Tìm theo mã hoặc tên sản phẩm đã có trong đơn...')
+        self.assertContains(response, 'id="quick_search_product"')
+        self.assertContains(response, 'function filterOrderItemRows()')
+        self.assertContains(response, 'function focusExistingOrderItemSearch()')
         self.assertContains(response, "setOrderFormInitialFocus('edit')")
         self.assertContains(response, "setOrderFormInitialFocus('create')")
-        self.assertContains(response, "$('.select2-container--open .select2-search__field')")
+        self.assertContains(response, "mode === 'edit' && focusExistingOrderItemSearch()")
 
     def test_order_status_action_buttons_have_spacing(self):
         response = self.client.get(reverse('order_tbl'))

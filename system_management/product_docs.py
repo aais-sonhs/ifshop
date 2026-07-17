@@ -73,8 +73,9 @@ DOCUMENT_UPDATES = [
         'items': [
             'Khi tạo đơn bán, có thể tìm sản phẩm bằng một phần tên, mã, barcode, quy cách hoặc danh mục; các từ khóa không bắt buộc phải nằm liền nhau.',
             'Tạo đơn đặt hàng nhập và phiếu nhập đều có ô “Chọn sản phẩm để thêm” phía trên bảng chi tiết; chọn xong sản phẩm được thêm thành một dòng ngay bên dưới.',
-            'Kết quả chọn sản phẩm trên phiếu nhập hiển thị mã, tên, tồn kho thực tế và số lượng có thể bán theo kho nhập đang chọn.',
-            'Nếu mạng chậm khi mở phiếu nhập, ô sản phẩm hiển thị trạng thái đang tải, tự thử lại và có nút “Thử lại” mà không cần F5 cả trang.',
+            'Kết quả chọn sản phẩm trên đơn đặt hàng nhập và phiếu nhập hiển thị mã, tên, tồn kho thực tế và số lượng có thể bán theo kho nhập đang chọn.',
+            'Nếu mạng chậm khi mở đơn đặt hàng nhập hoặc phiếu nhập, ô sản phẩm hiển thị trạng thái đang tải, tự thử lại và có nút “Thử lại” mà không cần F5 cả trang.',
+            'Dòng sản phẩm đang rê/chọn trên hai chứng từ nhập dùng nền xanh nhạt để mã, tên và các chỉ số tồn kho luôn dễ đọc.',
             'Có thể tìm bằng một phần tên, mã, barcode, quy cách hoặc từ khóa không dấu; không bắt buộc gõ đầy đủ và đúng liền mạch toàn bộ tên sản phẩm.',
             'Nếu chọn lại đúng sản phẩm/biến thể đã có trong chứng từ, hệ thống không thêm dòng trùng mà đưa con trỏ về ô số lượng của dòng hiện có.',
             'Giá nhập được điền gợi ý từ dữ liệu sản phẩm và vẫn có thể sửa trực tiếp trên từng dòng trước khi lưu phiếu nhập.',

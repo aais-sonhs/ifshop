@@ -132,6 +132,14 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+/* Đồng bộ màu dòng đang chọn với ô tìm sản phẩm bên Tạo đơn hàng. */
+.goods-receipt-product-dropdown .select2-results__option--highlighted[aria-selected],
+.goods-receipt-product-dropdown .select2-results__option--highlighted[aria-selected]:hover {
+    background: #e3f2fd !important;
+    color: #212529 !important;
+}
+</style>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
@@ -505,7 +513,8 @@ function addItemRow(data){
         allowClear: true,
         matcher: goodsReceiptProductMatcher,
         templateResult: formatGoodsReceiptProductOption,
-        templateSelection: formatGoodsReceiptProductSelection
+        templateSelection: formatGoodsReceiptProductSelection,
+        dropdownCssClass: 'goods-receipt-product-dropdown'
     });
     // Set value if editing
     if(data && data.product_id){
@@ -665,7 +674,8 @@ function initializeQuickReceiptProductSelect(){
         allowClear: true,
         matcher: goodsReceiptProductMatcher,
         templateResult: formatGoodsReceiptProductOption,
-        templateSelection: formatGoodsReceiptProductSelection
+        templateSelection: formatGoodsReceiptProductSelection,
+        dropdownCssClass: 'goods-receipt-product-dropdown'
     });
 }
 

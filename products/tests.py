@@ -903,6 +903,8 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(page_response, 'Tồn kho / Có thể bán')
         self.assertContains(page_response, 'function formatGoodsReceiptProductOption(data)')
         self.assertContains(page_response, 'templateResult: formatGoodsReceiptProductOption')
+        self.assertContains(page_response, "dropdownCssClass: 'goods-receipt-product-dropdown'")
+        self.assertContains(page_response, 'background: #e3f2fd !important;')
         self.assertContains(page_response, 'class="item-stock align-middle"')
 
         row = next(
@@ -926,6 +928,33 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'cache: false')
         self.assertContains(response, 'Đang tải danh sách sản phẩm, vui lòng chờ...')
         self.assertContains(response, 'id="btn_retry_receipt_products"')
+
+    def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
+        ProductStock.objects.create(
+            product=self.product,
+            warehouse=self.warehouse_a,
+            quantity=Decimal('9'),
+        )
+
+        page_response = self.client.get(reverse('purchase_order_tbl'))
+        product_response = self.client.get(reverse('api_get_products_for_select'))
+
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'function formatPurchaseOrderProductOption(data)')
+        self.assertContains(page_response, 'templateResult: formatPurchaseOrderProductOption')
+        self.assertContains(page_response, 'Tồn kho:')
+        self.assertContains(page_response, 'Có thể bán:')
+        self.assertContains(page_response, "dropdownCssClass: 'purchase-order-product-dropdown'")
+        self.assertContains(page_response, 'id="quick_purchase_order_product_status"')
+        self.assertContains(page_response, 'function retryPurchaseOrderProductLoad(attempt)')
+
+        row = next(
+            item for item in product_response.json()['data']
+            if item['id'] == self.product.id
+        )
+        warehouse_key = str(self.warehouse_a.id)
+        self.assertEqual(row['stocks'][warehouse_key], 9.0)
+        self.assertEqual(row['sellable_stocks'][warehouse_key], 9.0)
 
     def test_brand_owner_can_quick_create_product_location(self):
         self.client.force_login(self.owner)

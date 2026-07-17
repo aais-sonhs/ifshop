@@ -46,6 +46,7 @@
                     <select class="form-control no-select2" id="quick_purchase_order_product" data-searchable="false" style="width:100%">
                         <option value="">-- Tìm và chọn sản phẩm --</option>
                     </select>
+                    <small id="quick_purchase_order_product_status" class="form-text" style="display:none;"></small>
                     <small class="form-text text-muted">Tìm theo tên, mã, barcode hoặc quy cách; chọn xong sản phẩm sẽ được thêm vào bảng dưới.</small>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -85,6 +86,14 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+/* Đồng bộ màu dòng đang chọn với ô tìm sản phẩm bên Tạo đơn hàng. */
+.purchase-order-product-dropdown .select2-results__option--highlighted[aria-selected],
+.purchase-order-product-dropdown .select2-results__option--highlighted[aria-selected]:hover {
+    background: #e3f2fd !important;
+    color: #212529 !important;
+}
+</style>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
@@ -110,6 +119,11 @@ function parseMoneyInput(value){
 
 // Product data from API (loaded with variants)
 var PRODUCTS = [];
+var PURCHASE_ORDER_PRODUCTS_LOADED = false;
+var PURCHASE_ORDER_PRODUCTS_LOAD_ACTIVE = false;
+var PURCHASE_ORDER_PRODUCTS_LOAD_XHR = null;
+var PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = null;
+var PURCHASE_ORDER_PRODUCTS_CALLBACKS = [];
 
 var itemRowIndex = 0;
 
@@ -128,11 +142,24 @@ $(document).ready(function(){
         itemRowIndex = 0;
         updateTotal();
         $('#modal_title').text('Tạo đơn đặt hàng');
-        $('#modal_form').modal('show');
-        setTimeout(function(){
+        setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        $('#modal_form').one('shown.bs.modal', function(){
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-            ensurePurchaseOrderProductsLoaded(initializeQuickPurchaseOrderProductSelect);
-        }, 200);
+            if(PURCHASE_ORDER_PRODUCTS_LOADED){
+                initializeQuickPurchaseOrderProductSelect();
+            }
+            ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+                handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
+            }, true);
+        });
+        $('#modal_form').modal('show');
+    });
+
+    $(document).on('click', '#btn_retry_purchase_order_products', function(){
+        setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+            handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
+        }, true);
     });
 
     $('#quick_purchase_order_product').on('select2:select', function(e){
@@ -179,6 +206,8 @@ $(document).ready(function(){
             data: JSON.stringify(data),
             success: function(r){
                 if(r.status === 'ok'){
+                    PRODUCTS = [];
+                    PURCHASE_ORDER_PRODUCTS_LOADED = false;
                     $('#modal_form').modal('hide');
                     loadData();
                 }
@@ -202,6 +231,12 @@ $(document).ready(function(){
         }
     });
 
+    $('#inp_warehouse_id').on('change', function(){
+        if($('#quick_purchase_order_product').hasClass('select2-hidden-accessible')){
+            $('#quick_purchase_order_product').select2('close');
+        }
+    });
+
     $(document).on('input change', '.item-qty, .item-unit-price', function(){
         if($(this).hasClass('item-unit-price')){
             $(this).val(fmtMoneyInput($(this).val()));
@@ -216,6 +251,88 @@ $(document).ready(function(){
     });
 });
 
+function getPurchaseOrderProductById(productId){
+    return PRODUCTS.find(function(product){
+        return Number(product.id) === Number(productId);
+    }) || null;
+}
+
+function getPurchaseOrderProductOptionInfo(data){
+    if(!data || !data.id) return null;
+    var $option = data.element ? $(data.element) : null;
+    var product = getPurchaseOrderProductById(data.id);
+    if(!product) return null;
+    var variantId = $option ? $option.data('variant-id') : null;
+    var variant = null;
+    if(variantId && product.variants){
+        variant = product.variants.find(function(item){
+            return Number(item.id) === Number(variantId);
+        }) || null;
+    }
+    return {product: product, variant: variant};
+}
+
+function getPurchaseOrderStockInfo(product){
+    if(!product || product.is_service){
+        return {isService: true, actual: 0, sellable: 0, scope: 'Dịch vụ'};
+    }
+    var warehouseId = String($('#inp_warehouse_id').val() || '');
+    var actual;
+    var sellable;
+    var scope;
+    if(warehouseId){
+        actual = Number((product.stocks || {})[warehouseId] || 0);
+        sellable = product.sellable_stocks && product.sellable_stocks[warehouseId] !== undefined
+            ? Number(product.sellable_stocks[warehouseId])
+            : actual;
+        scope = $('#inp_warehouse_id option:selected').text() || 'Kho đang chọn';
+    } else {
+        actual = Number(product.total_stock || 0);
+        sellable = product.total_sellable_stock !== undefined
+            ? Number(product.total_sellable_stock)
+            : actual;
+        scope = 'Tổng tất cả kho';
+    }
+    return {isService: false, actual: actual, sellable: sellable, scope: scope};
+}
+
+function purchaseOrderStockValueClass(value){
+    if(value < 0) return 'text-danger font-weight-bold';
+    if(value > 0) return 'text-success font-weight-bold';
+    return 'text-muted';
+}
+
+function renderPurchaseOrderStockHtml(product){
+    var stock = getPurchaseOrderStockInfo(product);
+    if(stock.isService){
+        return '<span class="text-muted">Không theo dõi tồn</span>';
+    }
+    return '<div class="small" title="' + escapeHtml(stock.scope) + '">' +
+        '<div><span class="text-muted">Tồn kho:</span> <span class="' + purchaseOrderStockValueClass(stock.actual) + '">' + fmt(stock.actual) + '</span></div>' +
+        '<div><span class="text-muted">Có thể bán:</span> <span class="' + purchaseOrderStockValueClass(stock.sellable) + '">' + fmt(stock.sellable) + '</span></div>' +
+        '</div>';
+}
+
+function formatPurchaseOrderProductOption(data){
+    var info = getPurchaseOrderProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var product = info.product;
+    var variantLabel = info.variant ? ' [' + escapeHtml(info.variant.size_name || info.variant.sku || '') + ']' : '';
+    return $(
+        '<div class="purchase-order-product-option py-1">' +
+            '<div><strong class="text-dark">' + escapeHtml(product.code || '') + '</strong> — ' + escapeHtml(product.name || '') + variantLabel + '</div>' +
+            renderPurchaseOrderStockHtml(product) +
+        '</div>'
+    );
+}
+
+function formatPurchaseOrderProductSelection(data){
+    var info = getPurchaseOrderProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var variantLabel = info.variant ? ' [' + (info.variant.size_name || info.variant.sku || '') + ']' : '';
+    return (info.product.code || '') + ' - ' + (info.product.name || '') + variantLabel;
+}
+
 function addItemRow(data){
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
@@ -224,11 +341,13 @@ function addItemRow(data){
             p.variants.forEach(function(v){
                 var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
                 if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
-                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" '+selected+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
+                var variantSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || '', v.sku || '', v.size_name || ''].join(' ');
+                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" data-cost="'+v.cost_price+'" data-search="'+escapeHtml(variantSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name+' ['+v.size_name+']')+'</option>';
             });
         } else {
             var selected = (data && data.product_id == p.id) ? 'selected' : '';
-            productOptions += '<option value="'+p.id+'" data-cost="'+p.cost_price+'" '+selected+'>'+p.code+' - '+p.name+'</option>';
+            var productSearchText = [p.code || '', p.name || '', p.barcode || '', p.specification || ''].join(' ');
+            productOptions += '<option value="'+p.id+'" data-cost="'+p.cost_price+'" data-search="'+escapeHtml(productSearchText)+'" '+selected+'>'+escapeHtml(p.code+' - '+p.name)+'</option>';
         }
     });
 
@@ -260,7 +379,11 @@ function addItemRow(data){
         dropdownParent: $('#modal_form'),
         width: '100%',
         placeholder: '-- Chọn sản phẩm --',
-        allowClear: true
+        allowClear: true,
+        matcher: purchaseOrderProductMatcher,
+        templateResult: formatPurchaseOrderProductOption,
+        templateSelection: formatPurchaseOrderProductSelection,
+        dropdownCssClass: 'purchase-order-product-dropdown'
     });
     // Set value if editing
     if(data && data.product_id){
@@ -279,15 +402,119 @@ function addItemRow(data){
     updateTotal();
 }
 
-function ensurePurchaseOrderProductsLoaded(callback){
-    if(PRODUCTS.length){
-        if(typeof callback === 'function') callback();
+function flushPurchaseOrderProductCallbacks(refreshed){
+    var callbacks = PURCHASE_ORDER_PRODUCTS_CALLBACKS.splice(0);
+    callbacks.forEach(function(callback){
+        callback(PURCHASE_ORDER_PRODUCTS_LOADED, refreshed);
+    });
+}
+
+function finishPurchaseOrderProductLoad(refreshed){
+    PURCHASE_ORDER_PRODUCTS_LOAD_ACTIVE = false;
+    PURCHASE_ORDER_PRODUCTS_LOAD_XHR = null;
+    if(PURCHASE_ORDER_PRODUCTS_RETRY_TIMER){
+        clearTimeout(PURCHASE_ORDER_PRODUCTS_RETRY_TIMER);
+        PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = null;
+    }
+    flushPurchaseOrderProductCallbacks(refreshed);
+}
+
+function requestPurchaseOrderProducts(attempt){
+    PURCHASE_ORDER_PRODUCTS_LOAD_XHR = $.ajax({
+        url: '/api/products-select/',
+        type: 'GET',
+        dataType: 'json',
+        cache: false,
+        timeout: 20000
+    }).done(function(res){
+        if(!res || !Array.isArray(res.data)){
+            retryPurchaseOrderProductLoad(attempt);
+            return;
+        }
+        PRODUCTS = res.data;
+        PURCHASE_ORDER_PRODUCTS_LOADED = true;
+        finishPurchaseOrderProductLoad(true);
+    }).fail(function(){
+        retryPurchaseOrderProductLoad(attempt);
+    });
+}
+
+function retryPurchaseOrderProductLoad(attempt){
+    PURCHASE_ORDER_PRODUCTS_LOAD_XHR = null;
+    if(attempt < 2){
+        PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = setTimeout(function(){
+            PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = null;
+            requestPurchaseOrderProducts(attempt + 1);
+        }, 500 * (attempt + 1));
         return;
     }
-    $.get('/api/products-select/', function(res){
-        PRODUCTS = res.data || [];
-        if(typeof callback === 'function') callback();
-    });
+    finishPurchaseOrderProductLoad(false);
+}
+
+function ensurePurchaseOrderProductsLoaded(callback, forceRefresh){
+    if(typeof callback === 'function'){
+        if(PURCHASE_ORDER_PRODUCTS_LOADED && !forceRefresh){
+            callback(true, true);
+            return;
+        }
+        PURCHASE_ORDER_PRODUCTS_CALLBACKS.push(callback);
+    } else if(PURCHASE_ORDER_PRODUCTS_LOADED && !forceRefresh){
+        return;
+    }
+
+    if(PURCHASE_ORDER_PRODUCTS_LOAD_ACTIVE) return;
+    PURCHASE_ORDER_PRODUCTS_LOAD_ACTIVE = true;
+    requestPurchaseOrderProducts(0);
+}
+
+function setQuickPurchaseOrderProductLoadState(state){
+    var $select = $('#quick_purchase_order_product');
+    var $status = $('#quick_purchase_order_product_status');
+    if(state === 'loading'){
+        if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+        $select.prop('disabled', true).html('<option value="">Đang tải danh sách sản phẩm...</option>');
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Đang tải danh sách sản phẩm, vui lòng chờ...').show();
+        return;
+    }
+    if(state === 'refreshing'){
+        $status.removeClass('text-danger text-muted').addClass('text-warning')
+            .text('Đang cập nhật tồn kho mới nhất...').show();
+        return;
+    }
+    if(state === 'error'){
+        if(!PURCHASE_ORDER_PRODUCTS_LOADED){
+            if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+            $select.prop('disabled', true).html('<option value="">Chưa tải được danh sách sản phẩm</option>');
+        }
+        $status.removeClass('text-muted text-warning').addClass('text-danger').html(
+            'Chưa tải được danh sách sản phẩm. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_purchase_order_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(state === 'stale'){
+        $status.removeClass('text-muted text-danger').addClass('text-warning').html(
+            'Không cập nhật được tồn kho mới nhất; đang dùng danh sách gần nhất. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_purchase_order_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(PRODUCTS.length === 0){
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Chưa có sản phẩm đang hoạt động.').show();
+    } else {
+        $status.hide().empty();
+    }
+}
+
+function handleQuickPurchaseOrderProductsLoaded(usable, refreshed){
+    if(usable){
+        initializeQuickPurchaseOrderProductSelect();
+        setQuickPurchaseOrderProductLoadState(refreshed ? 'ready' : 'stale');
+    } else {
+        setQuickPurchaseOrderProductLoadState('error');
+    }
 }
 
 function normalizePurchaseOrderProductSearch(value){
@@ -308,7 +535,9 @@ function purchaseOrderProductMatcher(params, data){
 
 function initializeQuickPurchaseOrderProductSelect(){
     var $select = $('#quick_purchase_order_product');
-    if($select.hasClass('select2-hidden-accessible')) return;
+    if($select.hasClass('select2-hidden-accessible')){
+        $select.select2('destroy');
+    }
     var options = '<option value="">-- Tìm và chọn sản phẩm --</option>';
     PRODUCTS.forEach(function(p){
         if(p.variants && p.variants.length){
@@ -321,10 +550,13 @@ function initializeQuickPurchaseOrderProductSelect(){
             options += '<option value="'+p.id+'" data-cost="'+(p.cost_price || p.import_price || 0)+'" data-search="'+escapeHtml(search)+'">'+escapeHtml(p.code+' - '+p.name)+'</option>';
         }
     });
-    $select.html(options).select2({
+    $select.prop('disabled', false).html(options).select2({
         dropdownParent: $('#modal_form'), width:'100%', theme:'bootstrap4',
         placeholder:'-- Tìm và chọn sản phẩm --', allowClear:true,
-        matcher:purchaseOrderProductMatcher
+        matcher:purchaseOrderProductMatcher,
+        templateResult:formatPurchaseOrderProductOption,
+        templateSelection:formatPurchaseOrderProductSelection,
+        dropdownCssClass:'purchase-order-product-dropdown'
     });
 }
 
@@ -443,13 +675,18 @@ function editItem(d){
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        ensurePurchaseOrderProductsLoaded(function(){
+        setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        if(PURCHASE_ORDER_PRODUCTS_LOADED){
             initializeQuickPurchaseOrderProductSelect();
+        }
+        ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+            handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
+            if(!usable) return;
             if(d.items && d.items.length > 0){
                 d.items.forEach(function(item){ addItemRow(item); });
             }
             updateTotal();
-        });
+        }, true);
     });
 }
 

@@ -36,6 +36,7 @@ DOCUMENT_UPDATES = [
         'items': [
             'Mỗi khách hàng có thể lưu địa chỉ mặc định và nhiều điểm nhận phụ như kho, chi nhánh hoặc địa chỉ công trình.',
             'Khi tạo đơn, có thể chọn địa chỉ trong hồ sơ hoặc dùng lại các địa chỉ giao từng xuất hiện trên đơn trước của đúng khách hàng.',
+            'Ở cả tạo mới và sửa đơn, luôn có lựa chọn Nhập địa chỉ khác; lựa chọn này dùng được cả khi khách chưa lưu địa chỉ hoặc đơn khách lẻ.',
             'Khi sửa khách hàng, phần Địa chỉ giao hàng đã dùng hiển thị các địa chỉ lấy từ lịch sử đơn, gộp địa chỉ trùng và cho biết đơn sử dụng gần nhất.',
             'Danh sách khách hàng hiển thị tên ở dòng đầu và mã khách hàng ở dòng dưới trong cùng một cột để bảng gọn hơn.',
             'Danh sách đơn luôn hiển thị thống nhất “Khách lẻ / khách vãng lai” cho đơn không gắn khách hoặc hồ sơ khách cũ bị trống tên.',

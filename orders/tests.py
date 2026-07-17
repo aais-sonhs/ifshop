@@ -718,6 +718,9 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(response, 'Kho Hà Nội')
         self.assertContains(response, 'Chi nhánh 2')
+        self.assertContains(response, '<option value="custom">Nhập địa chỉ khác</option>', html=True)
+        self.assertContains(response, "$('#inp_customer_address_choice').html(html).prop('disabled', false)")
+        self.assertContains(response, "$('#inp_shipping_address').val('').focus()")
 
     def test_order_page_exposes_distinct_shipping_addresses_from_previous_orders(self):
         first = self._create_order(code='DH-ADDRESS-HISTORY-1')

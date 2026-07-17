@@ -238,8 +238,8 @@
                             <div class="col-md-4">
                                 <div class="form-group mb-2">
                                     <label for="inp_customer_address_choice"><i class="fas fa-map-marked-alt text-primary mr-1"></i>Địa chỉ đã lưu</label>
-                                    <select class="form-control form-control-sm" id="inp_customer_address_choice" disabled>
-                                        <option value="custom">Nhập địa chỉ giao hàng</option>
+                                    <select class="form-control form-control-sm" id="inp_customer_address_choice">
+                                        <option value="custom">Nhập địa chỉ khác</option>
                                     </select>
                                     <small class="form-text text-muted">Chọn nhanh điểm nhận của khách.</small>
                                 </div>
@@ -4192,7 +4192,8 @@ function renderCustomerAddressChoices(customer, selectedAddress){
         html += '<option value="'+index+'">'+escapeHtml(item.address)+(item.isDefault ? ' (mặc định)' : '')+'</option>';
     });
     html += '<option value="custom">Nhập địa chỉ khác</option>';
-    $('#inp_customer_address_choice').html(html).prop('disabled', !currentCustomerAddressOptions.length);
+    // Luôn cho phép nhập địa chỉ khác, kể cả khách chưa có địa chỉ lưu hoặc khách lẻ.
+    $('#inp_customer_address_choice').html(html).prop('disabled', false);
     setShippingAddressValue(selectedAddress || (currentCustomerAddressOptions[0] ? currentCustomerAddressOptions[0].address : ''));
 }
 
@@ -4210,7 +4211,7 @@ $(document).on('change', '#inp_customer_address_choice', function(){
     if(selected !== 'custom' && currentCustomerAddressOptions[Number(selected)]){
         $('#inp_shipping_address').val(currentCustomerAddressOptions[Number(selected)].address);
     } else {
-        $('#inp_shipping_address').focus().select();
+        $('#inp_shipping_address').val('').focus();
     }
 });
 
@@ -4238,7 +4239,7 @@ function clearCustomer(){
     $('#btn_clear_customer').hide();
     $('#customer_dropdown').hide();
     currentCustomerAddressOptions = [];
-    $('#inp_customer_address_choice').html('<option value="custom">Nhập địa chỉ giao hàng</option>').prop('disabled', true);
+    $('#inp_customer_address_choice').html('<option value="custom">Nhập địa chỉ khác</option>').prop('disabled', false);
     $('#inp_shipping_address').val('');
 }
 

@@ -1438,6 +1438,7 @@ def _capture_order_history_snapshot(order):
         'shipping_fee': _to_decimal(order.shipping_fee),
         'other_fee': _to_decimal(order.other_fee),
         'shipping_address': order.shipping_address or '',
+        'shipping_phone': order.shipping_phone or '',
         'final_amount': _to_decimal(order.final_amount),
         'tags': order.tags or '',
         'note': order.note or '',
@@ -1579,6 +1580,7 @@ def _describe_order_history_changes(before, order, normalized_items):
     _append_history_field_change(money_parts, before['shipping_fee'], _to_decimal(order.shipping_fee), 'Phí vận chuyển', _format_money_for_history)
     _append_history_field_change(money_parts, before['other_fee'], _to_decimal(order.other_fee), 'Chi phí khác', _format_money_for_history)
     _append_history_field_change(field_parts, before['shipping_address'], order.shipping_address or '', 'Địa chỉ giao hàng')
+    _append_history_field_change(field_parts, before['shipping_phone'], order.shipping_phone or '', 'SĐT nhận hàng')
     _append_history_field_change(field_parts, before['tags'], order.tags or '', 'Tags')
     _append_history_field_change(field_parts, before['note'], order.note or '', 'Ghi chú')
     _append_history_field_change(field_parts, before['salesperson'], order.salesperson or '', 'NV bán hàng')
@@ -1852,6 +1854,9 @@ def _get_exported_order_blocking_changes(order, data):
     if 'shipping_address' in data and ((data.get('shipping_address') or '').strip() or None) != (order.shipping_address or None):
         changes.append('địa chỉ giao hàng')
 
+    if 'shipping_phone' in data and ((data.get('shipping_phone') or '').strip() or None) != (order.shipping_phone or None):
+        changes.append('SĐT nhận hàng')
+
     if 'salesperson' in data and (data.get('salesperson') or None) != (order.salesperson or None):
         changes.append('nhân viên bán hàng')
 
@@ -1921,6 +1926,11 @@ def _save_receipted_order_safe_update(request, order, data, old_status):
         if order.shipping_address != shipping_address:
             order.shipping_address = shipping_address
             update_fields.append('shipping_address')
+    if 'shipping_phone' in data:
+        shipping_phone = (data.get('shipping_phone', '') or '').strip() or None
+        if order.shipping_phone != shipping_phone:
+            order.shipping_phone = shipping_phone
+            update_fields.append('shipping_phone')
     if 'salesperson' in data:
         salesperson = data.get('salesperson', '') or None
         if order.salesperson != salesperson:
@@ -2140,15 +2150,16 @@ def order_tbl(request):
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
     customers = list(_get_sales_customers_queryset(request).values(
-        'id', 'code', 'name', 'phone', 'address', 'company_address'
+        'id', 'code', 'name', 'phone', 'address', 'company_address', 'contact_phone'
     ))
     delivery_address_map = defaultdict(list)
     for item in CustomerAddress.objects.filter(
         customer_id__in=[customer['id'] for customer in customers]
-    ).order_by('sort_order', 'id').values('customer_id', 'label', 'address'):
+    ).order_by('sort_order', 'id').values('customer_id', 'label', 'address', 'phone'):
         delivery_address_map[item['customer_id']].append({
             'label': item['label'] or '',
             'address': item['address'],
+            'phone': item['phone'] or '',
         })
 
     # Địa chỉ giao là dữ liệu theo từng đơn, vì vậy một khách có thể đã dùng
@@ -2161,13 +2172,18 @@ def order_tbl(request):
         shipping_address__isnull=False,
     ).exclude(shipping_address='').order_by(
         'customer_id', '-order_date', '-id'
-    ).values('customer_id', 'code', 'shipping_address'):
+    ).values('customer_id', 'code', 'shipping_address', 'shipping_phone'):
         address = (item['shipping_address'] or '').strip()
-        if not address or address in historical_address_seen[item['customer_id']]:
+        phone = (item['shipping_phone'] or '').strip()
+        normalized_address = re.sub(r'\s+', ' ', address).casefold()
+        normalized_phone = re.sub(r'\D+', '', phone) or phone.casefold()
+        history_key = (normalized_address, normalized_phone)
+        if not address or history_key in historical_address_seen[item['customer_id']]:
             continue
-        historical_address_seen[item['customer_id']].add(address)
+        historical_address_seen[item['customer_id']].add(history_key)
         historical_address_map[item['customer_id']].append({
             'address': address,
+            'phone': phone,
         })
 
     for customer in customers:
@@ -2607,7 +2623,7 @@ def api_quick_create_customer(request):
                     'address': existing_customer.address or '',
                     'company_address': existing_customer.company_address or '',
                     'delivery_addresses': [
-                        {'label': item.label or '', 'address': item.address}
+                        {'label': item.label or '', 'address': item.address, 'phone': item.phone or ''}
                         for item in existing_customer.delivery_addresses.all()
                     ],
                 }
@@ -3029,6 +3045,7 @@ def api_get_order_detail(request):
                 'customer_id': None if _is_guest_customer(o.customer) else o.customer_id,
                 'customer_label': _order_customer_label(o),
                 'customer_phone': o.customer.phone if o.customer and o.customer.phone else '',
+                'shipping_phone': o.shipping_phone or '',
                 'customer_address': (
                     o.shipping_address
                     or (o.customer.address if o.customer else '')
@@ -3234,6 +3251,8 @@ def api_save_order(request):
             o.other_fee = _non_negative_decimal(data.get('other_fee', o.other_fee if oid else 0))
             if 'shipping_address' in data or not oid:
                 o.shipping_address = (data.get('shipping_address', '') or '').strip() or None
+            if 'shipping_phone' in data or not oid:
+                o.shipping_phone = (data.get('shipping_phone', '') or '').strip() or None
             if 'tags' in data or not oid:
                 o.tags = (data.get('tags', '') or '').strip() or None
             new_status = int(data.get('status', o.status if oid else 0))
@@ -4287,7 +4306,10 @@ def api_save_order_warranty(request):
             customer = order.customer
             certificate.issue_date = date.today()
             certificate.customer_name = _order_customer_label(customer)
-            certificate.customer_phone = customer.phone if customer and customer.phone else ''
+            certificate.customer_phone = (
+                order.shipping_phone
+                or (customer.phone if customer and customer.phone else '')
+            )
             certificate.customer_address = (
                 order.shipping_address
                 or (customer.address if customer else '')
@@ -5710,6 +5732,7 @@ def api_print_order(request):
                 self.issuing_brand = q.issuing_brand
                 self.warehouse = None
                 self.shipping_address = None
+                self.shipping_phone = None
                 self.created_by = q.created_by
                 self.tags = q.tags
 

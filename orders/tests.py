@@ -695,12 +695,14 @@ class OrderRiskFlowTests(TestCase):
             customer=self.customer,
             label='Kho Hà Nội',
             address='Số 1 Tràng Tiền, Hà Nội',
+            phone='0901000001',
             sort_order=0,
         )
         CustomerAddress.objects.create(
             customer=self.customer,
             label='Chi nhánh 2',
             address='Số 2 Nguyễn Huệ, TP.HCM',
+            phone='0902000002',
             sort_order=1,
         )
         self.client.force_login(self.owner)
@@ -712,26 +714,30 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(
             customer['delivery_addresses'],
             [
-                {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội'},
-                {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM'},
+                {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội', 'phone': '0901000001'},
+                {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM', 'phone': '0902000002'},
             ],
         )
         self.assertContains(response, 'Kho Hà Nội')
         self.assertContains(response, 'Chi nhánh 2')
         self.assertContains(response, '<option value="custom">Nhập địa chỉ khác</option>', html=True)
         self.assertContains(response, "$('#inp_customer_address_choice').html(html).prop('disabled', false)")
-        self.assertContains(response, "$('#inp_shipping_address').val('').focus()")
+        self.assertContains(response, 'id="inp_shipping_phone"')
+        self.assertContains(response, "$('#inp_shipping_address,#inp_shipping_phone').val('')")
 
     def test_order_page_exposes_distinct_shipping_addresses_from_previous_orders(self):
         first = self._create_order(code='DH-ADDRESS-HISTORY-1')
         first.shipping_address = 'Kho công trình Quận 7'
-        first.save(update_fields=['shipping_address'])
+        first.shipping_phone = '0907000001'
+        first.save(update_fields=['shipping_address', 'shipping_phone'])
         duplicate = self._create_order(code='DH-ADDRESS-HISTORY-2')
         duplicate.shipping_address = 'Kho công trình Quận 7'
-        duplicate.save(update_fields=['shipping_address'])
+        duplicate.shipping_phone = '0907000002'
+        duplicate.save(update_fields=['shipping_address', 'shipping_phone'])
         second = self._create_order(code='DH-ADDRESS-HISTORY-3')
         second.shipping_address = 'Chi nhánh Thủ Đức'
-        second.save(update_fields=['shipping_address'])
+        second.shipping_phone = '0909000003'
+        second.save(update_fields=['shipping_address', 'shipping_phone'])
         other_customer_order = self._create_order(
             code='DH-ADDRESS-OTHER-CUSTOMER', customer=self.other_customer,
             store=self.other_store, warehouse=self.other_warehouse,
@@ -746,7 +752,11 @@ class OrderRiskFlowTests(TestCase):
         customer = next(item for item in response.context['customers'] if item['id'] == self.customer.id)
         self.assertEqual(
             [item['address'] for item in customer['historical_addresses']],
-            ['Chi nhánh Thủ Đức', 'Kho công trình Quận 7'],
+            ['Chi nhánh Thủ Đức', 'Kho công trình Quận 7', 'Kho công trình Quận 7'],
+        )
+        self.assertEqual(
+            [item['phone'] for item in customer['historical_addresses']],
+            ['0909000003', '0907000002', '0907000001'],
         )
         self.assertContains(response, 'Chi nhánh Thủ Đức')
         self.assertContains(response, 'Kho công trình Quận 7')
@@ -801,6 +811,7 @@ class OrderRiskFlowTests(TestCase):
                 'warehouse_id': self.warehouse.id,
                 'order_date': date.today().isoformat(),
                 'shipping_address': 'Kho nhận hàng số 1',
+                'shipping_phone': '0901111111',
                 'status': 1,
                 'items': [{
                     'product_id': self.product.id,
@@ -816,6 +827,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
         order = Order.objects.get(code='DH-CUSTOM-SHIPPING')
         self.assertEqual(order.shipping_address, 'Kho nhận hàng số 1')
+        self.assertEqual(order.shipping_phone, '0901111111')
 
         edit_response = self.client.post(
             reverse('api_save_order'),
@@ -826,6 +838,7 @@ class OrderRiskFlowTests(TestCase):
                 'warehouse_id': self.warehouse.id,
                 'order_date': order.order_date.isoformat(),
                 'shipping_address': 'Nhà người thân, hẻm 12',
+                'shipping_phone': '0902222222',
                 'status': 1,
                 'items': [{
                     'product_id': self.product.id,
@@ -841,14 +854,17 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
         order.refresh_from_db()
         self.assertEqual(order.shipping_address, 'Nhà người thân, hẻm 12')
+        self.assertEqual(order.shipping_phone, '0902222222')
 
         detail_response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
         self.assertEqual(detail_response.json()['order']['shipping_address'], 'Nhà người thân, hẻm 12')
+        self.assertEqual(detail_response.json()['order']['shipping_phone'], '0902222222')
         print_response = self.client.get(
             reverse('api_print_order'),
             {'id': order.id, 'type': 'a4', 'source': 'order'},
         )
         self.assertContains(print_response, 'Nhà người thân, hẻm 12')
+        self.assertContains(print_response, '0902222222')
         self.assertNotContains(print_response, 'Địa chỉ mặc định của khách')
 
     def test_quotation_prints_show_customer_address(self):

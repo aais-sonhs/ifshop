@@ -62,7 +62,8 @@
         <div class="block">
             <div class="label">Người nhận</div>
             <div><strong>{{ order.customer.name|default:"Khách lẻ" }}</strong></div>
-            {% if order.customer.phone %}<div>SĐT: {{ order.customer.phone }}</div>{% endif %}
+            {% if order.shipping_phone %}<div>SĐT nhận: {{ order.shipping_phone }}</div>
+            {% elif order.customer.phone %}<div>SĐT: {{ order.customer.phone }}</div>{% endif %}
             {% if order.shipping_address %}<div>ĐC giao: {{ order.shipping_address }}</div>
             {% elif order.customer.address %}<div>ĐC: {{ order.customer.address }}</div>{% endif %}
         </div>

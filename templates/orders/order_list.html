@@ -235,7 +235,7 @@
                 <div class="row align-items-start" id="shipping_salesperson_row">
                     <div class="{% if biz.opt_order_salesperson %}col-md-9{% else %}col-md-12{% endif %}" id="shipping_address_section">
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="form-group mb-2">
                                     <label for="inp_customer_address_choice"><i class="fas fa-map-marked-alt text-primary mr-1"></i>Địa chỉ đã lưu</label>
                                     <select class="form-control form-control-sm" id="inp_customer_address_choice">
@@ -244,11 +244,18 @@
                                     <small class="form-text text-muted">Chọn nhanh điểm nhận của khách.</small>
                                 </div>
                             </div>
-                            <div class="col-md-8">
+                            <div class="col-md-6">
                                 <div class="form-group mb-2">
                                     <label for="inp_shipping_address"><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ giao hàng</label>
                                     <input type="text" class="form-control form-control-sm" id="inp_shipping_address" placeholder="Nhập địa chỉ giao thực tế của đơn hàng">
                                     <small class="form-text text-muted">Tự lấy địa chỉ mặc định khi chọn khách; có thể sửa riêng cho đơn này mà không thay đổi hồ sơ khách hàng.</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group mb-2">
+                                    <label for="inp_shipping_phone"><i class="fas fa-phone text-success mr-1"></i>SĐT nhận hàng</label>
+                                    <input type="text" class="form-control form-control-sm" id="inp_shipping_phone" maxlength="30" placeholder="SĐT tại nơi giao">
+                                    <small class="form-text text-muted">Lưu riêng theo địa chỉ và theo đơn.</small>
                                 </div>
                             </div>
                         </div>
@@ -4094,10 +4101,10 @@ function customerMatcher(params, data){ return data; }
 // ============ CUSTOMER AUTOCOMPLETE (Sapo-style) ============
 var allCustomers = [
     {% for c in customers %}
-    {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}", address:"{{ c.address|default:''|escapejs }}", company_address:"{{ c.company_address|default:''|escapejs }}", delivery_addresses:[
-        {% for item in c.delivery_addresses %}{label:"{{ item.label|default:''|escapejs }}", address:"{{ item.address|default:''|escapejs }}"},{% endfor %}
+    {id:{{ c.id }}, name:"{{ c.name|escapejs }}", phone:"{{ c.phone|default:''|escapejs }}", code:"{{ c.code|escapejs }}", address:"{{ c.address|default:''|escapejs }}", company_address:"{{ c.company_address|default:''|escapejs }}", contact_phone:"{{ c.contact_phone|default:''|escapejs }}", delivery_addresses:[
+        {% for item in c.delivery_addresses %}{label:"{{ item.label|default:''|escapejs }}", address:"{{ item.address|default:''|escapejs }}", phone:"{{ item.phone|default:''|escapejs }}"},{% endfor %}
     ], historical_addresses:[
-        {% for item in c.historical_addresses %}{address:"{{ item.address|default:''|escapejs }}"},{% endfor %}
+        {% for item in c.historical_addresses %}{address:"{{ item.address|default:''|escapejs }}", phone:"{{ item.phone|default:''|escapejs }}"},{% endfor %}
     ]},
     {% endfor %}
 ];
@@ -4109,8 +4116,12 @@ function searchCustomers(term){
     return allCustomers.filter(function(c){
         var nameNorm = normalizeCustomerSearch(c.name);
         var phoneNorm = (c.phone || '').replace(/\D/g, '');
+        var deliveryPhoneNorm = (c.delivery_addresses || []).map(function(item){
+            return (item.phone || '').replace(/\D/g, '');
+        }).join(' ');
         if(nameNorm.indexOf(t) >= 0) return true;
         if(digits && phoneNorm.indexOf(digits) >= 0) return true;
+        if(digits && deliveryPhoneNorm.indexOf(digits) >= 0) return true;
         return false;
     }).slice(0, 20);
 }
@@ -4163,23 +4174,41 @@ function renderCustomerDropdown(results, term){
 
 var currentCustomerAddressOptions = [];
 
+function shippingAddressKey(address){
+    return String(address || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function shippingPointKey(address, phone){
+    var normalizedAddress = shippingAddressKey(address);
+    var rawPhone = String(phone || '').trim();
+    var normalizedPhone = rawPhone.replace(/\D/g, '') || rawPhone.toLowerCase();
+    return normalizedAddress + '|' + normalizedPhone;
+}
+
 function getCustomerAddressOptions(customer){
     var options = [];
     var seen = {};
-    function addOption(address, isDefault){
+    function addOption(address, isDefault, phone, label){
         address = String(address || '').trim();
-        if(!address || seen[address]) return;
-        seen[address] = true;
-        options.push({address: address, isDefault: !!isDefault});
+        phone = String(phone || '').trim();
+        var key = shippingPointKey(address, phone);
+        if(!address || seen[key]) return;
+        seen[key] = true;
+        options.push({
+            address: address,
+            phone: phone,
+            label: String(label || '').trim(),
+            isDefault: !!isDefault
+        });
     }
     if(customer){
-        addOption(customer.address, true);
-        addOption(customer.company_address, false);
+        addOption(customer.address, true, customer.phone, '');
+        addOption(customer.company_address, false, customer.contact_phone || customer.phone, 'Địa chỉ công ty');
         (customer.delivery_addresses || []).forEach(function(item){
-            addOption(item.address, false);
+            addOption(item.address, false, item.phone || customer.phone, item.label);
         });
         (customer.historical_addresses || []).forEach(function(item){
-            addOption(item.address, false);
+            addOption(item.address, false, item.phone || customer.phone, 'Đã giao trước đây');
         });
     }
     return options;
@@ -4189,7 +4218,10 @@ function renderCustomerAddressChoices(customer, selectedAddress){
     currentCustomerAddressOptions = getCustomerAddressOptions(customer);
     var html = '';
     currentCustomerAddressOptions.forEach(function(item, index){
-        html += '<option value="'+index+'">'+escapeHtml(item.address)+(item.isDefault ? ' (mặc định)' : '')+'</option>';
+        var optionLabel = (item.label ? item.label + ': ' : '') + item.address;
+        if(item.phone) optionLabel += ' — ' + item.phone;
+        if(item.isDefault) optionLabel += ' (mặc định)';
+        html += '<option value="'+index+'">'+escapeHtml(optionLabel)+'</option>';
     });
     html += '<option value="custom">Nhập địa chỉ khác</option>';
     // Luôn cho phép nhập địa chỉ khác, kể cả khách chưa có địa chỉ lưu hoặc khách lẻ.
@@ -4197,27 +4229,52 @@ function renderCustomerAddressChoices(customer, selectedAddress){
     setShippingAddressValue(selectedAddress || (currentCustomerAddressOptions[0] ? currentCustomerAddressOptions[0].address : ''));
 }
 
-function setShippingAddressValue(address){
+function setShippingAddressValue(address, phone){
     address = String(address || '');
+    var hasPhone = arguments.length > 1;
+    phone = String(phone || '');
     $('#inp_shipping_address').val(address);
     var matchedIndex = currentCustomerAddressOptions.findIndex(function(item){
-        return item.address === address;
+        return hasPhone
+            ? shippingPointKey(item.address, item.phone) === shippingPointKey(address, phone)
+            : shippingAddressKey(item.address) === shippingAddressKey(address);
     });
     $('#inp_customer_address_choice').val(matchedIndex >= 0 ? String(matchedIndex) : 'custom');
+    var resolvedPhone = hasPhone
+        ? phone
+        : (matchedIndex >= 0 ? currentCustomerAddressOptions[matchedIndex].phone : '');
+    $('#inp_shipping_phone').val(resolvedPhone);
 }
 
 $(document).on('change', '#inp_customer_address_choice', function(){
     var selected = $(this).val();
     if(selected !== 'custom' && currentCustomerAddressOptions[Number(selected)]){
-        $('#inp_shipping_address').val(currentCustomerAddressOptions[Number(selected)].address);
+        var option = currentCustomerAddressOptions[Number(selected)];
+        $('#inp_shipping_address').val(option.address);
+        $('#inp_shipping_phone').val(option.phone || '');
     } else {
-        $('#inp_shipping_address').val('').focus();
+        $('#inp_shipping_address,#inp_shipping_phone').val('');
+        $('#inp_shipping_address').focus();
     }
 });
 
 $(document).on('input', '#inp_shipping_address', function(){
     var address = $(this).val();
-    var matchedIndex = currentCustomerAddressOptions.findIndex(function(item){ return item.address === address; });
+    var phone = $('#inp_shipping_phone').val();
+    var matchedIndex = currentCustomerAddressOptions.findIndex(function(item){
+        return shippingPointKey(item.address, item.phone) === shippingPointKey(address, phone);
+    });
+    $('#inp_customer_address_choice').val(matchedIndex >= 0 ? String(matchedIndex) : 'custom');
+    if(matchedIndex >= 0 && !$('#inp_shipping_phone').val()){
+        $('#inp_shipping_phone').val(currentCustomerAddressOptions[matchedIndex].phone || '');
+    }
+});
+
+$(document).on('input', '#inp_shipping_phone', function(){
+    var key = shippingPointKey($('#inp_shipping_address').val(), $(this).val());
+    var matchedIndex = currentCustomerAddressOptions.findIndex(function(item){
+        return shippingPointKey(item.address, item.phone) === key;
+    });
     $('#inp_customer_address_choice').val(matchedIndex >= 0 ? String(matchedIndex) : 'custom');
 });
 
@@ -4240,7 +4297,7 @@ function clearCustomer(){
     $('#customer_dropdown').hide();
     currentCustomerAddressOptions = [];
     $('#inp_customer_address_choice').html('<option value="custom">Nhập địa chỉ khác</option>').prop('disabled', false);
-    $('#inp_shipping_address').val('');
+    $('#inp_shipping_address,#inp_shipping_phone').val('');
 }
 
 function initCustomerPicker(){
@@ -4585,7 +4642,9 @@ $(document).ready(function(){
                         code: c.code,
                         address: c.address || '',
                         company_address: c.company_address || '',
-                        delivery_addresses: c.delivery_addresses || []
+                        contact_phone: c.contact_phone || '',
+                        delivery_addresses: c.delivery_addresses || [],
+                        historical_addresses: []
                     });
                     selectCustomer(c.id, c.name, c.phone || '');
                     $('#modal_quick_customer').modal('hide');
@@ -4985,6 +5044,7 @@ $(document).ready(function(){
             warehouse_id:$('#inp_warehouse_id').val(),order_date:date,
             quotation_id:quotationId,
             shipping_address:$('#inp_shipping_address').val(),
+            shipping_phone:$('#inp_shipping_phone').val(),
             discount_amount:getMoneyValue('#inp_discount_amount'),
             discount_mode:getOrderDiscountMode(),
             discount_percent:getOrderDiscountPercent(),
@@ -6448,7 +6508,7 @@ function rejectOrder(id, code){
 	            '<div class="mb-2"><strong>' + escapeHtml(o.code || '') + '</strong> · ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</div>' +
 	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' +
 	                escapeHtml(o.customer_label || '') +
-	                (o.customer_phone ? '<br><small>SĐT: ' + escapeHtml(o.customer_phone) + '</small>' : '') +
+                ((o.shipping_phone || o.customer_phone) ? '<br><small>SĐT nhận: ' + escapeHtml(o.shipping_phone || o.customer_phone) + '</small>' : '') +
 	                (o.customer_address ? '<br><small><strong>Địa chỉ giao:</strong> ' + escapeHtml(o.customer_address) + '</small>' : '') +
 	            '</div>' +
 	            '<div class="small text-muted">Ghi chú</div><div class="border rounded p-2 mb-2" style="min-height:44px;">' + escapeHtml(o.note || 'Không có ghi chú') + '</div>' +
@@ -6503,7 +6563,7 @@ function rejectOrder(id, code){
             if(cust) selectCustomer(cust.id, cust.name, cust.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
-        setShippingAddressValue(o.shipping_address || o.customer_address || '');
+        setShippingAddressValue(o.shipping_address || o.customer_address || '', o.shipping_phone || o.customer_phone || '');
         setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         configurePaymentDate(true);
         _timelineReadonly = false;
@@ -6565,7 +6625,7 @@ function viewItem(id){
             if(cust2) selectCustomer(cust2.id, cust2.name, cust2.phone);
             else { $('#inp_customer_id').val(o.customer_id); $('#inp_customer_search').val(o.customer_label||''); }
         } else { clearCustomer(); }
-        setShippingAddressValue(o.shipping_address || o.customer_address || '');
+        setShippingAddressValue(o.shipping_address || o.customer_address || '', o.shipping_phone || o.customer_phone || '');
         setOrderWarehouseValue(o.warehouse_id);$('#inp_order_date').val(o.order_date);
         configurePaymentDate(true);
         setOrderDiscountInputs(o.discount_mode, o.discount_amount, o.discount_percent);setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);setMoneyValue('#inp_other_fee', o.other_fee || 0);$('#inp_status').val(o.status);$('#inp_note').val(o.note);$('#inp_tags').val(o.tags || '');
@@ -7022,7 +7082,7 @@ function copyOrder(id){
                 $('#inp_customer_search').val(o.customer_label || '').addClass('border-success font-weight-bold');
             }
         } else { clearCustomer(); }
-        setShippingAddressValue(o.shipping_address || o.customer_address || '');
+        setShippingAddressValue(o.shipping_address || o.customer_address || '', o.shipping_phone || o.customer_phone || '');
         setOrderWarehouseValue(o.warehouse_id);
         setOrderDiscountInputs(o.discount_mode, o.discount_amount, o.discount_percent);
         setMoneyValue('#inp_shipping_fee', o.shipping_fee || 0);

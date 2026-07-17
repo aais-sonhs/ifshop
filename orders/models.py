@@ -151,6 +151,7 @@ class Order(SoftDeleteModel):
     final_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Tổng thanh toán')
     paid_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Đã thanh toán')
     shipping_address = models.TextField(blank=True, null=True, verbose_name='Địa chỉ giao')
+    shipping_phone = models.CharField(max_length=30, blank=True, null=True, verbose_name='SĐT nhận hàng')
     tags = models.CharField(max_length=255, blank=True, null=True, verbose_name='Tags')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     order_date = models.DateField(verbose_name='Ngày đặt hàng')

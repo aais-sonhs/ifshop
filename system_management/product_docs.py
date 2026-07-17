@@ -20,8 +20,8 @@ DEMO_ACCOUNT = {
 }
 
 DOCUMENT_REVISION = {
-    'date': '16/07/2026',
-    'title': 'Cập nhật nghiệp vụ ngày 16/07/2026',
+    'date': '17/07/2026',
+    'title': 'Cập nhật nghiệp vụ ngày 17/07/2026',
     'summary': (
         'Tài liệu đã được đối chiếu với toàn bộ thay đổi trong ngày: khách hàng và đơn hàng, '
         'tìm sản phẩm khi nhập hàng, bảo mật giá nhập/giá vốn, quản lý kho, báo cáo tồn kho '
@@ -35,6 +35,9 @@ DOCUMENT_UPDATES = [
         'title': 'Khách hàng và địa chỉ giao hàng',
         'items': [
             'Mỗi khách hàng có thể lưu địa chỉ mặc định và nhiều điểm nhận phụ như kho, chi nhánh hoặc địa chỉ công trình.',
+            'Mỗi điểm nhận phụ có SĐT nhận hàng riêng; khi chọn điểm nhận trên đơn, hệ thống tự điền đúng SĐT của địa chỉ đó.',
+            'Địa chỉ và SĐT nhận hàng được lưu riêng trên từng đơn để giữ đúng lịch sử giao nhận khi hồ sơ khách thay đổi.',
+            'Cùng một địa chỉ nhưng khác SĐT người nhận được coi là hai điểm giao riêng, phù hợp trường hợp nhờ người khác nhận hộ.',
             'Khi tạo đơn, có thể chọn địa chỉ trong hồ sơ hoặc dùng lại các địa chỉ giao từng xuất hiện trên đơn trước của đúng khách hàng.',
             'Ở cả tạo mới và sửa đơn, luôn có lựa chọn Nhập địa chỉ khác; lựa chọn này dùng được cả khi khách chưa lưu địa chỉ hoặc đơn khách lẻ.',
             'Khi sửa khách hàng, phần Địa chỉ giao hàng đã dùng hiển thị các địa chỉ lấy từ lịch sử đơn, gộp địa chỉ trùng và cho biết đơn sử dụng gần nhất.',
@@ -372,9 +375,9 @@ DETAILED_OPERATION_GUIDES = [
             'Nhấn nút "Tạo mới" để mở form nhập thông tin khách hàng.',
             'Nhập tên khách, số điện thoại (bắt buộc để tìm nhanh), email, địa chỉ, nhóm khách và thông tin bổ sung.',
             'Nếu khách là doanh nghiệp, nhập thêm tên công ty, mã số thuế, địa chỉ xuất hóa đơn và người liên hệ.',
-            'Tại phần Địa chỉ / điểm nhận phụ, thêm tên điểm nhận và địa chỉ cho từng kho, chi nhánh hoặc công trình của khách.',
+            'Tại phần Địa chỉ / điểm nhận phụ, thêm tên điểm nhận, địa chỉ và SĐT nhận hàng cho từng kho, chi nhánh hoặc công trình của khách.',
             'Lưu khách hàng. Hệ thống tự động tạo hồ sơ khách để dùng cho các đơn hàng sau.',
-            'Khi tạo đơn hàng, tìm khách bằng tên hoặc số điện thoại rồi chọn nhanh địa chỉ trong hồ sơ hoặc địa chỉ giao đã dùng trên đơn trước; chọn Nhập địa chỉ khác nếu cần nhập thủ công.',
+            'Khi tạo đơn hàng, tìm khách rồi chọn nhanh địa chỉ trong hồ sơ hoặc địa chỉ giao đã dùng trên đơn trước; hệ thống tự lấy SĐT của điểm nhận, hoặc chọn Nhập địa chỉ khác để nhập địa chỉ và SĐT thủ công.',
             'Tại danh sách đơn hàng, bấm vào tên khách đã lưu để mở thẳng form chỉnh sửa khách trong một tab mới.',
             'Trong form sửa, xem phần Địa chỉ giao hàng đã dùng để tra cứu các điểm từng giao; đây là dữ liệu chỉ đọc từ lịch sử đơn và không thay đổi chứng từ cũ.',
             'Định kỳ phân nhóm khách để chạy chương trình chăm sóc, chính sách giá hoặc báo cáo khách hàng.',
@@ -396,14 +399,15 @@ DETAILED_OPERATION_GUIDES = [
             'Trong cột Tên khách hàng, dòng đầu là tên và dòng dưới là mã khách hàng để đối chiếu đúng hồ sơ.',
             'Bấm Sửa tại dòng khách hàng cần xem. Nếu đang ở DS Đơn hàng, có thể bấm trực tiếp tên khách để mở form sửa trong tab mới.',
             'Địa chỉ mặc định là địa chỉ được chọn ưu tiên khi tạo đơn mới.',
-            'Địa chỉ / điểm nhận phụ là các kho, chi nhánh hoặc công trình đã lưu trực tiếp trong hồ sơ; người dùng có thể thêm, sửa hoặc xóa các dòng này.',
+            'Địa chỉ / điểm nhận phụ là các kho, chi nhánh hoặc công trình đã lưu trực tiếp trong hồ sơ; mỗi dòng có thể lưu SĐT nhận hàng riêng và người dùng có thể thêm, sửa hoặc xóa.',
             'Địa chỉ giao hàng đã dùng được tổng hợp tự động từ các đơn của đúng khách hàng và đúng phạm vi cửa hàng.',
-            'Mỗi địa chỉ lịch sử chỉ hiển thị một lần; hệ thống cho biết đơn dùng gần nhất, ngày gần nhất và số đơn đã sử dụng địa chỉ đó.',
-            'Khi tạo đơn tiếp theo, danh sách chọn địa chỉ gồm địa chỉ mặc định, điểm nhận phụ và các địa chỉ giao đã dùng trước đây.',
+            'Mỗi cặp địa chỉ và SĐT nhận lịch sử chỉ hiển thị một lần; hệ thống cho biết đơn dùng gần nhất, ngày gần nhất và số đơn đã sử dụng điểm giao đó.',
+            'Nếu cùng địa chỉ nhưng khác SĐT nhận hàng, hệ thống giữ thành các lựa chọn riêng và không ghi đè người nhận cũ.',
+            'Khi tạo đơn tiếp theo, danh sách chọn gồm địa chỉ mặc định, điểm nhận phụ và các địa chỉ giao đã dùng trước đây; chọn một dòng sẽ điền cả địa chỉ và SĐT nhận.',
         ],
         'checks': [
             'Địa chỉ đã trùng với địa chỉ mặc định hoặc điểm nhận phụ sẽ không hiển thị lặp lại trong phần lịch sử giao hàng.',
-            'Phần Địa chỉ giao hàng đã dùng chỉ đọc; sửa hồ sơ khách không làm thay đổi địa chỉ đã lưu trên chứng từ cũ.',
+            'Phần Địa chỉ giao hàng đã dùng chỉ đọc; sửa hồ sơ khách không làm thay đổi địa chỉ hoặc SĐT nhận hàng đã lưu trên chứng từ cũ.',
             'Xóa một điểm nhận phụ khỏi hồ sơ không xóa địa chỉ giao hàng trong lịch sử đơn.',
             'Đơn không gắn hồ sơ khách sẽ hiển thị Khách lẻ / khách vãng lai và không có liên kết mở hồ sơ địa chỉ.',
         ],
@@ -436,7 +440,7 @@ DETAILED_OPERATION_GUIDES = [
             'Mở Bán hàng / BG hoặc POS Bán hàng nếu cửa hàng bật POS.',
             'Kiểm tra đúng cửa hàng, kho bán và tài khoản nhân viên đang đăng nhập.',
             'Chọn khách hàng nếu cần lưu lịch sử; với khách lẻ có thể dùng khách mặc định theo quy trình cửa hàng.',
-            'Chọn địa chỉ giao hàng đã lưu của khách hoặc nhập một địa chỉ khác cho riêng đơn này.',
+            'Chọn địa chỉ giao hàng đã lưu của khách để tự lấy SĐT tại điểm nhận, hoặc nhập địa chỉ và SĐT khác cho riêng đơn này.',
             'Tìm sản phẩm bằng một phần tên, mã, barcode, quy cách hoặc danh mục; sau đó thêm sản phẩm, biến thể, combo hoặc dịch vụ vào đơn.',
             'Có thể đổi thứ tự STT và cuộn riêng vùng dòng hàng khi đơn dài.',
             'Nhập số lượng và chiết khấu từng dòng theo % hoặc số tiền; nhập tiếp chiết khấu toàn đơn, phí giao hàng, chi phí khác và ghi chú.',

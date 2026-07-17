@@ -84,7 +84,8 @@
     <div class="info-row"><span class="label">Ngày:</span><span>{{ order.order_date|date:"d/m/Y" }}</span></div>
     {% if print_template.show_customer_info %}
     <div class="info-row"><span class="label">KH:</span><span>{{ order.customer.name|default:"Khách lẻ" }}</span></div>
-    {% if order.customer.phone %}<div class="info-row"><span class="label">SĐT:</span><span>{{ order.customer.phone }}</span></div>{% endif %}
+    {% if order.shipping_phone %}<div class="info-row"><span class="label">SĐT nhận:</span><span>{{ order.shipping_phone }}</span></div>
+    {% elif order.customer.phone %}<div class="info-row"><span class="label">SĐT:</span><span>{{ order.customer.phone }}</span></div>{% endif %}
     {% if order.shipping_address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.shipping_address }}</span></div>
     {% elif order.customer.address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.customer.address }}</span></div>
     {% elif order.customer.company_address %}<div class="info-row address-row"><span class="label">ĐC giao:</span><span>{{ order.customer.company_address }}</span></div>{% endif %}

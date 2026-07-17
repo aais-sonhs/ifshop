@@ -113,8 +113,8 @@ class CustomerScopeTests(TestCase):
                 'name': self.customer.name,
                 'address': 'Địa chỉ mặc định',
                 'delivery_addresses': [
-                    {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội'},
-                    {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM'},
+                    {'label': 'Kho Hà Nội', 'address': 'Số 1 Tràng Tiền, Hà Nội', 'phone': '0901000001'},
+                    {'label': 'Chi nhánh 2', 'address': 'Số 2 Nguyễn Huệ, TP.HCM', 'phone': '0902000002'},
                 ],
             }),
             content_type='application/json',
@@ -123,10 +123,10 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
         self.assertEqual(
-            list(CustomerAddress.objects.filter(customer=self.customer).values_list('label', 'address')),
+            list(CustomerAddress.objects.filter(customer=self.customer).values_list('label', 'address', 'phone')),
             [
-                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội'),
-                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM'),
+                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội', '0901000001'),
+                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM', '0902000002'),
             ],
         )
 
@@ -137,10 +137,10 @@ class CustomerScopeTests(TestCase):
         )
         self.assertEqual(row['address'], 'Địa chỉ mặc định')
         self.assertEqual(
-            [(item['label'], item['address']) for item in row['delivery_addresses']],
+            [(item['label'], item['address'], item['phone']) for item in row['delivery_addresses']],
             [
-                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội'),
-                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM'),
+                ('Kho Hà Nội', 'Số 1 Tràng Tiền, Hà Nội', '0901000001'),
+                ('Chi nhánh 2', 'Số 2 Nguyễn Huệ, TP.HCM', '0902000002'),
             ],
         )
 
@@ -177,6 +177,7 @@ class CustomerScopeTests(TestCase):
             customer=self.customer,
             status=5,
             shipping_address='12 Nguyễn Trãi, Hà Nội',
+            shipping_phone='0901111111',
             order_date=date(2026, 7, 14),
             created_by=self.user,
         )
@@ -186,6 +187,7 @@ class CustomerScopeTests(TestCase):
             customer=self.customer,
             status=5,
             shipping_address='  12 Nguyễn Trãi,   Hà Nội  ',
+            shipping_phone='0902222222',
             order_date=date(2026, 7, 16),
             created_by=self.user,
         )
@@ -195,6 +197,7 @@ class CustomerScopeTests(TestCase):
             customer=self.customer,
             status=4,
             shipping_address='Kho công trình Quận 7',
+            shipping_phone='0903333333',
             order_date=date(2026, 7, 15),
             created_by=self.user,
         )
@@ -215,11 +218,16 @@ class CustomerScopeTests(TestCase):
         history = row['historical_shipping_addresses']
         self.assertEqual(
             [item['address'] for item in history],
-            ['12 Nguyễn Trãi, Hà Nội', 'Kho công trình Quận 7'],
+            ['12 Nguyễn Trãi, Hà Nội', 'Kho công trình Quận 7', '12 Nguyễn Trãi, Hà Nội'],
+        )
+        self.assertEqual(
+            [item['phone'] for item in history],
+            ['0902222222', '0903333333', '0901111111'],
         )
         self.assertEqual(history[0]['last_order_code'], 'DH-CUST-ADDRESS-LATEST')
+        self.assertEqual(history[0]['phone'], '0902222222')
         self.assertEqual(history[0]['last_order_date'], '16/07/2026')
-        self.assertEqual(history[0]['order_count'], 2)
+        self.assertEqual(history[0]['order_count'], 1)
 
     def test_customer_edit_form_includes_shipping_address_history_section(self):
         self.client.force_login(self.manager)
@@ -230,6 +238,7 @@ class CustomerScopeTests(TestCase):
         self.assertContains(response, 'id="shipping_address_history_section"')
         self.assertContains(response, 'Địa chỉ giao hàng đã dùng')
         self.assertContains(response, 'function renderHistoricalShippingAddresses(')
+        self.assertContains(response, 'delivery-address-phone')
         self.assertContains(response, 'customer-code-under-name')
         self.assertNotContains(response, '<th data-col="code">Mã KH</th>', html=True)
         self.assertNotContains(response, "customerColConfig.td('code'")

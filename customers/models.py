@@ -136,6 +136,7 @@ class CustomerAddress(models.Model):
     )
     label = models.CharField(max_length=100, blank=True, default='', verbose_name='Tên điểm nhận')
     address = models.TextField(verbose_name='Địa chỉ nhận hàng')
+    phone = models.CharField(max_length=30, blank=True, default='', verbose_name='SĐT nhận hàng')
     sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự')
     created_at = models.DateTimeField(auto_now_add=True)
 

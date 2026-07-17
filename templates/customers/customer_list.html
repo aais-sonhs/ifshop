@@ -225,7 +225,7 @@
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <div>
                             <strong><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ / điểm nhận phụ</strong>
-                            <small class="text-muted d-block">Lưu thêm kho, chi nhánh hoặc điểm nhận hàng của khách.</small>
+                            <small class="text-muted d-block">Lưu thêm kho, chi nhánh hoặc điểm nhận cùng SĐT liên hệ tại nơi giao.</small>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="btn_add_delivery_address">
                             <i class="fas fa-plus mr-1"></i>Thêm địa chỉ
@@ -400,13 +400,17 @@ function addDeliveryAddressRow(item){
     item = item || {};
     var html = '<div class="delivery-address-row border rounded bg-white p-2 mb-2">' +
         '<div class="row align-items-end">' +
-            '<div class="col-md-4"><div class="form-group mb-0">' +
+            '<div class="col-md-3"><div class="form-group mb-0">' +
                 '<label class="small text-muted mb-1">Tên điểm nhận</label>' +
                 '<input type="text" class="form-control form-control-sm delivery-address-label" maxlength="100" placeholder="VD: Kho Hà Nội" value="'+escapeAttr(item.label || '')+'">' +
             '</div></div>' +
-            '<div class="col-md-7"><div class="form-group mb-0">' +
+            '<div class="col-md-5"><div class="form-group mb-0">' +
                 '<label class="small text-muted mb-1">Địa chỉ nhận hàng <span class="text-danger">*</span></label>' +
                 '<input type="text" class="form-control form-control-sm delivery-address-value" placeholder="Nhập địa chỉ đầy đủ" value="'+escapeAttr(item.address || '')+'">' +
+            '</div></div>' +
+            '<div class="col-md-3"><div class="form-group mb-0">' +
+                '<label class="small text-muted mb-1">SĐT nhận hàng</label>' +
+                '<input type="text" class="form-control form-control-sm delivery-address-phone" maxlength="30" placeholder="SĐT tại điểm nhận" value="'+escapeAttr(item.phone || '')+'">' +
             '</div></div>' +
             '<div class="col-md-1 text-right">' +
                 '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-delivery-address" title="Xóa địa chỉ"><i class="fas fa-trash"></i></button>' +
@@ -427,19 +431,30 @@ function normalizeCustomerAddress(value){
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normalizeCustomerAddressPhone(value){
+    var raw = String(value || '').trim();
+    return raw.replace(/\D/g, '') || raw.toLowerCase();
+}
+
+function customerShippingPointKey(address, phone){
+    return normalizeCustomerAddress(address) + '|' + normalizeCustomerAddressPhone(phone);
+}
+
 function renderHistoricalShippingAddresses(items, savedAddresses){
     var seen = {};
-    [$('#inp_address').val(), $('#inp_company_address').val()].concat(
-        (savedAddresses || []).map(function(item){ return item.address || ''; })
-    ).forEach(function(address){
-        var key = normalizeCustomerAddress(address);
-        if(key) seen[key] = true;
+    [
+        {address: $('#inp_address').val(), phone: $('#inp_phone').val()},
+        {address: $('#inp_company_address').val(), phone: $('#inp_contact_phone').val()}
+    ].concat(savedAddresses || []).forEach(function(item){
+        var addressKey = normalizeCustomerAddress(item.address);
+        if(addressKey) seen[customerShippingPointKey(item.address, item.phone)] = true;
     });
 
     var html = '';
     (items || []).forEach(function(item){
-        var key = normalizeCustomerAddress(item.address);
-        if(!key || seen[key]) return;
+        var addressKey = normalizeCustomerAddress(item.address);
+        var key = customerShippingPointKey(item.address, item.phone);
+        if(!addressKey || seen[key]) return;
         seen[key] = true;
         var meta = [];
         if(item.last_order_code) meta.push('Gần nhất: ' + item.last_order_code);
@@ -447,6 +462,7 @@ function renderHistoricalShippingAddresses(items, savedAddresses){
         if(Number(item.order_count || 0) > 1) meta.push('Đã dùng ' + item.order_count + ' đơn');
         html += '<div class="border rounded bg-white px-3 py-2 mb-2">' +
             '<div><i class="fas fa-map-marker-alt text-muted mr-1"></i>' + escapeHtml(item.address || '') + '</div>' +
+            (item.phone ? '<div><i class="fas fa-phone text-muted mr-1"></i>' + escapeHtml(item.phone) + '</div>' : '') +
             (meta.length ? '<small class="text-muted">' + escapeHtml(meta.join(' · ')) + '</small>' : '') +
             '</div>';
     });
@@ -462,7 +478,8 @@ function getDeliveryAddressesFromForm(){
         if(!address) return;
         items.push({
             label: $(this).find('.delivery-address-label').val().trim(),
-            address: address
+            address: address,
+            phone: $(this).find('.delivery-address-phone').val().trim()
         });
     });
     return items;
@@ -816,7 +833,7 @@ function filterCustomers(list){
     return list.filter(function(d){
         if(keyword){
             var deliveryAddressSearch = (d.delivery_addresses || []).map(function(item){
-                return (item.label || '') + ' ' + (item.address || '');
+                return (item.label || '') + ' ' + (item.address || '') + ' ' + (item.phone || '');
             }).join(' ');
             var searchable = [
                 d.name, d.phone, d.code, d.email, d.company, d.address,
@@ -1168,7 +1185,8 @@ $(document).ready(function(){
         var hasIncompleteDeliveryAddress = $('#delivery_address_rows .delivery-address-row').toArray().some(function(row){
             var label = $(row).find('.delivery-address-label').val().trim();
             var address = $(row).find('.delivery-address-value').val().trim();
-            return label && !address;
+            var phone = $(row).find('.delivery-address-phone').val().trim();
+            return (label || phone) && !address;
         });
         if(hasIncompleteDeliveryAddress){alert('Vui lòng nhập đầy đủ địa chỉ cho điểm nhận phụ.');return;}
         $saveBtn.data('submitting', true).prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');

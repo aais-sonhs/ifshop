@@ -49,7 +49,10 @@ def _normalize_delivery_addresses(value):
         label = str(item.get('label') or '').strip()
         if len(label) > 100:
             raise ValueError('Tên điểm nhận không được vượt quá 100 ký tự.')
-        normalized.append({'label': label, 'address': address})
+        phone = str(item.get('phone') or '').strip()
+        if len(phone) > 30:
+            raise ValueError('SĐT nhận hàng không được vượt quá 30 ký tự.')
+        normalized.append({'label': label, 'address': address, 'phone': phone})
     return normalized
 
 
@@ -59,6 +62,7 @@ def _serialize_delivery_addresses(customer):
             'id': address.id,
             'label': address.label or '',
             'address': address.address,
+            'phone': address.phone or '',
         }
         for address in customer.delivery_addresses.all()
     ]
@@ -68,8 +72,14 @@ def _address_history_key(value):
     return re.sub(r'\s+', ' ', str(value or '')).strip().casefold()
 
 
+def _phone_history_key(value):
+    value = str(value or '').strip()
+    digits = re.sub(r'\D+', '', value)
+    return digits or value.casefold()
+
+
 def _build_customer_shipping_address_map(request, customers):
-    """Collect unique addresses used on orders without changing saved customer addresses."""
+    """Collect unique address/phone pairs used on orders without changing saved customer addresses."""
     customer_ids = list(customers.values_list('id', flat=True))
     if not customer_ids:
         return {}
@@ -83,12 +93,13 @@ def _build_customer_shipping_address_map(request, customers):
     history_map = {}
     history_index = {}
     for row in orders.order_by('customer_id', '-order_date', '-id').values(
-        'customer_id', 'code', 'order_date', 'shipping_address'
+        'customer_id', 'code', 'order_date', 'shipping_address', 'shipping_phone'
     ):
         address = re.sub(r'\s+', ' ', (row['shipping_address'] or '')).strip()
-        key = _address_history_key(address)
-        if not key:
+        address_key = _address_history_key(address)
+        if not address_key:
             continue
+        key = (address_key, _phone_history_key(row['shipping_phone']))
 
         customer_id = row['customer_id']
         customer_index = history_index.setdefault(customer_id, {})
@@ -98,6 +109,7 @@ def _build_customer_shipping_address_map(request, customers):
 
         item = {
             'address': address,
+            'phone': row['shipping_phone'] or '',
             'last_order_code': row['code'] or '',
             'last_order_date': row['order_date'].strftime('%d/%m/%Y') if row['order_date'] else '',
             'order_count': 1,
@@ -510,6 +522,7 @@ def api_save_customer(request):
                         customer=c,
                         label=item['label'],
                         address=item['address'],
+                        phone=item['phone'],
                         sort_order=index,
                     )
                     for index, item in enumerate(delivery_addresses)

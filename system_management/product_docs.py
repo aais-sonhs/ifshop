@@ -38,6 +38,7 @@ DOCUMENT_UPDATES = [
             'Mỗi điểm nhận phụ có SĐT nhận hàng riêng; khi chọn điểm nhận trên đơn, hệ thống tự điền đúng SĐT của địa chỉ đó.',
             'Địa chỉ và SĐT nhận hàng được lưu riêng trên từng đơn để giữ đúng lịch sử giao nhận khi hồ sơ khách thay đổi.',
             'Cùng một địa chỉ nhưng khác SĐT người nhận được coi là hai điểm giao riêng, phù hợp trường hợp nhờ người khác nhận hộ.',
+            'Khi lưu đơn với một cặp địa chỉ và SĐT chưa có, hệ thống tự thêm điểm nhận này vào hồ sơ khách để dùng lại ngay; điểm nhận cũ vẫn được giữ nguyên.',
             'Khi tạo đơn, có thể chọn địa chỉ trong hồ sơ hoặc dùng lại các địa chỉ giao từng xuất hiện trên đơn trước của đúng khách hàng.',
             'Ở cả tạo mới và sửa đơn, luôn có lựa chọn Nhập địa chỉ khác; lựa chọn này dùng được cả khi khách chưa lưu địa chỉ hoặc đơn khách lẻ.',
             'Khi sửa khách hàng, phần Địa chỉ giao hàng đã dùng hiển thị các địa chỉ lấy từ lịch sử đơn, gộp địa chỉ trùng và cho biết đơn sử dụng gần nhất.',

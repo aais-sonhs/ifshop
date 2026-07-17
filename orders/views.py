@@ -2144,6 +2144,89 @@ def _sync_order_quotation_status(order, old_quotation_id=None):
         _reopen_quotation_if_unused(order.quotation_id, exclude_order_id=order.id)
 
 
+def _shipping_point_address_key(value):
+    return re.sub(r'\s+', ' ', str(value or '')).strip().casefold()
+
+
+def _shipping_point_phone_key(value):
+    value = str(value or '').strip()
+    digits = re.sub(r'\D+', '', value)
+    return digits or value.casefold()
+
+
+def _ensure_order_customer_shipping_point(order):
+    """Lưu cặp địa chỉ/SĐT mới vào hồ sơ khách mà không ghi đè điểm nhận cũ."""
+    if not order.customer_id or _is_guest_customer(order.customer):
+        return None, False
+
+    address = re.sub(r'\s+', ' ', str(order.shipping_address or '')).strip()
+    phone = str(order.shipping_phone or '').strip()
+    if not address or not phone:
+        return None, False
+
+    address_key = _shipping_point_address_key(address)
+    phone_key = _shipping_point_phone_key(phone)
+    candidate_key = (address_key, phone_key)
+
+    with transaction.atomic():
+        customer = Customer.objects.select_for_update().get(pk=order.customer_id)
+        default_points = (
+            (customer.address, customer.phone),
+            (customer.company_address, customer.contact_phone or customer.phone),
+        )
+        for saved_address, saved_phone in default_points:
+            if (
+                _shipping_point_address_key(saved_address),
+                _shipping_point_phone_key(saved_phone),
+            ) == candidate_key:
+                return None, False
+
+        saved_points = list(
+            CustomerAddress.objects.select_for_update()
+            .filter(customer_id=customer.id)
+            .order_by('sort_order', 'id')
+        )
+        matching_address = None
+        for point in saved_points:
+            point_address_key = _shipping_point_address_key(point.address)
+            if point_address_key == address_key and matching_address is None:
+                matching_address = point
+            if (point_address_key, _shipping_point_phone_key(point.phone)) == candidate_key:
+                return {
+                    'id': point.id,
+                    'label': point.label or '',
+                    'address': point.address,
+                    'phone': point.phone or '',
+                }, False
+
+        same_default_address = any(
+            _shipping_point_address_key(saved_address) == address_key
+            for saved_address, _ in default_points
+            if saved_address
+        )
+        if matching_address:
+            label = matching_address.label or 'Người nhận khác'
+        elif same_default_address:
+            label = 'Người nhận khác'
+        else:
+            label = f'Điểm nhận từ đơn {order.code}'[:100]
+
+        next_sort_order = max((point.sort_order for point in saved_points), default=-1) + 1
+        point = CustomerAddress.objects.create(
+            customer=customer,
+            label=label,
+            address=address,
+            phone=phone,
+            sort_order=next_sort_order,
+        )
+        return {
+            'id': point.id,
+            'label': point.label or '',
+            'address': point.address,
+            'phone': point.phone or '',
+        }, True
+
+
 @login_required(login_url="/login/")
 @brand_owner_required
 def order_tbl(request):
@@ -3112,6 +3195,8 @@ def api_save_order(request):
     try:
         data = json.loads(request.body)
         stock_export_warning = ''
+        shipping_point = None
+        shipping_point_created = False
         with transaction.atomic():
             # 1. Xác định đây là luồng tạo mới hay cập nhật đơn hiện có.
             oid = data.get('id')
@@ -3426,6 +3511,8 @@ def api_save_order(request):
                 o.code = _auto_next_order_code()
                 o.save()
 
+            shipping_point, shipping_point_created = _ensure_order_customer_shipping_point(o)
+
             created_receipts = []
             for idx, ri in enumerate(receipt_items):
                 base_code = f'PT-{o.code}' if idx == 0 else f'PT-{o.code}-{idx + 1}'
@@ -3572,6 +3659,8 @@ def api_save_order(request):
             msg += '. Đơn vẫn được lưu. Cảnh báo bán dưới giá vốn: ' + '; '.join(loss_warnings[:5])
         if stock_export_warning:
             msg += '. ' + stock_export_warning
+        if shipping_point_created:
+            msg += '. Đã lưu thêm điểm nhận mới vào hồ sơ khách hàng.'
         return JsonResponse({
             'status': 'ok',
             'message': msg,
@@ -3584,6 +3673,8 @@ def api_save_order(request):
             'paid_amount': float(o.paid_amount or 0),
             'stock_export_deferred': bool(stock_export_warning),
             'stock_export_warning': stock_export_warning,
+            'shipping_point_created': shipping_point_created,
+            'shipping_point': shipping_point,
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})

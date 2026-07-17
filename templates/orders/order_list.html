@@ -5070,11 +5070,30 @@ $(document).ready(function(){
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){
                 if(r.status==='ok'){
+                    if(r.shipping_point_created && r.shipping_point && data.customer_id){
+                        var savedCustomer = allCustomers.find(function(customer){
+                            return String(customer.id) === String(data.customer_id);
+                        });
+                        if(savedCustomer){
+                            savedCustomer.delivery_addresses = savedCustomer.delivery_addresses || [];
+                            var savedPointKey = shippingPointKey(r.shipping_point.address, r.shipping_point.phone);
+                            var pointExists = savedCustomer.delivery_addresses.some(function(point){
+                                return shippingPointKey(point.address, point.phone) === savedPointKey;
+                            });
+                            if(!pointExists) savedCustomer.delivery_addresses.push(r.shipping_point);
+                            savedCustomer.historical_addresses = (savedCustomer.historical_addresses || []).filter(function(point){
+                                return shippingPointKey(point.address, point.phone) !== savedPointKey;
+                            });
+                        }
+                    }
                     $('#modal_form').modal('hide');
                     resetOrderPage();
                     loadData();
                     var statusLabel = r.order_status_display || STATUS_LABELS[r.order_status] || '';
                     var savedMessage = 'Đã lưu đơn hàng' + (statusLabel ? ' — trạng thái: ' + statusLabel : '');
+                    if(r.shipping_point_created){
+                        savedMessage += '. Đã thêm địa chỉ và SĐT nhận mới vào hồ sơ khách.';
+                    }
                     if(parseInt(r.order_status, 10) !== parseInt(data.status, 10)){
                         savedMessage += '. Hệ thống đã tự đồng bộ theo thanh toán/xuất kho.';
                     }

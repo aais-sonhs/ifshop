@@ -867,6 +867,95 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(print_response, '0902222222')
         self.assertNotContains(print_response, 'Địa chỉ mặc định của khách')
 
+    def test_edit_order_same_address_new_phone_creates_customer_shipping_point(self):
+        self.customer.address = '25 Nguyễn Huệ, Quận 1'
+        self.customer.phone = '0901000001'
+        self.customer.save(update_fields=['address', 'phone'])
+        order = self._create_order(code='DH-SAME-ADDRESS-NEW-PHONE')
+
+        payload = {
+            'id': order.id,
+            'code': order.code,
+            'customer_id': self.customer.id,
+            'warehouse_id': self.warehouse.id,
+            'order_date': order.order_date.isoformat(),
+            'shipping_address': '25 Nguyễn Huệ, Quận 1',
+            'shipping_phone': '0902000002',
+            'status': 1,
+            'items': [{
+                'product_id': self.product.id,
+                'quantity': 1,
+                'unit_price': 100,
+                'discount_percent': 0,
+            }],
+        }
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(response.json()['shipping_point_created'])
+        self.assertEqual(response.json()['shipping_point']['phone'], '0902000002')
+        self.assertTrue(CustomerAddress.objects.filter(
+            customer=self.customer,
+            address='25 Nguyễn Huệ, Quận 1',
+            phone='0902000002',
+        ).exists())
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, '0901000001')
+
+        duplicate_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+        self.assertEqual(duplicate_response.json()['status'], 'ok', msg=duplicate_response.content.decode())
+        self.assertFalse(duplicate_response.json()['shipping_point_created'])
+        self.assertEqual(CustomerAddress.objects.filter(
+            customer=self.customer,
+            address='25 Nguyễn Huệ, Quận 1',
+            phone='0902000002',
+        ).count(), 1)
+
+    def test_create_order_same_address_new_phone_creates_customer_shipping_point(self):
+        self.customer.address = '80 Trần Hưng Đạo, Quận 5'
+        self.customer.phone = '0911000001'
+        self.customer.save(update_fields=['address', 'phone'])
+
+        response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-CREATE-SAME-ADDRESS-NEW-PHONE',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'shipping_address': '80 Trần Hưng Đạo, Quận 5',
+                'shipping_phone': '0911000002',
+                'status': 1,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 1,
+                    'unit_price': 100,
+                    'discount_percent': 0,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertTrue(response.json()['shipping_point_created'])
+        self.assertTrue(CustomerAddress.objects.filter(
+            customer=self.customer,
+            address='80 Trần Hưng Đạo, Quận 5',
+            phone='0911000002',
+        ).exists())
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, '0911000001')
+
     def test_quotation_prints_show_customer_address(self):
         self.customer.address = '456 Lê Lợi, Quận 3, TP.HCM'
         self.customer.save(update_fields=['address'])

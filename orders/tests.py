@@ -905,6 +905,43 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
 
+    def test_order_salesperson_is_searchable_beside_shipping_address(self):
+        self.user.first_name = 'Lan'
+        self.user.last_name = 'Anh'
+        self.user.save(update_fields=['first_name', 'last_name'])
+        historical_order = self._create_order(code='DH-SALESPERSON-HISTORY', status=1)
+        historical_order.salesperson = 'Nhân viên lịch sử'
+        historical_order.save(update_fields=['salesperson'])
+        foreign_order = self._create_order(
+            code='DH-SALESPERSON-FOREIGN',
+            store=self.other_store,
+            customer=self.other_customer,
+            warehouse=self.other_warehouse,
+            created_by=self.other_user,
+            status=1,
+        )
+        foreign_order.salesperson = 'Nhân viên cửa hàng khác'
+        foreign_order.save(update_fields=['salesperson'])
+        config = BusinessConfig.get_config(brand=self.brand)
+        config.opt_order_salesperson = True
+        config.save(update_fields=['opt_order_salesperson'])
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="shipping_salesperson_row"')
+        self.assertContains(response, 'id="shipping_address_section"')
+        self.assertContains(response, 'id="order_salesperson_field"')
+        self.assertContains(response, 'id="inp_salesperson"')
+        self.assertContains(response, 'Tìm mã hoặc tên NV...')
+        self.assertContains(response, 'seller_a - Lan Anh')
+        self.assertContains(response, 'Nhân viên lịch sử')
+        self.assertNotContains(response, 'Nhân viên cửa hàng khác')
+        self.assertNotContains(response, 'id="order_staff_section"')
+        self.assertContains(response, "setOrderFormInitialFocus('edit')")
+        self.assertContains(response, "setOrderFormInitialFocus('create')")
+        self.assertContains(response, "$('.select2-container--open .select2-search__field')")
+
     def test_order_status_action_buttons_have_spacing(self):
         response = self.client.get(reverse('order_tbl'))
 

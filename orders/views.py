@@ -2197,9 +2197,39 @@ def order_tbl(request):
         profile__store_id__in=store_ids
     ).distinct().order_by('last_name', 'first_name')
     system_users = [
-        {'id': u.id, 'full_name': u.get_full_name() or u.username}
+        {
+            'id': u.id,
+            'code': u.username,
+            'full_name': u.get_full_name() or u.username,
+        }
         for u in brand_users
     ]
+    salesperson_options = []
+    salesperson_values_seen = set()
+    for user in system_users:
+        value = user['full_name'].strip()
+        if not value:
+            continue
+        salesperson_values_seen.add(value.casefold())
+        salesperson_options.append({
+            'value': value,
+            'code': user['code'],
+            'name': value,
+        })
+    historical_salespersons = Order.objects.filter(
+        store_id__in=store_ids,
+        salesperson__isnull=False,
+    ).exclude(salesperson='').order_by('salesperson').values_list('salesperson', flat=True).distinct()
+    for historical_name in historical_salespersons:
+        value = (historical_name or '').strip()
+        if not value or value.casefold() in salesperson_values_seen:
+            continue
+        salesperson_values_seen.add(value.casefold())
+        salesperson_options.append({
+            'value': value,
+            'code': '',
+            'name': value,
+        })
     from customers.models import CustomerGroup
     customer_groups = list(CustomerGroup.objects.filter(is_active=True).values('id', 'name').order_by('name'))
     context = {
@@ -2211,6 +2241,7 @@ def order_tbl(request):
         'payment_methods': payment_methods,
         'quotations': quotations,
         'system_users': system_users,
+        'salesperson_options': salesperson_options,
     }
     # Thêm cấu hình tồn âm
     try:

@@ -48,6 +48,7 @@ DOCUMENT_UPDATES = [
         'items': [
             'Chiết khấu từng dòng và toàn đơn hỗ trợ nhập theo phần trăm hoặc số tiền; hệ thống tự quy đổi để tính thành tiền.',
             'Có thể sao chép đơn cũ thành đơn nháp mới, sắp xếp dòng hàng theo STT và nhập ngày thanh toán trong quá khứ.',
+            'Trường NV bán hàng nằm cùng hàng với địa chỉ giao; có thể tìm theo mã hoặc tên và chọn lại NV đã từng lưu trong đơn cũ. Khi sửa đơn, con trỏ tự vào ô tìm NV; khi tạo mới, con trỏ tự vào ô tìm sản phẩm.',
             'Tùy chọn Hiệu lực báo giá quyết định việc hiển thị trường, cột danh sách và nội dung hiệu lực trên bản in.',
         ],
     },

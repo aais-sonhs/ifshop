@@ -232,23 +232,42 @@
                     <!-- Hidden select for form value -->
                     <select class="d-none" id="inp_status"><option value="0">Báo giá</option><option value="1">Đơn hàng</option><option value="2">Đang xử lý</option><option value="3">Đang đóng gói</option><option value="4">Đã xuất kho</option><option value="5">Hoàn thành</option><option value="6">Hủy</option></select>
                 </div>
-                <div class="row" id="shipping_address_section">
-                    <div class="col-md-4">
+                <div class="row align-items-start" id="shipping_salesperson_row">
+                    <div class="{% if biz.opt_order_salesperson %}col-md-9{% else %}col-md-12{% endif %}" id="shipping_address_section">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group mb-2">
+                                    <label for="inp_customer_address_choice"><i class="fas fa-map-marked-alt text-primary mr-1"></i>Địa chỉ đã lưu</label>
+                                    <select class="form-control form-control-sm" id="inp_customer_address_choice" disabled>
+                                        <option value="custom">Nhập địa chỉ giao hàng</option>
+                                    </select>
+                                    <small class="form-text text-muted">Chọn nhanh điểm nhận của khách.</small>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-group mb-2">
+                                    <label for="inp_shipping_address"><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ giao hàng</label>
+                                    <input type="text" class="form-control form-control-sm" id="inp_shipping_address" placeholder="Nhập địa chỉ giao thực tế của đơn hàng">
+                                    <small class="form-text text-muted">Tự lấy địa chỉ mặc định khi chọn khách; có thể sửa riêng cho đơn này mà không thay đổi hồ sơ khách hàng.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% if biz.opt_order_salesperson %}
+                    <div class="col-md-3" id="order_salesperson_field">
                         <div class="form-group mb-2">
-                            <label for="inp_customer_address_choice"><i class="fas fa-map-marked-alt text-primary mr-1"></i>Địa chỉ đã lưu</label>
-                            <select class="form-control form-control-sm" id="inp_customer_address_choice" disabled>
-                                <option value="custom">Nhập địa chỉ giao hàng</option>
+                            <label for="inp_salesperson"><i class="fas fa-user-tie text-primary mr-1"></i>NV bán hàng</label>
+                            <select class="form-control form-control-sm select2" id="inp_salesperson"
+                                    data-placeholder="Tìm mã hoặc tên NV..." style="width:100%;">
+                                <option value="">-- Chọn NV bán hàng --</option>
+                                {% for salesperson in salesperson_options %}
+                                <option value="{{ salesperson.value }}">{% if salesperson.code and salesperson.code != salesperson.name %}{{ salesperson.code }} - {% endif %}{{ salesperson.name }}</option>
+                                {% endfor %}
                             </select>
-                            <small class="form-text text-muted">Chọn nhanh điểm nhận của khách.</small>
+                            <small class="form-text text-muted">Gõ mã hoặc tên NV; gồm cả NV đã lưu trong đơn cũ.</small>
                         </div>
                     </div>
-                    <div class="col-md-8">
-                        <div class="form-group mb-2">
-                            <label for="inp_shipping_address"><i class="fas fa-map-marker-alt text-danger mr-1"></i>Địa chỉ giao hàng</label>
-                            <input type="text" class="form-control form-control-sm" id="inp_shipping_address" placeholder="Nhập địa chỉ giao thực tế của đơn hàng">
-                            <small class="form-text text-muted">Tự lấy địa chỉ mặc định khi chọn khách; có thể sửa riêng cho đơn này mà không thay đổi hồ sơ khách hàng.</small>
-                        </div>
-                    </div>
+                    {% endif %}
                 </div>
                 <div class="row mt-1" id="quotation_fields" style="display:none;">
                     {% if biz.opt_quotation_validity %}
@@ -327,21 +346,8 @@
                 </div>
 
                 <!-- Thông tin nhân sự (conditional) -->
-                {% if biz.opt_order_salesperson or biz.opt_order_server_staff or biz.opt_order_approver or biz.opt_order_bonus %}
-                <div class="row mt-2">
-                    {% if biz.opt_order_salesperson %}
-                    <div class="col-md-3">
-                        <div class="form-group mb-1">
-                            <label><i class="fas fa-user-tie text-primary"></i> NV bán hàng</label>
-                            <select class="form-control form-control-sm select2" id="inp_salesperson">
-                                <option value="">-- Chọn --</option>
-                                {% for u in system_users %}
-                                <option value="{{ u.full_name }}">{{ u.full_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                    </div>
-                    {% endif %}
+                {% if biz.opt_order_server_staff or biz.opt_order_approver or biz.opt_order_bonus %}
+                <div class="row mt-2" id="order_staff_section">
                     {% if biz.opt_order_server_staff %}
                     <div class="col-md-3">
                         <div class="form-group mb-1">
@@ -4448,11 +4454,9 @@ $(document).ready(function(){
         $('#inp_quotation_id').val('').trigger('change');
         $('#btn_load_quotation').hide();
         syncDocumentTypeUI();
+        // Tạo mới: ưu tiên nhập sản phẩm ngay khi form vừa mở.
+        setOrderFormInitialFocus('create');
         $('#modal_form').modal('show');
-        // Auto-focus vào ô tìm SP khi modal mở xong
-        $('#modal_form').one('shown.bs.modal', function(){
-            $('#quick_search_product').focus();
-        });
     });
 
     $('input[name="document_type"]').change(function(){
@@ -5631,6 +5635,39 @@ function resetOrderPage(){
     ORDER_PAGE_STATE.page = 1;
 }
 
+function focusOrderSalespersonSearch(){
+    var $salesperson = $('#inp_salesperson');
+    if(!$salesperson.length || $salesperson.prop('disabled') || !$salesperson.is(':visible')){
+        return false;
+    }
+    try {
+        if(!$salesperson.hasClass('select2-hidden-accessible') && window.initSelect2){
+            window.initSelect2($salesperson, $('#modal_form'));
+        }
+        if($salesperson.hasClass('select2-hidden-accessible')){
+            $salesperson.select2('open');
+            setTimeout(function(){
+                $('.select2-container--open .select2-search__field').last().trigger('focus');
+            }, 0);
+        } else {
+            $salesperson.trigger('focus');
+        }
+        return true;
+    } catch(error) {
+        $salesperson.trigger('focus');
+        return true;
+    }
+}
+
+function setOrderFormInitialFocus(mode){
+    $('#modal_form')
+        .off('shown.bs.modal.orderInitialFocus')
+        .one('shown.bs.modal.orderInitialFocus', function(){
+            if(mode === 'edit' && focusOrderSalespersonSearch()) return;
+            setTimeout(function(){ $('#quick_search_product').trigger('focus'); }, 0);
+        });
+}
+
 function getCurrentOrderFilters(){
     var activeStatus = $('.filter-tab.active').data('status');
     if(activeStatus === undefined || activeStatus === null) activeStatus = '';
@@ -6451,11 +6488,10 @@ function rejectOrder(id, code){
             loadProducts: function(done){
                 fetchProductsForOrderForm(o.id, done);
             },
-            loadingText: 'Đang tải sản phẩm đơn hàng...',
-            afterRender: function(){
-                setTimeout(function(){ $('#quick_search_product').focus(); }, 100);
-            }
+            loadingText: 'Đang tải sản phẩm đơn hàng...'
         });
+        // Sửa đơn: mở dropdown và đặt con trỏ vào ô tìm NV bán hàng.
+        setOrderFormInitialFocus('edit');
         $('#modal_title').text('Sửa đơn hàng');$('#modal_form').modal('show');
     });
 }

@@ -1260,6 +1260,27 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(payload['meta']['total_filtered_count'], 1)
         self.assertEqual([row['id'] for row in payload['data']], [matching_order.id])
 
+    def test_get_orders_pending_export_search_includes_quotations_and_unexported_orders(self):
+        pending_orders = [
+            self._create_order(code=f'DH-PENDING-SEARCH-{status}', status=status)
+            for status in (0, 1, 2, 3)
+        ]
+        exported_order = self._create_order(code='DH-PENDING-SEARCH-4', status=4)
+        completed_order = self._create_order(code='DH-PENDING-SEARCH-5', status=5)
+        canceled_order = self._create_order(code='DH-PENDING-SEARCH-6', status=6)
+
+        response = self.client.get(reverse('api_get_orders'), {
+            'text': 'PENDING-SEARCH',
+            'export_status': 'pending',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        returned_ids = {row['id'] for row in response.json()['data']}
+        self.assertEqual(returned_ids, {order.id for order in pending_orders})
+        self.assertNotIn(exported_order.id, returned_ids)
+        self.assertNotIn(completed_order.id, returned_ids)
+        self.assertNotIn(canceled_order.id, returned_ids)
+
     def test_get_orders_exported_filter_includes_exported_and_completed_only(self):
         pending_order = self._create_order(code='DH-EXPORT-FILTER-PENDING', status=3)
         exported_order = self._create_order(code='DH-EXPORT-FILTER-DONE', status=4)

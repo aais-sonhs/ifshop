@@ -2789,7 +2789,7 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
     if filters.get('customer'):
         queryset = queryset.filter(customer_id=filters['customer'])
     if filters.get('export_status') in ('pending', 'not_exported'):
-        queryset = queryset.filter(status__in=(1, 2, 3))
+        queryset = queryset.filter(status__in=(0, 1, 2, 3))
     elif filters.get('export_status') == 'exported':
         queryset = queryset.filter(status__in=(4, 5))
     if filters.get('payment_status') not in ('', None):

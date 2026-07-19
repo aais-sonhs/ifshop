@@ -1268,6 +1268,7 @@ def _order_item_signature_from_payload(items_data):
 def _order_items_payload_from_order(order):
     """Chuyển item hiện có thành payload để các cập nhật một phần không làm rỗng đơn."""
     return [{
+        'sequence': item.sequence,
         'product_id': item.product_id,
         'variant_id': item.variant_id,
         'item_name': item.item_name or '',
@@ -1279,7 +1280,32 @@ def _order_items_payload_from_order(order):
         'discount_amount': item.discount_amount,
         'discount_percent': item.discount_percent,
         'note': item.note,
-    } for item in order.items.all()]
+    } for item in order.items.order_by('sequence', 'id')]
+
+
+def _normalize_order_item_sequences(items_data):
+    """Giữ STT hợp lệ từ form; client cũ chưa gửi STT thì cấp theo thứ tự dòng."""
+    sequences = []
+    used_sequences = set()
+    for item_data in items_data:
+        try:
+            sequence = int(item_data.get('sequence') or 0)
+        except (TypeError, ValueError):
+            sequence = 0
+        if sequence <= 0 or sequence in used_sequences:
+            sequences.append(None)
+            continue
+        used_sequences.add(sequence)
+        sequences.append(sequence)
+
+    next_sequence = max(used_sequences, default=0) + 1
+    for index, sequence in enumerate(sequences):
+        if sequence is not None:
+            continue
+        sequences[index] = next_sequence
+        used_sequences.add(next_sequence)
+        next_sequence += 1
+    return sequences
 
 
 def _payload_item_note(item_data, product=None):
@@ -1757,10 +1783,11 @@ def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
         order_return.save(update_fields=['exchange_order'])
 
     exchange_order.items.all().delete()
-    for item in exchange_items:
+    for sequence, item in enumerate(exchange_items, start=1):
         cost = _effective_unit_cost(item.product, item.variant)
         OrderItem.objects.create(
             order=exchange_order,
+            sequence=sequence,
             product=item.product,
             variant=item.variant,
             quantity=item.quantity,
@@ -3088,7 +3115,7 @@ def api_get_order_detail(request):
         ]
         source_return = getattr(o, 'source_return_exchange', None)
         items = []
-        for it in o.items.select_related('product', 'variant').all():
+        for it in o.items.select_related('product', 'variant').order_by('sequence', 'id'):
             product = it.product
             line_discount_mode, line_discount_percent, line_discount_amount, _ = _resolve_line_discount(
                 it.quantity,
@@ -3099,6 +3126,7 @@ def api_get_order_detail(request):
             )
             items.append({
                 'order_item_id': it.id,
+                'sequence': it.sequence,
                 'product_id': it.product_id,
                 'variant_id': it.variant_id,
                 'product_code': _item_display_code(it),
@@ -3404,6 +3432,7 @@ def api_save_order(request):
             if items_data is None:
                 items_data = _order_items_payload_from_order(o) if oid else []
             _validate_unique_line_items(items_data)
+            item_sequences = _normalize_order_item_sequences(items_data)
             normalized_items = []
             for item_data in items_data:
                 if _payload_is_service_line(item_data):
@@ -3544,7 +3573,7 @@ def api_save_order(request):
             # 8. Ghi lại danh sách item mới và tính cảnh báo bán thấp hơn giá vốn.
             o.items.all().delete()
             loss_warnings = []
-            for item_data, product, variant in normalized_items:
+            for sequence, (item_data, product, variant) in zip(item_sequences, normalized_items):
                 qty = _non_negative_decimal(item_data.get('quantity', 0))
                 price = _non_negative_decimal(item_data.get('unit_price', 0))
                 line_discount_mode, disc, line_discount_amount, line_total = _resolve_line_discount(
@@ -3571,6 +3600,7 @@ def api_save_order(request):
                     )
                 OrderItem.objects.create(
                     order=o,
+                    sequence=sequence,
                     product=product,
                     variant_id=variant_id,
                     item_name=_payload_service_name(item_data) if not product else None,
@@ -5589,7 +5619,7 @@ def api_pos_checkout(request):
                 warehouse.id if warehouse else None,
                 fallback_store=store,
             )
-            for item_data in normalized_items:
+            for sequence, item_data in enumerate(normalized_items, start=1):
                 product = _get_product_for_user(request, item_data['product_id'])
                 if not product:
                     raise ValueError('Có sản phẩm không tồn tại hoặc không thuộc cửa hàng hiện tại.')
@@ -5597,6 +5627,7 @@ def api_pos_checkout(request):
                     raise ValueError(f'Sản phẩm "{product.name}" không cùng cửa hàng với POS hiện tại.')
                 oi = OrderItem(
                     order=order,
+                    sequence=sequence,
                     product=product,
                     quantity=item_data.get('quantity', 1),
                     unit_price=item_data.get('unit_price', 0),

@@ -194,6 +194,7 @@ class Order(SoftDeleteModel):
 class OrderItem(models.Model):
     """Chi tiết đơn hàng"""
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items', verbose_name='Đơn hàng')
+    sequence = models.PositiveIntegerField(default=0, verbose_name='Số thứ tự')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True, related_name='order_items',
                                 verbose_name='Sản phẩm')
     variant = models.ForeignKey('products.ProductVariant', on_delete=models.SET_NULL, null=True, blank=True,
@@ -217,6 +218,36 @@ class OrderItem(models.Model):
         db_table = 'order_items'
         verbose_name = 'Chi tiết đơn hàng'
         verbose_name_plural = 'Chi tiết đơn hàng'
+        ordering = ['sequence', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['order', 'sequence'],
+                name='uniq_order_item_sequence',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Giữ một STT cố định cho mỗi dòng, kể cả khi tạo ngoài màn hình đơn hàng."""
+        try:
+            sequence = int(self.sequence or 0)
+        except (TypeError, ValueError):
+            sequence = 0
+        if sequence <= 0 and self.order_id:
+            last_sequence = type(self).objects.filter(order_id=self.order_id)
+            if self.pk:
+                last_sequence = last_sequence.exclude(pk=self.pk)
+            last_sequence = (
+                last_sequence.order_by('-sequence')
+                .values_list('sequence', flat=True)
+                .first()
+                or 0
+            )
+            self.sequence = last_sequence + 1
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'sequence'}
+        else:
+            self.sequence = sequence
+        super().save(*args, **kwargs)
 
     @property
     def display_code(self):

@@ -4945,6 +4945,7 @@ $(document).ready(function(){
 
         getOrderItemRowsInSequenceOrder().forEach(function(row){
             var $row=$(row);
+            var itemSequence=ensureOrderItemSequence($row);
             var isServiceLine = $row.data('service-line') == 1;
             var pid=$row.find('.sel_product').val();
             var qty=parseFloat($row.find('.inp_qty').val())||0;
@@ -4954,6 +4955,7 @@ $(document).ready(function(){
                 var serviceName = ($row.find('.inp_service_name').val() || '').trim();
                 if(!serviceName){hasError=true;return;}
                 items.push({
+                    sequence:itemSequence,
                     product_id: null,
                     item_type: 'service',
                     is_service_line: true,
@@ -4981,6 +4983,7 @@ $(document).ready(function(){
 
             var variantId = $row.find('.sel_product option:selected').data('variant-id') || null;
             items.push({
+                sequence:itemSequence,
                 product_id:pid,
                 variant_id:variantId,
                 quantity:qty,
@@ -5293,9 +5296,7 @@ function setOrderItemSortDirection(direction){
 }
 
 function normalizeOrderItemSequences(){
-    getOrderItemRowsInSequenceOrder().forEach(function(row, index){
-        $(row).attr('data-item-sequence', index + 1);
-    });
+    // STT đã cấp thuộc về dòng hàng, không đánh lại số các dòng còn lại sau khi xóa/gộp.
     applyOrderItemDisplayOrder();
 }
 
@@ -5501,6 +5502,7 @@ function renderOrderLineDiscountEditor(mode, amount, percent){
 
 function addItemRow(item, options){
     options = options || {};
+    var persistedSequence = parseInt(item && item.sequence, 10) || 0;
     var isServiceLine = item && item.is_service_line && !item.product_id;
     var deferEnhancement = !!options.deferEnhancement;
     var hasSelectedProduct = !!(item && item.product_id);
@@ -5540,6 +5542,7 @@ function addItemRow(item, options){
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
         var $serviceRow = $('#items_tbl tbody tr:last');
+        if(persistedSequence > 0) $serviceRow.attr('data-item-sequence', persistedSequence);
         ensureOrderItemSequence($serviceRow);
         bindOrderLineDiscountEditor($serviceRow);
         $serviceRow.find('.inp_qty,.inp_price').on('input', function(){ calcLine($serviceRow, {deferTotal: true}); });
@@ -5573,6 +5576,7 @@ function addItemRow(item, options){
     var $tbody = $('#items_tbl tbody');
     $tbody.append(html);
     var $row = $tbody.children('tr').last();
+    if(persistedSequence > 0) $row.attr('data-item-sequence', persistedSequence);
     ensureOrderItemSequence($row);
     if(!useLazySelect){
         initializeOrderProductSelect($row);

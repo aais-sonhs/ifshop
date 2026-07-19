@@ -1011,7 +1011,134 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'max-width: 1600px;')
         self.assertContains(response, 'overscroll-behavior: contain;')
         self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
+        self.assertContains(response, 'var itemSequence=ensureOrderItemSequence($row);')
+        self.assertContains(response, 'sequence:itemSequence,', count=2)
+        self.assertContains(response, 'var persistedSequence = parseInt(item && item.sequence, 10) || 0;')
+        self.assertNotContains(response, "$(row).attr('data-item-sequence', index + 1);")
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
+
+    def test_order_item_sequence_stays_fixed_when_quantity_is_edited_and_order_reopened(self):
+        second_product = Product.objects.create(
+            store=self.store,
+            code='SP-ORDER-002',
+            name='Sản phẩm nhập thứ hai',
+            created_by=self.user,
+        )
+        create_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'code': 'DH-FIXED-SEQUENCE',
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': date.today().isoformat(),
+                'status': 1,
+                'items': [
+                    {
+                        'sequence': 1,
+                        'product_id': self.product.id,
+                        'quantity': 1,
+                        'unit_price': 100,
+                        'discount_percent': 0,
+                    },
+                    {
+                        'sequence': 2,
+                        'product_id': second_product.id,
+                        'quantity': 1,
+                        'unit_price': 200,
+                        'discount_percent': 0,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        order = Order.objects.get(id=create_response.json()['order_id'])
+        self.assertEqual(
+            list(order.items.values_list('sequence', 'product_id')),
+            [(1, self.product.id), (2, second_product.id)],
+        )
+
+        first_detail = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
+        self.assertEqual(
+            [(item['sequence'], item['product_id']) for item in first_detail['items']],
+            [(1, self.product.id), (2, second_product.id)],
+        )
+
+        # Sửa số lượng khi form đang hiển thị STT cao xuống thấp: nội dung đổi nhưng STT dòng giữ nguyên.
+        edit_response = self.client.post(
+            reverse('api_save_order'),
+            data=json.dumps({
+                'id': order.id,
+                'code': order.code,
+                'customer_id': self.customer.id,
+                'warehouse_id': self.warehouse.id,
+                'order_date': order.order_date.isoformat(),
+                'status': 1,
+                'items': [
+                    {
+                        'sequence': 2,
+                        'product_id': second_product.id,
+                        'quantity': 3,
+                        'unit_price': 200,
+                        'discount_percent': 0,
+                    },
+                    {
+                        'sequence': 1,
+                        'product_id': self.product.id,
+                        'quantity': 5,
+                        'unit_price': 100,
+                        'discount_percent': 0,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        reopened_detail = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
+        self.assertEqual(
+            [(item['sequence'], item['product_id'], item['quantity']) for item in reopened_detail['items']],
+            [(1, self.product.id, 5.0), (2, second_product.id, 3.0)],
+        )
+
+    def test_order_item_model_assigns_sequence_in_creation_order(self):
+        second_product = Product.objects.create(
+            store=self.store,
+            code='SP-MODEL-SEQUENCE-002',
+            name='Sản phẩm model thứ hai',
+            created_by=self.user,
+        )
+        order = self._create_order(code='DH-MODEL-SEQUENCE')
+
+        first_item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        second_item = OrderItem.objects.create(
+            order=order,
+            product=second_product,
+            quantity=1,
+            unit_price=200,
+            total_price=200,
+        )
+        first_item.quantity = 4
+        first_item.total_price = 400
+        first_item.save(update_fields=['quantity', 'total_price'])
+
+        first_item.refresh_from_db()
+        second_item.refresh_from_db()
+        self.assertEqual((first_item.sequence, second_item.sequence), (1, 2))
+        self.assertEqual(first_item.quantity, 4)
+        self.assertEqual(
+            list(order.items.values_list('product_id', flat=True)),
+            [self.product.id, second_product.id],
+        )
 
     def test_order_salesperson_is_searchable_beside_shipping_address(self):
         self.user.first_name = 'Lan'

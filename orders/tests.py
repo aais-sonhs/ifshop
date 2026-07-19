@@ -524,17 +524,20 @@ class OrderRiskFlowTests(TestCase):
 
     def test_products_select_exposes_product_note_for_order_form(self):
         self.product.note = 'Tặng kèm dây nguồn'
-        self.product.save(update_fields=['note'])
+        self.product.specification = 'Thùng 24 chai - 330ml'
+        self.product.save(update_fields=['note', 'specification'])
 
         response = self.client.get(reverse('api_get_products_for_select'))
 
         self.assertEqual(response.status_code, 200)
         row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
         self.assertEqual(row['note'], 'Tặng kèm dây nguồn')
+        self.assertEqual(row['specification'], 'Thùng 24 chai - 330ml')
 
     def test_order_detail_exposes_product_note_for_view(self):
         self.product.note = 'Tặng kèm dây nguồn'
-        self.product.save(update_fields=['note'])
+        self.product.specification = 'Thùng 24 chai - 330ml'
+        self.product.save(update_fields=['note', 'specification'])
         order = self._create_order(code='DH-VIEW-NOTE')
         OrderItem.objects.create(
             order=order,
@@ -548,6 +551,14 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['items'][0]['product_note'], 'Tặng kèm dây nguồn')
+        self.assertEqual(response.json()['items'][0]['specification'], 'Thùng 24 chai - 330ml')
+
+        print_response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'a4', 'source': 'order'},
+        )
+        self.assertEqual(print_response.status_code, 200)
+        self.assertNotContains(print_response, 'Thùng 24 chai - 330ml')
 
     def test_order_item_note_defaults_from_product_then_can_be_customized_per_order(self):
         self.product.note = 'Ghi chú mặc định của sản phẩm'
@@ -1016,6 +1027,17 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'var persistedSequence = parseInt(item && item.sequence, 10) || 0;')
         self.assertNotContains(response, "$(row).attr('data-item-sequence', index + 1);")
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
+
+    def test_order_form_exposes_product_specification_line(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'order-item-product-specification')
+        self.assertContains(response, 'renderOrderProductSpecification')
+        self.assertContains(response, 'data-specification')
+        self.assertContains(response, 'specification: product.specification ||')
 
     def test_order_item_sequence_stays_fixed_when_quantity_is_edited_and_order_reopened(self):
         second_product = Product.objects.create(
@@ -1709,11 +1731,15 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(item.discount_percent), 20.0)
         self.assertEqual(float(item.total_price), 480.0)
 
+        self.product.specification = 'Thùng 24 chai - 330ml'
+        self.product.save(update_fields=['specification'])
+
         detail_response = self.client.get(reverse('api_get_quotation_detail'), {'id': quotation.id})
         detail_item = detail_response.json()['items'][0]
         self.assertEqual(detail_item['discount_mode'], 'amount')
         self.assertEqual(detail_item['discount_amount'], 120.0)
         self.assertEqual(detail_item['discount_percent'], 20.0)
+        self.assertEqual(detail_item['specification'], 'Thùng 24 chai - 330ml')
 
         print_response = self.client.get(
             reverse('api_print_order'),

@@ -166,8 +166,23 @@ class SalesReportTests(TestCase):
         self.assertContains(response, '_inventoryProductEditorOpened')
         self.assertContains(response, '<th>Tên sản phẩm</th>', count=1)
         self.assertNotContains(response, '<th>Mã SP</th>')
-        self.assertContains(response, 'colspan="12"')
+        self.assertContains(response, '<th title="Nhà cung cấp">NCC</th>', html=True)
+        self.assertContains(response, 'colspan="13"')
         self.assertContains(response, 'var productIdentityHtml =')
+
+    def test_api_inventory_report_exposes_product_supplier(self):
+        from products.models import Supplier
+
+        supplier = Supplier.objects.create(code='NCC-RP-STOCK', name='Nhà cung cấp báo cáo tồn')
+        self.product.supplier = supplier
+        self.product.save(update_fields=['supplier'])
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=4)
+
+        response = self.client.get(reverse('api_report_inventory'))
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.json()['data'] if item['product_id'] == self.product.id)
+        self.assertEqual(row['supplier'], supplier.name)
 
     def test_api_inventory_report_identifies_low_stock_and_restock_quantity(self):
         low_product = Product.objects.create(

@@ -1427,7 +1427,9 @@ def api_report_inventory(request):
     product_type_id = request.GET.get('product_type_id')
     stock_status = request.GET.get('stock_status', '')  # positive, zero, negative
 
-    stocks = ProductStock.objects.select_related('product', 'product__category', 'warehouse').filter(
+    stocks = ProductStock.objects.select_related(
+        'product', 'product__category', 'product__supplier', 'warehouse',
+    ).filter(
         product__is_deleted=False,
     )
     stocks = filter_by_store(stocks, request, field_name='warehouse__store')
@@ -1470,6 +1472,7 @@ def api_report_inventory(request):
             'product_id': s.product_id,
             'product_code': s.product.code,
             'product_name': s.product.name,
+            'supplier': s.product.supplier.name if s.product.supplier else '',
             'category': s.product.category.name if s.product.category else '',
             'warehouse': s.warehouse.name,
             'warehouse_id': s.warehouse_id,

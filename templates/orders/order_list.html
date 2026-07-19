@@ -1208,6 +1208,7 @@
     border-radius: .25rem !important;
 }
 .order-item-product-note,
+.order-item-product-specification,
 .quick-view-product-note {
     color: #6c757d;
     font-size: 12px;
@@ -1215,6 +1216,12 @@
     margin-top: 2px;
     white-space: pre-line;
     word-break: break-word;
+}
+.order-item-product-specification {
+    color: #495057;
+}
+.order-item-product-specification-label {
+    font-weight: 600;
 }
 #items_tbl .order-item-sequence {
     color: #6c757d;
@@ -1842,10 +1849,10 @@ function getOrderProductOptionsHtml(){
     allProducts.forEach(function(p){
         if(p.variants && p.variants.length > 0){
             p.variants.forEach(function(v){
-                opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (v.import_price || p.import_price || 0) + '" data-variant-price="' + (v.selling_price || 0) + '" data-cost="' + v.cost_price + '" data-variant-id="' + v.id + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '">' + p.code + ' - ' + p.name + ' [' + v.size_name + ']</option>';
+                opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (v.import_price || p.import_price || 0) + '" data-variant-price="' + (v.selling_price || 0) + '" data-cost="' + v.cost_price + '" data-variant-id="' + v.id + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '" data-specification="' + escapeAttr(p.specification || '') + '">' + p.code + ' - ' + p.name + ' [' + v.size_name + ']</option>';
             });
         } else {
-            opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (p.import_price || 0) + '" data-cost="' + p.cost_price + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '">' + p.code + ' - ' + p.name + '</option>';
+            opts += '<option value="' + p.id + '" data-unit="' + p.unit + '" data-price="' + getProductRetailPrice(p) + '" data-retail="' + getProductRetailPrice(p) + '" data-import="' + (p.import_price || 0) + '" data-cost="' + p.cost_price + '" data-weight="' + (p.is_weight_based ? 1 : 0) + '" data-img="' + (p.image_url || '') + '" data-note="' + escapeAttr(p.note || '') + '" data-specification="' + escapeAttr(p.specification || '') + '">' + p.code + ' - ' + p.name + '</option>';
         }
     });
     ORDER_PRODUCT_SELECT_OPTIONS_HTML = opts;
@@ -2238,6 +2245,38 @@ function renderOrderProductNote(note, extraClass){
     return '<div class="' + (extraClass || 'order-item-product-note') + '">(' + escapeHtml(normalizedNote) + ')</div>';
 }
 
+function normalizeOrderProductSpecification(specification){
+    return String(specification == null ? '' : specification).trim();
+}
+
+function renderOrderProductSpecification(specification){
+    var normalizedSpecification = normalizeOrderProductSpecification(specification);
+    return '<div class="order-item-product-specification"' +
+        (normalizedSpecification ? '' : ' style="display:none;"') + '>' +
+        '<span class="order-item-product-specification-label">Quy cách:</span> ' +
+        escapeHtml(normalizedSpecification) + '</div>';
+}
+
+function setOrderRowProductSpecification($row, specification){
+    var normalizedSpecification = normalizeOrderProductSpecification(specification);
+    var html = renderOrderProductSpecification(normalizedSpecification);
+    var $display = $row.find('.order-item-product-specification').first();
+    if($display.length && $row.attr('data-product-specification') === normalizedSpecification){
+        return;
+    }
+    if($display.length){
+        $display.replaceWith(html);
+    } else {
+        var $select2 = $row.find('.order-item-product-cell .select2-container').first();
+        if($select2.length){
+            $select2.after(html);
+        } else {
+            $row.find('.sel_product').after(html);
+        }
+    }
+    $row.attr('data-product-specification', normalizedSpecification);
+}
+
 function setOrderRowProductNote($row, note){
     var normalizedNote = normalizeOrderProductNote(note);
     $row.attr('data-product-note', normalizedNote);
@@ -2304,7 +2343,8 @@ function buildOrderSelectedProductOption(item){
     var costPrice = variant ? (variant.cost_price || 0) : ((product && product.cost_price) || 0);
     var imageUrl = item.image_url || (product ? (product.image_url || product.image || '') : '');
     var productNote = item.product_note || (product ? product.note : '') || '';
-    return '<option value="' + item.product_id + '" data-unit="' + escapeAttr(unit || '') + '" data-price="' + price + '" data-retail="' + retail + '" data-import="' + importPrice + '" data-cost="' + costPrice + '" data-variant-id="' + (item.variant_id || '') + '" data-weight="' + ((product && product.is_weight_based) ? 1 : 0) + '" data-img="' + escapeAttr(imageUrl || '') + '" data-note="' + escapeAttr(productNote) + '" selected>' + escapeHtml(optionLabel) + '</option>';
+    var productSpecification = item.specification || (product ? product.specification : '') || '';
+    return '<option value="' + item.product_id + '" data-unit="' + escapeAttr(unit || '') + '" data-price="' + price + '" data-retail="' + retail + '" data-import="' + importPrice + '" data-cost="' + costPrice + '" data-variant-id="' + (item.variant_id || '') + '" data-weight="' + ((product && product.is_weight_based) ? 1 : 0) + '" data-img="' + escapeAttr(imageUrl || '') + '" data-note="' + escapeAttr(productNote) + '" data-specification="' + escapeAttr(productSpecification) + '" selected>' + escapeHtml(optionLabel) + '</option>';
 }
 
 function hydrateOrderRowProductSelectOptions($row){
@@ -2423,6 +2463,13 @@ function syncOrderRowProductVisuals($row, preservePrice, resetItemNote){
     } else {
         $row.find('.lbl_stock').html('-').removeClass('text-success text-danger font-weight-bold text-warning text-muted');
     }
+    var productSpecification = '';
+    if(pid){
+        productSpecification = product && Object.prototype.hasOwnProperty.call(product, 'specification')
+            ? product.specification
+            : ($opt.attr('data-specification') || $row.attr('data-product-specification') || '');
+    }
+    setOrderRowProductSpecification($row, productSpecification);
     if(resetItemNote){
         var productNote = '';
         if(pid){
@@ -5337,6 +5384,7 @@ function addItemFromProduct(product){
         product_id: product.id,
         variant_id: null,
         product_note: product.note || '',
+        specification: product.specification || '',
         note: product.note || '',
         unit: product.unit,
         quantity: 1,
@@ -5517,6 +5565,9 @@ function addItemRow(item, options){
     var discountEditorHtml=renderOrderLineDiscountEditor(discMode, discAmount, disc);
     var selectedProduct = hasSelectedProduct ? getOrderProductById(item.product_id) : null;
     var productNote = getOrderItemDisplayNote(item, selectedProduct);
+    var productSpecification = item && item.specification
+        ? item.specification
+        : (selectedProduct ? selectedProduct.specification : '');
     var unit=item?item.unit:'';
     if(!unit && selectedProduct){
         unit = selectedProduct.unit || '';
@@ -5565,7 +5616,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductSpecification(productSpecification)+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -5576,6 +5627,7 @@ function addItemRow(item, options){
     var $tbody = $('#items_tbl tbody');
     $tbody.append(html);
     var $row = $tbody.children('tr').last();
+    $row.attr('data-product-specification', normalizeOrderProductSpecification(productSpecification));
     if(persistedSequence > 0) $row.attr('data-item-sequence', persistedSequence);
     ensureOrderItemSequence($row);
     if(!useLazySelect){

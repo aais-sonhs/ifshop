@@ -306,6 +306,29 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'colspan="13"')
         self.assertNotContains(response, 'data-col="stock"')
 
+    def test_product_inventory_link_can_load_exact_product_and_open_edit_form(self):
+        exact_response = self.client.get(
+            reverse('api_get_products'),
+            {'product_id': self.product.id},
+        )
+        foreign_response = self.client.get(
+            reverse('api_get_products'),
+            {'product_id': self.other_product.id},
+        )
+        page_response = self.client.get(
+            reverse('product_tbl'),
+            {'edit_product_id': self.product.id},
+        )
+
+        self.assertEqual(exact_response.status_code, 200)
+        self.assertEqual([row['id'] for row in exact_response.json()['data']], [self.product.id])
+        self.assertEqual(foreign_response.status_code, 200)
+        self.assertEqual(foreign_response.json()['data'], [])
+        self.assertContains(page_response, "new URLSearchParams(window.location.search).get('edit_product_id')")
+        self.assertContains(page_response, 'function loadInitialProductData()')
+        self.assertContains(page_response, 'editItem(product);')
+        self.assertContains(page_response, '{product_id: requestedProductId, page: 1}')
+
     def test_product_form_uses_near_full_width_dialog(self):
         response = self.client.get(reverse('product_tbl'))
 
@@ -439,6 +462,10 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'id="inventory_max_stock"')
         self.assertContains(response, 'id="inventory_stock_edit_tbl"')
         self.assertContains(response, 'id="inventory_purchase_history_body"')
+        self.assertContains(response, 'class="warehouse-product-edit-link" target="_blank"')
+        self.assertContains(response, '/product-tbl/?edit_product_id=')
+        self.assertContains(response, 'function buildWarehouseProductEditUrl(productId)')
+        self.assertContains(response, 'WAREHOUSE_PRODUCT_EDITOR_OPENED')
 
     def test_warehouse_inventory_returns_actual_and_sellable_stock_in_user_scope(self):
         from orders.models import Order, OrderItem

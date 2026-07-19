@@ -700,6 +700,14 @@ var PRODUCT_CATEGORIES = [
     {% endfor %}
 ];
 var PRODUCT_DATA_MAP = {};
+var PRODUCT_EDIT_FROM_URL_ID = (function(){
+    try {
+        var value = new URLSearchParams(window.location.search).get('edit_product_id') || '';
+        return /^\d+$/.test(value) ? parseInt(value, 10) : 0;
+    } catch (error) {
+        return 0;
+    }
+})();
 
 // Column Config
 var productColConfig = new ColumnConfig({
@@ -1283,6 +1291,22 @@ function getProductById(productId){
     return PRODUCT_DATA_MAP[productId] || PRODUCT_DATA_MAP[String(productId)] || null;
 }
 
+function loadInitialProductData(){
+    if(!PRODUCT_EDIT_FROM_URL_ID){
+        loadData();
+        return;
+    }
+    var requestedProductId = PRODUCT_EDIT_FROM_URL_ID;
+    loadData(function(){
+        var product = getProductById(requestedProductId);
+        if(!product){
+            alert('Không tìm thấy sản phẩm hoặc bạn không có quyền chỉnh sửa sản phẩm này.');
+            return;
+        }
+        editItem(product);
+    }, {product_id: requestedProductId, page: 1});
+}
+
 function editItemById(productId){
     var product = getProductById(productId);
     if(!product) return alert('Không tìm thấy dữ liệu sản phẩm');
@@ -1340,7 +1364,7 @@ function populateProductCreatorFilter(products){
 $(document).ready(function(){
     renderProductCategoryControls();
     $('#product_page_size').val(String(PRODUCT_PAGE_STATE.page_size));
-    loadData();
+    loadInitialProductData();
 
     // Image preview
     $('#inp_image').change(function(){
@@ -1572,8 +1596,13 @@ function renderRecentPurchaseReceipts(product, productNameJs){
     '</div>';
 }
 
-function loadData(done){
+function loadData(done, requestOverrides){
     var params = getProductRequestParams();
+    if(requestOverrides){
+        Object.keys(requestOverrides).forEach(function(key){
+            params[key] = requestOverrides[key];
+        });
+    }
     if(PRODUCT_LIST_XHR && PRODUCT_LIST_XHR.readyState !== 4){
         PRODUCT_LIST_XHR.abort();
     }

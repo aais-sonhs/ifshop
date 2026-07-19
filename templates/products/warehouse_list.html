@@ -40,6 +40,9 @@
 .sort-dropdown .sort-option:hover { background:#f0f4ff; }
 .sort-dropdown .sort-option.active { background:#e8f0fe; color:#007bff; font-weight:600; }
 .sort-dropdown .sort-option i { width:14px; text-align:center; font-size:12px; }
+.warehouse-product-edit-link { color:#1769aa; text-decoration:none; }
+.warehouse-product-edit-link:hover,
+.warehouse-product-edit-link:focus { color:#0d47a1; text-decoration:underline; }
 </style>
 <div class="card">
     <div class="card-header">
@@ -233,6 +236,7 @@
 <script>
 var WAREHOUSE_INVENTORY_MAP = {};
 var WAREHOUSE_INVENTORY_DATA = [];
+var WAREHOUSE_PRODUCT_EDITOR_OPENED = false;
 
 var INVENTORY_PAGE_SIZE_KEY = 'ifshop_inventory_page_size';
 var INVENTORY_PAGE_STATE = {
@@ -261,6 +265,14 @@ $(document).ready(function() {
     $('#inventory_search').on('input', function() {
         INVENTORY_PAGE_STATE.page = 1;
         renderInventoryTable();
+    });
+    $(document).on('click', '.warehouse-product-edit-link', function() {
+        WAREHOUSE_PRODUCT_EDITOR_OPENED = true;
+    });
+    $(window).on('focus', function() {
+        if (!WAREHOUSE_PRODUCT_EDITOR_OPENED) return;
+        WAREHOUSE_PRODUCT_EDITOR_OPENED = false;
+        loadInventoryData();
     });
 
     // Sort icon → open dropdown popup
@@ -464,6 +476,10 @@ function inventoryStockStatus(quantity) {
     return '<span class="badge badge-light border">Hết hàng</span>';
 }
 
+function buildWarehouseProductEditUrl(productId) {
+    return "{% url 'product_tbl' %}?edit_product_id=" + encodeURIComponent(productId);
+}
+
 function loadInventoryData() {
     $.get('/api/warehouses/inventory/', function(res) {
         WAREHOUSE_INVENTORY_MAP = {};
@@ -532,6 +548,8 @@ function renderInventoryTable() {
 
     var html = '';
     pagedRows.forEach(function(item, idx) {
+        var productEditUrl = buildWarehouseProductEditUrl(item.id);
+        var productCodeHtml = '<a href="' + productEditUrl + '" class="warehouse-product-edit-link" target="_blank" rel="noopener" title="Bấm để mở và sửa sản phẩm">' + escapeHtml(item.code) + '</a>';
         var imageHtml = item.image_url
             ? '<img src="' + escapeHtml(item.image_url) + '" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;">'
             : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border rounded" style="width:48px;height:48px;"><i class="fas fa-image"></i></span>';
@@ -539,7 +557,7 @@ function renderInventoryTable() {
             '<td class="text-center align-middle">' + (startIndex + idx + 1) + '</td>' +
             '<td class="text-center align-middle">' + imageHtml + '</td>' +
             '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
-                '<small class="text-muted">' + escapeHtml(item.code) + '</small></td>' +
+                '<small>' + productCodeHtml + ' <i class="fas fa-edit ml-1 text-primary"></i></small></td>' +
             '<td class="text-right align-middle">' + formatQuantity(item.min_stock) + '</td>' +
             '<td class="text-right align-middle">' + formatQuantity(item.max_stock) + '</td>' +
             '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +

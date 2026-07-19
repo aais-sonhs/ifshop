@@ -161,6 +161,13 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'Cần nhập tối thiểu')
         self.assertContains(response, 'id="inventory_alert_filter_notice"')
         self.assertContains(response, 'activateInventoryAlertCard')
+        self.assertContains(response, 'class="inventory-product-edit-link" target="_blank"')
+        self.assertContains(response, '/product-tbl/?edit_product_id=')
+        self.assertContains(response, '_inventoryProductEditorOpened')
+        self.assertContains(response, '<th>Tên sản phẩm</th>', count=1)
+        self.assertNotContains(response, '<th>Mã SP</th>')
+        self.assertContains(response, 'colspan="12"')
+        self.assertContains(response, 'var productIdentityHtml =')
 
     def test_api_inventory_report_identifies_low_stock_and_restock_quantity(self):
         low_product = Product.objects.create(

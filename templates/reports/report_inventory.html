@@ -83,7 +83,7 @@
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
-                    <tr><th>STT</th><th>Mã SP</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Cần nhập tối thiểu</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
+                    <tr><th>STT</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Cần nhập tối thiểu</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -116,6 +116,15 @@
 #report_tbl tbody tr.inventory-low-stock-row td:first-child {
     border-left: 4px solid #dc3545;
 }
+.inventory-product-edit-link {
+    color: #1769aa;
+    text-decoration: none;
+}
+.inventory-product-edit-link:hover,
+.inventory-product-edit-link:focus {
+    color: #0d47a1;
+    text-decoration: underline;
+}
 </style>
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
@@ -128,6 +137,7 @@ var _categoriesLoaded = false;
 var _warehousesLoaded = false;
 var _inventoryProductTypes = [];
 var _scrollToAlertRowsAfterLoad = false;
+var _inventoryProductEditorOpened = false;
 
 $(document).ready(function(){
     loadReport();
@@ -164,7 +174,19 @@ $(document).ready(function(){
         syncInventoryAlertCardState();
         loadReport();
     });
+    $(document).on('click', '.inventory-product-edit-link', function(){
+        _inventoryProductEditorOpened = true;
+    });
+    $(window).on('focus', function(){
+        if(!_inventoryProductEditorOpened) return;
+        _inventoryProductEditorOpened = false;
+        loadReport();
+    });
 });
+
+function buildInventoryProductEditUrl(productId){
+    return "{% url 'product_tbl' %}?edit_product_id=" + encodeURIComponent(productId);
+}
 
 function syncInventoryAlertCardState(){
     var active = !!$('#filter_alert').val();
@@ -262,13 +284,17 @@ function loadReport(){
             var rowStyle = d.alert_type === 'danger' ? ' style="background:#fce4ec;"' : (d.alert_type === 'warning' ? ' style="background:#fff3e0;"' : '');
             var qtyClass = d.quantity < 0 ? ' text-danger font-weight-bold' : '';
             var restockHtml = d.restock_needed > 0 ? '<span class="badge badge-danger">+'+fmt(d.restock_needed)+'</span>' : '<span class="text-muted">—</span>';
-            h += '<tr'+rowClass+rowStyle+'><td>'+(i+1)+'</td><td><strong>'+escapeHtml(d.product_code)+'</strong></td><td>'+escapeHtml(d.product_name)+'</td><td>'+escapeHtml(d.category||'')+'</td><td>'+escapeHtml(d.unit)+'</td>'+
+            var productEditUrl = buildInventoryProductEditUrl(d.product_id);
+            var editLinkAttrs = ' class="inventory-product-edit-link" target="_blank" rel="noopener" title="Bấm để mở và sửa sản phẩm"';
+            var productCodeHtml = '<a href="'+productEditUrl+'"'+editLinkAttrs+'><strong>'+escapeHtml(d.product_code)+'</strong></a>';
+            var productIdentityHtml = '<strong class="d-block">'+escapeHtml(d.product_name)+'</strong><small>'+productCodeHtml+' <i class="fas fa-edit ml-1"></i></small>';
+            h += '<tr'+rowClass+rowStyle+'><td>'+(i+1)+'</td><td>'+productIdentityHtml+'</td><td>'+escapeHtml(d.category||'')+'</td><td>'+escapeHtml(d.unit)+'</td>'+
                 '<td>'+escapeHtml(d.warehouse)+'</td><td class="text-center'+qtyClass+'"><strong>'+fmt(d.quantity)+'</strong></td>'+
                 '<td class="text-center">'+fmt(d.min_stock)+'</td><td class="text-center">'+fmt(d.max_stock)+'</td><td class="text-center">'+restockHtml+'</td>'+
                 '<td class="text-right">'+fmtD(d.cost_price)+'</td><td class="text-right"><strong>'+fmtD(d.stock_value)+'</strong></td>'+
                 '<td class="text-center">'+alertBadge+'</td></tr>';
         });
-        if(!h) h = '<tr><td colspan="13" class="text-center text-muted py-3">'+(alert_filter ? 'Không có sản phẩm thuộc cảnh báo đã chọn' : 'Không có dữ liệu')+'</td></tr>';
+        if(!h) h = '<tr><td colspan="12" class="text-center text-muted py-3">'+(alert_filter ? 'Không có sản phẩm thuộc cảnh báo đã chọn' : 'Không có dữ liệu')+'</td></tr>';
         $('#report_tbl tbody').html(h);
         if(_scrollToAlertRowsAfterLoad){
             _scrollToAlertRowsAfterLoad = false;

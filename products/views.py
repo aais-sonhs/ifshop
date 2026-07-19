@@ -696,6 +696,7 @@ def _annotate_product_list_queryset(queryset):
 
 def _apply_product_list_filters(queryset, request, apply_computed_stock_filters=True):
     params = request.GET
+    product_id = (params.get('product_id') or '').strip()
     text = (params.get('text') or '').strip()
     category = (params.get('category') or '').strip()
     product_type = (params.get('product_type') or '').strip()
@@ -716,6 +717,12 @@ def _apply_product_list_filters(queryset, request, apply_computed_stock_filters=
     price_to = (params.get('price_to') or '').strip()
 
     queryset = _annotate_product_list_queryset(queryset)
+
+    if product_id:
+        if product_id.isdigit() and int(product_id) > 0:
+            queryset = queryset.filter(pk=int(product_id))
+        else:
+            queryset = queryset.none()
 
     if text:
         combo_match_ids = ComboItem.objects.filter(

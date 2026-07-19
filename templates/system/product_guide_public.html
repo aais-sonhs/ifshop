@@ -1107,6 +1107,7 @@
                 <li><a href="#updates"><i class="fas fa-history"></i> Cập nhật {{ document_revision.date }}</a></li>
                 <li><a href="#modules"><i class="fas fa-cubes"></i> Module chính</a></li>
                 <li><a href="#setup"><i class="fas fa-cog"></i> Thiết lập ban đầu</a></li>
+                <li><a href="#payment-method-default"><i class="fas fa-wallet"></i> Quỹ mặc định PT thanh toán</a></li>
                 <li><a href="#daily"><i class="fas fa-calendar-day"></i> Luồng hàng ngày</a></li>
                 <li><a href="#roles"><i class="fas fa-user-shield"></i> Theo vai trò</a></li>
                 <li><a href="#workflow"><i class="fas fa-project-diagram"></i> Nghiệp vụ</a></li>
@@ -1250,26 +1251,33 @@
                             <div class="toc-item">
                                 <div class="toc-number">3</div>
                                 <div class="toc-content">
+                                    <h3>Quỹ mặc định phương thức thanh toán</h3>
+                                    <p>Tạo sổ quỹ, gắn tài khoản mặc định và xử lý lỗi khi thu, chi hoặc hoàn tiền.</p>
+                                </div>
+                            </div>
+                            <div class="toc-item">
+                                <div class="toc-number">4</div>
+                                <div class="toc-content">
                                     <h3>Luồng dùng hằng ngày</h3>
                                     <p>Đầu ngày, trong ngày, cuối ngày và các việc cần kiểm tra theo ca.</p>
                                 </div>
                             </div>
                             <div class="toc-item">
-                                <div class="toc-number">4</div>
+                                <div class="toc-number">5</div>
                                 <div class="toc-content">
                                     <h3>Hướng dẫn theo vai trò</h3>
                                     <p>Chủ doanh nghiệp, quản lý, bán hàng, kho, kế toán dùng những chức năng nào.</p>
                                 </div>
                             </div>
                             <div class="toc-item">
-                                <div class="toc-number">5</div>
+                                <div class="toc-number">6</div>
                                 <div class="toc-content">
                                     <h3>Thao tác nghiệp vụ</h3>
                                     <p>Khách hàng, báo giá, POS, trả hàng, nhập hàng, kiểm hàng, chuyển kho, thu chi, báo cáo.</p>
                                 </div>
                             </div>
                             <div class="toc-item">
-                                <div class="toc-number">6</div>
+                                <div class="toc-number">7</div>
                                 <div class="toc-content">
                                     <h3>Triển khai và hỗ trợ</h3>
                                     <p>Checklist bàn giao, lỗi thường gặp và hướng dẫn chuyên sâu theo từng lĩnh vực.</p>
@@ -1420,6 +1428,39 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Default Cash Book for Payment Methods -->
+                <section id="payment-method-default" class="section">
+                    <div class="section-body">
+                        <span class="kicker"><i class="fas fa-wallet"></i> Thiết lập quan trọng</span>
+                        <h2>{{ payment_method_default_guide.title }}</h2>
+                        <p class="lead">{{ payment_method_default_guide.intro }}</p>
+
+                        <div class="step-grid">
+                            {% for step in payment_method_default_guide.steps %}
+                            <div class="step-item">
+                                <div class="step-number">{{ forloop.counter }}</div>
+                                <h3>{{ step.title }}</h3>
+                                <p>{{ step.body }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="two-col" style="margin-top:32px;">
+                            <div class="card">
+                                <span class="small-label">Cần kiểm tra</span>
+                                <ul class="check-list">
+                                    {% for item in payment_method_default_guide.checks %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="callout" style="margin-top:0;">
+                                <p><strong>Khi có thông báo lỗi:</strong> {{ payment_method_default_guide.error }}</p>
                             </div>
                         </div>
                     </div>

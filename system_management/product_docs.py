@@ -205,6 +205,43 @@ COMMON_SETUP_STEPS = [
     },
 ]
 
+PAYMENT_METHOD_DEFAULT_GUIDE = {
+    'title': 'Cấu hình tài khoản/quỹ mặc định cho phương thức thanh toán',
+    'intro': (
+        'Đây là cấu hình quan trọng trước khi thu tiền, chi tiền hoặc hoàn tiền. '
+        'Mỗi phương thức như Tiền mặt, Chuyển khoản hoặc MoMo nên được gắn đúng quỹ '
+        'để hệ thống tự ghi nhận phiếu thu/chi và số dư sổ quỹ.'
+    ),
+    'steps': [
+        {
+            'title': '1. Tạo quỹ hoặc tài khoản',
+            'body': 'Vào Tài chính → Sổ quỹ. Nếu chưa có quỹ phù hợp, tạo mới Quỹ tiền mặt, Tài khoản ngân hàng, Ví MoMo hoặc tài khoản thực tế cửa hàng đang sử dụng.',
+        },
+        {
+            'title': '2. Mở phương thức thanh toán',
+            'body': 'Vào Cài đặt → Phương thức TT. Tìm phương thức cần cấu hình, ví dụ Tiền mặt, Chuyển khoản hoặc MoMo, rồi bấm Sửa.',
+        },
+        {
+            'title': '3. Chọn tài khoản mặc định',
+            'body': 'Tại trường Tài khoản mặc định, chọn đúng quỹ tương ứng với phương thức. Ví dụ Tiền mặt gắn Quỹ tiền mặt; Chuyển khoản gắn Tài khoản ngân hàng.',
+        },
+        {
+            'title': '4. Lưu và kiểm tra',
+            'body': 'Bấm Lưu. Mở thử một đơn hoặc phiếu hoàn tiền, chọn phương thức vừa cấu hình và kiểm tra hệ thống đã tự chọn đúng tài khoản/quỹ.',
+        },
+    ],
+    'checks': [
+        'Không gắn nhiều phương thức khác bản chất vào cùng một quỹ nếu kế toán cần đối soát riêng.',
+        'Quỹ được chọn phải đang hoạt động và đúng với tài khoản thực tế nhận hoặc chi tiền.',
+        'Khi hoàn hàng, nếu phương thức đã có quỹ mặc định thì hệ thống tự chọn quỹ đó.',
+        'Nếu phương thức chưa có quỹ mặc định, người dùng phải chọn Tài khoản/quỹ hoàn tiền trực tiếp trên phiếu.',
+    ],
+    'error': (
+        'Nếu gặp thông báo “Phương thức hoàn tiền chưa có tài khoản/quỹ mặc định để ghi nhận phiếu chi”, '
+        'hãy quay lại Cài đặt → Phương thức TT để gắn quỹ hoặc chọn quỹ trực tiếp trên phiếu hoàn.'
+    ),
+}
+
 COMMON_DAILY_FLOW = [
     {
         'time': 'Đầu ngày',

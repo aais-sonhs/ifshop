@@ -737,6 +737,8 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Phiếu bảo hành theo đơn')
         self.assertContains(response, 'Vào Cài đặt → Phương thức TT, bấm Sửa phương thức hoàn tiền')
         self.assertContains(response, 'Nếu phương thức chưa có quỹ mặc định, chọn Tài khoản/quỹ hoàn tiền trực tiếp trên phiếu')
+        self.assertContains(response, 'id="payment-method-default"')
+        self.assertContains(response, 'Cấu hình tài khoản/quỹ mặc định cho phương thức thanh toán')
         self.assertContains(response, 'Địa chỉ / điểm nhận phụ')
         self.assertNotContains(response, 'abcd@1234')
 

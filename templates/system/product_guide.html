@@ -1072,26 +1072,33 @@
                 <div class="doc-toc-item">
                     <span class="doc-toc-number">3</span>
                     <div>
+                        <h3>Quỹ mặc định phương thức thanh toán</h3>
+                        <p>Tạo sổ quỹ, gắn tài khoản mặc định và xử lý lỗi khi thu, chi hoặc hoàn tiền.</p>
+                    </div>
+                </div>
+                <div class="doc-toc-item">
+                    <span class="doc-toc-number">4</span>
+                    <div>
                         <h3>Luồng dùng hằng ngày</h3>
                         <p>Đầu ngày, trong ngày, cuối ngày và các việc cần kiểm tra theo ca.</p>
                     </div>
                 </div>
                 <div class="doc-toc-item">
-                    <span class="doc-toc-number">4</span>
+                    <span class="doc-toc-number">5</span>
                     <div>
                         <h3>Hướng dẫn theo vai trò</h3>
                         <p>Chủ doanh nghiệp, quản lý, bán hàng, kho, kế toán dùng những chức năng nào.</p>
                     </div>
                 </div>
                 <div class="doc-toc-item">
-                    <span class="doc-toc-number">5</span>
+                    <span class="doc-toc-number">6</span>
                     <div>
                         <h3>Thao tác nghiệp vụ</h3>
                         <p>Khách hàng, báo giá, POS, trả hàng, nhập hàng, kiểm hàng, chuyển kho, thu chi, báo cáo.</p>
                     </div>
                 </div>
                 <div class="doc-toc-item">
-                    <span class="doc-toc-number">6</span>
+                    <span class="doc-toc-number">7</span>
                     <div>
                         <h3>Triển khai và hỗ trợ</h3>
                         <p>Checklist bàn giao, lỗi thường gặp và hướng dẫn chuyên sâu theo từng lĩnh vực.</p>
@@ -1140,6 +1147,35 @@
                     <div class="doc-callout">
                         <p><strong>Điểm nhấn khi demo:</strong> khách nhìn được toàn bộ hành trình từ báo giá, đơn hàng, thanh toán, trừ kho tới báo cáo mà không phải nhập lại dữ liệu nhiều lần.</p>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="doc-page" id="payment-method-default">
+            <span class="doc-kicker">Thiết lập quan trọng</span>
+            <h2>{{ payment_method_default_guide.title }}</h2>
+            <p class="doc-lead">{{ payment_method_default_guide.intro }}</p>
+
+            <div class="doc-step-grid">
+                {% for step in payment_method_default_guide.steps %}
+                <div class="doc-step">
+                    <h3>{{ step.title }}</h3>
+                    <p>{{ step.body }}</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="doc-two-col mt-4">
+                <div class="doc-card">
+                    <span class="doc-small-label">Cần kiểm tra</span>
+                    <ul class="doc-check-list">
+                        {% for item in payment_method_default_guide.checks %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="doc-callout">
+                    <p><strong>Khi có thông báo lỗi:</strong> {{ payment_method_default_guide.error }}</p>
                 </div>
             </div>
         </section>

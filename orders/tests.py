@@ -3009,6 +3009,50 @@ class OrderRiskFlowTests(TestCase):
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 999955.0)
 
+    def test_save_order_return_accepts_selected_cashbook_when_method_has_no_default(self):
+        payment_method = PaymentMethodOption.objects.create(
+            code='RETURN_NO_DEFAULT',
+            name='Hoàn tiền không có quỹ mặc định',
+            legacy_type=3,
+        )
+        order = self._create_order(code='DH-RETURN-EXPLICIT-CASHBOOK', status=5)
+
+        response = self.client.post(
+            reverse('api_save_order_return'),
+            data=json.dumps({
+                'code': 'TH-EXPLICIT-CASHBOOK',
+                'order_id': order.id,
+                'return_date': date.today().isoformat(),
+                'total_refund': 50,
+                'status': 2,
+                'payment_method_option_id': payment_method.id,
+                'cash_book_id': self.cashbook.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        order_return = OrderReturn.objects.get(code='TH-EXPLICIT-CASHBOOK')
+        refund_payment = Payment.objects.get(reference=f'ORDER_RETURN:{order_return.id}')
+        self.assertEqual(refund_payment.payment_method_option_id, payment_method.id)
+        self.assertEqual(refund_payment.cash_book_id, self.cashbook.id)
+        self.cashbook.refresh_from_db()
+        self.assertEqual(float(self.cashbook.balance), 999950.0)
+
+    def test_order_return_form_exposes_cashbook_selector(self):
+        response = self.client.get(reverse('order_return_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="inp_cash_book_id"')
+        self.assertContains(response, self.cashbook.name)
+
+        order_list_response = self.client.get(reverse('order_tbl'))
+        self.assertEqual(order_list_response.status_code, 200)
+        self.assertContains(order_list_response, 'id="quick_return_cash_book"')
+        self.assertContains(order_list_response, self.cashbook.name)
+
     def test_save_order_return_with_exchange_items_collects_difference_and_moves_stock(self):
         exchange_product = Product.objects.create(
             store=self.store,

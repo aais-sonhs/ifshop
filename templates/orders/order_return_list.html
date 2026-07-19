@@ -55,6 +55,16 @@
             </select>
             <small class="form-text text-muted">Áp dụng khi phiếu trả ở trạng thái Hoàn thành và có số tiền cần hoàn.</small>
         </div>
+        <div class="form-group">
+            <label>Tài khoản/quỹ hoàn tiền</label>
+            <select class="form-control" id="inp_cash_book_id">
+                <option value="">-- Theo mặc định của phương thức --</option>
+                {% for c in cashbooks %}
+                <option value="{{ c.id }}">{{ c.name }} — Số dư {{ c.balance|floatformat:0 }}đ</option>
+                {% endfor %}
+            </select>
+            <small class="form-text text-muted" id="refund_cash_book_hint">Có thể chọn trực tiếp nếu phương thức chưa được gắn quỹ mặc định.</small>
+        </div>
         <div class="form-group"><label>Lý do</label><textarea class="form-control" id="inp_reason" rows="2"></textarea></div>
         <div class="form-group"><label>Trạng thái</label><select class="form-control" id="inp_status"><option value="0">Nháp</option><option value="1">Xác nhận</option><option value="2">Hoàn thành</option><option value="3">Hủy</option></select></div>
     </div>
@@ -81,8 +91,15 @@ function getSelectedRefundPaymentMeta(){
     return {
         payment_method_option_id: parseInt($option.val(), 10) || null,
         payment_method: parseInt($option.data('legacy-type'), 10) || 2,
-        cash_book_id: $option.data('default-cash-book-id') || null
+        cash_book_id: parseInt($('#inp_cash_book_id').val(), 10) || parseInt($option.data('default-cash-book-id'), 10) || null
     };
+}
+function syncRefundCashBookFromMethod(){
+    var defaultCashBookId = parseInt($('#inp_payment_method option:selected').data('default-cash-book-id'), 10) || null;
+    $('#inp_cash_book_id').val(defaultCashBookId ? String(defaultCashBookId) : '');
+    $('#refund_cash_book_hint').text(defaultCashBookId
+        ? 'Đã chọn quỹ mặc định của phương thức; bạn có thể đổi sang quỹ khác.'
+        : 'Phương thức này chưa có quỹ mặc định; vui lòng chọn tài khoản/quỹ để hoàn tiền.');
 }
 function loadOrderOptions(selectedId){
     $.get('/api/orders/', function(res){
@@ -105,6 +122,7 @@ function openReturnForm(orderId){
     calcManualReturnBalance();
     $('#inp_status').val('0');
     $('#inp_payment_method').val($('#inp_payment_method option:first').val() || '');
+    syncRefundCashBookFromMethod();
     $('#modal_title').text('Tạo phiếu trả');
     loadOrderOptions(orderId || '');
     $('#modal_form').modal('show');
@@ -118,7 +136,9 @@ $(document).ready(function(){
     $('#btn_add').click(function(){openReturnForm();});
     $('.btn-return-print').click(function(){var returnId=$('#edit_id').val();if(!returnId)return;window.open('/api/order-returns/print/?id='+encodeURIComponent(returnId)+'&type='+encodeURIComponent($(this).data('print-type')||'a4'),'_blank');});
     $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').on('input', calcManualReturnBalance);
+    $('#inp_payment_method').on('change', syncRefundCashBookFromMethod);
     $('#btn_save').click(function(){var paymentMeta=getSelectedRefundPaymentMeta();var balance=calcManualReturnBalance();var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),order_id:$('#inp_order_id').val()||null,return_date:$('#inp_return_date').val(),return_amount:$('#inp_return_amount').val(),exchange_amount:$('#inp_exchange_amount').val(),compensation_amount:$('#inp_compensation_amount').val(),total_refund:balance.refund,reason:$('#inp_reason').val(),status:parseInt($('#inp_status').val(),10),payment_method:paymentMeta.payment_method,payment_method_option_id:paymentMeta.payment_method_option_id,cash_book_id:paymentMeta.cash_book_id};if(!data.code||!data.return_date||!data.order_id){alert('Vui lòng nhập mã, chọn đơn gốc và ngày trả');return;}
+        if(data.status===2&&(balance.refund>0||balance.due>0)&&!data.cash_book_id){alert('Vui lòng chọn tài khoản/quỹ để ghi nhận khoản hoàn/thu tiền.');return;}
         $.ajax({url:'/api/order-returns/save/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}});});
     if(orderId) openReturnForm(orderId);
 });
@@ -145,6 +165,6 @@ function loadData(selectedReturnId){
         }
     });
 }
-function editItem(d){$('#edit_id').val(d.id);$('.btn-return-print').show();$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
+function editItem(d){$('#edit_id').val(d.id);$('.btn-return-print').show();$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');syncRefundCashBookFromMethod();if(d.cash_book_id){$('#inp_cash_book_id').val(String(d.cash_book_id));}$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
 </script>
 {% endblock %}

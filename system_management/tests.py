@@ -721,7 +721,7 @@ class SystemManagementScopeTests(TestCase):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Tài liệu hướng dẫn')
-        self.assertContains(response, 'Cập nhật nghiệp vụ ngày 16/07/2026')
+        self.assertContains(response, 'Cập nhật nghiệp vụ ngày 17/07/2026')
         self.assertContains(response, 'Khách lẻ / khách vãng lai')
         self.assertContains(response, 'Xem địa chỉ khách hàng và lịch sử giao hàng')
         self.assertContains(response, 'Địa chỉ giao hàng đã dùng được tổng hợp tự động từ các đơn')
@@ -735,6 +735,8 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'đặt Thứ tự ưu tiên bằng số')
         self.assertContains(response, 'Báo cáo nhập hàng theo nhà cung cấp')
         self.assertContains(response, 'Phiếu bảo hành theo đơn')
+        self.assertContains(response, 'Vào Cài đặt → Phương thức TT, bấm Sửa phương thức hoàn tiền')
+        self.assertContains(response, 'Nếu phương thức chưa có quỹ mặc định, chọn Tài khoản/quỹ hoàn tiền trực tiếp trên phiếu')
         self.assertContains(response, 'Địa chỉ / điểm nhận phụ')
         self.assertNotContains(response, 'abcd@1234')
 

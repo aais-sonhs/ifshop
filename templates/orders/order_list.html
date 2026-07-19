@@ -754,13 +754,13 @@
             <div class="modal-body">
                 <input type="hidden" id="quick_return_order_id">
                 <div class="row">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="form-group">
                             <label>Mã phiếu</label>
                             <input type="text" class="form-control form-control-sm" id="quick_return_code" placeholder="Tự sinh nếu bỏ trống">
                         </div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="form-group">
                             <label>Ngày trả</label>
                             <input type="date" class="form-control form-control-sm" id="quick_return_date">
@@ -779,6 +779,18 @@
                         </div>
                     </div>
                     <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Tài khoản/quỹ hoàn tiền</label>
+                            <select class="form-control form-control-sm" id="quick_return_cash_book">
+                                <option value="">-- Theo mặc định --</option>
+                                {% for c in cashbooks %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted" id="quick_return_cash_book_hint"></small>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
                         <div class="form-group">
                             <label>Hoàn/đền bù riêng</label>
                             <input type="text" class="form-control form-control-sm text-right money-format" id="quick_return_compensation" value="0">
@@ -6767,8 +6779,16 @@ function getQuickReturnPaymentMeta(){
     return {
         payment_method_option_id: parseInt($option.val(), 10) || null,
         payment_method: parseInt($option.data('legacy-type'), 10) || 2,
-        cash_book_id: $option.data('default-cash-book-id') || null
+        cash_book_id: parseInt($('#quick_return_cash_book').val(), 10) || parseInt($option.data('default-cash-book-id'), 10) || null
     };
+}
+
+function syncQuickReturnCashBookFromMethod(){
+    var defaultCashBookId = parseInt($('#quick_return_payment_method option:selected').data('default-cash-book-id'), 10) || null;
+    $('#quick_return_cash_book').val(defaultCashBookId ? String(defaultCashBookId) : '');
+    $('#quick_return_cash_book_hint').text(defaultCashBookId
+        ? 'Đang dùng quỹ mặc định.'
+        : 'Chưa có quỹ mặc định, vui lòng chọn quỹ.');
 }
 
 function buildQuickExchangeProductOptions(item){
@@ -6874,6 +6894,7 @@ function openQuickReturn(orderId){
         $('#quick_return_reason,#quick_return_exchange_note').val('');
         setMoneyValue('#quick_return_compensation', 0);
         $('#quick_return_payment_method').val($('#quick_return_payment_method option:first').val() || '');
+        syncQuickReturnCashBookFromMethod();
         $('#quick_return_date').val(new Date().toISOString().split('T')[0]);
         $('#quick_exchange_items_tbl tbody').html('');
         var rows = '';
@@ -6916,6 +6937,8 @@ $(document).on('change input', '.quick-return-check,.quick-return-qty,.quick-ret
     }
     calcQuickReturnTotal();
 });
+
+$('#quick_return_payment_method').on('change', syncQuickReturnCashBookFromMethod);
 
 $(document).on('change', '.quick-exchange-product', function(){
     var $row = $(this).closest('tr');
@@ -6986,6 +7009,10 @@ $('#btn_confirm_quick_return,#btn_confirm_quick_return_print').on('click', funct
         return;
     }
     var paymentMeta = getQuickReturnPaymentMeta();
+    if((totals.refundAmount > 0 || totals.dueAmount > 0) && !paymentMeta.cash_book_id){
+        alert('Vui lòng chọn tài khoản/quỹ để ghi nhận khoản hoàn/thu tiền.');
+        return;
+    }
     var payload = {
         code: $('#quick_return_code').val(),
         order_id: orderId,

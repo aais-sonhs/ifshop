@@ -2455,9 +2455,13 @@ def order_return_tbl(request):
     payment_methods = list(PaymentMethodOption.objects.filter(is_active=True).values(
         'id', 'name', 'default_cash_book_id', 'default_cash_book__name', 'legacy_type'
     ))
+    cashbooks = list(CashBook.objects.filter(is_active=True).values(
+        'id', 'name', 'balance'
+    ))
     context = {
         'active_tab': 'order_return_tbl',
         'payment_methods': payment_methods,
+        'cashbooks': cashbooks,
     }
     return render(request, "orders/order_return_list.html", context)
 

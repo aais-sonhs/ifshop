@@ -44,6 +44,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     '113.160.218.241',
     '192.168.21.21',
+    '192.168.21.18',
     'ifshop.aaistech.com',
     '.aaistech.com',
 ]

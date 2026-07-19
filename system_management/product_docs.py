@@ -229,6 +229,10 @@ PAYMENT_METHOD_DEFAULT_GUIDE = {
             'title': '4. Lưu và kiểm tra',
             'body': 'Bấm Lưu. Mở thử một đơn hoặc phiếu hoàn tiền, chọn phương thức vừa cấu hình và kiểm tra hệ thống đã tự chọn đúng tài khoản/quỹ.',
         },
+        {
+            'title': '5. Đặt phương thức ưu tiên',
+            'body': 'Tại trường Số thứ tự, nhập số nhỏ hơn cho phương thức muốn hiển thị đầu tiên (ví dụ 1 cho Tiền mặt, 2 cho Chuyển khoản). Khi mở phiếu hoàn, hệ thống chọn sẵn phương thức đang hoạt động có số thứ tự ưu tiên nhất; người thao tác vẫn có thể đổi sang phương thức khác.',
+        },
     ],
     'checks': [
         'Không gắn nhiều phương thức khác bản chất vào cùng một quỹ nếu kế toán cần đối soát riêng.',

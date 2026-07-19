@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/cashbooks/save/', views.api_save_cashbook, name='api_save_cashbook'),
     path('api/payment-methods/', views.api_get_payment_methods, name='api_get_payment_methods'),
     path('api/payment-methods/save/', views.api_save_payment_method, name='api_save_payment_method'),
+    path('api/payment-methods/reorder/', views.api_reorder_payment_methods, name='api_reorder_payment_methods'),
     path('api/payment-methods/delete/', views.api_delete_payment_method, name='api_delete_payment_method'),
     path('setting-payment-methods/', views.setting_payment_methods, name='setting_payment_methods'),
     path('api/receipts/export-excel/', views.export_receipts_excel, name='export_receipts_excel'),

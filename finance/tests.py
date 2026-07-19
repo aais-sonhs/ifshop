@@ -485,6 +485,85 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(payload['method']['id'], method.id)
         self.assertEqual(method.default_cash_book_id, cash_book.id)
 
+    def test_brand_owner_can_reorder_payment_methods_in_bulk(self):
+        owner = User.objects.create_user(username='finance_order_owner', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        first = PaymentMethodOption.objects.create(code='ORDER_FIRST', name='Phương thức đầu', sort_order=0)
+        second = PaymentMethodOption.objects.create(code='ORDER_SECOND', name='Phương thức sau', sort_order=1)
+        self.client.force_login(owner)
+
+        response = self.client.post(
+            reverse('api_reorder_payment_methods'),
+            data=json.dumps({
+                'items': [
+                    {'id': first.id, 'sort_order': 20},
+                    {'id': second.id, 'sort_order': 5},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.sort_order, 20)
+        self.assertEqual(second.sort_order, 5)
+
+    def test_regular_staff_cannot_reorder_payment_methods(self):
+        method = PaymentMethodOption.objects.create(
+            code='ORDER_STAFF', name='Phương thức nhân viên', sort_order=0,
+        )
+
+        response = self.client.post(
+            reverse('api_reorder_payment_methods'),
+            data=json.dumps({'items': [{'id': method.id, 'sort_order': 10}]}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['status'], 'error')
+
+    def test_reorder_payment_methods_rejects_non_integer_without_partial_update(self):
+        owner = User.objects.create_user(username='finance_invalid_order_owner', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        first = PaymentMethodOption.objects.create(code='ORDER_VALID', name='Phương thức hợp lệ', sort_order=1)
+        second = PaymentMethodOption.objects.create(code='ORDER_INVALID', name='Phương thức không hợp lệ', sort_order=2)
+        self.client.force_login(owner)
+
+        response = self.client.post(
+            reverse('api_reorder_payment_methods'),
+            data=json.dumps({
+                'items': [
+                    {'id': first.id, 'sort_order': 10},
+                    {'id': second.id, 'sort_order': 2.5},
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.sort_order, 1)
+        self.assertEqual(second.sort_order, 2)
+
+    def test_payment_method_settings_exposes_inline_sort_order_editor(self):
+        owner = User.objects.create_user(username='finance_inline_owner', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        self.client.force_login(owner)
+
+        response = self.client.get(reverse('setting_payment_methods'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="btn_save_order"')
+        self.assertContains(response, 'pm-sort-order')
+        self.assertContains(response, '/api/payment-methods/reorder/')
+
     def test_save_payment_assigns_store_from_goods_receipt(self):
         goods_receipt = self._create_goods_receipt(code='PN-001')
         cash_book = CashBook.objects.create(name='Quỹ B', balance=Decimal('1000'))

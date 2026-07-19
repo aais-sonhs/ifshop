@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.db import transaction, IntegrityError
 from django.db.models import CharField, F, Q, Value
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
@@ -1087,6 +1088,64 @@ def api_save_payment_method(request):
         })
     except IntegrityError:
         return JsonResponse({'status': 'error', 'message': 'Mã phương thức đã tồn tại'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_reorder_payment_methods(request):
+    """Lưu thứ tự hiển thị của nhiều phương thức thanh toán trong một lần."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phương thức thanh toán')
+
+    try:
+        data = json.loads(request.body or '{}')
+        raw_items = data.get('items')
+        if not isinstance(raw_items, list):
+            return JsonResponse({'status': 'error', 'message': 'Dữ liệu thứ tự không hợp lệ'})
+        if len(raw_items) > 500:
+            return JsonResponse({'status': 'error', 'message': 'Số lượng phương thức vượt quá giới hạn'})
+
+        updates = {}
+        for item in raw_items:
+            if not isinstance(item, dict):
+                return JsonResponse({'status': 'error', 'message': 'Dữ liệu thứ tự không hợp lệ'})
+            method_id_raw = item.get('id')
+            sort_order_raw = item.get('sort_order')
+            method_id_text = str(method_id_raw).strip() if not isinstance(method_id_raw, bool) else ''
+            sort_order_text = str(sort_order_raw).strip() if not isinstance(sort_order_raw, bool) else ''
+            if not method_id_text.isdigit() or not sort_order_text.isdigit():
+                return JsonResponse({'status': 'error', 'message': 'Thứ tự phải là số nguyên không âm'})
+            method_id = int(method_id_text)
+            sort_order = int(sort_order_text)
+            if method_id <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Thứ tự phải là số nguyên không âm'})
+            updates[method_id] = sort_order
+
+        if not updates:
+            return JsonResponse({'status': 'ok', 'message': 'Không có thay đổi', 'updated': 0})
+
+        with transaction.atomic():
+            methods = list(PaymentMethodOption.objects.filter(id__in=updates.keys()))
+            found_ids = {method.id for method in methods}
+            missing_ids = set(updates) - found_ids
+            if missing_ids:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phương thức thanh toán'})
+            updated_at = timezone.now()
+            for method in methods:
+                method.sort_order = updates[method.id]
+                method.updated_at = updated_at
+            PaymentMethodOption.objects.bulk_update(methods, ['sort_order', 'updated_at'])
+
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Đã cập nhật {len(methods)} phương thức',
+            'updated': len(methods),
+        })
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'status': 'error', 'message': 'Dữ liệu thứ tự không hợp lệ'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

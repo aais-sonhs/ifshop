@@ -4,18 +4,22 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-credit-card mr-2"></i>Quản lý phương thức thanh toán</h3>
         <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-outline-success mr-1" id="btn_save_order" disabled>
+                <i class="fas fa-sort-numeric-down mr-1"></i>Lưu thứ tự
+                <span class="badge badge-light ml-1" id="sort_order_pending_count"></span>
+            </button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm phương thức</button>
         </div>
     </div>
     <div class="card-body">
         <div class="alert alert-info py-2">
-            <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>.</small>
+            <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>. Bạn có thể gõ trực tiếp cột <b>Thứ tự</b>, nhấn Enter để xuống dòng tiếp theo, rồi bấm <b>Lưu thứ tự</b> một lần.</small>
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr>
                     <th>STT</th><th>Mã</th><th>Tên phương thức</th><th>Loại chuẩn</th>
-                    <th>Tài khoản mặc định</th><th>Thứ tự</th><th>Trạng thái</th><th>Thao tác</th>
+                    <th>Tài khoản mặc định</th><th style="width:110px">Thứ tự</th><th>Trạng thái</th><th>Thao tác</th>
                 </tr></thead>
                 <tbody></tbody>
             </table>
@@ -101,29 +105,154 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+var originalSortOrders = {};
+var pendingSortOrders = {};
+var invalidSortOrders = {};
+
 $(document).ready(function(){
     loadData();
     $('#inp_default_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_form')});
+
+    $('#btn_save_order').click(function(){ saveSortOrders(); });
+    $(document).on('input change', '.pm-sort-order', function(){
+        syncSortOrderInput(this);
+    });
+    $(document).on('keydown', '.pm-sort-order', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            syncSortOrderInput(this);
+            var $inputs = $('.pm-sort-order');
+            var currentIndex = $inputs.index(this);
+            if(currentIndex >= 0 && currentIndex < $inputs.length - 1){
+                var nextInput = $inputs.get(currentIndex + 1);
+                nextInput.focus();
+                nextInput.select();
+            } else {
+                $('#btn_save_order').trigger('focus');
+            }
+        }
+    });
 });
 
-function loadData(){
+function loadData(preserveSortOrderEdits){
+    preserveSortOrderEdits = !!preserveSortOrderEdits;
+    if(!preserveSortOrderEdits){
+        originalSortOrders = {};
+        pendingSortOrders = {};
+        invalidSortOrders = {};
+    }
     $.get('/api/payment-methods/', function(res){
         var h='';
+        var visibleIds = {};
         res.data.forEach(function(d, i){
+            var methodId = String(d.id);
+            var serverSortOrder = normalizeSortOrder(d.sort_order);
+            if(serverSortOrder === null) serverSortOrder = 0;
+            visibleIds[methodId] = true;
+            if(!Object.prototype.hasOwnProperty.call(originalSortOrders, methodId)){
+                originalSortOrders[methodId] = serverSortOrder;
+            }
+            var displaySortOrder = Object.prototype.hasOwnProperty.call(pendingSortOrders, methodId)
+                ? pendingSortOrders[methodId]
+                : serverSortOrder;
             var statusBadge = d.is_active
                 ? '<span class="badge badge-success">Hoạt động</span>'
                 : '<span class="badge badge-secondary">Tắt</span>';
             h += '<tr><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.name+'</td>' +
                 '<td>'+d.legacy_type_display+'</td>' +
                 '<td>'+(d.default_cash_book || '<span class="text-muted">—</span>')+'</td>' +
-                '<td>'+d.sort_order+'</td>' +
+                '<td><input type="number" min="0" step="1" class="form-control form-control-sm pm-sort-order" data-id="'+d.id+'" value="'+displaySortOrder+'" aria-label="Thứ tự"></td>' +
                 '<td>'+statusBadge+'</td>' +
                 '<td class="text-center">' +
                 '<button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d)+')\'>Sửa</button> ' +
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button>' +
                 '</td></tr>';
         });
+        Object.keys(pendingSortOrders).forEach(function(methodId){
+            if(!visibleIds[methodId]){
+                delete pendingSortOrders[methodId];
+                delete invalidSortOrders[methodId];
+                delete originalSortOrders[methodId];
+            }
+        });
         $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có phương thức thanh toán nào. Nhấn "Thêm phương thức" để bắt đầu.</td></tr>');
+        updateSortOrderButton();
+    });
+}
+
+function normalizeSortOrder(value){
+    var raw = $.trim(String(value === undefined || value === null ? '' : value));
+    if(!/^\d+$/.test(raw)) return null;
+    var parsed = Number(raw);
+    if(!Number.isSafeInteger(parsed) || parsed < 0) return null;
+    return parsed;
+}
+
+function syncSortOrderInput(input){
+    var $input = $(input);
+    var methodId = String($input.data('id'));
+    var sortOrder = normalizeSortOrder($input.val());
+    if(sortOrder === null){
+        invalidSortOrders[methodId] = true;
+        $input.addClass('is-invalid');
+    } else {
+        delete invalidSortOrders[methodId];
+        $input.removeClass('is-invalid');
+        if(sortOrder === originalSortOrders[methodId]){
+            delete pendingSortOrders[methodId];
+        } else {
+            pendingSortOrders[methodId] = sortOrder;
+        }
+    }
+    updateSortOrderButton();
+}
+
+function updateSortOrderButton(){
+    var pendingCount = Object.keys(pendingSortOrders).length;
+    var hasInvalid = Object.keys(invalidSortOrders).length > 0;
+    $('#sort_order_pending_count').text(pendingCount ? pendingCount : '');
+    $('#btn_save_order').prop('disabled', pendingCount === 0 || hasInvalid);
+}
+
+function saveSortOrders(){
+    $('.pm-sort-order').each(function(){ syncSortOrderInput(this); });
+    var invalidCount = Object.keys(invalidSortOrders).length;
+    if(invalidCount){
+        alert('Vui lòng nhập Thứ tự là số nguyên không âm');
+        return;
+    }
+
+    var items = Object.keys(pendingSortOrders).map(function(methodId){
+        return {id: Number(methodId), sort_order: pendingSortOrders[methodId]};
+    });
+    if(!items.length) return;
+
+    var $button = $('#btn_save_order');
+    var $inputs = $('.pm-sort-order');
+    $button.prop('disabled', true);
+    $inputs.prop('disabled', true);
+    $.ajax({
+        url: '/api/payment-methods/reorder/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        data: JSON.stringify({items: items})
+    }).done(function(response){
+        if(response.status === 'ok'){
+            pendingSortOrders = {};
+            invalidSortOrders = {};
+            loadData();
+            if(typeof toastr !== 'undefined') toastr.success(response.message || 'Đã lưu thứ tự');
+        } else {
+            $inputs.prop('disabled', false);
+            updateSortOrderButton();
+            alert(response.message || 'Không thể lưu thứ tự');
+        }
+    }).fail(function(xhr){
+        $inputs.prop('disabled', false);
+        updateSortOrderButton();
+        var response = xhr.responseJSON || {};
+        alert(response.message || 'Không thể lưu thứ tự. Vui lòng thử lại.');
     });
 }
 
@@ -173,8 +302,14 @@ $('#btn_save').click(function(){
         }),
         success: function(r){
             if(r.status === 'ok'){
+                var editedId = String($('#edit_id').val() || '');
+                if(editedId){
+                    delete originalSortOrders[editedId];
+                    delete pendingSortOrders[editedId];
+                    delete invalidSortOrders[editedId];
+                }
                 $('#modal_form').modal('hide');
-                loadData();
+                loadData(true);
                 if(typeof toastr !== 'undefined') toastr.success(r.message);
             } else {
                 alert(r.message);
@@ -193,7 +328,11 @@ function deleteItem(id){
         data: JSON.stringify({id: id}),
         success: function(r){
             if(r.status === 'ok'){
-                loadData();
+                var deletedId = String(id);
+                delete originalSortOrders[deletedId];
+                delete pendingSortOrders[deletedId];
+                delete invalidSortOrders[deletedId];
+                loadData(true);
                 if(typeof toastr !== 'undefined') toastr.success(r.message);
             } else {
                 alert(r.message);

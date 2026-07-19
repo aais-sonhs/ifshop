@@ -52,6 +52,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://*.127.0.0.1',
     'http://113.160.218.241:8020',
     'http://192.168.21.21:4005',
+    'http://192.168.21.18:4005',
     'https://*.aaistech.com',
     'https://ifshop.aaistech.com'
 ]

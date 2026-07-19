@@ -4,7 +4,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from openpyxl import load_workbook
 
@@ -550,6 +550,29 @@ class FinanceFlowTests(TestCase):
         second.refresh_from_db()
         self.assertEqual(first.sort_order, 1)
         self.assertEqual(second.sort_order, 2)
+
+    def test_reorder_payment_methods_accepts_browser_csrf_request(self):
+        owner = User.objects.create_user(username='finance_csrf_order_owner', password='pass123')
+        self.brand.owner = owner
+        self.brand.save(update_fields=['owner'])
+        method = PaymentMethodOption.objects.create(code='ORDER_CSRF', name='Phương thức CSRF', sort_order=0)
+        browser = Client(enforce_csrf_checks=True)
+        browser.force_login(owner)
+        page = browser.get(reverse('setting_payment_methods'))
+        csrf_cookie = page.cookies.get('csrftoken')
+        self.assertIsNotNone(csrf_cookie)
+
+        response = browser.post(
+            reverse('api_reorder_payment_methods'),
+            data=json.dumps({'items': [{'id': method.id, 'sort_order': 8}]}),
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=csrf_cookie.value,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        method.refresh_from_db()
+        self.assertEqual(method.sort_order, 8)
 
     def test_payment_method_settings_exposes_inline_sort_order_editor(self):
         owner = User.objects.create_user(username='finance_inline_owner', password='pass123')

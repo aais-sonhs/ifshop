@@ -8,12 +8,13 @@
                 <i class="fas fa-sort-numeric-down mr-1"></i>Lưu thứ tự
                 <span class="badge badge-light ml-1" id="sort_order_pending_count"></span>
             </button>
+            <span id="sort_order_save_status" class="small text-muted mr-2" aria-live="polite"></span>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm phương thức</button>
         </div>
     </div>
     <div class="card-body">
         <div class="alert alert-info py-2">
-            <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>. Bạn có thể gõ trực tiếp cột <b>Thứ tự</b>, nhấn Enter để xuống dòng tiếp theo, rồi bấm <b>Lưu thứ tự</b> một lần.</small>
+            <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>. Bạn có thể gõ trực tiếp cột <b>Thứ tự</b>; hệ thống sẽ tự lưu sau khi dừng nhập, hoặc nhập nhiều dòng rồi bấm <b>Lưu thứ tự</b> một lần.</small>
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
@@ -108,12 +109,14 @@
 var originalSortOrders = {};
 var pendingSortOrders = {};
 var invalidSortOrders = {};
+var autoSaveTimer = null;
+var sortOrderSaveInProgress = false;
 
 $(document).ready(function(){
     loadData();
     $('#inp_default_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_form')});
 
-    $('#btn_save_order').click(function(){ saveSortOrders(); });
+    $('#btn_save_order').click(function(){ saveSortOrders(false); });
     $(document).on('input change', '.pm-sort-order', function(){
         syncSortOrderInput(this);
     });
@@ -184,7 +187,7 @@ function normalizeSortOrder(value){
     var raw = $.trim(String(value === undefined || value === null ? '' : value));
     if(!/^\d+$/.test(raw)) return null;
     var parsed = Number(raw);
-    if(!Number.isSafeInteger(parsed) || parsed < 0) return null;
+    if(!isFinite(parsed) || Math.floor(parsed) !== parsed || parsed < 0) return null;
     return parsed;
 }
 
@@ -205,6 +208,7 @@ function syncSortOrderInput(input){
         }
     }
     updateSortOrderButton();
+    if(!sortOrderSaveInProgress) scheduleAutoSave();
 }
 
 function updateSortOrderButton(){
@@ -214,10 +218,46 @@ function updateSortOrderButton(){
     $('#btn_save_order').prop('disabled', pendingCount === 0 || hasInvalid);
 }
 
-function saveSortOrders(){
+function setSortOrderSaveStatus(message, cssClass){
+    var $status = $('#sort_order_save_status');
+    $status.removeClass('text-muted text-info text-success text-danger').addClass(cssClass || 'text-muted');
+    $status.text(message || '');
+}
+
+function scheduleAutoSave(){
+    if(autoSaveTimer){
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+    }
+    var pendingCount = Object.keys(pendingSortOrders).length;
+    var hasInvalid = Object.keys(invalidSortOrders).length > 0;
+    if(!pendingCount) {
+        setSortOrderSaveStatus('', 'text-muted');
+        return;
+    }
+    if(hasInvalid){
+        setSortOrderSaveStatus('Cần nhập số hợp lệ', 'text-danger');
+        return;
+    }
+    setSortOrderSaveStatus('Đang chờ lưu…', 'text-info');
+    autoSaveTimer = setTimeout(function(){
+        autoSaveTimer = null;
+        saveSortOrders(true);
+    }, 900);
+}
+
+function saveSortOrders(isAutomatic){
+    if(sortOrderSaveInProgress) return;
+    sortOrderSaveInProgress = true;
+    if(autoSaveTimer){
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+    }
     $('.pm-sort-order').each(function(){ syncSortOrderInput(this); });
     var invalidCount = Object.keys(invalidSortOrders).length;
     if(invalidCount){
+        sortOrderSaveInProgress = false;
+        updateSortOrderButton();
         alert('Vui lòng nhập Thứ tự là số nguyên không âm');
         return;
     }
@@ -225,12 +265,18 @@ function saveSortOrders(){
     var items = Object.keys(pendingSortOrders).map(function(methodId){
         return {id: Number(methodId), sort_order: pendingSortOrders[methodId]};
     });
-    if(!items.length) return;
+    if(!items.length){
+        sortOrderSaveInProgress = false;
+        updateSortOrderButton();
+        return;
+    }
 
     var $button = $('#btn_save_order');
     var $inputs = $('.pm-sort-order');
+    var savedItems = items.slice();
     $button.prop('disabled', true);
     $inputs.prop('disabled', true);
+    setSortOrderSaveStatus('Đang lưu…', 'text-info');
     $.ajax({
         url: '/api/payment-methods/reorder/',
         type: 'POST',
@@ -239,20 +285,34 @@ function saveSortOrders(){
         data: JSON.stringify({items: items})
     }).done(function(response){
         if(response.status === 'ok'){
-            pendingSortOrders = {};
-            invalidSortOrders = {};
-            loadData();
+            savedItems.forEach(function(item){
+                var methodId = String(item.id);
+                if(pendingSortOrders[methodId] === item.sort_order){
+                    originalSortOrders[methodId] = item.sort_order;
+                    delete pendingSortOrders[methodId];
+                    delete invalidSortOrders[methodId];
+                }
+            });
+            updateSortOrderButton();
+            setSortOrderSaveStatus('Đã lưu', 'text-success');
+            $inputs.prop('disabled', false);
+            if(!isAutomatic) loadData();
             if(typeof toastr !== 'undefined') toastr.success(response.message || 'Đã lưu thứ tự');
         } else {
             $inputs.prop('disabled', false);
             updateSortOrderButton();
+            setSortOrderSaveStatus(response.message || 'Lỗi lưu', 'text-danger');
             alert(response.message || 'Không thể lưu thứ tự');
         }
     }).fail(function(xhr){
         $inputs.prop('disabled', false);
         updateSortOrderButton();
         var response = xhr.responseJSON || {};
+        setSortOrderSaveStatus(response.message || 'Lỗi lưu', 'text-danger');
         alert(response.message || 'Không thể lưu thứ tự. Vui lòng thử lại.');
+    }).always(function(){
+        sortOrderSaveInProgress = false;
+        updateSortOrderButton();
     });
 }
 

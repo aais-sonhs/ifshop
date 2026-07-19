@@ -231,7 +231,7 @@ PAYMENT_METHOD_DEFAULT_GUIDE = {
         },
         {
             'title': '5. Đặt phương thức ưu tiên',
-            'body': 'Trong danh sách phương thức thanh toán, gõ trực tiếp vào cột Thứ tự cho nhiều dòng rồi bấm Lưu thứ tự một lần. Nhập số nhỏ hơn cho phương thức muốn hiển thị đầu tiên (ví dụ 1 cho Tiền mặt, 2 cho Chuyển khoản). Khi mở phiếu hoàn, hệ thống chọn sẵn phương thức đang hoạt động có số thứ tự ưu tiên nhất; người thao tác vẫn có thể đổi sang phương thức khác.',
+            'body': 'Trong danh sách phương thức thanh toán, gõ trực tiếp vào cột Thứ tự; hệ thống tự lưu sau khi dừng nhập. Bạn cũng có thể nhập nhiều dòng rồi bấm Lưu thứ tự một lần. Nhập số nhỏ hơn cho phương thức muốn hiển thị đầu tiên (ví dụ 1 cho Tiền mặt, 2 cho Chuyển khoản). Khi mở phiếu hoàn, hệ thống chọn sẵn phương thức đang hoạt động có số thứ tự ưu tiên nhất; người thao tác vẫn có thể đổi sang phương thức khác.',
         },
     ],
     'checks': [

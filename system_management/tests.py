@@ -741,7 +741,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Cấu hình tài khoản/quỹ mặc định cho phương thức thanh toán')
         self.assertContains(response, 'Vào Tài chính → Sổ quỹ và bấm Tạo quỹ ở góc phải')
         self.assertContains(response, 'Quản trị → Danh mục → Danh mục quỹ → Thêm')
-        self.assertContains(response, 'gõ trực tiếp vào cột Thứ tự cho nhiều dòng rồi bấm Lưu thứ tự một lần')
+        self.assertContains(response, 'gõ trực tiếp vào cột Thứ tự; hệ thống tự lưu sau khi dừng nhập')
         self.assertContains(response, 'Địa chỉ / điểm nhận phụ')
         self.assertNotContains(response, 'abcd@1234')
 

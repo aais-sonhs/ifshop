@@ -39,27 +39,9 @@ def _format_value(val):
     return val
 
 
-def excel_response(title, subtitle, columns, rows, filename,
-                   money_cols=None, total_row=None):
-    """
-    Build a styled Excel response.
-
-    Args:
-        title: Sheet title (e.g. 'DANH SÁCH PHIẾU THU')
-        subtitle: Sub-info (e.g. 'Xuất ngày 14/04/2026')
-        columns: list of {'key': str, 'label': str, 'width': int}
-        rows: list of dicts matching column keys
-        filename: download filename (without .xlsx)
-        money_cols: list of column keys that should be formatted as money
-        total_row: dict of {col_key: value} for a totals row at the bottom
-
-    Returns:
-        HttpResponse with xlsx attachment.
-    """
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = title[:31]  # Excel limit
-
+def _populate_worksheet(ws, title, subtitle, columns, rows,
+                        money_cols=None, total_row=None):
+    """Populate one worksheet using the shared export layout."""
     money_cols = money_cols or []
     num_cols = len(columns)
 
@@ -126,6 +108,45 @@ def excel_response(title, subtitle, columns, rows, filename,
     # ----- FREEZE & FILTER -----
     ws.auto_filter.ref = f'A{header_row}:{get_column_letter(num_cols)}{header_row + len(rows)}'
     ws.freeze_panes = f'A{header_row + 1}'
+
+
+def excel_response(title, subtitle, columns, rows, filename,
+                   money_cols=None, total_row=None, extra_sheets=None):
+    """
+    Build a styled Excel response.
+
+    Args:
+        title: Sheet title (e.g. 'DANH SÁCH PHIẾU THU')
+        subtitle: Sub-info (e.g. 'Xuất ngày 14/04/2026')
+        columns: list of {'key': str, 'label': str, 'width': int}
+        rows: list of dicts matching column keys
+        filename: download filename (without .xlsx)
+        money_cols: list of column keys that should be formatted as money
+        total_row: dict of {col_key: value} for a totals row at the bottom
+        extra_sheets: optional list of sheet configs. Each config accepts
+            sheet_name, title, subtitle, columns, rows, money_cols, total_row.
+
+    Returns:
+        HttpResponse with xlsx attachment.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = title[:31]  # Excel limit
+    _populate_worksheet(ws, title, subtitle, columns, rows, money_cols, total_row)
+
+    for sheet_config in extra_sheets or []:
+        sheet_title = sheet_config.get('title', '')
+        sheet_name = sheet_config.get('sheet_name') or sheet_title
+        extra_ws = wb.create_sheet(title=sheet_name[:31])
+        _populate_worksheet(
+            extra_ws,
+            sheet_title,
+            sheet_config.get('subtitle', ''),
+            sheet_config.get('columns', []),
+            sheet_config.get('rows', []),
+            sheet_config.get('money_cols'),
+            sheet_config.get('total_row'),
+        )
 
     # ----- RESPONSE -----
     response = HttpResponse(

@@ -1190,7 +1190,7 @@ def setting_payment_methods(request):
 
 @login_required(login_url="/login/")
 def export_receipts_excel(request):
-    """Xuất danh sách phiếu thu ra Excel"""
+    """Xuất chi tiết và các bảng tổng hợp phiếu thu ra Excel."""
     from core.excel_export import excel_response
     from datetime import datetime
 
@@ -1199,6 +1199,7 @@ def export_receipts_excel(request):
     )
     receipts = _filter_receipts_for_user(receipts, request)
     receipts = _apply_receipt_filters(receipts, request)
+    receipts = list(receipts)
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
 
@@ -1219,9 +1220,9 @@ def export_receipts_excel(request):
     ]
 
     rows = []
-    total = 0
+    total = Decimal('0')
     for i, r in enumerate(receipts, 1):
-        total += float(r.amount or 0)
+        total += r.amount or Decimal('0')
         rows.append({
             'stt': i,
             'code': r.code,
@@ -1229,7 +1230,7 @@ def export_receipts_excel(request):
             'customer': r.customer.name if r.customer else '',
             'order': r.order.code if r.order else '',
             'order_creator': (r.order.creator_name or _get_user_display_name(r.order.created_by)) if r.order else '',
-            'amount': float(r.amount or 0),
+            'amount': r.amount or Decimal('0'),
             'method': r.get_payment_method_label(),
             'date': r.receipt_date,
             'cashbook': r.cash_book.name if r.cash_book else '',
@@ -1246,14 +1247,100 @@ def export_receipts_excel(request):
     elif date_to:
         period = f' (đến {date_to})'
 
+    export_subtitle = f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}'
+
+    # Dashboard mặc định chỉ tính tiền đã hoàn thành. Khi người dùng chủ động
+    # chọn tab Nháp/Đã hủy, bảng tổng hợp trong file giữ đúng phạm vi tab đó.
+    status_filter = request.GET.get('status')
+    if status_filter in ('0', '2'):
+        summary_receipts = receipts
+        summary_scope = 'Phiếu nháp' if status_filter == '0' else 'Phiếu đã hủy'
+    else:
+        summary_receipts = [receipt for receipt in receipts if receipt.status == 1]
+        summary_scope = 'Phiếu hoàn thành'
+
+    cashbook_totals = {}
+    method_totals = {}
+    summary_total = Decimal('0')
+    for receipt in summary_receipts:
+        amount = receipt.amount or Decimal('0')
+        summary_total += amount
+
+        cashbook_name = receipt.cash_book.name if receipt.cash_book else 'Chưa gán tài khoản'
+        cashbook_row = cashbook_totals.setdefault(
+            cashbook_name,
+            {'name': cashbook_name, 'count': 0, 'amount': Decimal('0')},
+        )
+        cashbook_row['count'] += 1
+        cashbook_row['amount'] += amount
+
+        method_name = receipt.get_payment_method_label()
+        method_row = method_totals.setdefault(
+            method_name,
+            {'name': method_name, 'count': 0, 'amount': Decimal('0')},
+        )
+        method_row['count'] += 1
+        method_row['amount'] += amount
+
+    def build_summary_rows(grouped_values):
+        grouped_rows = sorted(
+            grouped_values.values(),
+            key=lambda item: (-item['amount'], item['name']),
+        )
+        return [{
+            'stt': index,
+            'name': item['name'],
+            'count': item['count'],
+            'amount': item['amount'],
+            'percent': round(float(item['amount'] / summary_total * 100), 2) if summary_total else 0,
+        } for index, item in enumerate(grouped_rows, 1)]
+
+    cashbook_rows = build_summary_rows(cashbook_totals)
+    method_rows = build_summary_rows(method_totals)
+    summary_columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 8},
+        {'key': 'name', 'label': 'Tài khoản', 'width': 32},
+        {'key': 'count', 'label': 'Số phiếu', 'width': 14},
+        {'key': 'amount', 'label': 'Tổng tiền', 'width': 20},
+        {'key': 'percent', 'label': 'Tỷ trọng (%)', 'width': 16},
+    ]
+    method_columns = [dict(column) for column in summary_columns]
+    method_columns[1]['label'] = 'Hình thức nhận'
+    summary_total_row = {
+        'name': 'TỔNG CỘNG',
+        'count': len(summary_receipts),
+        'amount': summary_total,
+        'percent': 100 if summary_total else 0,
+    }
+
     return excel_response(
         title='DANH SÁCH PHIẾU THU',
-        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}',
+        subtitle=export_subtitle,
         columns=columns,
         rows=rows,
         filename=f'Phieu_thu_{datetime.now().strftime("%Y%m%d")}',
         money_cols=['amount'],
         total_row={'stt': '', 'code': 'TỔNG CỘNG', 'amount': total},
+        extra_sheets=[
+            {
+                'sheet_name': 'Tiền về từng tài khoản',
+                'title': 'TIỀN VỀ TỪNG TÀI KHOẢN',
+                'subtitle': f'{export_subtitle} · {summary_scope}',
+                'columns': summary_columns,
+                'rows': cashbook_rows,
+                'money_cols': ['amount'],
+                'total_row': summary_total_row,
+            },
+            {
+                'sheet_name': 'Theo hình thức nhận',
+                'title': 'TIỀN VỀ THEO HÌNH THỨC NHẬN',
+                'subtitle': f'{export_subtitle} · {summary_scope}',
+                'columns': method_columns,
+                'rows': method_rows,
+                'money_cols': ['amount'],
+                'total_row': summary_total_row,
+            },
+        ],
     )
 
 

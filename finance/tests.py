@@ -458,6 +458,79 @@ class FinanceFlowTests(TestCase):
         note_index = headers.index('Ghi chú') + 1
         self.assertEqual(worksheet.cell(row=5, column=note_index).value, 'Ghi chú cần xuất Excel')
 
+    def test_export_receipts_excel_includes_cashbook_and_method_summaries(self):
+        cashbook_a = CashBook.objects.create(name='Tài khoản A')
+        cashbook_b = CashBook.objects.create(name='Tài khoản B')
+        bank_method = PaymentMethodOption.objects.create(
+            code='EXPORT_BANK',
+            name='Chuyển khoản ngân hàng',
+            legacy_type=2,
+        )
+        cash_method = PaymentMethodOption.objects.create(
+            code='EXPORT_CASH',
+            name='Tiền mặt tại quầy',
+            legacy_type=1,
+        )
+        receipt_values = [
+            ('PT-EXPORT-A-BANK', cashbook_a, bank_method, '100000', 1),
+            ('PT-EXPORT-A-CASH', cashbook_a, cash_method, '50000', 1),
+            ('PT-EXPORT-B-BANK', cashbook_b, bank_method, '25000', 1),
+            # Tab Tất cả trên màn hình chỉ cộng phiếu hoàn thành vào dashboard.
+            ('PT-EXPORT-DRAFT', cashbook_b, cash_method, '999000', 0),
+        ]
+        for code, cashbook, method, amount, status in receipt_values:
+            Receipt.objects.create(
+                code=code,
+                store=self.store,
+                customer=self.customer,
+                cash_book=cashbook,
+                payment_method_option=method,
+                payment_method=method.legacy_type,
+                amount=Decimal(amount),
+                receipt_date=date.today(),
+                status=status,
+                created_by=self.user,
+            )
+
+        response = self.client.get(reverse('export_receipts_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content))
+        self.assertEqual(
+            workbook.sheetnames,
+            ['DANH SÁCH PHIẾU THU', 'Tiền về từng tài khoản', 'Theo hình thức nhận'],
+        )
+
+        cashbook_sheet = workbook['Tiền về từng tài khoản']
+        self.assertEqual(
+            [cell.value for cell in cashbook_sheet[4]],
+            ['STT', 'Tài khoản', 'Số phiếu', 'Tổng tiền', 'Tỷ trọng (%)'],
+        )
+        self.assertEqual(
+            [cashbook_sheet.cell(row=5, column=column).value for column in range(2, 5)],
+            ['Tài khoản A', 2, 150000],
+        )
+        self.assertEqual(
+            [cashbook_sheet.cell(row=6, column=column).value for column in range(2, 5)],
+            ['Tài khoản B', 1, 25000],
+        )
+        self.assertEqual(
+            [cashbook_sheet.cell(row=7, column=column).value for column in range(2, 5)],
+            ['TỔNG CỘNG', 3, 175000],
+        )
+
+        method_sheet = workbook['Theo hình thức nhận']
+        self.assertEqual(method_sheet.cell(row=4, column=2).value, 'Hình thức nhận')
+        self.assertEqual(
+            [method_sheet.cell(row=5, column=column).value for column in range(2, 5)],
+            ['Chuyển khoản ngân hàng', 2, 125000],
+        )
+        self.assertEqual(
+            [method_sheet.cell(row=6, column=column).value for column in range(2, 5)],
+            ['Tiền mặt tại quầy', 1, 50000],
+        )
+        self.assertIn('Phiếu hoàn thành', method_sheet.cell(row=2, column=1).value)
+
     def test_brand_owner_can_create_payment_method_option(self):
         owner = User.objects.create_user(username='finance_owner', password='pass123')
         self.brand.owner = owner

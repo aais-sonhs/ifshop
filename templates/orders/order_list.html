@@ -1008,8 +1008,8 @@
 
 <!-- MODAL CHỈNH SẢN PHẨM BẢO HÀNH -->
 <div class="modal fade" id="modal_warranty_items" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content warranty-modal-content">
             <div class="modal-header bg-success">
                 <h5 class="modal-title text-white"><i class="fas fa-shield-alt mr-2"></i>Chọn sản phẩm in phiếu bảo hành</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
@@ -1078,6 +1078,16 @@
 #warranty_items_tbl input { min-width: 80px; }
 #warranty_items_tbl .warranty-name { min-width: 180px; }
 #warranty_items_tbl .warranty-policy { min-width: 220px; resize: vertical; }
+#modal_warranty_items .warranty-modal-content {
+    max-height: calc(100vh - 1rem);
+}
+#modal_warranty_items .modal-body {
+    min-height: 0;
+    overflow-y: auto;
+}
+#modal_warranty_items .table-responsive {
+    overflow-x: auto;
+}
 </style>
 {% endblock %}
 
@@ -3793,7 +3803,7 @@ function exportCurrentOrderStock(){
         type:'POST',
         contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
-        data:JSON.stringify({order_id: orderId}),
+        data:JSON.stringify({order_id: orderId, warehouse_id: $('#inp_warehouse_id').val() || null}),
         success:function(r){
             if(r.status === 'ok'){
                 applyOrderWorkflowResult(r);

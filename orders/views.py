@@ -4293,10 +4293,19 @@ def api_export_order_stock(request):
                 }
                 payload.update(_order_workflow_payload(order))
                 return JsonResponse(payload)
-            if not order.warehouse_id:
+            requested_warehouse_id = data.get('warehouse_id') or order.warehouse_id
+            warehouse = _get_warehouse_for_user(request, requested_warehouse_id)
+            if not warehouse:
                 return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn kho xuất cho đơn hàng trước khi xuất kho.'})
             if not order.items.exists():
                 return JsonResponse({'status': 'error', 'message': 'Đơn hàng chưa có sản phẩm để xuất kho.'})
+
+            # Nút "Xuất kho" có thể được bấm ngay sau khi người dùng chọn kho
+            # trên form sửa đơn, trước khi bấm Lưu. Ghi nhận lựa chọn này vào
+            # đơn trước khi trừ tồn để tránh backend vẫn thấy kho đang trống.
+            if order.warehouse_id != warehouse.id:
+                order.warehouse = warehouse
+                order.save(update_fields=['warehouse'])
 
             old_status = order.status
             # Người dùng đã xác nhận thao tác xuất kho riêng; nếu thiếu hàng thì

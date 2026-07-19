@@ -2390,6 +2390,39 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(stock.quantity), 3.0)
         self.assertFalse(Receipt.objects.filter(order=order).exists())
 
+    def test_export_order_stock_persists_warehouse_selected_in_form(self):
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
+        order = Order.objects.create(
+            code='DH-EXPORT-FORM-WAREHOUSE-001',
+            store=self.store,
+            customer=self.customer,
+            warehouse=None,
+            status=1,
+            total_amount=100,
+            final_amount=100,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.post(
+            reverse('api_export_order_stock'),
+            data=json.dumps({'order_id': order.id, 'warehouse_id': self.warehouse.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        order.refresh_from_db()
+        self.assertEqual(order.warehouse_id, self.warehouse.id)
+        self.assertEqual(order.status, 4)
+
     def test_explicit_order_stock_export_allows_negative_stock(self):
         BusinessConfig.objects.create(
             brand=self.brand,
@@ -3052,6 +3085,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(order_list_response.status_code, 200)
         self.assertContains(order_list_response, 'id="quick_return_cash_book"')
         self.assertContains(order_list_response, self.cashbook.name)
+        self.assertContains(order_list_response, 'id="modal_warranty_items"')
+        self.assertContains(order_list_response, 'warranty-modal-content')
 
     def test_save_order_return_with_exchange_items_collects_difference_and_moves_stock(self):
         exchange_product = Product.objects.create(

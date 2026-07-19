@@ -428,7 +428,13 @@ def finance_list_tbl(request):
 @login_required(login_url="/login/")
 def cashbook_tbl(request):
     cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
-    context = {'active_tab': 'cashbook_tbl', 'cashbooks': cashbooks}
+    context = {
+        'active_tab': 'cashbook_tbl',
+        'cashbooks': cashbooks,
+        # Chỉ người có quyền cấu hình mới được mở form tạo/sửa quỹ.
+        # Nhân viên vẫn xem được sổ quỹ nhưng không thấy nút thao tác quản trị.
+        'can_manage_cashbooks': can_manage_users(request.user),
+    }
     return render(request, "finance/cashbook.html", context)
 
 

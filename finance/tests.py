@@ -522,3 +522,20 @@ class FinanceFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['status'], 'error')
+
+    def test_cashbook_page_hides_create_button_for_regular_staff(self):
+        response = self.client.get(reverse('cashbook_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="btn_add_cashbook"')
+        self.assertNotContains(response, 'id="modal_cashbook"')
+
+    def test_cashbook_page_shows_create_button_to_brand_owner(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('cashbook_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="btn_add_cashbook"')
+        self.assertContains(response, 'id="modal_cashbook"')

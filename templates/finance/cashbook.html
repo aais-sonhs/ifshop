@@ -3,8 +3,25 @@
 <div class="card">
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-book mr-2"></i>Sổ quỹ</h3>
+        {% if can_manage_cashbooks %}
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-success" id="btn_add_cashbook">
+                <i class="fas fa-plus mr-1"></i>Tạo quỹ
+            </button>
+        </div>
+        {% endif %}
     </div>
     <div class="card-body">
+        {% if not cashbooks %}
+        <div class="alert alert-info py-2">
+            <i class="fas fa-info-circle mr-1"></i>
+            {% if can_manage_cashbooks %}
+            Chưa có quỹ hoạt động. Bấm <b>Tạo quỹ</b> để thêm quỹ tiền mặt, tài khoản ngân hàng hoặc ví điện tử.
+            {% else %}
+            Chưa có quỹ hoạt động. Vui lòng liên hệ chủ cửa hàng để tạo quỹ tiền mặt, tài khoản ngân hàng hoặc ví điện tử.
+            {% endif %}
+        </div>
+        {% endif %}
         <div class="row mb-3">
             <div class="col-md-3">
                 <select class="form-control form-control-sm" id="filter_cashbook">
@@ -46,15 +63,107 @@
         </div>
     </div>
 </div>
+
+{% if can_manage_cashbooks %}
+<!-- Modal tạo quỹ. Trước đây chức năng này chỉ có trong Quản trị → Danh mục. -->
+<div class="modal fade" id="modal_cashbook" tabindex="-1" role="dialog" aria-labelledby="cashbook_modal_title" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="cashbook_modal_title">Tạo quỹ</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Đóng"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cashbook_id">
+                <div class="form-group">
+                    <label for="cashbook_name">Tên quỹ <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="cashbook_name" maxlength="255" placeholder="VD: Quỹ tiền mặt">
+                </div>
+                <div class="form-group mb-0">
+                    <label for="cashbook_description">Mô tả</label>
+                    <textarea class="form-control" id="cashbook_description" rows="2" placeholder="VD: Tiền mặt tại quầy thu ngân"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success" id="btn_save_cashbook"><i class="fas fa-save mr-1"></i>Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
 $(document).ready(function(){
+    {% if can_manage_cashbooks %}
+    $('#btn_add_cashbook').click(function(){
+        $('#cashbook_id').val('');
+        $('#cashbook_name').val('');
+        $('#cashbook_description').val('');
+        $('#cashbook_modal_title').text('Tạo quỹ');
+        $('#modal_cashbook').modal('show');
+        setTimeout(function(){ $('#cashbook_name').trigger('focus'); }, 250);
+    });
+
+    $('#btn_save_cashbook').click(function(){
+        var name = $.trim($('#cashbook_name').val() || '');
+        if(!name){
+            alert('Vui lòng nhập tên quỹ');
+            $('#cashbook_name').trigger('focus');
+            return;
+        }
+
+        var $button = $(this);
+        $button.prop('disabled', true);
+        $.ajax({
+            url: '/api/cashbooks/save/',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            data: JSON.stringify({
+                id: $('#cashbook_id').val() || null,
+                name: name,
+                description: $.trim($('#cashbook_description').val() || '')
+            })
+        }).done(function(response){
+            if(response.status === 'ok'){
+                $('#modal_cashbook').modal('hide');
+                // Cập nhật bộ lọc ngay để quỹ vừa tạo có thể được chọn lập tức.
+                refreshCashbookFilter();
+                alert(response.message || 'Lưu quỹ thành công');
+            } else {
+                alert(response.message || 'Không thể lưu quỹ');
+            }
+        }).fail(function(xhr){
+            var response = xhr.responseJSON || {};
+            alert(response.message || 'Không thể lưu quỹ. Vui lòng thử lại.');
+        }).always(function(){
+            $button.prop('disabled', false);
+        });
+    });
+    {% endif %}
     loadData();
     $('#btn_search').click(function(){loadData();});
 });
+
+function refreshCashbookFilter(){
+    var selected = $('#filter_cashbook').val() || '';
+    $.get('/api/cashbooks/', function(response){
+        var html = '<option value="">-- Tất cả quỹ --</option>';
+        (response.data || []).forEach(function(book){
+            if(book.is_active){
+                html += '<option value="'+book.id+'">'+$('<div>').text(book.name).html()+'</option>';
+            }
+        });
+        $('#filter_cashbook').html(html).val(selected);
+        if($('#filter_cashbook').val() === null){ $('#filter_cashbook').val(''); }
+        loadData();
+    });
+}
+
 function loadData(){
     var cashbookId = $('#filter_cashbook').val();
     var fromDate = $('#filter_from_date').val();

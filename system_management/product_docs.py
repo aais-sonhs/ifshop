@@ -215,7 +215,7 @@ PAYMENT_METHOD_DEFAULT_GUIDE = {
     'steps': [
         {
             'title': '1. Tạo quỹ hoặc tài khoản',
-            'body': 'Vào Tài chính → Sổ quỹ. Nếu chưa có quỹ phù hợp, tạo mới Quỹ tiền mặt, Tài khoản ngân hàng, Ví MoMo hoặc tài khoản thực tế cửa hàng đang sử dụng.',
+            'body': 'Vào Tài chính → Sổ quỹ và bấm Tạo quỹ ở góc phải. Nếu phiên bản giao diện chưa có nút này, vào Quản trị → Danh mục → Danh mục quỹ → Thêm. Tạo Quỹ tiền mặt, Tài khoản ngân hàng, Ví MoMo hoặc tài khoản thực tế cửa hàng đang sử dụng.',
         },
         {
             'title': '2. Mở phương thức thanh toán',

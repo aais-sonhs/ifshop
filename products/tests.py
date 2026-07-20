@@ -313,12 +313,18 @@ class ProductInventoryFlowTests(TestCase):
         response = self.client.get(reverse('category_tbl'))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="product_cat_tbl"')
+        self.assertContains(response, 'id="product_type_tbl"')
+        self.assertContains(response, 'Loại sản phẩm')
+        self.assertContains(response, 'Thêm loại sản phẩm')
         self.assertContains(response, '<th>Danh mục cha</th>', html=True)
         self.assertContains(response, 'class="text-center">Số SP</th>')
-        self.assertContains(response, "if(d.parent_id) productUrl += '&product_type=' + d.id;")
+        self.assertContains(response, 'var productTypes = SYSTEM_PRODUCT_CATEGORIES.filter')
+        self.assertContains(response, "'&product_type=' + d.id")
         self.assertContains(response, 'Xem SP')
         self.assertContains(response, 'id="pc_parent_id"')
         self.assertContains(response, "parent_id:$('#pc_parent_id').val()||null")
+        self.assertContains(response, 'Vui lòng chọn danh mục cha')
 
     def test_product_table_groups_related_fields_into_compact_columns(self):
         response = self.client.get(reverse('product_tbl'))

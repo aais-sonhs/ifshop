@@ -9,12 +9,59 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-3">
+            <div class="col-lg-7 col-md-6">
+                <div class="form-group mb-md-0">
+                    <label for="supplier_search">Tìm nhà cung cấp</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        </div>
+                        <input type="search" class="form-control" id="supplier_search"
+                               placeholder="Mã, tên, SĐT, email, MST, người liên hệ hoặc địa chỉ">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-3">
+                <div class="form-group mb-md-0">
+                    <label for="supplier_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="supplier_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="active">Đang hoạt động</option>
+                        <option value="inactive">Ngừng hoạt động</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-3">
+                <div class="d-flex" style="gap:6px;">
+                    <button type="button" class="btn btn-sm btn-primary flex-fill" id="btn_filter_supplier">
+                        <i class="fas fa-filter"></i> Lọc
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_supplier_filters" title="Xóa bộ lọc">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="supplier_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="supplier_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="supplier_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã NCC</th><th>Tên NCC</th><th>SĐT</th><th>Email</th><th>Địa chỉ</th><th>MST</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
+        <div id="supplier_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 <div class="modal fade" id="modal_form" tabindex="-1">
@@ -51,8 +98,64 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+var SUPPLIER_PAGE_SIZE_KEY = 'ifshop_supplier_page_size';
+var SUPPLIER_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(SUPPLIER_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    meta: null
+};
+var SUPPLIER_ROWS_BY_ID = {};
+var SUPPLIER_LOAD_XHR = null;
+var SUPPLIER_SEARCH_TIMER = null;
+
 $(document).ready(function() {
+    $('#supplier_page_size').val(String(SUPPLIER_PAGE_STATE.page_size));
     loadData();
+
+    $('#btn_filter_supplier').click(function(){
+        applySupplierFilters();
+    });
+    $('#supplier_search').on('input', function(){
+        clearTimeout(SUPPLIER_SEARCH_TIMER);
+        SUPPLIER_SEARCH_TIMER = setTimeout(applySupplierFilters, 350);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(SUPPLIER_SEARCH_TIMER);
+        applySupplierFilters();
+    });
+    $('#supplier_status').change(function(){
+        applySupplierFilters();
+    });
+    $('#btn_clear_supplier_filters').click(function(){
+        clearTimeout(SUPPLIER_SEARCH_TIMER);
+        $('#supplier_search,#supplier_status').val('');
+        applySupplierFilters();
+    });
+    $('#supplier_page_size').change(function(){
+        SUPPLIER_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        localStorage.setItem(SUPPLIER_PAGE_SIZE_KEY, String(SUPPLIER_PAGE_STATE.page_size));
+        SUPPLIER_PAGE_STATE.page = 1;
+        loadData();
+    });
+    $(document).on('click', '.supplier-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === SUPPLIER_PAGE_STATE.page) return;
+        SUPPLIER_PAGE_STATE.page = page;
+        loadData();
+    });
+    $(document).on('click', '.btn-edit-supplier', function(){
+        var supplier = SUPPLIER_ROWS_BY_ID[String($(this).data('id'))];
+        if(supplier) editItem(supplier);
+    });
+    $(document).on('click', '.btn-delete-supplier', function(){
+        deleteItem($(this).data('id'));
+    });
+
     $('#btn_add').click(function() {
         $('#edit_id').val(''); $('input[id^=inp_],textarea[id^=inp_]').val('');
         $('#modal_title').text('Thêm NCC'); $('#modal_form').modal('show');
@@ -64,31 +167,137 @@ $(document).ready(function() {
         if(!data.code||!data.name){alert('Vui lòng nhập mã và tên');return;}
         $.ajax({url:'/api/suppliers/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
-            success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
+            success:function(r){
+                if(r.status==='ok'){
+                    $('#modal_form').modal('hide');
+                    if(!data.id) SUPPLIER_PAGE_STATE.page = 1;
+                    loadData();
+                }
+                alert(r.message);
+            }
         });
     });
 });
+
+function applySupplierFilters(){
+    SUPPLIER_PAGE_STATE.page = 1;
+    loadData();
+}
+
+function escapeSupplierHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
 function loadData(){
-    $.get('/api/suppliers/',function(res){
-        var h=''; res.data.forEach(function(d,i){
-            h+='<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.name+'</td><td>'+d.phone+'</td><td>'+d.email+'</td><td>'+d.address+'</td><td>'+d.tax_code+'</td>'+
-                '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
-                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
-                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
-        }); $('#data_tbl tbody').html(h);
+    if(SUPPLIER_LOAD_XHR) SUPPLIER_LOAD_XHR.abort();
+    $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-muted">Đang tải...</td></tr>');
+    SUPPLIER_LOAD_XHR = $.get('/api/suppliers/', {
+        q: ($('#supplier_search').val() || '').trim(),
+        status: $('#supplier_status').val() || '',
+        page: SUPPLIER_PAGE_STATE.page || 1,
+        page_size: SUPPLIER_PAGE_STATE.page_size || 50
+    }).done(function(res){
+        var rows = Array.isArray(res.data) ? res.data : [];
+        var meta = res.meta || {};
+        SUPPLIER_PAGE_STATE.meta = meta;
+        SUPPLIER_PAGE_STATE.page = Number(meta.page || SUPPLIER_PAGE_STATE.page || 1);
+        SUPPLIER_PAGE_STATE.page_size = Number(meta.page_size || SUPPLIER_PAGE_STATE.page_size || 50);
+        $('#supplier_page_size').val(String(SUPPLIER_PAGE_STATE.page_size));
+        SUPPLIER_ROWS_BY_ID = {};
+
+        var startIndex = Number(meta.start_index || 1);
+        var h = '';
+        rows.forEach(function(d, i){
+            SUPPLIER_ROWS_BY_ID[String(d.id)] = d;
+            h += '<tr>' +
+                '<td>' + (startIndex + i) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.code) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.name) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.phone) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.email) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.address) + '</td>' +
+                '<td>' + escapeSupplierHtml(d.tax_code) + '</td>' +
+                '<td>' + (d.is_active
+                    ? '<span class="badge badge-success">HĐ</span>'
+                    : '<span class="badge badge-secondary">Ngừng</span>') + '</td>' +
+                '<td><div class="btn-action-group">' +
+                    '<button class="btn btn-xs btn-info btn-edit-supplier" data-id="' + d.id + '">Sửa</button> ' +
+                    '<button class="btn btn-xs btn-outline-danger btn-delete-supplier" data-id="' + d.id + '">Xóa</button>' +
+                '</div></td></tr>';
+        });
+        $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Không có nhà cung cấp phù hợp.</td></tr>');
+        renderSupplierPagination(meta);
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
+        $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-danger">Không tải được danh sách nhà cung cấp.</td></tr>');
+        $('#supplier_pagination_summary').html('<span class="text-danger">Không tải được dữ liệu.</span>');
+        $('#supplier_pagination').html('');
+    }).always(function(){
+        SUPPLIER_LOAD_XHR = null;
     });
 }
+
+function renderSupplierPagination(meta){
+    var totalFiltered = Number(meta.total_filtered_count || 0);
+    var totalAll = Number(meta.total_all_count || 0);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    if(!totalFiltered){
+        $('#supplier_pagination_summary').text(
+            totalAll ? 'Không có nhà cung cấp phù hợp.' : 'Chưa có nhà cung cấp.'
+        );
+        $('#supplier_pagination').html('');
+        return;
+    }
+
+    var summary = 'Hiển thị ' + meta.start_index + '-' + meta.end_index +
+        ' / ' + totalFiltered + ' nhà cung cấp';
+    if(totalFiltered !== totalAll) summary += ' trên tổng ' + totalAll;
+    summary += ' · Trang ' + currentPage + '/' + totalPages;
+    $('#supplier_pagination_summary').text(summary);
+
+    if(totalPages <= 1){
+        $('#supplier_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary supplier-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' supplier-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary supplier-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#supplier_pagination').html(html);
+}
+
 function editItem(d){
-    $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_name').val(d.name);$('#inp_phone').val(d.phone);
-    $('#inp_email').val(d.email);$('#inp_address').val(d.address);$('#inp_tax_code').val(d.tax_code);
-    $('#inp_contact_person').val(d.contact_person);$('#inp_note').val(d.note);
+    $('#edit_id').val(d.id);$('#inp_code').val(d.code || '');$('#inp_name').val(d.name || '');$('#inp_phone').val(d.phone || '');
+    $('#inp_email').val(d.email || '');$('#inp_address').val(d.address || '');$('#inp_tax_code').val(d.tax_code || '');
+    $('#inp_contact_person').val(d.contact_person || '');$('#inp_note').val(d.note || '');
     $('#modal_title').text('Sửa NCC');$('#modal_form').modal('show');
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;
     $.ajax({url:'/api/suppliers/delete/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
-        success:function(r){loadData();alert(r.message);}
+        success:function(r){if(r.status === 'ok') loadData();alert(r.message);}
     });
 }
 </script>

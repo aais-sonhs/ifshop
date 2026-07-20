@@ -37,9 +37,16 @@
 
                 <!-- Chi tiết sản phẩm kiểm -->
                 <hr>
+                <div class="form-group mb-3">
+                    <label for="quick_stock_check_product"><i class="fas fa-search mr-1"></i>Chọn sản phẩm để thêm</label>
+                    <select class="form-control no-select2" id="quick_stock_check_product" data-searchable="false" style="width:100%">
+                        <option value="">-- Tìm và chọn sản phẩm --</option>
+                    </select>
+                    <small id="quick_stock_check_product_status" class="form-text" style="display:none;"></small>
+                    <small class="form-text text-muted">Tìm theo tên, mã, barcode hoặc quy cách; chọn xong sản phẩm sẽ được thêm vào bảng dưới.</small>
+                </div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết kiểm kê</h6>
-                    <button type="button" class="btn btn-sm btn-success" id="btn_add_item"><i class="fas fa-plus"></i> Thêm sản phẩm</button>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm" id="items_tbl">
@@ -69,36 +76,79 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.stock-check-product-dropdown .select2-results__option--highlighted[aria-selected],
+.stock-check-product-dropdown .select2-results__option--highlighted[aria-selected]:hover {
+    background: #e3f2fd !important;
+    color: #212529 !important;
+}
+</style>
 <script>
 // Product data from API (loaded with variants)
 var PRODUCTS = [];
+var STOCK_CHECK_PRODUCTS_LOADED = false;
+var STOCK_CHECK_PRODUCTS_LOAD_ACTIVE = false;
+var STOCK_CHECK_PRODUCTS_LOAD_XHR = null;
+var STOCK_CHECK_PRODUCTS_RETRY_TIMER = null;
+var STOCK_CHECK_PRODUCTS_CALLBACKS = [];
+var STOCK_CHECK_PRODUCT_CHOICES = [];
+var STOCK_CHECK_PRODUCT_RESULT_PAGE_SIZE = 5;
+var STOCK_CHECK_MODAL_SESSION = 0;
 
 var itemRowIndex = 0;
 
 $(document).ready(function(){
-    ensureProductsLoaded();
+    ensureStockCheckProductsLoaded();
     loadData();
 
     $('#btn_add').click(function(){
+        var modalSession = ++STOCK_CHECK_MODAL_SESSION;
         $('#edit_id').val('');
         $('#inp_code,#inp_note').val('');
-        $('#inp_warehouse_id').val('');
+        $('#inp_warehouse_id').val('').trigger('change.select2');
         $('#inp_check_date').val(localDateInputValue());
         $('#inp_status').val('0');
-        $('#items_body').html('');
-        itemRowIndex = 0;
+        resetQuickStockCheckProductSelect();
+        clearStockCheckItemRows();
         $('#modal_title').text('Tạo phiếu kiểm');
-        $('#modal_form').modal('show');
-        setTimeout(function(){
+        setQuickStockCheckProductLoadState(STOCK_CHECK_PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        $('#modal_form').one('shown.bs.modal', function(){
+            if(modalSession !== STOCK_CHECK_MODAL_SESSION) return;
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-            ensureProductsLoaded();
-        }, 200);
+            if(STOCK_CHECK_PRODUCTS_LOADED){
+                initializeQuickStockCheckProductSelect();
+            }
+            ensureStockCheckProductsLoaded(function(usable, refreshed){
+                if(modalSession !== STOCK_CHECK_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
+                handleQuickStockCheckProductsLoaded(usable, refreshed);
+            }, true);
+        });
+        $('#modal_form').modal('show');
     });
 
-    $('#btn_add_item').click(function(){
-        ensureProductsLoaded(function(){
-            addItemRow();
-        });
+    $(document).on('click', '#btn_retry_stock_check_products', function(){
+        var modalSession = STOCK_CHECK_MODAL_SESSION;
+        setQuickStockCheckProductLoadState(STOCK_CHECK_PRODUCTS_LOADED ? 'refreshing' : 'loading');
+        ensureStockCheckProductsLoaded(function(usable, refreshed){
+            if(modalSession !== STOCK_CHECK_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
+            handleQuickStockCheckProductsLoaded(usable, refreshed);
+        }, true);
+    });
+
+    $('#quick_stock_check_product').on('select2:select', function(event){
+        var selectedData = (event.params && event.params.data) || {};
+        var $option = selectedData.element ? $(selectedData.element) : $(this).find('option:selected');
+        var selectedChoice = parseStockCheckProductChoice(selectedData.id || $option.val(), $option);
+        var productId = Number(selectedData.product_id || selectedChoice.productId);
+        var variantId = selectedData.variant_id || selectedChoice.variantId;
+        var product = getStockCheckProductById(productId);
+        if(product && !focusExistingStockCheckProduct(productId)){
+            addItemRow({
+                product_id: productId,
+                variant_id: variantId
+            });
+        }
+        $(this).val(null).trigger('change.select2');
     });
 
     $('#btn_save').click(function(){
@@ -142,8 +192,16 @@ $(document).ready(function(){
     $(document).on('change', '.item-product-select', function(){
         updateRowSystemQuantity($(this).closest('tr'));
     });
+    $(document).on('select2:select select2:clear', '.item-product-select', function(){
+        var row = $(this).closest('tr');
+        row.find('.item-actual-qty').data('manual', false).val('');
+        updateRowSystemQuantity(row);
+    });
 
     $('#inp_warehouse_id').on('change', function(){
+        if($('#quick_stock_check_product').hasClass('select2-hidden-accessible')){
+            $('#quick_stock_check_product').select2('close');
+        }
         $('#items_body tr').each(function(){
             $(this).find('.item-actual-qty').data('manual', false).val('');
             updateRowSystemQuantity($(this));
@@ -156,8 +214,16 @@ $(document).ready(function(){
     });
 
     $(document).on('click', '.btn-remove-item', function(){
-        $(this).closest('tr').remove();
+        var row = $(this).closest('tr');
+        destroyStockCheckSelect2(row.find('.select2-item'));
+        row.remove();
         reindexRows();
+    });
+
+    $('#modal_form').on('hidden.bs.modal', function(){
+        STOCK_CHECK_MODAL_SESSION++;
+        resetQuickStockCheckProductSelect();
+        clearStockCheckItemRows();
     });
 });
 
@@ -168,15 +234,350 @@ function localDateInputValue(date){
     return d.getFullYear() + '-' + month + '-' + day;
 }
 
-function ensureProductsLoaded(callback){
-    if(PRODUCTS.length){
-        if(typeof callback === 'function') callback();
+function escapeStockCheckHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
+function destroyStockCheckSelect2($select){
+    if(!$select || !$select.length || !$select.hasClass('select2-hidden-accessible')) return;
+    try { $select.select2('close'); } catch(error) {}
+    try { $select.select2('destroy'); } catch(error) {}
+}
+
+function resetQuickStockCheckProductSelect(){
+    var $select = $('#quick_stock_check_product');
+    destroyStockCheckSelect2($select);
+    $select.prop('disabled', false).val(null).html(
+        '<option value="">-- Tìm và chọn sản phẩm --</option>'
+    );
+}
+
+function clearStockCheckItemRows(){
+    $('#items_body .select2-item').each(function(){
+        destroyStockCheckSelect2($(this));
+    });
+    $('#items_body').empty();
+    itemRowIndex = 0;
+}
+
+function getStockCheckProductById(productId){
+    return PRODUCTS.find(function(product){
+        return Number(product.id) === Number(productId);
+    }) || null;
+}
+
+function buildStockCheckProductChoiceId(productId, variantId){
+    return String(productId || '') + ':' + String(variantId || '');
+}
+
+function parseStockCheckProductChoice(value, $option){
+    var optionProductId = $option && $option.length ? $option.data('product-id') : null;
+    var optionVariantId = $option && $option.length ? $option.data('variant-id') : null;
+    if(optionProductId){
+        return {
+            productId: Number(optionProductId),
+            variantId: optionVariantId ? Number(optionVariantId) : null
+        };
+    }
+    var parts = String(value || '').split(':');
+    return {
+        productId: Number(parts[0] || 0),
+        variantId: parts.length > 1 && parts[1] ? Number(parts[1]) : null
+    };
+}
+
+function getStockCheckProductVariant(product, variantId){
+    if(!product || !variantId || !(product.variants && product.variants.length)) return null;
+    return product.variants.find(function(variant){
+        return Number(variant.id) === Number(variantId);
+    }) || null;
+}
+
+function getStockCheckProductOptionInfo(data){
+    if(!data || !data.id) return null;
+    var $option = data.element ? $(data.element) : null;
+    var selectedChoice = parseStockCheckProductChoice(data.id, $option);
+    var product = getStockCheckProductById(data.product_id || selectedChoice.productId);
+    if(!product) return null;
+    var variant = getStockCheckProductVariant(product, data.variant_id || selectedChoice.variantId);
+    return {product: product, variant: variant};
+}
+
+function getStockCheckProductStockInfo(product){
+    var warehouseId = String($('#inp_warehouse_id').val() || '');
+    if(warehouseId){
+        return {
+            actual: parseQty((product.stocks || {})[warehouseId] || 0),
+            sellable: product.sellable_stocks && product.sellable_stocks[warehouseId] !== undefined
+                ? parseQty(product.sellable_stocks[warehouseId])
+                : parseQty((product.stocks || {})[warehouseId] || 0),
+            scope: $('#inp_warehouse_id option:selected').text() || 'Kho đang chọn'
+        };
+    }
+    return {
+        actual: parseQty(product.total_stock || 0),
+        sellable: product.total_sellable_stock !== undefined
+            ? parseQty(product.total_sellable_stock)
+            : parseQty(product.total_stock || 0),
+        scope: 'Tổng tất cả kho'
+    };
+}
+
+function stockCheckStockValueClass(value){
+    if(value < 0) return 'text-danger font-weight-bold';
+    if(value > 0) return 'text-success font-weight-bold';
+    return 'text-muted';
+}
+
+function renderStockCheckProductStockHtml(product){
+    var stock = getStockCheckProductStockInfo(product);
+    return '<div class="small" title="' + escapeStockCheckHtml(stock.scope) + '">' +
+        '<div><span class="text-muted">Tồn kho:</span> <span class="' + stockCheckStockValueClass(stock.actual) + '">' + fmtQty(stock.actual) + '</span></div>' +
+        '<div><span class="text-muted">Có thể bán:</span> <span class="' + stockCheckStockValueClass(stock.sellable) + '">' + fmtQty(stock.sellable) + '</span></div>' +
+        '</div>';
+}
+
+function formatStockCheckProductOption(data){
+    var info = getStockCheckProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var variantLabel = info.variant
+        ? ' [' + escapeStockCheckHtml(info.variant.size_name || info.variant.sku || '') + ']'
+        : '';
+    return $(
+        '<div class="stock-check-product-option py-1">' +
+            '<div><strong class="text-dark">' + escapeStockCheckHtml(info.product.code || '') + '</strong> — ' +
+                escapeStockCheckHtml(info.product.name || '') + variantLabel + '</div>' +
+            renderStockCheckProductStockHtml(info.product) +
+        '</div>'
+    );
+}
+
+function formatStockCheckProductSelection(data){
+    var info = getStockCheckProductOptionInfo(data);
+    if(!info) return data && data.text ? data.text : '';
+    var variantLabel = info.variant ? ' [' + (info.variant.size_name || info.variant.sku || '') + ']' : '';
+    return (info.product.code || '') + ' - ' + (info.product.name || '') + variantLabel;
+}
+
+function normalizeStockCheckProductSearch(value){
+    var text = String(value || '').toLowerCase().trim();
+    if(text.normalize){
+        text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    return text.replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function matchesNormalizedStockCheckProductSearch(text, term){
+    if(!term) return true;
+    var compactText = text.replace(/\s/g, '');
+    var compactTerm = term.replace(/\s/g, '');
+    return compactText.indexOf(compactTerm) >= 0 || term.split(' ').every(function(token){
+        return text.indexOf(token) >= 0;
+    });
+}
+
+function buildStockCheckProductChoices(){
+    var choices = [];
+    PRODUCTS.forEach(function(product){
+        if(product.is_combo || product.is_service) return;
+        if(product.variants && product.variants.length){
+            product.variants.forEach(function(variant){
+                choices.push({
+                    id: buildStockCheckProductChoiceId(product.id, variant.id),
+                    product_id: product.id,
+                    variant_id: variant.id,
+                    text: (product.code || '') + ' - ' + (product.name || '') +
+                        ' [' + (variant.size_name || variant.sku || '') + ']',
+                    search_text: normalizeStockCheckProductSearch([
+                        product.code || '', product.name || '', product.barcode || '', product.specification || '',
+                        variant.sku || '', variant.size_name || ''
+                    ].join(' '))
+                });
+            });
+        } else {
+            choices.push({
+                id: buildStockCheckProductChoiceId(product.id, null),
+                product_id: product.id,
+                variant_id: null,
+                text: (product.code || '') + ' - ' + (product.name || ''),
+                search_text: normalizeStockCheckProductSearch([
+                    product.code || '', product.name || '', product.barcode || '', product.specification || ''
+                ].join(' '))
+            });
+        }
+    });
+    STOCK_CHECK_PRODUCT_CHOICES = choices;
+}
+
+function queryStockCheckProductChoices(term){
+    var normalizedTerm = normalizeStockCheckProductSearch(term || '');
+    var matched = normalizedTerm ? STOCK_CHECK_PRODUCT_CHOICES.filter(function(choice){
+        return matchesNormalizedStockCheckProductSearch(choice.search_text, normalizedTerm);
+    }) : STOCK_CHECK_PRODUCT_CHOICES;
+    return {
+        results: matched.slice(0, STOCK_CHECK_PRODUCT_RESULT_PAGE_SIZE),
+        pagination: {more: false}
+    };
+}
+
+function buildStockCheckProductAjaxConfig(){
+    return {
+        delay: 80,
+        transport: function(params, success){
+            var query = params.data || {};
+            success(queryStockCheckProductChoices(query.term));
+            return {abort: function(){}};
+        },
+        processResults: function(data){ return data; }
+    };
+}
+
+function initializeQuickStockCheckProductSelect(){
+    var $select = $('#quick_stock_check_product');
+    if($select.hasClass('select2-hidden-accessible')) return;
+    $select.prop('disabled', false).html('<option value=""></option>').select2({
+        dropdownParent: $('#modal_form'),
+        width: '100%',
+        theme: 'bootstrap4',
+        placeholder: '-- Tìm và chọn sản phẩm --',
+        allowClear: true,
+        ajax: buildStockCheckProductAjaxConfig(),
+        templateResult: formatStockCheckProductOption,
+        templateSelection: formatStockCheckProductSelection,
+        dropdownCssClass: 'stock-check-product-dropdown'
+    });
+}
+
+function focusExistingStockCheckProduct(productId){
+    var $existing = $();
+    $('#items_body tr').each(function(){
+        var $selected = $(this).find('.item-product-select option:selected');
+        var selectedChoice = parseStockCheckProductChoice($selected.val(), $selected);
+        if(Number(selectedChoice.productId) === Number(productId)){
+            $existing = $(this);
+            return false;
+        }
+    });
+    if(!$existing.length) return false;
+    $existing.addClass('table-warning');
+    $existing.find('.item-actual-qty').focus().select();
+    setTimeout(function(){ $existing.removeClass('table-warning'); }, 900);
+    return true;
+}
+
+function flushStockCheckProductCallbacks(refreshed){
+    var callbacks = STOCK_CHECK_PRODUCTS_CALLBACKS.splice(0);
+    callbacks.forEach(function(callback){
+        callback(STOCK_CHECK_PRODUCTS_LOADED, refreshed);
+    });
+}
+
+function finishStockCheckProductLoad(refreshed){
+    STOCK_CHECK_PRODUCTS_LOAD_ACTIVE = false;
+    STOCK_CHECK_PRODUCTS_LOAD_XHR = null;
+    if(STOCK_CHECK_PRODUCTS_RETRY_TIMER){
+        clearTimeout(STOCK_CHECK_PRODUCTS_RETRY_TIMER);
+        STOCK_CHECK_PRODUCTS_RETRY_TIMER = null;
+    }
+    flushStockCheckProductCallbacks(refreshed);
+}
+
+function requestStockCheckProducts(attempt){
+    STOCK_CHECK_PRODUCTS_LOAD_XHR = $.ajax({
+        url: '/api/products-select/',
+        type: 'GET',
+        dataType: 'json',
+        cache: false,
+        timeout: 20000
+    }).done(function(res){
+        if(!res || !Array.isArray(res.data)){
+            retryStockCheckProductLoad(attempt);
+            return;
+        }
+        PRODUCTS = res.data;
+        buildStockCheckProductChoices();
+        STOCK_CHECK_PRODUCTS_LOADED = true;
+        finishStockCheckProductLoad(true);
+    }).fail(function(){
+        retryStockCheckProductLoad(attempt);
+    });
+}
+
+function retryStockCheckProductLoad(attempt){
+    STOCK_CHECK_PRODUCTS_LOAD_XHR = null;
+    if(attempt < 2){
+        STOCK_CHECK_PRODUCTS_RETRY_TIMER = setTimeout(function(){
+            STOCK_CHECK_PRODUCTS_RETRY_TIMER = null;
+            requestStockCheckProducts(attempt + 1);
+        }, 500 * (attempt + 1));
         return;
     }
-    $.get('/api/products-select/', function(res){
-        PRODUCTS = res.data || [];
-        if(typeof callback === 'function') callback();
-    });
+    finishStockCheckProductLoad(false);
+}
+
+function ensureStockCheckProductsLoaded(callback, forceRefresh){
+    if(typeof callback === 'function'){
+        if(STOCK_CHECK_PRODUCTS_LOADED && !forceRefresh){
+            callback(true, true);
+            return;
+        }
+        STOCK_CHECK_PRODUCTS_CALLBACKS.push(callback);
+    } else if(STOCK_CHECK_PRODUCTS_LOADED && !forceRefresh){
+        return;
+    }
+    if(STOCK_CHECK_PRODUCTS_LOAD_ACTIVE) return;
+    STOCK_CHECK_PRODUCTS_LOAD_ACTIVE = true;
+    requestStockCheckProducts(0);
+}
+
+function setQuickStockCheckProductLoadState(state){
+    var $select = $('#quick_stock_check_product');
+    var $status = $('#quick_stock_check_product_status');
+    if(state === 'loading'){
+        destroyStockCheckSelect2($select);
+        $select.prop('disabled', true).html('<option value="">Đang tải danh sách sản phẩm...</option>');
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Đang tải danh sách sản phẩm, vui lòng chờ...').show();
+        return;
+    }
+    if(state === 'refreshing'){
+        $status.removeClass('text-danger text-muted').addClass('text-warning')
+            .text('Đang cập nhật tồn kho mới nhất...').show();
+        return;
+    }
+    if(state === 'error'){
+        if(!STOCK_CHECK_PRODUCTS_LOADED){
+            destroyStockCheckSelect2($select);
+            $select.prop('disabled', true).html('<option value="">Chưa tải được danh sách sản phẩm</option>');
+        }
+        $status.removeClass('text-muted text-warning').addClass('text-danger').html(
+            'Chưa tải được danh sách sản phẩm. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_stock_check_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(state === 'stale'){
+        $status.removeClass('text-muted text-danger').addClass('text-warning').html(
+            'Không cập nhật được tồn kho mới nhất; đang dùng danh sách gần nhất. ' +
+            '<button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn_retry_stock_check_products">Thử lại</button>'
+        ).show();
+        return;
+    }
+    if(STOCK_CHECK_PRODUCT_CHOICES.length === 0){
+        $status.removeClass('text-danger text-warning').addClass('text-muted')
+            .text('Chưa có sản phẩm tồn kho đang hoạt động.').show();
+    } else {
+        $status.hide().empty();
+    }
+}
+
+function handleQuickStockCheckProductsLoaded(usable, refreshed){
+    if(usable){
+        initializeQuickStockCheckProductSelect();
+        setQuickStockCheckProductLoadState(refreshed ? 'ready' : 'stale');
+    } else {
+        setQuickStockCheckProductLoadState('error');
+    }
 }
 
 function parseQty(value){
@@ -189,8 +590,9 @@ function fmtQty(value){
 }
 
 function getRowProduct(row){
-    var productId = row.find('.item-product-select').val();
-    return PRODUCTS.find(function(p){ return p.id == productId; }) || null;
+    var $select = row.find('.item-product-select');
+    var selectedChoice = parseStockCheckProductChoice($select.val(), $select.find('option:selected'));
+    return getStockCheckProductById(selectedChoice.productId);
 }
 
 function getProductSystemStock(product, warehouseId){
@@ -226,28 +628,26 @@ function updateRowSystemQuantity(row){
 function addItemRow(data){
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
-    PRODUCTS.forEach(function(p){
-        if(p.is_combo || p.is_service) return;
-        if(p.variants && p.variants.length > 0){
-            p.variants.forEach(function(v){
-                var selected = (data && data.product_id == p.id && data.variant_id == v.id) ? 'selected' : '';
-                if(!selected) selected = (data && data.product_id == p.id && !data.variant_id && p.variants.length == 1) ? 'selected' : '';
-                productOptions += '<option value="'+p.id+'" data-variant-id="'+v.id+'" '+selected+'>'+p.code+' - '+p.name+' ['+v.size_name+']</option>';
-            });
-        } else {
-            var selected = (data && data.product_id == p.id) ? 'selected' : '';
-            productOptions += '<option value="'+p.id+'" '+selected+'>'+p.code+' - '+p.name+'</option>';
-        }
-    });
-
-    var unit = '';
-    if(data){
-        var prod = PRODUCTS.find(function(p){ return p.id == data.product_id; });
-        unit = prod ? prod.unit : '';
+    var selectedProduct = data ? getStockCheckProductById(data.product_id) : null;
+    var selectedVariant = selectedProduct ? getStockCheckProductVariant(selectedProduct, data.variant_id) : null;
+    if(selectedProduct && !selectedVariant && !data.variant_id &&
+            selectedProduct.variants && selectedProduct.variants.length === 1){
+        selectedVariant = selectedProduct.variants[0];
+    }
+    if(selectedProduct){
+        var selectedVariantId = selectedVariant ? selectedVariant.id : null;
+        var selectedLabel = (selectedProduct.code || '') + ' - ' + (selectedProduct.name || '') +
+            (selectedVariant ? ' [' + (selectedVariant.size_name || selectedVariant.sku || '') + ']' : '');
+        productOptions += '<option value="' + buildStockCheckProductChoiceId(selectedProduct.id, selectedVariantId) +
+            '" data-product-id="' + selectedProduct.id + '" data-variant-id="' + (selectedVariantId || '') +
+            '" selected>' + escapeStockCheckHtml(selectedLabel) + '</option>';
     }
 
-    var sysQty = data ? (data.system_quantity || 0) : 0;
-    var actualQty = data ? data.actual_quantity : '';
+    var isExistingItem = !!(data && Object.prototype.hasOwnProperty.call(data, 'actual_quantity'));
+    var sysQty = isExistingItem
+        ? parseQty(data.system_quantity)
+        : getProductSystemStock(selectedProduct, $('#inp_warehouse_id').val());
+    var actualQty = isExistingItem ? parseQty(data.actual_quantity) : sysQty;
     var diff = actualQty - sysQty;
     var diffClass = diff > 0 ? 'text-success' : (diff < 0 ? 'text-danger' : '');
     var itemNote = data ? (data.note || '') : '';
@@ -255,37 +655,29 @@ function addItemRow(data){
     var html = '<tr>' +
         '<td class="text-center item-index">' + itemRowIndex + '</td>' +
         '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
-        '<td class="text-center item-unit">' + unit + '</td>' +
+        '<td class="text-center item-unit">' + escapeStockCheckHtml(selectedProduct ? selectedProduct.unit : '') + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-sys-qty" value="' + sysQty + '" readonly style="background:#f0f0f0;"></td>' +
         '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" step="0.01"></td>' +
         '<td class="text-center font-weight-bold item-diff ' + diffClass + '">' + fmtQty(diff) + '</td>' +
-        '<td><input type="text" class="form-control form-control-sm item-note" value="' + itemNote + '"></td>' +
+        '<td><input type="text" class="form-control form-control-sm item-note" value="' + escapeStockCheckHtml(itemNote) + '"></td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
     $('#items_body').append(html);
 
     // Init Select2 for the new row
     var lastRow = $('#items_body tr:last');
-    lastRow.find('.item-actual-qty').data('manual', !!data);
+    lastRow.find('.item-actual-qty').data('manual', isExistingItem);
     lastRow.find('.select2-item').select2({
         dropdownParent: $('#modal_form'),
         width: '100%',
+        theme: 'bootstrap4',
         placeholder: '-- Chọn sản phẩm --',
-        allowClear: true
+        allowClear: true,
+        ajax: buildStockCheckProductAjaxConfig(),
+        templateResult: formatStockCheckProductOption,
+        templateSelection: formatStockCheckProductSelection,
+        dropdownCssClass: 'stock-check-product-dropdown'
     });
-    // Set value if editing
-    if(data && data.product_id){
-        if(data.variant_id){
-            lastRow.find('.select2-item option').each(function(){
-                if($(this).val() == data.product_id && $(this).data('variant-id') == data.variant_id){
-                    $(this).prop('selected', true);
-                }
-            });
-            lastRow.find('.select2-item').trigger('change.select2');
-        } else {
-            lastRow.find('.select2-item').val(data.product_id).trigger('change.select2');
-        }
-    }
 }
 
 function reindexRows(){
@@ -298,14 +690,17 @@ function reindexRows(){
 function getItemsData(){
     var items = [];
     $('#items_body tr').each(function(){
-        var productId = $(this).find('.item-product-select').val();
+        var $productSelect = $(this).find('.item-product-select');
+        var selectedChoice = parseStockCheckProductChoice(
+            $productSelect.val(),
+            $productSelect.find('option:selected')
+        );
         var actualQty = parseQty($(this).find('.item-actual-qty').val());
         var note = $(this).find('.item-note').val() || '';
-        if(productId){
-            var variantId = $(this).find('.item-product-select option:selected').data('variant-id') || null;
+        if(selectedChoice.productId){
             items.push({
-                product_id: parseInt(productId),
-                variant_id: variantId,
+                product_id: selectedChoice.productId,
+                variant_id: selectedChoice.variantId,
                 actual_quantity: actualQty,
                 note: note
             });
@@ -345,31 +740,39 @@ function loadData(){
 }
 
 function editItem(d){
+    var modalSession = ++STOCK_CHECK_MODAL_SESSION;
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code);
-    $('#inp_warehouse_id').val(d.warehouse_id);
+    $('#inp_warehouse_id').val(d.warehouse_id).trigger('change.select2');
     $('#inp_check_date').val(d.check_date);
     $('#inp_status').val(d.status);
     $('#inp_note').val(d.note);
 
-    // Clear items first
-    $('#items_body').html('');
-    itemRowIndex = 0;
+    resetQuickStockCheckProductSelect();
+    clearStockCheckItemRows();
 
     $('#modal_title').text('Sửa phiếu kiểm');
-    $('#modal_form').modal('show');
+    setQuickStockCheckProductLoadState(STOCK_CHECK_PRODUCTS_LOADED ? 'refreshing' : 'loading');
 
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
+        if(modalSession !== STOCK_CHECK_MODAL_SESSION) return;
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        ensureProductsLoaded(function(){
+        if(STOCK_CHECK_PRODUCTS_LOADED){
+            initializeQuickStockCheckProductSelect();
+        }
+        ensureStockCheckProductsLoaded(function(usable, refreshed){
+            if(modalSession !== STOCK_CHECK_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
+            handleQuickStockCheckProductsLoaded(usable, refreshed);
+            if(!usable) return;
             if(d.items && d.items.length > 0){
                 d.items.forEach(function(item){
                     addItemRow(item);
                 });
             }
-        });
+        }, true);
     });
+    $('#modal_form').modal('show');
 }
 
 function deleteItem(id){

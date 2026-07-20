@@ -887,6 +887,60 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['supplier']['id'], supplier.id)
         self.assertEqual(payload['supplier']['code'], supplier.code)
 
+    def test_supplier_api_filters_and_paginates_on_server(self):
+        for index in range(12):
+            Supplier.objects.create(
+                code=f'SUP-FILTER-{index:03d}',
+                name=f'NCC Filter {index:02d}',
+                phone=f'090100{index:04d}',
+                created_by=self.user,
+            )
+        Supplier.objects.create(
+            code='SUP-FILTER-INACTIVE',
+            name='NCC Filter ngừng hoạt động',
+            phone='0987654321',
+            is_active=False,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_suppliers'), {
+            'q': 'NCC Filter',
+            'status': 'active',
+            'page': 2,
+            'page_size': 10,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload['data']), 2)
+        self.assertTrue(all(row['is_active'] for row in payload['data']))
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['total_filtered_count'], 12)
+        self.assertEqual(payload['meta']['total_all_count'], 14)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 12)
+
+        inactive_response = self.client.get(reverse('api_get_suppliers'), {
+            'q': '0987654321',
+            'status': 'inactive',
+        })
+        inactive_payload = inactive_response.json()
+        self.assertEqual(inactive_payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(inactive_payload['data'][0]['code'], 'SUP-FILTER-INACTIVE')
+
+    def test_supplier_page_has_filters_and_pagination_controls(self):
+        response = self.client.get(reverse('supplier_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="supplier_search"')
+        self.assertContains(response, 'id="supplier_status"')
+        self.assertContains(response, 'id="supplier_page_size"')
+        self.assertContains(response, 'id="supplier_pagination_summary"')
+        self.assertContains(response, 'id="supplier_pagination"')
+        self.assertContains(response, "q: ($('#supplier_search').val() || '').trim()")
+        self.assertContains(response, 'page_size: SUPPLIER_PAGE_STATE.page_size || 50')
+
     def test_inventory_user_can_quick_create_supplier_from_goods_receipt(self):
         response = self.client.post(
             reverse('api_quick_create_supplier'),
@@ -2313,6 +2367,19 @@ class ProductInventoryFlowTests(TestCase):
             ProductStock.objects.get(product=self.product, warehouse=self.warehouse_a).quantity,
             Decimal('3.50'),
         )
+
+    def test_stock_check_uses_searchable_product_picker_instead_of_add_button(self):
+        response = self.client.get(reverse('stock_check_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="quick_stock_check_product"')
+        self.assertContains(response, 'Chọn sản phẩm để thêm')
+        self.assertNotContains(response, 'id="btn_add_item"')
+        self.assertContains(response, 'function buildStockCheckProductChoices()')
+        self.assertContains(response, 'function buildStockCheckProductAjaxConfig()')
+        self.assertContains(response, 'templateResult: formatStockCheckProductOption')
+        self.assertContains(response, 'if(product.is_combo || product.is_service) return;')
+        self.assertContains(response, "$('#modal_form').on('hidden.bs.modal', function()")
 
     def test_save_stock_check_auto_generates_code_and_date(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5.5'))

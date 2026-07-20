@@ -1915,7 +1915,32 @@ def api_delete_warehouse(request):
 
 @login_required(login_url="/login/")
 def api_get_suppliers(request):
-    suppliers = list(Supplier.objects.values(
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    search = (request.GET.get('q') or '').strip()
+    status = (request.GET.get('status') or '').strip().lower()
+
+    suppliers = Supplier.objects.all()
+    total_all_count = suppliers.count()
+    if search:
+        suppliers = suppliers.filter(
+            Q(code__icontains=search)
+            | Q(name__icontains=search)
+            | Q(phone__icontains=search)
+            | Q(email__icontains=search)
+            | Q(address__icontains=search)
+            | Q(tax_code__icontains=search)
+            | Q(contact_person__icontains=search)
+        )
+    if status == 'active':
+        suppliers = suppliers.filter(is_active=True)
+    elif status == 'inactive':
+        suppliers = suppliers.filter(is_active=False)
+
+    suppliers = suppliers.order_by('name', 'id')
+    paginator = Paginator(suppliers, page_size)
+    page_obj = paginator.get_page(page)
+    supplier_rows = page_obj.object_list.values(
         'id',
         'code',
         'name',
@@ -1926,7 +1951,7 @@ def api_get_suppliers(request):
         'contact_person',
         'note',
         'is_active',
-    ))
+    )
     data = [{
         'id': row['id'],
         'code': row['code'],
@@ -1938,8 +1963,22 @@ def api_get_suppliers(request):
         'contact_person': row['contact_person'] or '',
         'note': row['note'] or '',
         'is_active': row['is_active'],
-    } for row in suppliers]
-    return JsonResponse({'data': data})
+    } for row in supplier_rows]
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': total_all_count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        },
+    })
 
 
 @login_required(login_url="/login/")

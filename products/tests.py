@@ -1065,6 +1065,17 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['stocks'][warehouse_key], 9.0)
         self.assertEqual(row['sellable_stocks'][warehouse_key], 9.0)
 
+    def test_purchase_order_product_picker_is_rebuilt_after_modal_closes(self):
+        response = self.client.get(reverse('purchase_order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function resetQuickPurchaseOrderProductSelect()')
+        self.assertContains(response, 'function clearPurchaseOrderItemRows()')
+        self.assertContains(response, 'function destroyPurchaseOrderSelect2($select)')
+        self.assertContains(response, "$('#modal_form').on('hidden.bs.modal', function()")
+        self.assertContains(response, 'PURCHASE_ORDER_MODAL_SESSION++')
+        self.assertContains(response, "$('#items_body .select2-item').each(function()")
+
     def test_brand_owner_can_quick_create_product_location(self):
         self.client.force_login(self.owner)
 
@@ -2380,6 +2391,15 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'templateResult: formatStockCheckProductOption')
         self.assertContains(response, 'if(product.is_combo || product.is_service) return;')
         self.assertContains(response, "$('#modal_form').on('hidden.bs.modal', function()")
+        self.assertContains(response, 'id="stock_check_page_size"')
+        self.assertContains(response, 'id="stock_check_pagination_summary"')
+        self.assertContains(response, 'id="stock_check_pagination"')
+        self.assertContains(response, 'id="stock_check_search"')
+        self.assertContains(response, 'id="stock_check_filter_warehouse"')
+        self.assertContains(response, 'id="stock_check_filter_status"')
+        self.assertContains(response, 'id="stock_check_date_from"')
+        self.assertContains(response, 'id="stock_check_date_to"')
+        self.assertContains(response, "q: ($('#stock_check_search').val() || '').trim()")
 
     def test_save_stock_check_auto_generates_code_and_date(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5.5'))
@@ -2540,6 +2560,87 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         codes = [item['code'] for item in response.json()['data']]
         self.assertEqual(codes[:2], ['KK-NEW', 'KK-OLD'])
+
+    def test_get_stock_checks_paginates_on_server(self):
+        for index in range(12):
+            StockCheck.objects.create(
+                code=f'KK-PAGE-{index:03d}',
+                warehouse=self.warehouse_a,
+                check_date=date.today(),
+                status=0,
+                created_by=self.user,
+            )
+
+        response = self.client.get(reverse('api_get_stock_checks'), {
+            'page': 2,
+            'page_size': 10,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([row['code'] for row in payload['data']], [
+            'KK-PAGE-001',
+            'KK-PAGE-000',
+        ])
+        self.assertEqual(payload['meta']['page'], 2)
+        self.assertEqual(payload['meta']['page_size'], 10)
+        self.assertEqual(payload['meta']['page_count'], 2)
+        self.assertEqual(payload['meta']['total_pages'], 2)
+        self.assertEqual(payload['meta']['total_filtered_count'], 12)
+        self.assertEqual(payload['meta']['start_index'], 11)
+        self.assertEqual(payload['meta']['end_index'], 12)
+
+    def test_get_stock_checks_filters_before_paginating(self):
+        today = date.today()
+        StockCheck.objects.create(
+            code='KK-FILTER-TARGET',
+            warehouse=self.warehouse_a,
+            check_date=today,
+            status=1,
+            note='special-filter-note',
+            created_by=self.user,
+        )
+        StockCheck.objects.create(
+            code='KK-FILTER-DRAFT',
+            warehouse=self.warehouse_a,
+            check_date=today,
+            status=0,
+            note='special-filter-note',
+            created_by=self.user,
+        )
+        StockCheck.objects.create(
+            code='KK-FILTER-OTHER-WAREHOUSE',
+            warehouse=self.warehouse_b,
+            check_date=today,
+            status=1,
+            note='special-filter-note',
+            created_by=self.user,
+        )
+        StockCheck.objects.create(
+            code='KK-FILTER-OLD',
+            warehouse=self.warehouse_a,
+            check_date=today - timedelta(days=30),
+            status=1,
+            note='special-filter-note',
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_stock_checks'), {
+            'q': 'special-filter',
+            'warehouse_id': self.warehouse_a.id,
+            'status': '1',
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+            'page': 1,
+            'page_size': 25,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([row['code'] for row in payload['data']], ['KK-FILTER-TARGET'])
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 4)
+        self.assertEqual(payload['meta']['total_pages'], 1)
 
     def test_delete_goods_receipt_rejects_negative_stock_when_disabled(self):
         BusinessConfig.objects.create(

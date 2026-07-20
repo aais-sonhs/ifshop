@@ -9,12 +9,81 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-3">
+            <div class="col-lg-3 col-md-6">
+                <div class="form-group mb-lg-0">
+                    <label for="stock_check_search">Tìm phiếu kiểm</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        </div>
+                        <input type="search" class="form-control" id="stock_check_search"
+                               placeholder="Mã phiếu, kho hoặc ghi chú">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <div class="form-group mb-lg-0">
+                    <label for="stock_check_filter_warehouse">Kho</label>
+                    <select class="form-control form-control-sm" id="stock_check_filter_warehouse">
+                        <option value="">Tất cả kho</option>
+                        {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <div class="form-group mb-lg-0">
+                    <label for="stock_check_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="stock_check_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="0">Đang kiểm</option>
+                        <option value="1">Hoàn thành</option>
+                        <option value="2">Hủy</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <div class="form-group mb-lg-0">
+                    <label for="stock_check_date_from">Từ ngày</label>
+                    <input type="date" class="form-control form-control-sm" id="stock_check_date_from">
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <div class="form-group mb-lg-0">
+                    <label for="stock_check_date_to">Đến ngày</label>
+                    <input type="date" class="form-control form-control-sm" id="stock_check_date_to">
+                </div>
+            </div>
+            <div class="col-lg-1 col-md-12">
+                <div class="d-flex justify-content-md-end" style="gap:6px;">
+                    <button type="button" class="btn btn-sm btn-primary" id="btn_filter_stock_checks" title="Lọc">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_stock_check_filters" title="Xóa bộ lọc">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="stock_check_pagination_summary" class="text-muted small"></div>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                <label for="stock_check_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="stock_check_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã phiếu</th><th>Kho</th><th>Ngày kiểm</th><th>Số SP</th><th>Trạng thái</th><th>Ghi chú</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
+        <div id="stock_check_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 
@@ -96,10 +165,44 @@ var STOCK_CHECK_PRODUCT_RESULT_PAGE_SIZE = 5;
 var STOCK_CHECK_MODAL_SESSION = 0;
 
 var itemRowIndex = 0;
+var STOCK_CHECK_PAGE_SIZE_KEY = 'ifshop_stock_check_page_size';
+var STOCK_CHECK_PAGE_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(STOCK_CHECK_PAGE_SIZE_KEY) || '50', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+    })(),
+    meta: null
+};
+var STOCK_CHECK_FILTER_TIMER = null;
+var STOCK_CHECK_LIST_XHR = null;
 
 $(document).ready(function(){
+    $('#stock_check_page_size').val(String(STOCK_CHECK_PAGE_STATE.page_size));
     ensureStockCheckProductsLoaded();
     loadData();
+
+    $('#btn_filter_stock_checks').click(function(){
+        applyStockCheckFilters();
+    });
+    $('#stock_check_search').on('input', function(){
+        clearTimeout(STOCK_CHECK_FILTER_TIMER);
+        STOCK_CHECK_FILTER_TIMER = setTimeout(applyStockCheckFilters, 350);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(STOCK_CHECK_FILTER_TIMER);
+        applyStockCheckFilters();
+    });
+    $('#stock_check_filter_warehouse, #stock_check_filter_status, #stock_check_date_from, #stock_check_date_to').change(function(){
+        applyStockCheckFilters();
+    });
+    $('#btn_clear_stock_check_filters').click(function(){
+        clearTimeout(STOCK_CHECK_FILTER_TIMER);
+        $('#stock_check_search,#stock_check_filter_status,#stock_check_date_from,#stock_check_date_to').val('');
+        $('#stock_check_filter_warehouse').val('').trigger('change.select2');
+        applyStockCheckFilters();
+    });
 
     $('#btn_add').click(function(){
         var modalSession = ++STOCK_CHECK_MODAL_SESSION;
@@ -181,6 +284,7 @@ $(document).ready(function(){
             success: function(r){
                 if(r.status === 'ok'){
                     $('#modal_form').modal('hide');
+                    if(!data.id) STOCK_CHECK_PAGE_STATE.page = 1;
                     loadData();
                 }
                 alert(r.message);
@@ -220,12 +324,32 @@ $(document).ready(function(){
         reindexRows();
     });
 
+    $('#stock_check_page_size').change(function(){
+        STOCK_CHECK_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        localStorage.setItem(STOCK_CHECK_PAGE_SIZE_KEY, String(STOCK_CHECK_PAGE_STATE.page_size));
+        STOCK_CHECK_PAGE_STATE.page = 1;
+        loadData();
+    });
+
+    $(document).on('click', '.stock-check-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === STOCK_CHECK_PAGE_STATE.page) return;
+        STOCK_CHECK_PAGE_STATE.page = page;
+        loadData();
+    });
+
     $('#modal_form').on('hidden.bs.modal', function(){
         STOCK_CHECK_MODAL_SESSION++;
         resetQuickStockCheckProductSelect();
         clearStockCheckItemRows();
     });
 });
+
+function applyStockCheckFilters(){
+    STOCK_CHECK_PAGE_STATE.page = 1;
+    loadData();
+}
 
 function localDateInputValue(date){
     var d = date || new Date();
@@ -720,22 +844,106 @@ function fmtDt(dateStr, createdAt){
     return d;
 }
 
+function renderStockCheckPagination(meta){
+    meta = meta || {};
+    $('#stock_check_pagination_summary').removeClass('text-danger');
+    var totalFiltered = Number(meta.total_filtered_count || 0);
+    var totalAll = Number(meta.total_all_count || totalFiltered);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+
+    if(!totalFiltered){
+        $('#stock_check_pagination_summary').text(
+            totalAll ? 'Không có phiếu kiểm phù hợp.' : 'Chưa có phiếu kiểm.'
+        );
+        $('#stock_check_pagination').html('');
+        return;
+    }
+
+    var summary = 'Hiển thị ' + startIndex + '-' + endIndex +
+        ' / ' + totalFiltered + ' phiếu kiểm';
+    if(totalFiltered !== totalAll) summary += ' trên tổng ' + totalAll;
+    summary += ' · Trang ' + currentPage + '/' + totalPages;
+    $('#stock_check_pagination_summary').text(summary);
+
+    if(totalPages <= 1){
+        $('#stock_check_pagination').html('');
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary stock-check-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' stock-check-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary stock-check-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $('#stock_check_pagination').html(html);
+}
+
 function loadData(){
-    $.get('/api/stock-checks/', function(res){
+    if(STOCK_CHECK_LIST_XHR) STOCK_CHECK_LIST_XHR.abort();
+    $('#data_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted">Đang tải...</td></tr>');
+    var request = $.get('/api/stock-checks/', {
+        q: ($('#stock_check_search').val() || '').trim(),
+        warehouse_id: $('#stock_check_filter_warehouse').val() || '',
+        status: $('#stock_check_filter_status').val() || '',
+        date_from: $('#stock_check_date_from').val() || '',
+        date_to: $('#stock_check_date_to').val() || '',
+        page: STOCK_CHECK_PAGE_STATE.page || 1,
+        page_size: STOCK_CHECK_PAGE_STATE.page_size || 50
+    });
+    STOCK_CHECK_LIST_XHR = request;
+    request.done(function(res){
+        var meta = res.meta || {};
+        STOCK_CHECK_PAGE_STATE.meta = meta;
+        STOCK_CHECK_PAGE_STATE.page = Number(meta.page || STOCK_CHECK_PAGE_STATE.page || 1);
+        STOCK_CHECK_PAGE_STATE.page_size = Number(meta.page_size || STOCK_CHECK_PAGE_STATE.page_size || 50);
+        $('#stock_check_page_size').val(String(STOCK_CHECK_PAGE_STATE.page_size));
         var h = '';
+        var startIndex = Number(meta.start_index || 1);
         res.data.forEach(function(d, i){
             var statusBadge = '';
             if(d.status === 0) statusBadge = '<span class="badge badge-warning">Đang kiểm</span>';
             else if(d.status === 1) statusBadge = '<span class="badge badge-success">Hoàn thành</span>';
             else statusBadge = '<span class="badge badge-danger">Hủy</span>';
 
-            h += '<tr><td>'+(i+1)+'</td><td>'+d.code+'</td><td>'+d.warehouse+'</td>'+
+            h += '<tr><td>'+(startIndex+i)+'</td><td>'+escapeStockCheckHtml(d.code)+'</td><td>'+escapeStockCheckHtml(d.warehouse)+'</td>'+
                 '<td>'+fmtDt(d.check_date, d.created_at)+'</td><td class="text-center">'+d.items.length+'</td>'+
-                '<td class="text-center">'+statusBadge+'</td><td>'+d.note+'</td>'+
+                '<td class="text-center">'+statusBadge+'</td><td>'+escapeStockCheckHtml(d.note)+'</td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        var emptyMessage = Number(meta.total_all_count || 0)
+            ? 'Không có phiếu kiểm phù hợp.'
+            : 'Chưa có dữ liệu';
+        $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">' + emptyMessage + '</td></tr>');
+        renderStockCheckPagination(meta);
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
+        $('#data_tbl tbody').html('<tr><td colspan="8" class="text-center text-danger">Không tải được danh sách phiếu kiểm.</td></tr>');
+        $('#stock_check_pagination_summary').text('Không tải được dữ liệu.').addClass('text-danger');
+        $('#stock_check_pagination').html('');
+    }).always(function(){
+        if(STOCK_CHECK_LIST_XHR === request) STOCK_CHECK_LIST_XHR = null;
     });
 }
 

@@ -126,6 +126,7 @@ var PURCHASE_ORDER_PRODUCTS_RETRY_TIMER = null;
 var PURCHASE_ORDER_PRODUCTS_CALLBACKS = [];
 var PURCHASE_ORDER_PRODUCT_CHOICES = [];
 var PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE = 20;
+var PURCHASE_ORDER_MODAL_SESSION = 0;
 
 var itemRowIndex = 0;
 
@@ -135,22 +136,24 @@ $(document).ready(function(){
     loadData();
 
     $('#btn_add').click(function(){
+        var modalSession = ++PURCHASE_ORDER_MODAL_SESSION;
         $('#edit_id').val('');
         $('#inp_code,#inp_note').val('');
-        $('#inp_supplier_id,#inp_warehouse_id').val('');
+        $('#inp_supplier_id,#inp_warehouse_id').val('').trigger('change.select2');
         $('#inp_order_date,#inp_expected_date').val('');
         $('#inp_status').val('0');
-        $('#items_body').html('');
-        itemRowIndex = 0;
-        updateTotal();
+        resetQuickPurchaseOrderProductSelect();
+        clearPurchaseOrderItemRows();
         $('#modal_title').text('Tạo đơn đặt hàng');
         setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
         $('#modal_form').one('shown.bs.modal', function(){
+            if(modalSession !== PURCHASE_ORDER_MODAL_SESSION) return;
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
             if(PURCHASE_ORDER_PRODUCTS_LOADED){
                 initializeQuickPurchaseOrderProductSelect();
             }
             ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+                if(modalSession !== PURCHASE_ORDER_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
                 handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
             }, true);
         });
@@ -158,8 +161,10 @@ $(document).ready(function(){
     });
 
     $(document).on('click', '#btn_retry_purchase_order_products', function(){
+        var modalSession = PURCHASE_ORDER_MODAL_SESSION;
         setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
         ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+            if(modalSession !== PURCHASE_ORDER_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
             handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
         }, true);
     });
@@ -250,11 +255,42 @@ $(document).ready(function(){
     });
 
     $(document).on('click', '.btn-remove-item', function(){
-        $(this).closest('tr').remove();
+        var row = $(this).closest('tr');
+        destroyPurchaseOrderSelect2(row.find('.select2-item'));
+        row.remove();
         reindexRows();
         updateTotal();
     });
+
+    $('#modal_form').on('hidden.bs.modal', function(){
+        PURCHASE_ORDER_MODAL_SESSION++;
+        resetQuickPurchaseOrderProductSelect();
+        clearPurchaseOrderItemRows();
+    });
 });
+
+function destroyPurchaseOrderSelect2($select){
+    if(!$select || !$select.length || !$select.hasClass('select2-hidden-accessible')) return;
+    try { $select.select2('close'); } catch(error) {}
+    try { $select.select2('destroy'); } catch(error) {}
+}
+
+function resetQuickPurchaseOrderProductSelect(){
+    var $select = $('#quick_purchase_order_product');
+    destroyPurchaseOrderSelect2($select);
+    $select.prop('disabled', false).val(null).html(
+        '<option value="">-- Tìm và chọn sản phẩm --</option>'
+    );
+}
+
+function clearPurchaseOrderItemRows(){
+    $('#items_body .select2-item').each(function(){
+        destroyPurchaseOrderSelect2($(this));
+    });
+    $('#items_body').empty();
+    itemRowIndex = 0;
+    updateTotal();
+}
 
 function getPurchaseOrderProductById(productId){
     return PRODUCTS.find(function(product){
@@ -488,7 +524,7 @@ function setQuickPurchaseOrderProductLoadState(state){
     var $select = $('#quick_purchase_order_product');
     var $status = $('#quick_purchase_order_product_status');
     if(state === 'loading'){
-        if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+        destroyPurchaseOrderSelect2($select);
         $select.prop('disabled', true).html('<option value="">Đang tải danh sách sản phẩm...</option>');
         $status.removeClass('text-danger text-warning').addClass('text-muted')
             .text('Đang tải danh sách sản phẩm, vui lòng chờ...').show();
@@ -501,7 +537,7 @@ function setQuickPurchaseOrderProductLoadState(state){
     }
     if(state === 'error'){
         if(!PURCHASE_ORDER_PRODUCTS_LOADED){
-            if($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+            destroyPurchaseOrderSelect2($select);
             $select.prop('disabled', true).html('<option value="">Chưa tải được danh sách sản phẩm</option>');
         }
         $status.removeClass('text-muted text-warning').addClass('text-danger').html(
@@ -733,30 +769,31 @@ function loadData(){
 }
 
 function editItem(d){
+    var modalSession = ++PURCHASE_ORDER_MODAL_SESSION;
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code);
-    $('#inp_supplier_id').val(d.supplier_id);
-    $('#inp_warehouse_id').val(d.warehouse_id);
+    $('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
+    $('#inp_warehouse_id').val(d.warehouse_id).trigger('change.select2');
     $('#inp_order_date').val(d.order_date);
     $('#inp_expected_date').val(d.expected_date);
     $('#inp_status').val(d.status);
     $('#inp_note').val(d.note);
 
-    // Clear items first
-    $('#items_body').html('');
-    itemRowIndex = 0;
+    resetQuickPurchaseOrderProductSelect();
+    clearPurchaseOrderItemRows();
 
     $('#modal_title').text('Sửa đơn đặt hàng');
-    $('#modal_form').modal('show');
+    setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
 
     // Load items AFTER modal is fully shown so Select2 renders correctly
     $('#modal_form').one('shown.bs.modal', function(){
+        if(modalSession !== PURCHASE_ORDER_MODAL_SESSION) return;
         $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
-        setQuickPurchaseOrderProductLoadState(PURCHASE_ORDER_PRODUCTS_LOADED ? 'refreshing' : 'loading');
         if(PURCHASE_ORDER_PRODUCTS_LOADED){
             initializeQuickPurchaseOrderProductSelect();
         }
         ensurePurchaseOrderProductsLoaded(function(usable, refreshed){
+            if(modalSession !== PURCHASE_ORDER_MODAL_SESSION || !$('#modal_form').hasClass('show')) return;
             handleQuickPurchaseOrderProductsLoaded(usable, refreshed);
             if(!usable) return;
             if(d.items && d.items.length > 0){
@@ -765,6 +802,7 @@ function editItem(d){
             updateTotal();
         }, true);
     });
+    $('#modal_form').modal('show');
 }
 
 function deleteItem(id){

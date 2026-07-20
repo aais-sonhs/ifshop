@@ -2844,15 +2844,58 @@ def _reverse_applied_stock_check(stock_check):
 
 @login_required(login_url="/login/")
 def api_get_stock_checks(request):
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    search = (request.GET.get('q') or '').strip()
+    status = (request.GET.get('status') or '').strip()
+    warehouse_id = (request.GET.get('warehouse_id') or '').strip()
+    date_from_raw = (request.GET.get('date_from') or '').strip()
+    date_to_raw = (request.GET.get('date_to') or '').strip()
+
+    try:
+        warehouse_id = int(warehouse_id) if warehouse_id else None
+    except (TypeError, ValueError):
+        warehouse_id = None
+    try:
+        date_from = date.fromisoformat(date_from_raw) if date_from_raw else None
+    except ValueError:
+        date_from = None
+    try:
+        date_to = date.fromisoformat(date_to_raw) if date_to_raw else None
+    except ValueError:
+        date_to = None
+
     checks = (
         StockCheck.objects
         .select_related('warehouse')
-        .prefetch_related('items__product')
         .order_by('-check_date', '-created_at', '-id')
     )
     checks = filter_by_store(checks, request, field_name='warehouse__store')
+    total_all_count = checks.count()
+    if search:
+        checks = checks.filter(
+            Q(code__icontains=search)
+            | Q(warehouse__name__icontains=search)
+            | Q(note__icontains=search)
+        )
+    if warehouse_id:
+        checks = checks.filter(warehouse_id=warehouse_id)
+    if status in {'0', '1', '2'}:
+        checks = checks.filter(status=int(status))
+    if date_from:
+        checks = checks.filter(check_date__gte=date_from)
+    if date_to:
+        checks = checks.filter(check_date__lte=date_to)
+
+    paginator = Paginator(checks, page_size)
+    page_obj = paginator.get_page(page)
+    page_checks = page_obj.object_list.prefetch_related(Prefetch(
+        'items',
+        queryset=StockCheckItem.objects.select_related('product', 'variant'),
+        to_attr='prefetched_items',
+    ))
     data = []
-    for c in checks:
+    for c in page_checks:
         items = [{
             'product_id': item.product_id,
             'variant_id': item.variant_id,
@@ -2863,7 +2906,7 @@ def api_get_stock_checks(request):
             'actual_quantity': float(item.actual_quantity),
             'difference': float(item.difference),
             'note': item.note or '',
-        } for item in c.items.select_related('product', 'variant').all()]
+        } for item in c.prefetched_items]
         data.append({
             'id': c.id, 'code': c.code,
             'warehouse': c.warehouse.name if c.warehouse else '',
@@ -2875,7 +2918,21 @@ def api_get_stock_checks(request):
             'note': c.note or '',
             'items': items,
         })
-    return JsonResponse({'data': data})
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': total_all_count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        },
+    })
 
 
 @login_required(login_url="/login/")

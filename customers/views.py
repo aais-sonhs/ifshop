@@ -1006,7 +1006,7 @@ def dashboard_page(request):
 def api_dashboard_data(request):
     """API lấy dữ liệu dashboard"""
     from datetime import datetime, timedelta
-    from django.db.models import Sum, Count
+    from django.db.models import Count, DecimalField, ExpressionWrapper, Sum
     from core.store_utils import get_managed_store_ids
     from products.models import ProductStock
 
@@ -1026,6 +1026,14 @@ def api_dashboard_data(request):
     revenue = float(stats['total_revenue'] or 0)
     paid = float(stats['total_paid'] or 0)
     orders_count = stats['total_orders'] or 0
+    debt = float(
+        month_orders.filter(final_amount__gt=F('paid_amount')).aggregate(
+            total=Sum(ExpressionWrapper(
+                F('final_amount') - F('paid_amount'),
+                output_field=DecimalField(max_digits=18, decimal_places=0),
+            )),
+        )['total'] or 0
+    )
 
     # Tính lợi nhuận (doanh thu - giá vốn)
     from orders.models import OrderItem
@@ -1089,7 +1097,7 @@ def api_dashboard_data(request):
             'orders': orders_count,
             'profit': profit,
             'paid': paid,
-            'debt': revenue - paid,
+            'debt': debt,
             'new_customers': new_customers,
         },
         'chart': chart_data,

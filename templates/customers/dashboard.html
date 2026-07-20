@@ -49,6 +49,14 @@
         #kpi_cards .small-box .icon i {
             font-size: 52px;
         }
+        #kpi_cards .dashboard-kpi-link {
+            display: block;
+            color: inherit;
+            text-decoration: none;
+        }
+        #kpi_cards .dashboard-kpi-link .small-box {
+            cursor: pointer;
+        }
         @media (max-width: 575.98px) {
             #kpi_cards .small-box .inner {
                 padding-right: 48px;
@@ -80,10 +88,12 @@
             </div>
         </div>
         <div class="col-lg-2 col-md-4 col-sm-6 col-12">
-            <div class="small-box bg-gradient-warning">
-                <div class="inner"><h3 id="kpi_debt">0</h3><p>Công nợ</p></div>
-                <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
-            </div>
+            <a id="dashboard_debt_link" class="dashboard-kpi-link" href="{% url 'report_finance_order_debt' %}" target="_blank" rel="noopener" title="Mở bảng chi tiết công nợ đơn hàng">
+                <div class="small-box bg-gradient-warning">
+                    <div class="inner"><h3 id="kpi_debt">0</h3><p>Công nợ</p></div>
+                    <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+                </div>
+            </a>
         </div>
         <div class="col-lg-2 col-md-4 col-sm-6 col-12">
             <div class="small-box bg-gradient-teal">

@@ -24,7 +24,7 @@ DOCUMENT_REVISION = {
     'title': 'Cập nhật nghiệp vụ ngày 20/07/2026',
     'summary': (
         'Tài liệu đã được đối chiếu với các thay đổi mới nhất về khách hàng và đơn hàng, '
-        'tìm sản phẩm khi nhập hàng, quản lý kho, báo cáo tồn kho, báo cáo tài chính '
+        'tìm sản phẩm khi nhập hàng, quản lý kho, dashboard, báo cáo tồn kho, báo cáo tài chính '
         'và cơ chế sinh mã chứng từ an toàn.'
     ),
 }
@@ -137,6 +137,8 @@ DOCUMENT_UPDATES = [
         'title': 'Công thức Báo cáo tài chính',
         'items': [
             'Báo cáo hiển thị riêng 5 thẻ: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ để người xem biết rõ từng thành phần.',
+            'Tại Dashboard, bấm thẻ Công nợ để mở bảng Chi tiết công nợ đơn hàng của tháng hiện tại trong tab mới. Tại BC Tài chính, thẻ Công nợ đơn hàng mở cùng bảng theo khoảng ngày và cửa hàng đang chọn.',
+            'Công nợ đơn hàng = tổng phần còn nợ dương của từng đơn chưa hủy, trong đó phần còn nợ của một đơn = Tổng thanh toán − Đã thu. Đơn đã thu đủ hoặc thu dư được quy về 0 nên không bù trừ vào đơn khác còn nợ.',
             'Tổng hàng nhập cộng trường Tổng tiền của các phiếu nhập Hoàn thành theo Ngày nhập và cửa hàng của Kho nhập; không tính phiếu Nháp, phiếu Hủy hoặc phiếu ngoài kỳ.',
             'Tổng chi = Tổng phiếu chi + Tổng hàng nhập.',
             'Lãi/Lỗ = Tổng thu − Tổng chi. Đây là chênh lệch theo công thức quản trị của báo cáo, không phải lợi nhuận gộp bán hàng.',
@@ -168,7 +170,7 @@ COMMON_MODULES = [
     {
         'icon': 'fas fa-tachometer-alt',
         'title': 'Dashboard điều hành',
-        'body': 'Màn hình tổng quan hiển thị doanh thu ngày/tháng, đơn hàng mới, đơn chờ xử lý, công nợ phải thu, sản phẩm bán chạy nhất, tồn kho thấp và cảnh báo quan trọng. Chủ cửa hàng có thể xem nhanh tình hình kinh doanh mà không cần mở từng báo cáo.',
+        'body': 'Màn hình tổng quan hiển thị doanh thu ngày/tháng, đơn hàng mới, đơn chờ xử lý, công nợ phải thu, sản phẩm bán chạy nhất, tồn kho thấp và cảnh báo quan trọng. Bấm thẻ Công nợ để mở bảng chi tiết các đơn còn nợ của tháng hiện tại trong tab mới.',
     },
     {
         'icon': 'fas fa-shopping-cart',
@@ -631,6 +633,7 @@ DETAILED_OPERATION_GUIDES = [
         'steps': [
             'Vào Báo cáo → BC Tài chính. Chọn Từ ngày, Đến ngày và Cửa hàng cần xem; nếu không chọn cửa hàng, báo cáo cộng toàn bộ cửa hàng mà tài khoản được phép quản lý.',
             'Đọc 5 thẻ tổng quan theo thứ tự: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ. Thẻ Tổng chi ghi rõ “phiếu chi + hàng nhập” để phân biệt với riêng Tổng phiếu chi.',
+            'Bấm thẻ Công nợ đơn hàng để mở bảng chi tiết trong tab mới. Bảng giữ nguyên khoảng ngày và cửa hàng đang chọn, đồng thời cho phép tìm theo mã đơn, mã/tên hoặc SĐT khách hàng.',
             'Khoảng ngày được tính bao gồm cả hai ngày đầu và cuối. Phiếu thu lọc theo Ngày thu, phiếu chi theo Ngày chi và phiếu nhập theo Ngày nhập; không lọc theo ngày tạo chứng từ hoặc ngày đặt hàng.',
             'Tổng thu = tổng Số tiền của tất cả phiếu thu ở trạng thái Hoàn thành, có Ngày thu trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',
             'Tổng phiếu chi = tổng Số tiền của tất cả phiếu chi ở trạng thái Hoàn thành, có Ngày chi trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',
@@ -644,6 +647,7 @@ DETAILED_OPERATION_GUIDES = [
             'Chỉ phiếu Hoàn thành được cộng; phiếu Nháp, phiếu Hủy và phiếu đã xóa không được tính.',
             'Tổng thu và Tổng phiếu chi cộng mọi phương thức thanh toán. Vì vậy, tổng hai ô Tiền mặt và Chuyển khoản có thể thấp hơn tổng phiếu tương ứng nếu có phương thức thuộc loại Khác.',
             'Một phiếu thu gắn với đơn hàng chỉ được cộng một lần theo Số tiền của phiếu thu; hệ thống không cộng thêm số Đã thu trên đơn vào Tổng thu.',
+            'Công nợ đơn hàng chỉ cộng phần Tổng thanh toán − Đã thu nếu kết quả dương trên từng đơn chưa hủy. Đơn thu dư được tính công nợ bằng 0 và không làm giảm công nợ của đơn khác.',
             'Phiếu chi hoàn tiền cho khách, phiếu chi nhà cung cấp và chi phí vận hành đều được tính vào Tổng phiếu chi nếu phiếu ở trạng thái Hoàn thành và nằm trong khoảng ngày.',
             'Tổng hàng nhập lấy Tổng tiền đã lưu trên phiếu nhập tại thời điểm nhập hàng; không lấy tồn kho hiện tại và không nhân lại theo giá vốn hiện tại của sản phẩm.',
             'Theo công thức hiện tại, phiếu nhập Hoàn thành được cộng vào Tổng hàng nhập kể cả khi chưa có phiếu chi. Nếu cùng giao dịch nhập hàng có thêm phiếu chi Hoàn thành, cả giá trị phiếu nhập và phiếu chi đều được cộng vào Tổng chi.',

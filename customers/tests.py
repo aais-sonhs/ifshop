@@ -47,6 +47,52 @@ class CustomerScopeTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
+    def test_dashboard_debt_card_opens_finance_order_debt_detail(self):
+        response = self.client.get(reverse('dashboard_page'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="dashboard_debt_link"')
+        self.assertContains(response, reverse('report_finance_order_debt'))
+        self.assertContains(response, 'target="_blank"')
+
+    def test_dashboard_debt_matches_positive_order_debt_detail_formula(self):
+        today = date.today()
+        Order.objects.create(
+            code='DH-DASHBOARD-DEBT',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            final_amount=1000,
+            paid_amount=300,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DASHBOARD-OVERPAID',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            final_amount=500,
+            paid_amount=600,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DASHBOARD-CANCELED',
+            store=self.store,
+            customer=self.customer,
+            status=6,
+            final_amount=900,
+            paid_amount=0,
+            order_date=today,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_dashboard_data'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['kpi']['debt'], 700.0)
+
     def test_save_customer_assigns_default_store(self):
         response = self.client.post(
             reverse('api_save_customer'),

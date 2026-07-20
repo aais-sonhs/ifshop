@@ -333,7 +333,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'Xem bảng chi tiết')
         self.assertContains(response, 'id="payment_expense_link"')
         self.assertContains(response, reverse('payment_tbl'))
-        self.assertContains(response, 'Xem bảng phiếu chi')
+        self.assertNotContains(response, 'Xem bảng phiếu chi')
         self.assertContains(response, "params.set('status', '1')")
         self.assertContains(response, 'updatePaymentExpenseLink()')
 

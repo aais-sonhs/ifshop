@@ -2096,12 +2096,15 @@ def api_delete_supplier(request):
 
 @login_required(login_url="/login/")
 def api_get_categories(request):
-    cats = list(ProductCategory.objects.values(
+    cats = list(ProductCategory.objects.annotate(
+        product_count=Count('products', filter=Q(products__is_deleted=False)),
+    ).values(
         'id',
         'name',
         'description',
         'parent_id',
         'is_active',
+        'product_count',
         parent_name=F('parent__name'),
     ))
     data = [{
@@ -2111,6 +2114,7 @@ def api_get_categories(request):
         'parent_id': row['parent_id'],
         'parent': row['parent_name'] or '',
         'is_active': row['is_active'],
+        'product_count': row['product_count'] or 0,
     } for row in cats]
     return JsonResponse({'data': data})
 

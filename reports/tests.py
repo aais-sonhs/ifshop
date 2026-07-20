@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 
 from django.contrib.auth.models import User
@@ -7,6 +7,7 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
+from finance.models import Payment, Receipt
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from products.models import (
     GoodsReceipt,
@@ -146,6 +147,316 @@ class SalesReportTests(TestCase):
         self.assertEqual(summary_sheet['B5'].value, supplier.name)
         self.assertEqual(summary_sheet['C5'].value, 1)
         self.assertEqual(summary_sheet['D5'].value, 750)
+
+    def test_finance_report_adds_completed_payments_and_goods_receipts_in_scope(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        second_store = Store.objects.create(
+            brand=self.brand,
+            name='Store Report 2',
+            code='SRP2',
+        )
+        second_warehouse = Warehouse.objects.create(
+            store=second_store,
+            name='Kho báo cáo 2',
+            code='KHO-RP-2',
+        )
+        foreign_brand = Brand.objects.create(name='Foreign Report Brand')
+        foreign_store = Store.objects.create(
+            brand=foreign_brand,
+            name='Foreign Report Store',
+            code='FRS',
+        )
+        foreign_warehouse = Warehouse.objects.create(
+            store=foreign_store,
+            name='Kho báo cáo ngoài phạm vi',
+            code='KHO-RP-FOREIGN',
+        )
+        to_day = date.today()
+        from_day = to_day - timedelta(days=1)
+        outside_day = from_day - timedelta(days=1)
+
+        goods_receipt_specs = [
+            ('PN-RP-DONE-FROM', self.warehouse, from_day, 4000, 1),
+            ('PN-RP-DONE-TO', self.warehouse, to_day, 6000, 1),
+            ('PN-RP-SECOND-STORE', second_warehouse, to_day, 20000, 1),
+            ('PN-RP-DRAFT', self.warehouse, to_day, 30000, 0),
+            ('PN-RP-CANCELED', self.warehouse, to_day, 40000, 2),
+            ('PN-RP-OUTSIDE-DATE', self.warehouse, outside_day, 50000, 1),
+            ('PN-RP-FOREIGN-STORE', foreign_warehouse, to_day, 60000, 1),
+        ]
+        for code, warehouse, receipt_date, amount, status in goods_receipt_specs:
+            GoodsReceipt.objects.create(
+                code=code,
+                warehouse=warehouse,
+                receipt_date=receipt_date,
+                total_amount=amount,
+                status=status,
+                created_by=self.user,
+            )
+
+        receipt_specs = [
+            ('PT-RP-DONE-FROM', self.store, from_day, 100, 1),
+            ('PT-RP-DONE-TO', self.store, to_day, 250, 1),
+            ('PT-RP-SECOND-STORE', second_store, to_day, 600, 1),
+            ('PT-RP-DRAFT', self.store, to_day, 900, 0),
+            ('PT-RP-CANCELED', self.store, to_day, 800, 2),
+            ('PT-RP-OUTSIDE-DATE', self.store, outside_day, 700, 1),
+            ('PT-RP-FOREIGN-STORE', foreign_store, to_day, 5000, 1),
+        ]
+        for code, store, receipt_date, amount, status in receipt_specs:
+            Receipt.objects.create(
+                code=code,
+                store=store,
+                amount=amount,
+                receipt_date=receipt_date,
+                status=status,
+                created_by=self.user,
+            )
+
+        payment_specs = [
+            ('PC-RP-DONE-FROM', self.store, from_day, 40, 1),
+            ('PC-RP-DONE-TO', self.store, to_day, 60, 1),
+            ('PC-RP-SECOND-STORE', second_store, to_day, 90, 1),
+            ('PC-RP-DRAFT', self.store, to_day, 300, 0),
+            ('PC-RP-CANCELED', self.store, to_day, 200, 2),
+            ('PC-RP-OUTSIDE-DATE', self.store, outside_day, 100, 1),
+            ('PC-RP-FOREIGN-STORE', foreign_store, to_day, 500, 1),
+        ]
+        for code, store, payment_date, amount, status in payment_specs:
+            Payment.objects.create(
+                code=code,
+                store=store,
+                amount=amount,
+                payment_date=payment_date,
+                status=status,
+                created_by=self.user,
+            )
+
+        response = self.client.get(reverse('api_report_finance'), {
+            'from_date': from_day.isoformat(),
+            'to_date': to_day.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_income'], 950.0)
+        self.assertEqual(payload['summary']['payment_expense'], 190.0)
+        self.assertEqual(payload['summary']['goods_receipt_expense'], 30000.0)
+        self.assertEqual(payload['summary']['total_expense'], 30190.0)
+        self.assertEqual(payload['summary']['net_profit'], -29240.0)
+        category_rows = {row['name']: row for row in payload['categories']}
+        self.assertEqual(category_rows['Hàng nhập (phiếu nhập)']['expense'], 30000.0)
+        self.assertEqual(sum(row['expense'] for row in payload['categories']), 30190.0)
+
+        store_rows = {row['store_id']: row for row in payload['store_breakdown']}
+        self.assertEqual(store_rows[self.store.id]['income'], 350.0)
+        self.assertEqual(store_rows[self.store.id]['payment_expense'], 100.0)
+        self.assertEqual(store_rows[self.store.id]['goods_receipt_expense'], 10000.0)
+        self.assertEqual(store_rows[self.store.id]['expense'], 10100.0)
+        self.assertEqual(store_rows[self.store.id]['net'], -9750.0)
+        self.assertEqual(store_rows[second_store.id]['income'], 600.0)
+        self.assertEqual(store_rows[second_store.id]['payment_expense'], 90.0)
+        self.assertEqual(store_rows[second_store.id]['goods_receipt_expense'], 20000.0)
+        self.assertEqual(store_rows[second_store.id]['expense'], 20090.0)
+        self.assertEqual(store_rows[second_store.id]['net'], -19490.0)
+
+        selected_store_payload = self.client.get(reverse('api_report_finance'), {
+            'from_date': from_day.isoformat(),
+            'to_date': to_day.isoformat(),
+            'store_id': self.store.id,
+        }).json()
+        self.assertEqual(selected_store_payload['summary']['total_income'], 350.0)
+        self.assertEqual(selected_store_payload['summary']['payment_expense'], 100.0)
+        self.assertEqual(selected_store_payload['summary']['goods_receipt_expense'], 10000.0)
+        self.assertEqual(selected_store_payload['summary']['total_expense'], 10100.0)
+        self.assertEqual(selected_store_payload['summary']['net_profit'], -9750.0)
+
+        excel_response = self.client.get(reverse('export_finance_excel'), {
+            'from_date': from_day.isoformat(),
+            'to_date': to_day.isoformat(),
+        })
+        self.assertEqual(excel_response.status_code, 200)
+        worksheet = load_workbook(
+            BytesIO(excel_response.content),
+            data_only=True,
+        )['Thu chi']
+        self.assertIn('Tổng phiếu chi: 190đ', worksheet['A3'].value)
+        self.assertIn('Tổng hàng nhập: 30,000đ', worksheet['A3'].value)
+        self.assertIn('Tổng chi = Tổng phiếu chi + Tổng hàng nhập: 30,190đ', worksheet['A4'].value)
+
+        excel_rows = list(worksheet.iter_rows(values_only=True))
+        imported_rows = {
+            row[2]: row
+            for row in excel_rows
+            if row[1] == 'NHẬP HÀNG'
+        }
+        self.assertEqual(set(imported_rows), {
+            'PN-RP-DONE-FROM',
+            'PN-RP-DONE-TO',
+            'PN-RP-SECOND-STORE',
+        })
+        self.assertEqual(imported_rows['PN-RP-SECOND-STORE'][6], 20000)
+        total_rows = {
+            row[1]: row[6]
+            for row in excel_rows
+            if row[1] in {
+                'TỔNG THU',
+                'TỔNG PHIẾU CHI',
+                'TỔNG HÀNG NHẬP',
+                'TỔNG CHI',
+                'LÃI/LỖ',
+            }
+        }
+        self.assertEqual(total_rows['TỔNG THU'], 950)
+        self.assertEqual(total_rows['TỔNG PHIẾU CHI'], 190)
+        self.assertEqual(total_rows['TỔNG HÀNG NHẬP'], 30000)
+        self.assertEqual(total_rows['TỔNG CHI'], 30190)
+        self.assertEqual(total_rows['LÃI/LỖ'], -29240)
+
+    def test_finance_report_page_shows_expense_formula_cards(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('report_finance'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="payment_expense"')
+        self.assertContains(response, 'Tổng phiếu chi')
+        self.assertContains(response, 'id="goods_receipt_expense"')
+        self.assertContains(response, 'Tổng hàng nhập')
+        self.assertContains(response, 'id="total_expense"')
+        self.assertContains(response, 'Tổng chi (phiếu chi + hàng nhập)')
+        self.assertContains(response, 'id="order_debt_link"')
+        self.assertContains(response, reverse('report_finance_order_debt'))
+        self.assertContains(response, 'target="_blank"')
+        self.assertContains(response, 'Xem bảng chi tiết')
+
+    def test_finance_order_debt_page_only_lists_positive_debt_and_matches_card(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        today = date.today()
+        outside_day = today - timedelta(days=40)
+        debt_order = Order.objects.create(
+            code='DH-DEBT-DETAIL-001',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=1,
+            total_amount=1000,
+            final_amount=1000,
+            paid_amount=300,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DEBT-PAID',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=500,
+            final_amount=500,
+            paid_amount=500,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DEBT-OVERPAID',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=500,
+            final_amount=500,
+            paid_amount=600,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DEBT-CANCELED',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=6,
+            payment_status=0,
+            total_amount=900,
+            final_amount=900,
+            paid_amount=0,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DEBT-OUTSIDE',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=0,
+            total_amount=800,
+            final_amount=800,
+            paid_amount=0,
+            order_date=outside_day,
+            created_by=self.user,
+        )
+        params = {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        }
+
+        page_response = self.client.get(reverse('report_finance_order_debt'), params)
+        api_response = self.client.get(reverse('api_report_finance'), params)
+
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, debt_order.code)
+        self.assertContains(page_response, f'/order-tbl/?open_order={debt_order.id}')
+        self.assertContains(page_response, '700đ')
+        for excluded_code in (
+            'DH-DEBT-PAID',
+            'DH-DEBT-OVERPAID',
+            'DH-DEBT-CANCELED',
+            'DH-DEBT-OUTSIDE',
+        ):
+            self.assertNotContains(page_response, excluded_code)
+        self.assertEqual(page_response.context['totals']['order_count'], 1)
+        self.assertEqual(page_response.context['totals']['debt_amount'], 700)
+        self.assertEqual(api_response.status_code, 200)
+        self.assertEqual(api_response.json()['summary']['order_debt'], 700.0)
+
+    def test_finance_order_debt_page_is_paginated(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        today = date.today()
+        Order.objects.bulk_create([
+            Order(
+                code=f'DH-DEBT-PAGE-{index:02d}',
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=5,
+                payment_status=0,
+                total_amount=100,
+                final_amount=100,
+                paid_amount=0,
+                order_date=today,
+                created_by=self.user,
+            )
+            for index in range(31)
+        ])
+
+        response = self.client.get(reverse('report_finance_order_debt'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'page': 2,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['page_obj'].paginator.count, 31)
+        self.assertEqual(len(response.context['page_obj']), 1)
+        self.assertContains(response, 'Trang 2/2')
 
     def test_inventory_report_alert_card_controls_are_available(self):
         owner = User.objects.create_user(username='owner_inventory_report', password='pass123')

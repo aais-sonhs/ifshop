@@ -52,14 +52,16 @@
                         </div>
                     </div>
                     <div class="card-body p-0">
-                        <table class="table table-sm table-bordered" id="product_cat_tbl">
-                            <thead><tr><th>Tên danh mục</th><th>Mô tả</th><th>Thao tác</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0" id="product_cat_tbl">
+                                <thead><tr><th>Tên</th><th>Danh mục cha</th><th class="text-center">Số SP</th><th>Mô tả</th><th>Thao tác</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
-            <!-- Danh mục kho -->
+            <!-- Danh mục kho và vị trí sản phẩm -->
             <div class="col-md-6">
                 <div class="card card-outline card-info">
                     <div class="card-header">
@@ -75,12 +77,7 @@
                         </table>
                     </div>
                 </div>
-            </div>
-        </div>
-        <div class="row mt-3">
-            <!-- Danh mục vị trí sản phẩm -->
-            <div class="col-md-6">
-                <div class="card card-outline card-teal">
+                <div class="card card-outline card-teal mt-3">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục vị trí sản phẩm</h5>
                         <div class="card-tools">
@@ -95,8 +92,10 @@
                     </div>
                 </div>
             </div>
+        </div>
+        {% if biz and biz.mod_spa %}
+        <div class="row mt-3">
             <!-- Nhóm dịch vụ Spa -->
-            {% if biz and biz.mod_spa %}
             <div class="col-md-6">
                 <div class="card card-outline card-purple">
                     <div class="card-header">
@@ -113,8 +112,8 @@
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -173,6 +172,7 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="pc_id">
+                <input type="hidden" id="pc_parent_id">
                 <div class="form-group"><label>Tên danh mục <span class="text-danger">*</span></label><input type="text" class="form-control" id="pc_name"></div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="pc_description" rows="2"></textarea></div>
             </div>
@@ -251,6 +251,7 @@
 {% block extra_js %}
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function escapeCategoryHtml(value){ return $('<div>').text(value==null?'':String(value)).html(); }
 
 $(document).ready(function(){
     loadFinanceCats();
@@ -294,13 +295,13 @@ $(document).ready(function(){
 
     // ===== DANH MỤC SẢN PHẨM =====
     $('#btn_add_product_cat').click(function(){
-        $('#pc_id').val(''); $('#pc_name').val(''); $('#pc_description').val('');
+        $('#pc_id').val(''); $('#pc_parent_id').val(''); $('#pc_name').val(''); $('#pc_description').val('');
         $('#pc_modal_title').text('Thêm danh mục sản phẩm');
         $('#modal_product_cat').modal('show');
     });
 
     $('#pc_save').click(function(){
-        var data = {id:$('#pc_id').val()||null, name:$('#pc_name').val(), description:$('#pc_description').val()};
+        var data = {id:$('#pc_id').val()||null, parent_id:$('#pc_parent_id').val()||null, name:$('#pc_name').val(), description:$('#pc_description').val()};
         if(!data.name){alert('Vui lòng nhập tên');return;}
         $.ajax({url:'/api/categories/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
@@ -385,10 +386,19 @@ function loadProductCats(){
     $.get('/api/categories/', function(res){
         var h='';
         res.data.forEach(function(d){
-            h += '<tr><td>'+d.name+'</td><td>'+( d.description||'')+'</td>'+
-                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
+            var productUrl = '/product-tbl/?category=' + (d.parent_id || d.id);
+            if(d.parent_id) productUrl += '&product_type=' + d.id;
+            var levelBadge = d.parent_id
+                ? '<span class="badge badge-light border ml-1">Loại sản phẩm</span>'
+                : '<span class="badge badge-info ml-1">Danh mục</span>';
+            h += '<tr><td><strong>'+escapeCategoryHtml(d.name)+'</strong>'+levelBadge+'</td>'+
+                '<td>'+(d.parent ? '<strong>'+escapeCategoryHtml(d.parent)+'</strong>' : '<span class="text-muted">—</span>')+'</td>'+
+                '<td class="text-center"><span class="badge badge-secondary">'+fmt(d.product_count||0)+'</span></td>'+
+                '<td>'+escapeCategoryHtml(d.description||'')+'</td>'+
+                '<td><div class="btn-action-group"><a class="btn btn-xs btn-outline-primary" target="_blank" rel="noopener" href="'+productUrl+'"><i class="fas fa-box-open mr-1"></i>Xem SP</a> '+
+                '<button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\','+(d.parent_id||'null')+')">Sửa</button></div></td></tr>';
         });
-        $('#product_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#product_cat_tbl tbody').html(h || '<tr><td colspan="5" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
     });
 }
 
@@ -416,8 +426,8 @@ function editCB(id, name, desc){
     $('#modal_cashbook').modal('show');
 }
 
-function editPC(id, name, desc){
-    $('#pc_id').val(id); $('#pc_name').val(name); $('#pc_description').val(desc);
+function editPC(id, name, desc, parentId){
+    $('#pc_id').val(id); $('#pc_parent_id').val(parentId||''); $('#pc_name').val(name); $('#pc_description').val(desc);
     $('#pc_modal_title').text('Sửa danh mục sản phẩm');
     $('#modal_product_cat').modal('show');
 }

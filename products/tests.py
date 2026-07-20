@@ -286,6 +286,40 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['product_type_id'], product_type.id)
         self.assertEqual(row['category_record_id'], product_type.id)
 
+        category_response = self.client.get(reverse('api_get_categories'))
+        category_row = next(
+            item for item in category_response.json()['data']
+            if item['id'] == product_type.id
+        )
+        self.assertEqual(category_row['parent'], category.name)
+        self.assertEqual(category_row['product_count'], 1)
+
+    def test_product_page_can_open_category_and_product_type_filters_from_url(self):
+        response = self.client.get(reverse('product_tbl'), {
+            'category': 10,
+            'product_type': 20,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "params.get('category')")
+        self.assertContains(response, "params.get('product_type')")
+        self.assertContains(response, 'PRODUCT_URL_FILTERS.category')
+        self.assertContains(response, 'PRODUCT_URL_FILTERS.product_type')
+        self.assertContains(response, "parent.name + ' → '")
+
+    def test_system_category_page_distinguishes_parent_and_links_products(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('category_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<th>Danh mục cha</th>', html=True)
+        self.assertContains(response, 'class="text-center">Số SP</th>')
+        self.assertContains(response, "if(d.parent_id) productUrl += '&product_type=' + d.id;")
+        self.assertContains(response, 'Xem SP')
+        self.assertContains(response, 'id="pc_parent_id"')
+        self.assertContains(response, "parent_id:$('#pc_parent_id').val()||null")
+
     def test_product_table_groups_related_fields_into_compact_columns(self):
         response = self.client.get(reverse('product_tbl'))
 

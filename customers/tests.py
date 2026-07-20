@@ -243,6 +243,36 @@ class CustomerScopeTests(TestCase):
         self.assertNotContains(response, '<th data-col="code">Mã KH</th>', html=True)
         self.assertNotContains(response, "customerColConfig.td('code'")
 
+    def test_customer_list_omits_removed_table_filters(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('customer_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        for removed_filter_id in (
+            'filter_creator',
+            'filter_customer_kind',
+            'filter_product',
+            'customer_product_suggestions',
+            'filter_purchase_price_basis',
+            'filter_purchase_price_preset',
+            'filter_purchase_price_from',
+            'filter_purchase_price_to',
+        ):
+            self.assertNotContains(response, f'id="{removed_filter_id}"')
+
+        for remaining_filter_id in (
+            'filter_search',
+            'filter_customer_group',
+            'filter_customer_type',
+            'filter_membership',
+            'filter_status',
+            'filter_debt',
+            'filter_created_from',
+            'filter_created_to',
+        ):
+            self.assertContains(response, f'id="{remaining_filter_id}"')
+
     def test_save_customer_rejects_foreign_customer_edit(self):
         response = self.client.post(
             reverse('api_save_customer'),

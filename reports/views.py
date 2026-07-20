@@ -4,11 +4,13 @@ from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from functools import wraps
+from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.db.models import Sum, Count, Q, F
+from django.db.models import DecimalField, ExpressionWrapper, Sum, Count, Q, F
+from django.utils.dateparse import parse_date
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from core.store_utils import (
     filter_by_store,
@@ -1558,6 +1560,130 @@ def report_finance(request):
     return render(request, "reports/report_finance.html", context)
 
 
+def _get_finance_order_queryset(request, from_date, to_date, store_id=None):
+    """Các đơn hàng tạo nên số liệu đã thu và công nợ trên báo cáo tài chính."""
+    orders = Order.objects.select_related('customer', 'store').filter(
+        order_date__gte=from_date,
+        order_date__lte=to_date,
+    ).exclude(status=6)
+    orders = filter_by_store(orders, request)
+    if store_id:
+        orders = orders.filter(store_id=store_id)
+    return orders
+
+
+def _with_positive_order_debt(orders):
+    """Chỉ giữ đơn còn nợ và tính số nợ theo từng đơn, không để đơn dư tiền bù trừ."""
+    return orders.filter(final_amount__gt=F('paid_amount')).annotate(
+        debt_amount=ExpressionWrapper(
+            F('final_amount') - F('paid_amount'),
+            output_field=DecimalField(max_digits=18, decimal_places=0),
+        ),
+    )
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+@report_permission_required
+def report_finance_order_debt(request):
+    """Bảng chi tiết các đơn hàng còn công nợ trong kỳ báo cáo."""
+    today = datetime.now().date()
+    from_date = parse_date(request.GET.get('from_date') or '') or today.replace(day=1)
+    to_date = parse_date(request.GET.get('to_date') or '') or today
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    store_id = _parse_filter_int(request.GET.get('store_id'))
+    keyword = (request.GET.get('q') or '').strip()[:100]
+
+    orders = _with_positive_order_debt(
+        _get_finance_order_queryset(request, from_date, to_date, store_id),
+    )
+    if keyword:
+        orders = orders.filter(
+            Q(code__icontains=keyword)
+            | Q(customer__code__icontains=keyword)
+            | Q(customer__name__icontains=keyword)
+            | Q(customer__phone__icontains=keyword)
+            | Q(shipping_phone__icontains=keyword)
+        )
+
+    totals = orders.aggregate(
+        order_count=Count('id'),
+        final_amount=Sum('final_amount'),
+        paid_amount=Sum('paid_amount'),
+        total_debt_amount=Sum('debt_amount'),
+    )
+    totals['debt_amount'] = totals.pop('total_debt_amount') or Decimal('0')
+    for key in ('final_amount', 'paid_amount'):
+        totals[key] = totals[key] or Decimal('0')
+
+    paginator = Paginator(orders.order_by('-order_date', '-id'), 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    from system_management.models import Store
+    stores = Store.objects.filter(
+        id__in=get_managed_store_ids(request.user),
+    ).select_related('brand').order_by('name', 'id')
+
+    context = {
+        'active_tab': 'report_finance',
+        'page_obj': page_obj,
+        'stores': stores,
+        'totals': totals,
+        'filters': {
+            'from_date': from_date.isoformat(),
+            'to_date': to_date.isoformat(),
+            'store_id': store_id,
+            'q': keyword,
+        },
+    }
+    return render(request, 'reports/report_finance_order_debt.html', context)
+
+
+def _get_finance_report_querysets(request, from_date, to_date, store_id=None):
+    """Lấy đúng các chứng từ tạo nên báo cáo tài chính.
+
+    Tổng chi trên báo cáo được cấu hình bằng tổng phiếu chi cộng tổng hàng
+    nhập. Dùng chung hàm này cho API và Excel để phạm vi ngày/cửa hàng/trạng
+    thái của hai đầu ra luôn giống nhau.
+    """
+    from finance.models import Payment, Receipt
+    from products.models import GoodsReceipt
+
+    receipts = Receipt.objects.filter(
+        receipt_date__gte=from_date,
+        receipt_date__lte=to_date,
+        status=1,
+    )
+    receipts = filter_by_store(receipts, request)
+
+    payments = Payment.objects.filter(
+        payment_date__gte=from_date,
+        payment_date__lte=to_date,
+        status=1,
+    )
+    payments = filter_by_store(payments, request)
+
+    goods_receipts = GoodsReceipt.objects.filter(
+        receipt_date__gte=from_date,
+        receipt_date__lte=to_date,
+        status=1,
+    )
+    goods_receipts = filter_by_store(
+        goods_receipts,
+        request,
+        field_name='warehouse__store',
+    )
+
+    if store_id:
+        receipts = receipts.filter(store_id=store_id)
+        payments = payments.filter(store_id=store_id)
+        goods_receipts = goods_receipts.filter(warehouse__store_id=store_id)
+
+    return receipts, payments, goods_receipts
+
+
 @login_required(login_url="/login/")
 @report_permission_required
 def api_report_finance(request):
@@ -1571,15 +1697,17 @@ def api_report_finance(request):
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
-    from finance.models import Receipt, Payment
+    from finance.models import Payment, Receipt
+    from products.models import GoodsReceipt
+
+    receipts, payments, goods_receipts = _get_finance_report_querysets(
+        request,
+        from_date,
+        to_date,
+        store_id,
+    )
 
     # Phiếu thu (hoàn thành)
-    receipts = Receipt.objects.filter(
-        receipt_date__gte=from_date, receipt_date__lte=to_date, status=1
-    )
-    receipts = filter_by_store(receipts, request)
-    if store_id:
-        receipts = receipts.filter(store_id=store_id)
     total_income = float(receipts.aggregate(s=Sum('amount'))['s'] or 0)
 
     # Thu theo danh mục
@@ -1587,14 +1715,12 @@ def api_report_finance(request):
         amount=Sum('amount')
     ).order_by('-amount')
 
-    # Phiếu chi (hoàn thành)
-    payments = Payment.objects.filter(
-        payment_date__gte=from_date, payment_date__lte=to_date, status=1
+    # Tổng chi = phiếu chi hoàn thành + phiếu nhập hoàn thành.
+    payment_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
+    goods_receipt_expense = float(
+        goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
     )
-    payments = filter_by_store(payments, request)
-    if store_id:
-        payments = payments.filter(store_id=store_id)
-    total_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
+    total_expense = payment_expense + goods_receipt_expense
 
     # Chi theo danh mục
     expense_by_cat = payments.values('category__name').annotate(
@@ -1602,14 +1728,16 @@ def api_report_finance(request):
     ).order_by('-amount')
 
     # Doanh thu từ đơn hàng
-    orders_revenue = Order.objects.filter(
-        order_date__gte=from_date, order_date__lte=to_date
-    ).exclude(status=6)
-    orders_revenue = filter_by_store(orders_revenue, request)
-    if store_id:
-        orders_revenue = orders_revenue.filter(store_id=store_id)
+    orders_revenue = _get_finance_order_queryset(
+        request,
+        from_date,
+        to_date,
+        store_id,
+    )
     order_revenue = float(orders_revenue.aggregate(s=Sum('paid_amount'))['s'] or 0)
-    order_debt = float(orders_revenue.aggregate(s=Sum('final_amount'))['s'] or 0) - order_revenue
+    order_debt = float(
+        _with_positive_order_debt(orders_revenue).aggregate(s=Sum('debt_amount'))['s'] or 0
+    )
 
     rows = []
     for c in income_by_cat:
@@ -1620,6 +1748,19 @@ def api_report_finance(request):
             existing['expense'] = float(c['amount'] or 0)
         else:
             rows.append({'name': c['category__name'] or 'Khác', 'income': 0, 'expense': float(c['amount'] or 0)})
+
+    # Đưa hàng nhập vào bảng danh mục để tổng bảng và biểu đồ khớp Tổng chi.
+    if goods_receipt_expense:
+        goods_receipt_category = 'Hàng nhập (phiếu nhập)'
+        existing = next((r for r in rows if r['name'] == goods_receipt_category), None)
+        if existing:
+            existing['expense'] += goods_receipt_expense
+        else:
+            rows.append({
+                'name': goods_receipt_category,
+                'income': 0,
+                'expense': goods_receipt_expense,
+            })
 
     # === STORE BREAKDOWN ===
     from core.store_utils import get_managed_store_ids
@@ -1639,13 +1780,25 @@ def api_report_finance(request):
             st_payments = Payment.objects.filter(
                 payment_date__gte=from_date, payment_date__lte=to_date, status=1, store=st
             )
+            st_goods_receipts = GoodsReceipt.objects.filter(
+                receipt_date__gte=from_date,
+                receipt_date__lte=to_date,
+                status=1,
+                warehouse__store=st,
+            )
             st_income = float(st_receipts.aggregate(s=Sum('amount'))['s'] or 0)
-            st_expense = float(st_payments.aggregate(s=Sum('amount'))['s'] or 0)
+            st_payment_expense = float(st_payments.aggregate(s=Sum('amount'))['s'] or 0)
+            st_goods_receipt_expense = float(
+                st_goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
+            )
+            st_expense = st_payment_expense + st_goods_receipt_expense
             store_breakdown.append({
                 'store_id': st.id,
                 'store_name': st.name,
                 'brand_name': st.brand.name if st.brand else '',
                 'income': st_income,
+                'payment_expense': st_payment_expense,
+                'goods_receipt_expense': st_goods_receipt_expense,
                 'expense': st_expense,
                 'net': st_income - st_expense,
             })
@@ -1656,6 +1809,8 @@ def api_report_finance(request):
         'stores': stores_list,
         'summary': {
             'total_income': total_income,
+            'payment_expense': payment_expense,
+            'goods_receipt_expense': goods_receipt_expense,
             'total_expense': total_expense,
             'net_profit': total_income - total_expense,
             'order_revenue': order_revenue,
@@ -3019,7 +3174,6 @@ def export_finance_excel(request):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
-    from finance.models import Receipt, Payment
 
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
@@ -3030,17 +3184,12 @@ def export_finance_excel(request):
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
-    receipts = Receipt.objects.filter(
-        receipt_date__gte=from_date, receipt_date__lte=to_date, status=1)
-    receipts = filter_by_store(receipts, request)
-    if store_id:
-        receipts = receipts.filter(store_id=store_id)
-
-    payments = Payment.objects.filter(
-        payment_date__gte=from_date, payment_date__lte=to_date, status=1)
-    payments = filter_by_store(payments, request)
-    if store_id:
-        payments = payments.filter(store_id=store_id)
+    receipts, payments, goods_receipts = _get_finance_report_querysets(
+        request,
+        from_date,
+        to_date,
+        store_id,
+    )
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -3053,11 +3202,12 @@ def export_finance_excel(request):
                   top=Side(style='thin'), bottom=Side(style='thin'))
     green_fill = PatternFill(start_color='E8F5E9', end_color='E8F5E9', fill_type='solid')
     red_fill = PatternFill(start_color='FFEBEE', end_color='FFEBEE', fill_type='solid')
+    goods_fill = PatternFill(start_color='FFF3E0', end_color='FFF3E0', fill_type='solid')
     tfill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
     mfmt = '#,##0'
 
     ws.merge_cells('A1:G1')
-    ws['A1'] = 'BÁO CÁO THU CHI'
+    ws['A1'] = 'BÁO CÁO TÀI CHÍNH'
     ws['A1'].font = hf
     ws['A1'].fill = hfill
     ws['A1'].alignment = Alignment(horizontal='center')
@@ -3068,10 +3218,25 @@ def export_finance_excel(request):
 
     # Summary row
     total_income = float(receipts.aggregate(s=Sum('amount'))['s'] or 0)
-    total_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
-    ws['A3'] = f'Tổng thu: {total_income:,.0f}đ  |  Tổng chi: {total_expense:,.0f}đ  |  Lãi/Lỗ: {total_income - total_expense:,.0f}đ'
+    payment_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
+    goods_receipt_expense = float(
+        goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
+    )
+    total_expense = payment_expense + goods_receipt_expense
+    net = total_income - total_expense
+    ws['A3'] = (
+        f'Tổng thu: {total_income:,.0f}đ  |  '
+        f'Tổng phiếu chi: {payment_expense:,.0f}đ  |  '
+        f'Tổng hàng nhập: {goods_receipt_expense:,.0f}đ'
+    )
     ws['A3'].font = Font(bold=True, size=10)
     ws.merge_cells('A3:G3')
+    ws['A4'] = (
+        f'Tổng chi = Tổng phiếu chi + Tổng hàng nhập: {total_expense:,.0f}đ  |  '
+        f'Lãi/Lỗ: {net:,.0f}đ'
+    )
+    ws['A4'].font = Font(bold=True, size=10)
+    ws.merge_cells('A4:G4')
 
     headers = ['STT', 'Loại', 'Mã phiếu', 'Ngày', 'Danh mục', 'Diễn giải', 'Số tiền']
     for col, h in enumerate(headers, 1):
@@ -3113,8 +3278,40 @@ def export_finance_excel(request):
         idx += 1
         row += 1
 
+    # Ghi phiếu nhập hàng
+    for goods_receipt in goods_receipts.select_related(
+        'supplier',
+        'warehouse',
+    ).order_by('-receipt_date'):
+        description_parts = []
+        if goods_receipt.supplier:
+            description_parts.append(f'NCC: {goods_receipt.supplier.name}')
+        if goods_receipt.warehouse:
+            description_parts.append(f'Kho: {goods_receipt.warehouse.name}')
+        if goods_receipt.note:
+            description_parts.append(goods_receipt.note)
+        vals = [
+            idx,
+            'NHẬP HÀNG',
+            goods_receipt.code,
+            goods_receipt.receipt_date.strftime('%d/%m/%Y') if goods_receipt.receipt_date else '',
+            'Hàng nhập (phiếu nhập)',
+            ' · '.join(description_parts),
+            float(goods_receipt.total_amount),
+        ]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = thin
+            c.fill = goods_fill
+            if col == 7:
+                c.number_format = mfmt
+        idx += 1
+        row += 1
+
     # Total rows
     for label, amt, fill in [('TỔNG THU', total_income, green_fill),
+                             ('TỔNG PHIẾU CHI', payment_expense, red_fill),
+                             ('TỔNG HÀNG NHẬP', goods_receipt_expense, goods_fill),
                              ('TỔNG CHI', total_expense, red_fill)]:
         for col, val in enumerate(['', label, '', '', '', '', amt], 1):
             c = ws.cell(row=row, column=col, value=val)
@@ -3124,7 +3321,6 @@ def export_finance_excel(request):
             if col == 7:
                 c.number_format = mfmt
         row += 1
-    net = total_income - total_expense
     for col, val in enumerate(['', 'LÃI/LỖ', '', '', '', '', net], 1):
         c = ws.cell(row=row, column=col, value=val)
         c.font = Font(bold=True, color='006600' if net >= 0 else 'CC0000')
@@ -3133,7 +3329,7 @@ def export_finance_excel(request):
         if col == 7:
             c.number_format = mfmt
 
-    for i, w in enumerate([6, 8, 15, 12, 20, 30, 18], 1):
+    for i, w in enumerate([6, 13, 18, 12, 24, 38, 18], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     response = HttpResponse(

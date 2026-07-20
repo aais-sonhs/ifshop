@@ -9,7 +9,7 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer
-from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
+from finance.models import CashBook, FinanceCategory, Payment, PaymentMethodOption, Receipt
 from orders.models import Order
 from products.models import GoodsReceipt, Supplier, Warehouse
 from system_management.models import Brand, Store, UserProfile
@@ -151,6 +151,161 @@ class FinanceFlowTests(TestCase):
         self.assertNotIn('meta', payload)
         self.assertEqual(len(payload['data']), 11)
         self.assertEqual(payload['next_code'], 'PC-001')
+
+    def test_payment_list_filters_full_queryset_and_export_uses_same_filters(self):
+        today = date.today()
+        category = FinanceCategory.objects.create(name='Chi phí lọc', type=2)
+        other_category = FinanceCategory.objects.create(name='Chi phí khác', type=2)
+        cash_book = CashBook.objects.create(name='Quỹ lọc')
+        other_cash_book = CashBook.objects.create(name='Quỹ khác')
+        bank_method = PaymentMethodOption.objects.create(
+            code='PAYMENT_FILTER_BANK',
+            name='Ngân hàng lọc',
+            legacy_type=2,
+        )
+        cash_method = PaymentMethodOption.objects.create(
+            code='PAYMENT_FILTER_CASH',
+            name='Tiền mặt lọc',
+            legacy_type=1,
+        )
+        goods_receipt = self._create_goods_receipt(code='PN-PAYMENT-FILTER')
+
+        Payment.objects.create(
+            code='PC-PAYMENT-FILTER-MATCH',
+            store=self.store,
+            category=category,
+            cash_book=cash_book,
+            supplier=self.supplier,
+            goods_receipt=goods_receipt,
+            amount=Decimal('500'),
+            payment_date=today,
+            status=1,
+            payment_method=2,
+            payment_method_option=bank_method,
+            description='Chi phí cần tìm',
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-PAYMENT-FILTER-DRAFT',
+            store=self.store,
+            category=other_category,
+            cash_book=other_cash_book,
+            supplier=self.supplier,
+            amount=Decimal('100'),
+            payment_date=today,
+            status=0,
+            payment_method=1,
+            payment_method_option=cash_method,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-PAYMENT-FILTER-OUTSIDE',
+            store=self.store,
+            category=category,
+            cash_book=cash_book,
+            supplier=self.supplier,
+            goods_receipt=goods_receipt,
+            amount=Decimal('500'),
+            payment_date=today - timedelta(days=5),
+            status=1,
+            payment_method=2,
+            payment_method_option=bank_method,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-PAYMENT-FILTER-FOREIGN',
+            store=self.other_store,
+            category=category,
+            cash_book=cash_book,
+            supplier=self.supplier,
+            amount=Decimal('500'),
+            payment_date=today,
+            status=1,
+            payment_method=2,
+            payment_method_option=bank_method,
+            created_by=self.other_user,
+        )
+
+        response = self.client.get(reverse('api_get_payments'), data={
+            'search': 'FILTER-MATCH',
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+            'status': '1',
+            'category_id': category.id,
+            'supplier_id': self.supplier.id,
+            'cash_book_id': cash_book.id,
+            'payment_method_option_id': bank_method.id,
+            'payment_type': '2',
+            'goods_receipt_state': 'yes',
+            'amount_from': '400',
+            'amount_to': '600',
+            'store_id': self.store.id,
+            'page': 1,
+            'page_size': 10,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item['code'] for item in payload['data']], ['PC-PAYMENT-FILTER-MATCH'])
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 3)
+
+        draft_response = self.client.get(reverse('api_get_payments'), data={
+            'status': '0',
+            'goods_receipt_state': 'no',
+            'page': 1,
+            'page_size': 10,
+        })
+        self.assertEqual(
+            [item['code'] for item in draft_response.json()['data']],
+            ['PC-PAYMENT-FILTER-DRAFT'],
+        )
+
+        excel_response = self.client.get(reverse('export_payments_excel'), data={
+            'status': '0',
+            'goods_receipt_state': 'no',
+        })
+        self.assertEqual(excel_response.status_code, 200)
+        worksheet = load_workbook(BytesIO(excel_response.content), data_only=True).active
+        headers = [cell.value for cell in worksheet[4]]
+        self.assertIn('Phiếu nhập', headers)
+        self.assertIn('Trạng thái', headers)
+        code_column = headers.index('Mã phiếu') + 1
+        status_column = headers.index('Trạng thái') + 1
+        self.assertEqual(worksheet.cell(row=5, column=code_column).value, 'PC-PAYMENT-FILTER-DRAFT')
+        self.assertEqual(worksheet.cell(row=5, column=status_column).value, 'Nháp')
+        self.assertNotIn(
+            'PC-PAYMENT-FILTER-MATCH',
+            [worksheet.cell(row=row, column=code_column).value for row in range(5, worksheet.max_row + 1)],
+        )
+
+    def test_payment_page_exposes_filter_controls(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('payment_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        for control_id in [
+            'payment_filters',
+            'f_search',
+            'f_date_from',
+            'f_date_to',
+            'f_status',
+            'f_category',
+            'f_supplier',
+            'f_cashbook',
+            'f_method',
+            'f_goods_receipt_state',
+            'f_payment_type',
+            'f_amount_from',
+            'f_amount_to',
+            'f_store',
+            'btn_apply_filters',
+            'btn_clear_filters',
+        ]:
+            self.assertContains(response, f'id="{control_id}"')
+        self.assertContains(response, 'buildPaymentExportUrl')
 
     def test_save_payment_auto_generates_code_when_blank(self):
         response = self.client.post(

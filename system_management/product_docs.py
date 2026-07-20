@@ -20,11 +20,11 @@ DEMO_ACCOUNT = {
 }
 
 DOCUMENT_REVISION = {
-    'date': '17/07/2026',
-    'title': 'Cập nhật nghiệp vụ ngày 17/07/2026',
+    'date': '20/07/2026',
+    'title': 'Cập nhật nghiệp vụ ngày 20/07/2026',
     'summary': (
-        'Tài liệu đã được đối chiếu với toàn bộ thay đổi trong ngày: khách hàng và đơn hàng, '
-        'tìm sản phẩm khi nhập hàng, bảo mật giá nhập/giá vốn, quản lý kho, báo cáo tồn kho '
+        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về khách hàng và đơn hàng, '
+        'tìm sản phẩm khi nhập hàng, quản lý kho, báo cáo tồn kho, báo cáo tài chính '
         'và cơ chế sinh mã chứng từ an toàn.'
     ),
 }
@@ -130,6 +130,17 @@ DOCUMENT_UPDATES = [
         'items': [
             'Vào Báo cáo → BC Nhập hàng, chọn tháng hoặc khoảng ngày để xem đã nhập của từng nhà cung cấp bao nhiêu phiếu và bao nhiêu tiền hàng.',
             'Có thể lọc riêng một nhà cung cấp; file Excel có thêm sheet Tổng hợp NCC.',
+        ],
+    },
+    {
+        'icon': 'fas fa-coins',
+        'title': 'Công thức Báo cáo tài chính',
+        'items': [
+            'Báo cáo hiển thị riêng 5 thẻ: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ để người xem biết rõ từng thành phần.',
+            'Tổng hàng nhập cộng trường Tổng tiền của các phiếu nhập Hoàn thành theo Ngày nhập và cửa hàng của Kho nhập; không tính phiếu Nháp, phiếu Hủy hoặc phiếu ngoài kỳ.',
+            'Tổng chi = Tổng phiếu chi + Tổng hàng nhập.',
+            'Lãi/Lỗ = Tổng thu − Tổng chi. Đây là chênh lệch theo công thức quản trị của báo cáo, không phải lợi nhuận gộp bán hàng.',
+            'Bảng theo danh mục, bảng theo cửa hàng, biểu đồ và file Excel đều dùng cùng công thức với các thẻ tổng quan.',
         ],
     },
     {
@@ -612,6 +623,31 @@ DETAILED_OPERATION_GUIDES = [
             'Phiếu chi nên có lý do rõ ràng để báo cáo tài chính không bị mơ hồ.',
             'Cuối ngày phải đối chiếu tiền mặt, chuyển khoản và tổng phiếu thu chi.',
             'Kiểm tra lại sổ quỹ trước khi đóng ca để đảm bảo số liệu khớp.',
+        ],
+    },
+    {
+        'title': 'Đọc Tổng thu và Tổng chi trên Báo cáo tài chính',
+        'goal': 'Hiểu đúng phạm vi chứng từ và công thức của các chỉ số Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ trên BC Tài chính.',
+        'steps': [
+            'Vào Báo cáo → BC Tài chính. Chọn Từ ngày, Đến ngày và Cửa hàng cần xem; nếu không chọn cửa hàng, báo cáo cộng toàn bộ cửa hàng mà tài khoản được phép quản lý.',
+            'Đọc 5 thẻ tổng quan theo thứ tự: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ. Thẻ Tổng chi ghi rõ “phiếu chi + hàng nhập” để phân biệt với riêng Tổng phiếu chi.',
+            'Khoảng ngày được tính bao gồm cả hai ngày đầu và cuối. Phiếu thu lọc theo Ngày thu, phiếu chi theo Ngày chi và phiếu nhập theo Ngày nhập; không lọc theo ngày tạo chứng từ hoặc ngày đặt hàng.',
+            'Tổng thu = tổng Số tiền của tất cả phiếu thu ở trạng thái Hoàn thành, có Ngày thu trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',
+            'Tổng phiếu chi = tổng Số tiền của tất cả phiếu chi ở trạng thái Hoàn thành, có Ngày chi trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',
+            'Tổng hàng nhập = tổng Tổng tiền của tất cả phiếu nhập ở trạng thái Hoàn thành, có Ngày nhập trong khoảng đã chọn và Kho nhập thuộc cửa hàng đang xem.',
+            'Tổng chi = Tổng phiếu chi + Tổng hàng nhập.',
+            'Lãi/Lỗ = Tổng thu − Tổng chi. Đây là chênh lệch theo công thức quản trị nêu trên, không phải lợi nhuận gộp của hoạt động bán hàng.',
+            'Ví dụ: Tổng thu 500 triệu, Tổng phiếu chi 100 triệu và Tổng hàng nhập 300 triệu thì Tổng chi = 400 triệu; Lãi/Lỗ = 500 triệu − 400 triệu = 100 triệu.',
+            'Bảng Thu / Chi theo danh mục có thêm khoản Hàng nhập (phiếu nhập), còn bảng theo cửa hàng tách Phiếu chi và Hàng nhập trước khi cộng Tổng chi. File Excel BC Tài chính dùng cùng công thức, khoảng ngày, trạng thái và cửa hàng.',
+        ],
+        'checks': [
+            'Chỉ phiếu Hoàn thành được cộng; phiếu Nháp, phiếu Hủy và phiếu đã xóa không được tính.',
+            'Tổng thu và Tổng phiếu chi cộng mọi phương thức thanh toán. Vì vậy, tổng hai ô Tiền mặt và Chuyển khoản có thể thấp hơn tổng phiếu tương ứng nếu có phương thức thuộc loại Khác.',
+            'Một phiếu thu gắn với đơn hàng chỉ được cộng một lần theo Số tiền của phiếu thu; hệ thống không cộng thêm số Đã thu trên đơn vào Tổng thu.',
+            'Phiếu chi hoàn tiền cho khách, phiếu chi nhà cung cấp và chi phí vận hành đều được tính vào Tổng phiếu chi nếu phiếu ở trạng thái Hoàn thành và nằm trong khoảng ngày.',
+            'Tổng hàng nhập lấy Tổng tiền đã lưu trên phiếu nhập tại thời điểm nhập hàng; không lấy tồn kho hiện tại và không nhân lại theo giá vốn hiện tại của sản phẩm.',
+            'Theo công thức hiện tại, phiếu nhập Hoàn thành được cộng vào Tổng hàng nhập kể cả khi chưa có phiếu chi. Nếu cùng giao dịch nhập hàng có thêm phiếu chi Hoàn thành, cả giá trị phiếu nhập và phiếu chi đều được cộng vào Tổng chi.',
+            'Nếu số liệu lệch, lọc danh sách phiếu thu, phiếu chi và phiếu nhập theo cùng khoảng ngày, trạng thái Hoàn thành và cửa hàng; sau đó đối chiếu từng Số tiền hoặc Tổng tiền với bảng theo danh mục và file Excel.',
         ],
     },
     {

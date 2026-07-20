@@ -157,6 +157,69 @@ class OrderRiskFlowTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.issuing_brand_id, print_label.id)
 
+    def test_export_print_does_not_prefill_creator_signature_name(self):
+        self.user.first_name = 'Nguyễn Văn'
+        self.user.last_name = 'Người Lập'
+        self.user.save(update_fields=['first_name', 'last_name'])
+        order = self._create_order(code='DH-EXPORT-SIGNATURE')
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'export', 'source': 'order'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Người lập phiếu')
+        self.assertContains(response, '(Ký và ghi rõ họ tên)')
+        self.assertNotContains(response, 'Nguyễn Văn Người Lập')
+
+    def test_packing_a5_print_uses_packing_labels_without_prices(self):
+        self.product.unit = 'Thùng'
+        self.product.save(update_fields=['unit'])
+        order = self._create_order(code='DH-PACKING-A5')
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=125000,
+            total_price=250000,
+        )
+
+        response = self.client.get(
+            reverse('api_print_order'),
+            {'id': order.id, 'type': 'packing', 'source': 'order'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for expected in (
+            'Phiếu đóng hàng A5',
+            'PHIẾU ĐÓNG HÀNG',
+            'size: A5 portrait',
+            'Kho lấy hàng',
+            'Thông tin giao hàng',
+            'Mã hàng',
+            'Sản phẩm / quy cách',
+            'SL đóng',
+            'Kiểm / ghi chú',
+            'Người soạn hàng',
+            'Người đóng gói',
+            'Người kiểm tra',
+            self.product.code,
+            self.product.name,
+            'Thùng',
+        ):
+            self.assertContains(response, expected)
+        self.assertContains(response, '2')
+        for unexpected in ('Đơn giá', 'Thành tiền', 'PHIẾU XUẤT KHO', 'Thủ kho'):
+            self.assertNotContains(response, unexpected)
+
+    def test_order_page_offers_packing_a5_print_option(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-print-type="packing"')
+        self.assertContains(response, 'Phiếu đóng hàng A5')
+
     def test_k80_print_uses_four_product_quantity_price_and_total_columns(self):
         self.product.unit = 'Bộ 12c'
         self.product.save(update_fields=['unit'])
@@ -1492,6 +1555,60 @@ class OrderRiskFlowTests(TestCase):
         }
         self.assertIn(matching_order.code, exported_codes)
         self.assertNotIn(exported_order.code, exported_codes)
+
+    def test_export_orders_excel_adds_goods_totals_grouped_by_customer(self):
+        customer_a = Customer.objects.create(
+            store=self.store,
+            code='KH-EXCEL-A',
+            name='Khách tổng hợp A',
+            phone='0901000001',
+            created_by=self.user,
+        )
+        customer_b = Customer.objects.create(
+            store=self.store,
+            code='KH-EXCEL-B',
+            name='Khách tổng hợp B',
+            phone='0901000002',
+            created_by=self.user,
+        )
+        order_specs = [
+            ('DH-EXCEL-SUMMARY-A1', customer_a, 5, 120000),
+            ('DH-EXCEL-SUMMARY-A2', customer_a, 5, 180000),
+            ('DH-EXCEL-SUMMARY-B1', customer_b, 5, 150000),
+            ('DH-EXCEL-SUMMARY-EXCLUDED', customer_a, 6, 999000),
+        ]
+        for code, customer, status, goods_total in order_specs:
+            order = self._create_order(code=code, customer=customer, status=status)
+            order.total_amount = goods_total
+            order.final_amount = goods_total
+            order.save(update_fields=['total_amount', 'final_amount'])
+
+        response = self.client.get('/api/orders/export-excel/', {'status': '5'})
+
+        self.assertEqual(response.status_code, 200)
+        workbook = openpyxl.load_workbook(BytesIO(response.content), data_only=True)
+        self.assertEqual(
+            workbook.sheetnames,
+            ['DANH SÁCH ĐƠN HÀNG', 'Tổng tiền theo khách'],
+        )
+
+        summary_sheet = workbook['Tổng tiền theo khách']
+        self.assertEqual(
+            [cell.value for cell in summary_sheet[4]],
+            ['STT', 'Mã khách hàng', 'Khách hàng', 'Số điện thoại', 'Số đơn hàng', 'Tổng tiền hàng'],
+        )
+        self.assertEqual(
+            [summary_sheet.cell(row=5, column=column).value for column in range(1, 7)],
+            [1, customer_a.code, customer_a.name, customer_a.phone, 2, 300000],
+        )
+        self.assertEqual(
+            [summary_sheet.cell(row=6, column=column).value for column in range(1, 7)],
+            [2, customer_b.code, customer_b.name, customer_b.phone, 1, 150000],
+        )
+        self.assertEqual(
+            [summary_sheet.cell(row=7, column=column).value for column in (3, 5, 6)],
+            ['TỔNG CỘNG', 3, 450000],
+        )
 
     def test_get_orders_status_counts_ignore_active_status_filter(self):
         self._create_order(code='DH-COUNT-001', status=1)

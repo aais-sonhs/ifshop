@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load order_format %}
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h3 class="card-title mb-0"><i class="fas fa-file-invoice-dollar mr-2"></i>Chi tiết công nợ đơn hàng</h3>
+        <a class="btn btn-sm btn-outline-secondary ml-auto" href="{% url 'report_finance' %}">
+            <i class="fas fa-arrow-left mr-1"></i>Về báo cáo tài chính
+        </a>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row mb-3">
+            <div class="col-lg-2 col-md-4 mb-2">
+                <label class="small text-muted mb-1" for="filter_from_date">Từ ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_from_date" name="from_date" value="{{ filters.from_date }}">
+            </div>
+            <div class="col-lg-2 col-md-4 mb-2">
+                <label class="small text-muted mb-1" for="filter_to_date">Đến ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_to_date" name="to_date" value="{{ filters.to_date }}">
+            </div>
+            <div class="col-lg-3 col-md-4 mb-2">
+                <label class="small text-muted mb-1" for="filter_store_id">Cửa hàng</label>
+                <select class="form-control form-control-sm" id="filter_store_id" name="store_id">
+                    <option value="">Tất cả cửa hàng</option>
+                    {% for store in stores %}
+                    <option value="{{ store.id }}" {% if filters.store_id == store.id %}selected{% endif %}>{{ store.name }}{% if store.brand %} — {{ store.brand.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3 col-md-8 mb-2">
+                <label class="small text-muted mb-1" for="filter_keyword">Tìm đơn hàng</label>
+                <input type="text" class="form-control form-control-sm" id="filter_keyword" name="q" value="{{ filters.q }}" placeholder="Mã đơn, mã/tên/SĐT khách hàng">
+            </div>
+            <div class="col-lg-2 col-md-4 mb-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-sm btn-info mr-2"><i class="fas fa-search mr-1"></i>Lọc</button>
+                <a href="{% url 'report_finance_order_debt' %}" class="btn btn-sm btn-outline-secondary" title="Xóa bộ lọc"><i class="fas fa-undo"></i></a>
+            </div>
+        </form>
+
+        <div class="row mb-3">
+            <div class="col-md-3 col-6">
+                <div class="small-box bg-info">
+                    <div class="inner"><h4>{{ totals.order_count }}</h4><p>Đơn còn công nợ</p></div>
+                    <div class="icon"><i class="fas fa-shopping-cart"></i></div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="small-box bg-primary">
+                    <div class="inner"><h4>{{ totals.final_amount|money_vnd }}đ</h4><p>Tổng thanh toán</p></div>
+                    <div class="icon"><i class="fas fa-file-invoice"></i></div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="small-box bg-success">
+                    <div class="inner"><h4>{{ totals.paid_amount|money_vnd }}đ</h4><p>Đã thu</p></div>
+                    <div class="icon"><i class="fas fa-check-circle"></i></div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="small-box bg-warning">
+                    <div class="inner"><h4>{{ totals.debt_amount|money_vnd }}đ</h4><p>Còn nợ</p></div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="text-muted small">
+                Chỉ hiển thị đơn chưa hủy có Tổng thanh toán lớn hơn Đã thu.
+            </div>
+            <div class="text-muted small">Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-sm table-hover mb-0" style="min-width:1250px;">
+                <thead class="bg-light">
+                    <tr>
+                        <th style="width:55px;">STT</th>
+                        <th>Mã đơn hàng</th>
+                        <th>Ngày đặt</th>
+                        <th>Khách hàng</th>
+                        <th>Số điện thoại</th>
+                        <th>Cửa hàng</th>
+                        <th class="text-right">Tổng thanh toán</th>
+                        <th class="text-right">Đã thu</th>
+                        <th class="text-right">Còn nợ</th>
+                        <th>Trạng thái đơn</th>
+                        <th>Thanh toán</th>
+                        <th class="text-center">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in page_obj %}
+                    <tr>
+                        <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
+                        <td><a href="{% url 'order_tbl' %}?open_order={{ order.id }}" target="_blank" rel="noopener"><strong>{{ order.code }}</strong></a></td>
+                        <td class="text-nowrap">{{ order.order_date|date:"d/m/Y" }}</td>
+                        <td>
+                            <strong>{{ order.customer.name|default:"Khách lẻ" }}</strong>
+                            {% if order.customer.code %}<div class="small text-muted">{{ order.customer.code }}</div>{% endif %}
+                        </td>
+                        <td>{% if order.shipping_phone %}{{ order.shipping_phone }}{% elif order.customer.phone %}{{ order.customer.phone }}{% else %}—{% endif %}</td>
+                        <td>{{ order.store.name|default:"—" }}</td>
+                        <td class="text-right text-nowrap">{{ order.final_amount|money_vnd }}đ</td>
+                        <td class="text-right text-nowrap text-success">{{ order.paid_amount|money_vnd }}đ</td>
+                        <td class="text-right text-nowrap text-danger"><strong>{{ order.debt_amount|money_vnd }}đ</strong></td>
+                        <td><span class="badge {% if order.status == 5 %}badge-success{% elif order.status == 4 %}badge-primary{% else %}badge-info{% endif %}">{{ order.get_status_display }}</span></td>
+                        <td><span class="badge {% if order.payment_status == 0 %}badge-light border{% elif order.payment_status == 1 %}badge-warning{% else %}badge-success{% endif %}">{{ order.get_payment_status_display }}</span></td>
+                        <td class="text-center"><a class="btn btn-xs btn-outline-primary text-nowrap" href="{% url 'order_tbl' %}?open_order={{ order.id }}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt mr-1"></i>Mở đơn</a></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="12" class="text-center text-muted py-4">Không có đơn hàng còn công nợ theo bộ lọc.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="font-weight-bold bg-light">
+                    <tr>
+                        <td colspan="6">TỔNG THEO BỘ LỌC ({{ totals.order_count }} đơn)</td>
+                        <td class="text-right text-nowrap">{{ totals.final_amount|money_vnd }}đ</td>
+                        <td class="text-right text-nowrap text-success">{{ totals.paid_amount|money_vnd }}đ</td>
+                        <td class="text-right text-nowrap text-danger">{{ totals.debt_amount|money_vnd }}đ</td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {% if page_obj.paginator.num_pages > 1 %}
+        <div class="d-flex justify-content-center align-items-center mt-3">
+            {% if page_obj.has_previous %}
+            <a class="btn btn-sm btn-outline-secondary mr-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;page={{ page_obj.previous_page_number }}"><i class="fas fa-chevron-left mr-1"></i>Trang trước</a>
+            {% endif %}
+            <span class="small text-muted px-2">Trang {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}
+            <a class="btn btn-sm btn-outline-secondary ml-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;page={{ page_obj.next_page_number }}">Trang sau<i class="fas fa-chevron-right ml-1"></i></a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

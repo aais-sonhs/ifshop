@@ -47,7 +47,7 @@
             </div>
         </div>
         <div class="row mb-2" style="row-gap:6px;">
-            <div class="col-md-2">
+            <div class="col-md-4">
                 <select class="form-control form-control-sm" id="filter_debt">
                     <option value="">-- Hành vi mua hàng --</option>
                     <option value="has_purchase">Đã mua hàng</option>
@@ -57,54 +57,11 @@
                     <option value="no_debt">Không công nợ</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <select class="form-control form-control-sm" id="filter_creator">
-                    <option value="">-- Người tạo --</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-control form-control-sm" id="filter_customer_kind">
-                    <option value="">-- Khách buôn/lẻ --</option>
-                    <option value="retail">Khách lẻ</option>
-                    <option value="wholesale">Khách buôn / sỉ</option>
-                    <option value="other">Khác / chưa phân loại</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <input type="text" class="form-control form-control-sm" id="filter_product" list="customer_product_suggestions" placeholder="Sản phẩm đã mua...">
-                <datalist id="customer_product_suggestions"></datalist>
-            </div>
-            <div class="col-md-2">
+            <div class="col-md-4">
                 <input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-4">
                 <input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày">
-            </div>
-        </div>
-        <div class="row mb-2" style="row-gap:6px;">
-            <div class="col-md-2">
-                <select class="form-control form-control-sm" id="filter_purchase_price_basis">
-                    <option value="unit_price">Giá bán đã mua</option>
-                    <option value="net_unit_price">Giá sau CK đã mua</option>
-                    <option value="line_total">Thành tiền dòng</option>
-                    <option value="order_total">Tổng tiền đơn</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-control form-control-sm" id="filter_purchase_price_preset">
-                    <option value="">-- Khung giá --</option>
-                    <option value="0:100000">Dưới 100.000đ</option>
-                    <option value="100000:300000">100.000đ - 300.000đ</option>
-                    <option value="300000:500000">300.000đ - 500.000đ</option>
-                    <option value="500000:1000000">500.000đ - 1.000.000đ</option>
-                    <option value="1000000:">Trên 1.000.000đ</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <input type="number" class="form-control form-control-sm" id="filter_purchase_price_from" min="0" placeholder="Giá từ">
-            </div>
-            <div class="col-md-2">
-                <input type="number" class="form-control form-control-sm" id="filter_purchase_price_to" min="0" placeholder="Giá đến">
             </div>
         </div>
         <div class="row mb-2" style="row-gap:6px;">
@@ -375,8 +332,6 @@
 .customer-order-items{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
 .customer-order-items .badge{font-weight:normal;}
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
-.customer-product-match-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
-.customer-product-match{display:block;border:1px solid #bee5eb;background:#f0fbff;border-radius:4px;padding:4px 6px;font-size:12px;line-height:1.35;}
 #customer_pagination .page-link{min-width:36px;text-align:center;}
 </style>
 {% endblock %}
@@ -655,73 +610,6 @@ function getHistoryPriceBasisLabel(priceBasis){
     return labels[priceBasis] || labels.unit_price;
 }
 
-function getPurchaseFilterPriceValue(item, priceBasis){
-    if(priceBasis === 'net_unit_price') return Number(item.net_unit_price || 0);
-    if(priceBasis === 'line_total') return Number(item.line_total || 0);
-    if(priceBasis === 'order_total') return Number(item.order_total || 0);
-    return Number(item.unit_price || 0);
-}
-
-function isCustomerPurchaseMatch(item, productKeyword, priceFrom, priceTo, priceBasis){
-    var productMatch = !productKeyword || normalizeCustomerText(
-        item.product_search || [item.product_code, item.product_name].join(' ')
-    ).indexOf(productKeyword) >= 0;
-    var priceValue = getPurchaseFilterPriceValue(item, priceBasis);
-    var priceMatch = priceValue >= priceFrom && priceValue <= priceTo;
-    return productMatch && priceMatch;
-}
-
-function customerMatchesPurchaseFilters(customer, filters, productKeyword){
-    var priceBasis = filters.purchase_price_basis || 'unit_price';
-    var priceFrom = parseFloat(filters.purchase_price_from) || 0;
-    var priceTo = filters.purchase_price_to ? parseFloat(filters.purchase_price_to) : Infinity;
-    var hasPriceFilter = priceFrom > 0 || priceTo < Infinity;
-    var hasProductFilter = !!productKeyword;
-    if(!hasProductFilter && !hasPriceFilter) return true;
-
-    var items = customer.purchase_filter_items || [];
-    if(!items.length){
-        return hasProductFilter && !hasPriceFilter
-            ? normalizeCustomerText(customer.purchased_product_search || '').indexOf(productKeyword) >= 0
-            : false;
-    }
-    return items.some(function(item){
-        return isCustomerPurchaseMatch(item, productKeyword, priceFrom, priceTo, priceBasis);
-    });
-}
-
-function getCustomerMatchingPurchaseItems(customer, filters, productKeyword){
-    var priceBasis = filters.purchase_price_basis || 'unit_price';
-    var priceFrom = parseFloat(filters.purchase_price_from) || 0;
-    var priceTo = filters.purchase_price_to ? parseFloat(filters.purchase_price_to) : Infinity;
-    var hasPriceFilter = priceFrom > 0 || priceTo < Infinity;
-    if(!productKeyword && !hasPriceFilter) return [];
-    return (customer.purchase_filter_items || []).filter(function(item){
-        return isCustomerPurchaseMatch(item, productKeyword, priceFrom, priceTo, priceBasis);
-    });
-}
-
-function buildCustomerPurchaseMatchHtml(customer, filters, productKeyword){
-    var matches = getCustomerMatchingPurchaseItems(customer, filters, productKeyword);
-    if(!matches.length) return '';
-    var priceBasis = filters.purchase_price_basis || 'unit_price';
-    var html = '<div class="customer-product-match-list">';
-    matches.slice(0, 3).forEach(function(item){
-        var priceValue = getPurchaseFilterPriceValue(item, priceBasis);
-        html += '<span class="customer-product-match">' +
-            '<strong>' + escapeHtml(item.product_code || 'DV') + '</strong> — ' + escapeHtml(item.product_name || 'Hàng hóa') +
-            '<br><span class="text-muted">SL ' + fmt(item.quantity || 0) + ' ' + escapeHtml(item.unit || '') +
-            ' · ' + escapeHtml(getHistoryPriceBasisLabel(priceBasis)) + ': ' + fmt(priceValue) + 'đ' +
-            ' · Đơn ' + escapeHtml(item.order_code || '') + (item.order_date ? ' ngày ' + escapeHtml(item.order_date) : '') +
-            '</span></span>';
-    });
-    if(matches.length > 3){
-        html += '<small class="text-info">+' + (matches.length - 3) + ' dòng mua khớp bộ lọc</small>';
-    }
-    html += '</div>';
-    return html;
-}
-
 function isHistoryItemMatch(it, product, priceFrom, priceTo, priceBasis){
     var itemSearch = normalizeCustomerText(it.product_search || [it.product_code, it.product_name, it.unit].join(' '));
     var nameMatch = !product || itemSearch.indexOf(product) >= 0;
@@ -761,15 +649,9 @@ function getCurrentCustomerFilters(){
         search: ($('#filter_search').val() || '').trim(),
         group: $('#filter_customer_group').val() || '',
         type: $('#filter_customer_type').val() || '',
-        kind: $('#filter_customer_kind').val() || '',
         membership: $('#filter_membership').val() || '',
         debt: $('#filter_debt').val() || '',
         status: $('#filter_status').val() || '',
-        creator: $('#filter_creator').val() || '',
-        product: ($('#filter_product').val() || '').trim(),
-        purchase_price_basis: $('#filter_purchase_price_basis').val() || 'unit_price',
-        purchase_price_from: $('#filter_purchase_price_from').val() || '',
-        purchase_price_to: $('#filter_purchase_price_to').val() || '',
         created_from: $('#filter_created_from').val() || '',
         created_to: $('#filter_created_to').val() || '',
     };
@@ -788,9 +670,6 @@ function renderCustomerFilterSummary(filteredCount, totalCount){
     if(filters.type){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_type'))+'</span>');
     }
-    if(filters.kind){
-        chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_customer_kind'))+'</span>');
-    }
     if(filters.membership){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_membership'))+'</span>');
     }
@@ -799,17 +678,6 @@ function renderCustomerFilterSummary(filteredCount, totalCount){
     }
     if(filters.status){
         chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_status'))+'</span>');
-    }
-    if(filters.creator){
-        chips.push('<span class="badge badge-light border px-2 py-1">Người tạo: '+escapeHtml(getSelectedText('#filter_creator'))+'</span>');
-    }
-    if(filters.product){
-        chips.push('<span class="badge badge-light border px-2 py-1">Sản phẩm: '+escapeHtml(filters.product)+'</span>');
-    }
-    if(filters.purchase_price_from || filters.purchase_price_to){
-        chips.push('<span class="badge badge-light border px-2 py-1">'+
-            escapeHtml(getHistoryPriceBasisLabel(filters.purchase_price_basis))+': '+
-            escapeHtml(filters.purchase_price_from || '0')+' - '+escapeHtml(filters.purchase_price_to || '∞')+'đ</span>');
     }
     if(filters.created_from || filters.created_to){
         chips.push('<span class="badge badge-light border px-2 py-1">Ngày tạo: '+escapeHtml(filters.created_from || '...')+' - '+escapeHtml(filters.created_to || '...')+'</span>');
@@ -828,8 +696,6 @@ function filterCustomers(list){
     var rawKeyword = filters.search;
     var keyword = normalizeCustomerText(rawKeyword);
     var keywordDigits = onlyDigits(rawKeyword);
-    var productKeyword = normalizeCustomerText(filters.product);
-
     return list.filter(function(d){
         if(keyword){
             var deliveryAddressSearch = (d.delivery_addresses || []).map(function(item){
@@ -845,14 +711,11 @@ function filterCustomers(list){
         }
         if(filters.group && String(d.group_id || '') !== filters.group) return false;
         if(filters.type && String(d.customer_type || '') !== filters.type) return false;
-        if(filters.kind && String(d.customer_kind || '') !== filters.kind) return false;
         if(filters.membership && String(d.membership_level || 0) !== filters.membership) return false;
         if(filters.status === 'active' && !d.is_active) return false;
         if(filters.status === 'inactive' && d.is_active) return false;
-        if(filters.creator && String(d.creator_id || '') !== filters.creator) return false;
         if(filters.created_from && (!d.created_at || d.created_at < filters.created_from)) return false;
         if(filters.created_to && (!d.created_at || d.created_at > filters.created_to)) return false;
-        if(!customerMatchesPurchaseFilters(d, filters, productKeyword)) return false;
         if(filters.debt === 'has_purchase' && Number(d.total_purchased || 0) <= 0) return false;
         if(filters.debt === 'no_purchase' && Number(d.total_purchased || 0) > 0) return false;
         if(filters.debt === 'unpaid' && Number(d.unpaid_order_count || 0) <= 0) return false;
@@ -971,19 +834,9 @@ function renderCustomerSavedFilters(){
         if(f.search) desc.push('"'+escapeHtml(f.search)+'"');
         if(f.group_text) desc.push(escapeHtml(f.group_text));
         if(f.type_text) desc.push(escapeHtml(f.type_text));
-        if(f.kind_text) desc.push(escapeHtml(f.kind_text));
         if(f.membership_text) desc.push(escapeHtml(f.membership_text));
         if(f.debt_text) desc.push(escapeHtml(f.debt_text));
         if(f.status_text) desc.push(escapeHtml(f.status_text));
-        if(f.creator_text) desc.push('Người tạo: ' + escapeHtml(f.creator_text));
-        if(f.product) desc.push('Sản phẩm: ' + escapeHtml(f.product));
-        if(f.purchase_price_from || f.purchase_price_to){
-            desc.push(
-                escapeHtml(getHistoryPriceBasisLabel(f.purchase_price_basis || 'unit_price')) + ': ' +
-                escapeHtml(f.purchase_price_from || '0') + ' - ' +
-                escapeHtml(f.purchase_price_to || '∞') + 'đ'
-            );
-        }
         if(f.created_from || f.created_to) desc.push('Tạo: ' + escapeHtml(f.created_from || '...') + ' - ' + escapeHtml(f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">'+desc.join(' · ')+'</small>' : '';
         $menu.append(
@@ -993,32 +846,6 @@ function renderCustomerSavedFilters(){
             '</div>'
         );
     });
-}
-
-function populateCustomerCreatorFilter(customers){
-    var currentValue = $('#filter_creator').val() || '';
-    var seen = {};
-    var options = ['<option value="">-- Người tạo --</option>'];
-    (customers || []).forEach(function(c){
-        if(!c.creator_id || seen[c.creator_id]) return;
-        seen[c.creator_id] = true;
-        options.push('<option value="'+escapeAttr(String(c.creator_id))+'">'+escapeHtml(c.creator_name || 'Không xác định')+'</option>');
-    });
-    $('#filter_creator').html(options.join(''));
-    $('#filter_creator').val(currentValue);
-}
-
-function populateCustomerProductSuggestions(customers){
-    var seen = {};
-    var options = [];
-    (customers || []).forEach(function(c){
-        (c.purchased_product_names || []).forEach(function(label){
-            if(!label || seen[label]) return;
-            seen[label] = true;
-            options.push('<option value="'+escapeAttr(label)+'"></option>');
-        });
-    });
-    $('#customer_product_suggestions').html(options.join(''));
 }
 
 // Column Config
@@ -1057,33 +884,12 @@ $(document).ready(function(){
         e.preventDefault();
         submitCustomerSearch();
     });
-    $('#filter_customer_group, #filter_customer_type, #filter_customer_kind, #filter_membership, #filter_debt, #filter_status, #filter_creator, #filter_created_from, #filter_created_to, #filter_purchase_price_basis').on('change', function(){ resetCustomerPagination(); renderTable(); });
-    $('#filter_product, #filter_purchase_price_from, #filter_purchase_price_to').on('input', function(){
-        if(this.id === 'filter_purchase_price_from' || this.id === 'filter_purchase_price_to'){
-            $('#filter_purchase_price_preset').val('');
-        }
-        resetCustomerPagination();
-        renderTable();
-    });
-    $('#filter_purchase_price_preset').on('change', function(){
-        var preset = $(this).val() || '';
-        if(preset){
-            var parts = preset.split(':');
-            $('#filter_purchase_price_from').val(parts[0] || '');
-            $('#filter_purchase_price_to').val(parts[1] || '');
-        } else {
-            $('#filter_purchase_price_from, #filter_purchase_price_to').val('');
-        }
-        resetCustomerPagination();
-        renderTable();
-    });
+    $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status, #filter_created_from, #filter_created_to').on('change', function(){ resetCustomerPagination(); renderTable(); });
     $('#btn_search_customer').click(function(){ submitCustomerSearch(); });
     $('#btn_clear_customer_filters').click(function(){
         $('#filter_search').val('');
-        $('#filter_customer_group, #filter_customer_type, #filter_customer_kind, #filter_membership, #filter_debt, #filter_status, #filter_creator').val('');
-        $('#filter_product, #filter_created_from, #filter_created_to, #filter_purchase_price_from, #filter_purchase_price_to').val('');
-        $('#filter_purchase_price_basis').val('unit_price');
-        $('#filter_purchase_price_preset').val('');
+        $('#filter_customer_group, #filter_customer_type, #filter_membership, #filter_debt, #filter_status').val('');
+        $('#filter_created_from, #filter_created_to').val('');
         resetCustomerPagination();
         renderTable();
     });
@@ -1098,20 +904,12 @@ $(document).ready(function(){
             group_text: getSelectedText('#filter_customer_group'),
             type: $('#filter_customer_type').val() || '',
             type_text: getSelectedText('#filter_customer_type'),
-            kind: $('#filter_customer_kind').val() || '',
-            kind_text: getSelectedText('#filter_customer_kind'),
             membership: $('#filter_membership').val() || '',
             membership_text: getSelectedText('#filter_membership'),
             debt: $('#filter_debt').val() || '',
             debt_text: getSelectedText('#filter_debt'),
             status: $('#filter_status').val() || '',
             status_text: getSelectedText('#filter_status'),
-            creator: $('#filter_creator').val() || '',
-            creator_text: getSelectedText('#filter_creator'),
-            product: $('#filter_product').val() || '',
-            purchase_price_basis: $('#filter_purchase_price_basis').val() || 'unit_price',
-            purchase_price_from: $('#filter_purchase_price_from').val() || '',
-            purchase_price_to: $('#filter_purchase_price_to').val() || '',
             created_from: $('#filter_created_from').val() || '',
             created_to: $('#filter_created_to').val() || '',
         });
@@ -1128,16 +926,9 @@ $(document).ready(function(){
         $('#filter_search').val(f.search || '');
         $('#filter_customer_group').val(f.group || '');
         $('#filter_customer_type').val(f.type || '');
-        $('#filter_customer_kind').val(f.kind || '');
         $('#filter_membership').val(f.membership || '');
         $('#filter_debt').val(f.debt || '');
         $('#filter_status').val(f.status || '');
-        $('#filter_creator').val(f.creator || '');
-        $('#filter_product').val(f.product || '');
-        $('#filter_purchase_price_basis').val(f.purchase_price_basis || 'unit_price');
-        $('#filter_purchase_price_preset').val('');
-        $('#filter_purchase_price_from').val(f.purchase_price_from || '');
-        $('#filter_purchase_price_to').val(f.purchase_price_to || '');
         $('#filter_created_from').val(f.created_from || '');
         $('#filter_created_to').val(f.created_to || '');
         resetCustomerPagination();
@@ -1428,8 +1219,6 @@ function loadData(){
     $.get('/api/customers/',function(res){
         _customerOrderPreviewCache = {};
         allCustomers = res.data;
-        populateCustomerCreatorFilter(allCustomers);
-        populateCustomerProductSuggestions(allCustomers);
         resetCustomerPagination();
         renderTable();
         openRequestedCustomerEditor();
@@ -1450,8 +1239,6 @@ function openRequestedCustomerEditor(){
 }
 
 function renderTable(){
-    var filters = getCurrentCustomerFilters();
-    var productKeyword = normalizeCustomerText(filters.product);
     var filtered = filterCustomers(allCustomers);
     var pagination = renderCustomerPagination(filtered.length);
     var pagedCustomers = filtered.slice(pagination.startIndex, pagination.endIndex);
@@ -1466,7 +1253,6 @@ function renderTable(){
         if(d.company){
             nameHtml += '<div><small class="text-muted">'+escapeHtml(d.company)+'</small></div>';
         }
-        nameHtml += buildCustomerPurchaseMatchHtml(d, filters, productKeyword);
         var groupHtml = d.group ? '<span class="badge badge-light border">'+escapeHtml(d.group)+'</span>' : '<span class="text-muted">--</span>';
         var actionsHtml = '<div class="btn-action-group"><button class="btn btn-xs btn-outline-primary btn-toggle-orders" onclick="toggleCustomerOrders('+d.id+', this)" title="Xem nhanh đơn gần đây">Xem nhanh</button> '+
             '<button class="btn btn-xs btn-success" onclick="viewHistory('+d.id+')" title="Lịch sử mua hàng">Lịch sử</button> '+

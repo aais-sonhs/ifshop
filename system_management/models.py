@@ -205,6 +205,7 @@ class PrintTemplate(models.Model):
         ('quotation_a4', 'Báo giá A4'),
         ('warranty', 'Phiếu bảo hành'),
         ('export', 'Phiếu xuất kho'),
+        ('packing', 'Phiếu đóng hàng A5'),
     ]
 
     brand = models.ForeignKey('Brand', on_delete=models.CASCADE, null=True, blank=True,

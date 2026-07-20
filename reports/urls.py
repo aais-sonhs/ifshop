@@ -9,6 +9,7 @@ urlpatterns = [
     path('report-inventory/', views.report_inventory, name='report_inventory'),
     path('api/report-inventory/', views.api_report_inventory, name='api_report_inventory'),
     path('report-finance/', views.report_finance, name='report_finance'),
+    path('report-finance/order-debt/', views.report_finance_order_debt, name='report_finance_order_debt'),
     path('api/report-finance/', views.api_report_finance, name='api_report_finance'),
     path('report-customers/', views.report_customers, name='report_customers'),
     path('api/report-customers/', views.api_report_customers, name='api_report_customers'),

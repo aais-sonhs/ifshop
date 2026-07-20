@@ -5,11 +5,111 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-money-bill-wave mr-2"></i>Phiếu chi</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/payments/export-excel/'"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu chi</button>
         </div>
     </div>
     <div class="card-body">
+        <div class="card mb-3" id="payment_filters" style="border-color:#e2e8f0;background:#fafbfc;">
+            <div class="card-body p-2">
+                <div class="row align-items-end" style="row-gap:6px;">
+                    <div class="col-md-4">
+                        <label class="small mb-0 text-muted">Tìm kiếm</label>
+                        <input type="text" class="form-control form-control-sm" id="f_search" placeholder="Mã phiếu, NCC/KH, phiếu nhập, diễn giải...">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Từ ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="f_date_from">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Đến ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="f_date_to">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Trạng thái</label>
+                        <select class="form-control form-control-sm" id="f_status">
+                            <option value="">Tất cả</option>
+                            <option value="1">Hoàn thành</option>
+                            <option value="0">Nháp</option>
+                            <option value="2">Hủy</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Danh mục</label>
+                        <select class="form-control form-control-sm" id="f_category">
+                            <option value="">Tất cả</option>
+                            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row align-items-end mt-1" style="row-gap:6px;">
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Nhà cung cấp</label>
+                        <select class="form-control form-control-sm" id="f_supplier">
+                            <option value="">Tất cả</option>
+                            {% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Quỹ/Tài khoản</label>
+                        <select class="form-control form-control-sm" id="f_cashbook">
+                            <option value="">Tất cả</option>
+                            {% for c in cashbooks %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            <option value="0">Chưa gán</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Phương thức thanh toán</label>
+                        <select class="form-control form-control-sm" id="f_method">
+                            <option value="">Tất cả</option>
+                            {% for m in payment_methods %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Liên kết phiếu nhập</label>
+                        <select class="form-control form-control-sm" id="f_goods_receipt_state">
+                            <option value="">Tất cả</option>
+                            <option value="yes">Có phiếu nhập</option>
+                            <option value="no">Không liên kết</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row align-items-end mt-1" style="row-gap:6px;">
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Loại thanh toán</label>
+                        <select class="form-control form-control-sm" id="f_payment_type">
+                            <option value="">Tất cả</option>
+                            <option value="1">Tiền mặt</option>
+                            <option value="2">Chuyển khoản</option>
+                            <option value="3">Khác</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Số tiền từ</label>
+                        <input type="number" class="form-control form-control-sm" id="f_amount_from" min="0" placeholder="0">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Số tiền đến</label>
+                        <input type="number" class="form-control form-control-sm" id="f_amount_to" min="0" placeholder="∞">
+                    </div>
+                    {% if has_multiple_stores %}
+                    <div class="col-md-3">
+                        <label class="small mb-0 text-muted">Cửa hàng</label>
+                        <select class="form-control form-control-sm" id="f_store">
+                            <option value="">Tất cả cửa hàng</option>
+                            {% for store in stores %}<option value="{{ store.id }}">{{ store.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="{% if has_multiple_stores %}col-md-3{% else %}col-md-6{% endif %}">
+                        <div class="d-flex justify-content-end" style="gap:6px;">
+                            <button type="button" class="btn btn-sm btn-primary" id="btn_apply_filters"><i class="fas fa-search mr-1"></i>Lọc</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
             <div id="payment_pagination_summary" class="text-muted small"></div>
             <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
@@ -82,6 +182,39 @@ var PAYMENT_PAGE_STATE = {
     meta: null
 };
 var PAYMENT_NEXT_CODE = '';
+function getPaymentFilters(){
+    return {
+        search: ($('#f_search').val() || '').trim(),
+        date_from: $('#f_date_from').val() || '',
+        date_to: $('#f_date_to').val() || '',
+        status: $('#f_status').val() || '',
+        category_id: $('#f_category').val() || '',
+        supplier_id: $('#f_supplier').val() || '',
+        cash_book_id: $('#f_cashbook').val() || '',
+        payment_method_option_id: $('#f_method').val() || '',
+        goods_receipt_state: $('#f_goods_receipt_state').val() || '',
+        payment_type: $('#f_payment_type').val() || '',
+        amount_from: $('#f_amount_from').val() || '',
+        amount_to: $('#f_amount_to').val() || '',
+        store_id: $('#f_store').val() || ''
+    };
+}
+function getPaymentRequestParams(includePagination){
+    var filters = getPaymentFilters();
+    var params = {};
+    Object.keys(filters).forEach(function(key){
+        if(filters[key] !== '') params[key] = filters[key];
+    });
+    if(includePagination){
+        params.page = PAYMENT_PAGE_STATE.page || 1;
+        params.page_size = PAYMENT_PAGE_STATE.page_size || 50;
+    }
+    return params;
+}
+function buildPaymentExportUrl(){
+    var query = $.param(getPaymentRequestParams(false));
+    return '/api/payments/export-excel/' + (query ? '?' + query : '');
+}
 $(document).ready(function(){
     $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
     loadData();
@@ -140,6 +273,27 @@ $(document).ready(function(){
         loadData();
     });
 
+    $('#btn_apply_filters').click(function(){
+        resetPaymentPage();
+        loadData();
+    });
+    $('#payment_filters input').on('keydown', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            resetPaymentPage();
+            loadData();
+        }
+    });
+    $('#btn_clear_filters').click(function(){
+        $('#f_search, #f_date_from, #f_date_to, #f_amount_from, #f_amount_to').val('');
+        $('#f_status, #f_category, #f_supplier, #f_cashbook, #f_method, #f_goods_receipt_state, #f_payment_type, #f_store').val('');
+        resetPaymentPage();
+        loadData();
+    });
+    $('#btn_export_excel').click(function(){
+        window.location.href = buildPaymentExportUrl();
+    });
+
     $(document).on('click', '.payment-page-btn', function(){
         if($(this).prop('disabled')) return;
         var page = parseInt($(this).data('page'), 10);
@@ -171,7 +325,8 @@ function renderPaymentPagination(meta){
     var endIndex = Number(meta.end_index || 0);
 
     if(totalFiltered === 0){
-        $('#payment_pagination_summary').html('<span class="text-muted small">Chưa có phiếu chi.</span>');
+        var emptyText = totalAll > 0 ? 'Không có phiếu chi phù hợp bộ lọc.' : 'Chưa có phiếu chi.';
+        $('#payment_pagination_summary').html('<span class="text-muted small">' + emptyText + '</span>');
         $('#payment_pagination').html('');
         return;
     }
@@ -210,10 +365,7 @@ function renderPaymentPagination(meta){
     $('#payment_pagination').html(html);
 }
 function loadData(){
-    $.get('/api/payments/', {
-        page: PAYMENT_PAGE_STATE.page || 1,
-        page_size: PAYMENT_PAGE_STATE.page_size || 50
-    }, function(res){
+    $.get('/api/payments/', getPaymentRequestParams(true), function(res){
         PAYMENT_PAGE_STATE.meta = res.meta || {};
         PAYMENT_PAGE_STATE.page = Number((res.meta && res.meta.page) || PAYMENT_PAGE_STATE.page || 1);
         PAYMENT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PAYMENT_PAGE_STATE.page_size || 50);

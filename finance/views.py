@@ -208,6 +208,86 @@ def _apply_receipt_filters(queryset, request):
     return queryset
 
 
+def _apply_payment_filters(queryset, request):
+    """Áp bộ lọc của danh sách phiếu chi trên toàn bộ queryset."""
+    search = (request.GET.get('search') or '').strip()
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    cash_book_id = request.GET.get('cash_book_id')
+    payment_method_option_id = request.GET.get('payment_method_option_id') or request.GET.get('method_id')
+    payment_type = request.GET.get('payment_type')
+    category_id = request.GET.get('category_id')
+    supplier_id = request.GET.get('supplier_id')
+    store_id = request.GET.get('store_id')
+    status = request.GET.get('status')
+    goods_receipt_state = request.GET.get('goods_receipt_state')
+    amount_from = _parse_decimal_filter(request.GET.get('amount_from'))
+    amount_to = _parse_decimal_filter(request.GET.get('amount_to'))
+
+    if date_from:
+        queryset = queryset.filter(payment_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(payment_date__lte=date_to)
+
+    if cash_book_id == '0':
+        queryset = queryset.filter(cash_book_id__isnull=True)
+    elif cash_book_id:
+        queryset = queryset.filter(cash_book_id=cash_book_id)
+
+    if payment_method_option_id:
+        queryset = queryset.filter(payment_method_option_id=payment_method_option_id)
+
+    if payment_type:
+        queryset = queryset.filter(
+            Q(payment_method_option__legacy_type=payment_type) |
+            Q(payment_method_option__isnull=True, payment_method=payment_type)
+        )
+
+    if category_id:
+        queryset = queryset.filter(category_id=category_id)
+    if supplier_id:
+        queryset = queryset.filter(supplier_id=supplier_id)
+
+    if store_id:
+        queryset = queryset.filter(
+            Q(store_id=store_id) |
+            Q(store_id__isnull=True, goods_receipt__warehouse__store_id=store_id)
+        )
+
+    if status not in (None, ''):
+        queryset = queryset.filter(status=status)
+
+    if goods_receipt_state == 'yes':
+        queryset = queryset.filter(goods_receipt_id__isnull=False)
+    elif goods_receipt_state == 'no':
+        queryset = queryset.filter(goods_receipt_id__isnull=True)
+
+    if amount_from is not None:
+        queryset = queryset.filter(amount__gte=amount_from)
+    if amount_to is not None:
+        queryset = queryset.filter(amount__lte=amount_to)
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search) |
+            Q(supplier__name__icontains=search) |
+            Q(supplier__code__icontains=search) |
+            Q(customer__name__icontains=search) |
+            Q(customer__code__icontains=search) |
+            Q(goods_receipt__code__icontains=search) |
+            Q(category__name__icontains=search) |
+            Q(cash_book__name__icontains=search) |
+            Q(payment_method_option__name__icontains=search) |
+            Q(description__icontains=search) |
+            Q(note__icontains=search) |
+            Q(created_by__username__icontains=search) |
+            Q(created_by__first_name__icontains=search) |
+            Q(created_by__last_name__icontains=search)
+        )
+
+    return queryset
+
+
 def _serialize_payment_methods():
     """Chuẩn hóa danh sách phương thức thanh toán để render cho UI."""
     return [{
@@ -409,6 +489,13 @@ def payment_tbl(request):
     goods_receipts = list(goods_receipts_qs.values(
         'id', 'code', 'supplier__name', 'total_amount', 'status'
     ).order_by('-receipt_date'))
+    from system_management.models import Store
+    stores = list(
+        Store.objects
+        .filter(id__in=get_managed_store_ids(request.user))
+        .values('id', 'name')
+        .order_by('name')
+    )
     context = {
         'active_tab': 'payment_tbl',
         'categories': categories,
@@ -416,6 +503,8 @@ def payment_tbl(request):
         'payment_methods': payment_methods,
         'suppliers': suppliers,
         'goods_receipts': goods_receipts,
+        'stores': stores,
+        'has_multiple_stores': len(stores) > 1,
     }
     return render(request, "finance/payment_list.html", context)
 
@@ -672,6 +761,7 @@ def _serialize_payment_list(payments):
         'payment_method_option_id': p.payment_method_option_id,
         'payment_method_display': p.get_payment_method_label(),
         'note': p.note or '',
+        'created_by': _get_user_display_name(p.created_by),
     } for p in payments]
 
 
@@ -799,14 +889,25 @@ def api_get_finance_entries(request):
 
 @login_required(login_url="/login/")
 def api_get_payments(request):
-    """Trả về danh sách phiếu chi sau khi áp quyền theo store."""
+    """Trả về danh sách phiếu chi sau khi áp quyền và bộ lọc."""
     should_paginate = request.GET.get('page') is not None or request.GET.get('page_size') is not None
     payments = (
         Payment.objects
-        .select_related('category', 'cash_book', 'supplier', 'customer', 'goods_receipt', 'payment_method_option')
+        .select_related(
+            'category',
+            'cash_book',
+            'supplier',
+            'customer',
+            'goods_receipt',
+            'goods_receipt__warehouse',
+            'payment_method_option',
+            'created_by',
+        )
         .order_by('-payment_date', '-created_at', '-id')
     )
     payments = _filter_payments_for_user(payments, request)
+    total_all_count = payments.count()
+    payments = _apply_payment_filters(payments, request)
 
     if not should_paginate:
         return JsonResponse({
@@ -830,7 +931,7 @@ def api_get_payments(request):
             'page_count': len(data),
             'total_pages': paginator.num_pages,
             'total_filtered_count': paginator.count,
-            'total_all_count': paginator.count,
+            'total_all_count': total_all_count,
             'has_previous': page_obj.has_previous(),
             'has_next': page_obj.has_next(),
             'start_index': page_obj.start_index() if paginator.count else 0,
@@ -1351,27 +1452,29 @@ def export_payments_excel(request):
     from datetime import datetime
 
     payments = Payment.objects.select_related(
-        'category', 'cash_book', 'supplier', 'customer', 'payment_method_option'
-    ).filter(status=1)
+        'category', 'cash_book', 'supplier', 'customer', 'goods_receipt',
+        'goods_receipt__warehouse', 'payment_method_option', 'created_by'
+    )
     payments = _filter_payments_for_user(payments, request)
+    payments = _apply_payment_filters(payments, request)
 
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
-    if date_from:
-        payments = payments.filter(payment_date__gte=date_from)
-    if date_to:
-        payments = payments.filter(payment_date__lte=date_to)
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
         {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
         {'key': 'category', 'label': 'Danh mục', 'width': 16},
         {'key': 'target', 'label': 'Người nhận', 'width': 22},
+        {'key': 'goods_receipt', 'label': 'Phiếu nhập', 'width': 16},
         {'key': 'amount', 'label': 'Số tiền', 'width': 16},
         {'key': 'method', 'label': 'Hình thức TT', 'width': 16},
         {'key': 'date', 'label': 'Ngày chi', 'width': 13},
         {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 14},
+        {'key': 'creator', 'label': 'Người tạo', 'width': 16},
         {'key': 'description', 'label': 'Diễn giải', 'width': 30},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 30},
     ]
 
     rows = []
@@ -1384,11 +1487,15 @@ def export_payments_excel(request):
             'code': p.code,
             'category': p.category.name if p.category else '',
             'target': target,
+            'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
             'amount': float(p.amount or 0),
             'method': p.get_payment_method_label(),
             'date': p.payment_date,
             'cashbook': p.cash_book.name if p.cash_book else '',
+            'status': p.get_status_display(),
+            'creator': _get_user_display_name(p.created_by),
             'description': p.description or '',
+            'note': p.note or '',
         })
 
     period = ''

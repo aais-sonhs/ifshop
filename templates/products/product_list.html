@@ -708,6 +708,19 @@ var PRODUCT_EDIT_FROM_URL_ID = (function(){
         return 0;
     }
 })();
+var PRODUCT_URL_FILTERS = (function(){
+    try {
+        var params = new URLSearchParams(window.location.search);
+        var category = params.get('category') || '';
+        var productType = params.get('product_type') || '';
+        return {
+            category: /^\d+$/.test(category) ? category : '',
+            product_type: /^\d+$/.test(productType) ? productType : ''
+        };
+    } catch (error) {
+        return {category: '', product_type: ''};
+    }
+})();
 
 // Column Config
 var productColConfig = new ColumnConfig({
@@ -891,7 +904,11 @@ function renderProductCategoryControls(selectedCategoryId, selectedTypeId){
 
     var typeOptions = '<option value="">-- Loại sản phẩm --</option>';
     getChildProductTypes('').forEach(function(category){
-        typeOptions += '<option value="'+category.id+'" data-parent-id="'+category.parent_id+'">'+escapeHtml(category.name)+'</option>';
+        var parent = (PRODUCT_CATEGORIES || []).find(function(item){
+            return String(item.id) === String(category.parent_id);
+        });
+        var label = (parent ? parent.name + ' → ' : '') + category.name;
+        typeOptions += '<option value="'+category.id+'" data-parent-id="'+category.parent_id+'">'+escapeHtml(label)+'</option>';
     });
     replaceSelectOptions($('#filter_product_type'), typeOptions, currentFilterType);
     renderProductTypeOptions($('#inp_category_id').val(), currentFormType);
@@ -1363,6 +1380,8 @@ function populateProductCreatorFilter(products){
 
 $(document).ready(function(){
     renderProductCategoryControls();
+    if(PRODUCT_URL_FILTERS.category) $('#filter_category').val(PRODUCT_URL_FILTERS.category);
+    if(PRODUCT_URL_FILTERS.product_type) $('#filter_product_type').val(PRODUCT_URL_FILTERS.product_type);
     $('#product_page_size').val(String(PRODUCT_PAGE_STATE.page_size));
     loadInitialProductData();
 
@@ -2661,11 +2680,14 @@ function renderProductCategoryTable(){
         var status = category.is_active === false
             ? '<span class="badge badge-secondary">Tắt</span>'
             : '<span class="badge badge-success">Đang dùng</span>';
+        var productUrl = '/product-tbl/?category=' + (category.parent_id || category.id) +
+            (category.parent_id ? '&product_type=' + category.id : '');
         return '<tr>' +
             '<td><strong>'+escapeHtml(category.name)+'</strong><div>'+badge+'</div></td>' +
             '<td>'+escapeHtml(parentNameById[String(category.parent_id)] || '—')+'</td>' +
             '<td class="text-center">'+status+'</td>' +
-            '<td class="text-center"><button type="button" class="btn btn-xs btn-info btn-edit-product-category" data-id="'+category.id+'">Sửa</button></td>' +
+            '<td class="text-center"><a class="btn btn-xs btn-outline-primary mb-1" target="_blank" rel="noopener" href="'+productUrl+'">Xem SP</a> '+
+            '<button type="button" class="btn btn-xs btn-info btn-edit-product-category" data-id="'+category.id+'">Sửa</button></td>' +
         '</tr>';
     }).join('');
     if(!rows){
@@ -2683,7 +2705,8 @@ function loadProductCategories(done){
                 description: category.description || '',
                 parent_id: category.parent_id || null,
                 parent: category.parent || '',
-                is_active: category.is_active !== false
+                is_active: category.is_active !== false,
+                product_count: category.product_count || 0
             };
         });
         renderProductCategoryControls();

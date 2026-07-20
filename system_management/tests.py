@@ -675,6 +675,46 @@ class SystemManagementScopeTests(TestCase):
         self.assertIn('Phiếu xuất kho preview', body['html'])
         self.assertNotIn('Ngày in:', body['html'])
 
+    def test_preview_print_template_supports_packing_a5(self):
+        payload = {
+            'template_type': 'packing',
+            'title': 'Phiếu đóng hàng preview',
+            'header_note': '',
+            'terms': '',
+            'footer_note': '',
+            'show_brand_logo': True,
+            'show_brand_info': True,
+            'show_customer_info': True,
+            'show_signatures': True,
+            'show_product_images': False,
+            'show_product_code': True,
+            'show_unit_price': True,
+            'show_discount': True,
+            'show_tax': True,
+            'show_shipping_fee': True,
+            'show_payment_info': True,
+            'show_order_note': True,
+            'show_item_note': True,
+            'show_terms': True,
+            'show_print_time': True,
+            'show_combo_components': True,
+        }
+
+        response = self.client.post(
+            reverse('api_preview_print_template'),
+            data=json.dumps(payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['status'], 'ok', msg=response.content.decode())
+        self.assertIn('Phiếu đóng hàng preview', body['html'])
+        self.assertIn('size: A5 portrait', body['html'])
+        self.assertIn('Kho lấy hàng', body['html'])
+        self.assertIn('SL đóng', body['html'])
+        self.assertNotIn('Đơn giá', body['html'])
+
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)
 
@@ -721,7 +761,7 @@ class SystemManagementScopeTests(TestCase):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Tài liệu hướng dẫn')
-        self.assertContains(response, 'Cập nhật nghiệp vụ ngày 17/07/2026')
+        self.assertContains(response, 'Cập nhật nghiệp vụ ngày 20/07/2026')
         self.assertContains(response, 'Khách lẻ / khách vãng lai')
         self.assertContains(response, 'Xem địa chỉ khách hàng và lịch sử giao hàng')
         self.assertContains(response, 'Địa chỉ giao hàng đã dùng được tổng hợp tự động từ các đơn')
@@ -734,6 +774,18 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Sinh mã tự động và xử lý mã trùng')
         self.assertContains(response, 'đặt Thứ tự ưu tiên bằng số')
         self.assertContains(response, 'Báo cáo nhập hàng theo nhà cung cấp')
+        self.assertContains(response, 'Công thức Báo cáo tài chính')
+        self.assertContains(response, 'Báo cáo hiển thị riêng 5 thẻ')
+        self.assertContains(response, 'Đọc Tổng thu và Tổng chi trên Báo cáo tài chính')
+        self.assertContains(response, 'Tổng thu = tổng Số tiền của tất cả phiếu thu ở trạng thái Hoàn thành')
+        self.assertContains(response, 'Tổng phiếu chi = tổng Số tiền của tất cả phiếu chi ở trạng thái Hoàn thành')
+        self.assertContains(response, 'Tổng hàng nhập = tổng Tổng tiền của tất cả phiếu nhập ở trạng thái Hoàn thành')
+        self.assertContains(response, 'Tổng chi = Tổng phiếu chi + Tổng hàng nhập')
+        self.assertContains(response, 'Tổng chi = 400 triệu')
+        self.assertContains(response, 'không nhân lại theo giá vốn hiện tại của sản phẩm')
+        self.assertContains(response, 'cả giá trị phiếu nhập và phiếu chi đều được cộng vào Tổng chi')
+        self.assertContains(response, 'Lãi/Lỗ = Tổng thu − Tổng chi')
+        self.assertContains(response, 'không phải lợi nhuận gộp của hoạt động bán hàng')
         self.assertContains(response, 'Phiếu bảo hành theo đơn')
         self.assertContains(response, 'Vào Cài đặt → Phương thức TT, bấm Sửa phương thức hoàn tiền')
         self.assertContains(response, 'Nếu phương thức chưa có quỹ mặc định, chọn Tài khoản/quỹ hoàn tiền trực tiếp trên phiếu')

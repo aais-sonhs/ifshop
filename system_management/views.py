@@ -333,6 +333,11 @@ PRINT_TEMPLATE_DEFAULTS = {
         'title': 'PHIẾU XUẤT KHO',
         'footer_note': 'Ngày in được ghi tự động trên phiếu.',
     },
+    'packing': {
+        'title': 'PHIẾU ĐÓNG HÀNG',
+        'footer_note': 'Đối chiếu đủ sản phẩm, số lượng và tình trạng trước khi bàn giao.',
+        'show_item_note': True,
+    },
 }
 
 PRINT_TEMPLATE_EDITABLE_FIELDS = [
@@ -1530,6 +1535,7 @@ def api_preview_print_template(request):
             'quotation_a4': 'orders/print/quotation_a4.html',
             'warranty': 'orders/print/warranty_a4.html',
             'export': 'orders/print/export_a4.html',
+            'packing': 'orders/print/packing_a5.html',
         }
         if template_type not in templates:
             return JsonResponse({'status': 'error', 'message': 'Loại mẫu in không hợp lệ'})

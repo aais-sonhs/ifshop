@@ -77,6 +77,11 @@ PRINT_TEMPLATE_DEFAULTS = {
         'terms': 'Sản phẩm được bảo hành theo chính sách của nhà sản xuất / cửa hàng.\nKhông bảo hành nếu sản phẩm bị hư hỏng do tác động bên ngoài, sử dụng sai cách.\nKhách hàng xuất trình phiếu bảo hành này khi yêu cầu bảo hành.\nPhiếu bảo hành chỉ có giá trị khi có đầy đủ thông tin và dấu xác nhận.',
     },
     'export': {'title': 'PHIẾU XUẤT KHO', 'footer_note': 'Ngày in được ghi tự động trên phiếu.'},
+    'packing': {
+        'title': 'PHIẾU ĐÓNG HÀNG',
+        'footer_note': 'Đối chiếu đủ sản phẩm, số lượng và tình trạng trước khi bàn giao.',
+        'show_item_note': True,
+    },
 }
 
 
@@ -5756,6 +5761,8 @@ def export_orders_excel(request):
     total_final = 0
     total_paid = 0
     total_debt = 0
+    total_goods = Decimal('0')
+    customer_goods_totals = {}
     for i, o in enumerate(orders, 1):
         receipts = list(getattr(o, 'active_receipts', []))
         payment_methods = sorted({
@@ -5767,10 +5774,25 @@ def export_orders_excel(request):
             ' - '.join(part for part in [_item_display_code(it), _item_display_name(it)] if part)
             for it in o.items.all()
         ]
+        goods_amount = o.total_amount or Decimal('0')
         debt = max(float(o.final_amount) - float(o.paid_amount), 0)
+        total_goods += goods_amount
         total_final += float(o.final_amount)
         total_paid += float(o.paid_amount)
         total_debt += debt
+
+        is_guest_customer = not o.customer or _is_guest_customer(o.customer)
+        customer_key = ('guest', None) if is_guest_customer else ('customer', o.customer_id)
+        customer_summary = customer_goods_totals.setdefault(customer_key, {
+            'customer_code': '' if is_guest_customer else (o.customer.code or ''),
+            'customer': _order_customer_label(o),
+            'phone': '' if is_guest_customer else (o.customer.phone or ''),
+            'order_count': 0,
+            'goods_total': Decimal('0'),
+        })
+        customer_summary['order_count'] += 1
+        customer_summary['goods_total'] += goods_amount
+
         rows.append({
             'stt': i,
             'code': o.code,
@@ -5779,7 +5801,7 @@ def export_orders_excel(request):
             'customer': _order_customer_label(o),
             'products': ', '.join(products),
             'warehouse': o.warehouse.name if o.warehouse else '',
-            'total': float(o.total_amount),
+            'total': float(goods_amount),
             'discount': float(o.discount_amount),
             'shipping': float(o.shipping_fee) if hasattr(o, 'shipping_fee') else 0,
             'other_fee': float(o.other_fee) if hasattr(o, 'other_fee') else 0,
@@ -5801,21 +5823,51 @@ def export_orders_excel(request):
     elif date_to:
         period = f' (đến {date_to})'
 
+    export_subtitle = f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}'
+    customer_summary_rows = [{
+        'stt': index,
+        **summary,
+    } for index, summary in enumerate(sorted(
+        customer_goods_totals.values(),
+        key=lambda item: (-item['goods_total'], item['customer'], item['customer_code']),
+    ), 1)]
+    customer_summary_columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 8},
+        {'key': 'customer_code', 'label': 'Mã khách hàng', 'width': 18},
+        {'key': 'customer', 'label': 'Khách hàng', 'width': 30},
+        {'key': 'phone', 'label': 'Số điện thoại', 'width': 18},
+        {'key': 'order_count', 'label': 'Số đơn hàng', 'width': 16},
+        {'key': 'goods_total', 'label': 'Tổng tiền hàng', 'width': 22},
+    ]
+
     return excel_response(
         title='DANH SÁCH ĐƠN HÀNG',
-        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")}{period}',
+        subtitle=export_subtitle,
         columns=columns,
         rows=rows,
         filename=f'Don_hang_{datetime.now().strftime("%Y%m%d")}',
         money_cols=['total', 'discount', 'shipping', 'other_fee', 'final', 'paid', 'debt'],
         total_row={'stt': '', 'code': 'TỔNG CỘNG', 'final': total_final, 'paid': total_paid, 'debt': total_debt},
+        extra_sheets=[{
+            'sheet_name': 'Tổng tiền theo khách',
+            'title': 'TỔNG TIỀN HÀNG THEO KHÁCH HÀNG',
+            'subtitle': f'{export_subtitle} · Tổng hợp từ danh sách đơn hàng',
+            'columns': customer_summary_columns,
+            'rows': customer_summary_rows,
+            'money_cols': ['goods_total'],
+            'total_row': {
+                'customer': 'TỔNG CỘNG',
+                'order_count': len(rows),
+                'goods_total': total_goods,
+            },
+        }],
     )
 
 
 @login_required(login_url="/login/")
 def api_print_order(request):
     """
-    GET /api/orders/print/?id=<order_id>&type=k80|a4|quotation|quotation_a4|warranty|export
+    GET /api/orders/print/?id=<order_id>&type=k80|a4|quotation|quotation_a4|warranty|export|packing
     Quy ước mẫu in: a4 = hóa đơn A4, quotation = báo giá A5.
     Renders a print-ready HTML page for the given order.
     Also supports source=quotation to print from Quotation model.
@@ -5833,6 +5885,7 @@ def api_print_order(request):
         'quotation_a4': 'orders/print/quotation_a4.html',
         'warranty': 'orders/print/warranty_a4.html',
         'export': 'orders/print/export_a4.html',
+        'packing': 'orders/print/packing_a5.html',
     }
     template = TEMPLATES.get(print_type, TEMPLATES['a4'])
 

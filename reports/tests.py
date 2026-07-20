@@ -331,6 +331,11 @@ class SalesReportTests(TestCase):
         self.assertContains(response, reverse('report_finance_order_debt'))
         self.assertContains(response, 'target="_blank"')
         self.assertContains(response, 'Xem bảng chi tiết')
+        self.assertContains(response, 'id="payment_expense_link"')
+        self.assertContains(response, reverse('payment_tbl'))
+        self.assertContains(response, 'Xem bảng phiếu chi')
+        self.assertContains(response, "params.set('status', '1')")
+        self.assertContains(response, 'updatePaymentExpenseLink()')
 
     def test_finance_order_debt_page_only_lists_positive_debt_and_matches_card(self):
         self.brand.owner = self.user

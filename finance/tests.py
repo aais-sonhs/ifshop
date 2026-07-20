@@ -283,7 +283,12 @@ class FinanceFlowTests(TestCase):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
 
-        response = self.client.get(reverse('payment_tbl'))
+        response = self.client.get(reverse('payment_tbl'), {
+            'date_from': '2026-07-01',
+            'date_to': '2026-07-20',
+            'status': '1',
+            'store_id': self.store.id,
+        })
 
         self.assertEqual(response.status_code, 200)
         for control_id in [
@@ -306,6 +311,12 @@ class FinanceFlowTests(TestCase):
         ]:
             self.assertContains(response, f'id="{control_id}"')
         self.assertContains(response, 'buildPaymentExportUrl')
+        self.assertContains(response, 'var PAYMENT_URL_FILTERS')
+        self.assertContains(response, "params.get('date_from')")
+        self.assertContains(response, "params.get('date_to')")
+        self.assertContains(response, "params.get('status')")
+        self.assertContains(response, "params.get('store_id')")
+        self.assertContains(response, 'applyPaymentUrlFilters();')
 
     def test_save_payment_auto_generates_code_when_blank(self):
         response = self.client.post(

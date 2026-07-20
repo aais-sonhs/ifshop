@@ -167,6 +167,8 @@ class SalesReportTests(TestCase):
         self.assertContains(response, '<th>Tên sản phẩm</th>', count=1)
         self.assertNotContains(response, '<th>Mã SP</th>')
         self.assertContains(response, '<th title="Nhà cung cấp">NCC</th>', html=True)
+        self.assertContains(response, '>Giá tính tồn</th>')
+        self.assertContains(response, 'Dùng giá nhập')
         self.assertContains(response, 'colspan="13"')
         self.assertContains(response, 'var productIdentityHtml =')
 
@@ -227,7 +229,7 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['low_stock_count'], 2)
         self.assertEqual(payload['summary']['high_stock_count'], 1)
 
-    def test_inventory_value_sums_positive_stock_times_cost_without_negative_offset(self):
+    def test_inventory_value_uses_cost_then_import_without_negative_offset(self):
         positive_product = Product.objects.create(
             store=self.store,
             code='SP-RP-VALUE-POS',
@@ -242,6 +244,14 @@ class SalesReportTests(TestCase):
             cost_price=50000,
             created_by=self.user,
         )
+        import_fallback_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-VALUE-IMPORT',
+            name='Sản phẩm dùng giá nhập',
+            cost_price=0,
+            import_price=80000,
+            created_by=self.user,
+        )
         deleted_product = Product.objects.create(
             store=self.store,
             code='SP-RP-VALUE-DELETED',
@@ -251,6 +261,7 @@ class SalesReportTests(TestCase):
         )
         ProductStock.objects.create(product=positive_product, warehouse=self.warehouse, quantity=3)
         ProductStock.objects.create(product=negative_product, warehouse=self.warehouse, quantity=-2)
+        ProductStock.objects.create(product=import_fallback_product, warehouse=self.warehouse, quantity=2)
         ProductStock.objects.create(product=deleted_product, warehouse=self.warehouse, quantity=10)
         deleted_product.delete()
 
@@ -259,8 +270,37 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(rows[positive_product.code]['stock_value'], 360000.0)
         self.assertEqual(rows[negative_product.code]['stock_value'], 0.0)
+        self.assertEqual(rows[import_fallback_product.code]['cost_price'], 0.0)
+        self.assertEqual(rows[import_fallback_product.code]['import_price'], 80000.0)
+        self.assertEqual(rows[import_fallback_product.code]['valuation_price'], 80000.0)
+        self.assertEqual(rows[import_fallback_product.code]['valuation_source'], 'import_price')
+        self.assertEqual(rows[import_fallback_product.code]['stock_value'], 160000.0)
         self.assertNotIn(deleted_product.code, rows)
-        self.assertEqual(payload['summary']['total_value'], 360000.0)
+        self.assertEqual(payload['summary']['total_value'], 520000.0)
+
+    def test_export_inventory_uses_import_price_when_cost_is_zero(self):
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-EXPORT-IMPORT',
+            name='Sản phẩm xuất tồn theo giá nhập',
+            cost_price=0,
+            import_price=90000,
+            created_by=self.user,
+        )
+        ProductStock.objects.create(product=product, warehouse=self.warehouse, quantity=3)
+
+        response = self.client.get(reverse('export_inventory_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook['Tồn kho']
+        self.assertEqual(sheet['J4'].value, 'Giá tính tồn')
+        product_row = next(
+            row for row in range(5, sheet.max_row + 1)
+            if sheet.cell(row=row, column=2).value == product.code
+        )
+        self.assertEqual(sheet.cell(row=product_row, column=10).value, 90000)
+        self.assertEqual(sheet.cell(row=product_row, column=11).value, 270000)
 
     def test_inventory_filters_separate_root_categories_and_product_types(self):
         root = ProductCategory.objects.create(name='Danh mục thiết bị')

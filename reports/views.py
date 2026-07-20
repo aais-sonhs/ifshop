@@ -62,6 +62,19 @@ def _parse_filter_int(value):
         return None
 
 
+def _inventory_valuation_unit_cost(product):
+    """Giá dùng để định giá tồn: ưu tiên giá vốn, fallback về giá nhập."""
+    cost_price = Decimal(str(product.cost_price or 0))
+    if cost_price > 0:
+        return cost_price, 'cost_price'
+
+    import_price = Decimal(str(product.import_price or 0))
+    if import_price > 0:
+        return import_price, 'import_price'
+
+    return Decimal('0'), 'none'
+
+
 def _report_lookup(prefix, suffix):
     return f'{prefix}__{suffix}' if prefix else suffix
 
@@ -1453,9 +1466,11 @@ def api_report_inventory(request):
     for s in stocks:
         quantity = Decimal(str(s.quantity or 0))
         cost_price = Decimal(str(s.product.cost_price or 0))
+        import_price = Decimal(str(s.product.import_price or 0))
+        valuation_price, valuation_source = _inventory_valuation_unit_cost(s.product)
         # Tồn âm là chênh lệch cần xử lý, không phải tài sản âm để khấu trừ
         # khỏi giá trị của các hàng hóa thực tế đang còn trong kho.
-        stock_value = max(quantity, Decimal('0')) * cost_price
+        stock_value = max(quantity, Decimal('0')) * valuation_price
         qty = float(quantity)
         min_stock = float(s.product.min_stock or 0)
         max_stock = float(s.product.max_stock or 0)
@@ -1482,6 +1497,9 @@ def api_report_inventory(request):
             'restock_needed': max(min_stock - qty, 0) if alert_type == 'danger' else 0,
             'unit': s.product.unit or '',
             'cost_price': float(cost_price),
+            'import_price': float(import_price),
+            'valuation_price': float(valuation_price),
+            'valuation_source': valuation_source,
             'stock_value': float(stock_value),
             'alert': alert,
             'alert_type': alert_type,
@@ -2579,7 +2597,7 @@ def export_inventory_excel(request):
     ws['A2'].alignment = Alignment(horizontal='center')
 
     headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'Danh mục', 'ĐVT', 'Kho', 'Tồn kho',
-               'Tối thiểu', 'Tối đa', 'Giá vốn', 'Giá trị tồn', 'Cảnh báo']
+               'Tối thiểu', 'Tối đa', 'Giá tính tồn', 'Giá trị tồn', 'Cảnh báo']
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=h)
         cell.font = sub_font
@@ -2592,8 +2610,9 @@ def export_inventory_excel(request):
     total_qty = 0
     for idx, s in enumerate(stocks, 1):
         qty = float(s.quantity)
-        cost = float(s.product.cost_price)
-        value = cost * max(qty, 0)
+        valuation_price, _ = _inventory_valuation_unit_cost(s.product)
+        valuation_price = float(valuation_price)
+        value = valuation_price * max(qty, 0)
         total_value += value
         total_qty += qty
 
@@ -2609,7 +2628,7 @@ def export_inventory_excel(request):
         cat_name = s.product.category.name if s.product.category else ''
         vals = [idx, s.product.code, s.product.name, cat_name, s.product.unit or '',
                 s.warehouse.name, qty, s.product.min_stock or 0,
-                s.product.max_stock or 0, cost, value, alert]
+                s.product.max_stock or 0, valuation_price, value, alert]
         for col, val in enumerate(vals, 1):
             cell = ws.cell(row=row, column=col, value=val)
             cell.border = thin

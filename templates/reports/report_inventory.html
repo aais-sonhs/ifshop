@@ -83,7 +83,7 @@
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
-                    <tr><th>STT</th><th>Tên sản phẩm</th><th title="Nhà cung cấp">NCC</th><th>Danh mục</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Cần nhập tối thiểu</th><th>Giá vốn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
+                    <tr><th>STT</th><th>Tên sản phẩm</th><th title="Nhà cung cấp">NCC</th><th>Danh mục</th><th>ĐVT</th><th>Kho</th><th>Tồn kho</th><th>Tối thiểu</th><th>Tối đa</th><th>Cần nhập tối thiểu</th><th title="Ưu tiên giá vốn; nếu giá vốn bằng 0 thì dùng giá nhập">Giá tính tồn</th><th>Giá trị</th><th>Cảnh báo</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -288,10 +288,11 @@ function loadReport(){
             var editLinkAttrs = ' class="inventory-product-edit-link" target="_blank" rel="noopener" title="Bấm để mở và sửa sản phẩm"';
             var productCodeHtml = '<a href="'+productEditUrl+'"'+editLinkAttrs+'><strong>'+escapeHtml(d.product_code)+'</strong></a>';
             var productIdentityHtml = '<strong class="d-block">'+escapeHtml(d.product_name)+'</strong><small>'+productCodeHtml+' <i class="fas fa-edit ml-1"></i></small>';
+            var valuationSourceHtml = d.valuation_source === 'import_price' ? '<small class="text-muted d-block">Dùng giá nhập</small>' : '';
             h += '<tr'+rowClass+rowStyle+'><td>'+(i+1)+'</td><td>'+productIdentityHtml+'</td><td>'+escapeHtml(d.supplier || 'Chưa có NCC')+'</td><td>'+escapeHtml(d.category||'')+'</td><td>'+escapeHtml(d.unit)+'</td>'+
                 '<td>'+escapeHtml(d.warehouse)+'</td><td class="text-center'+qtyClass+'"><strong>'+fmt(d.quantity)+'</strong></td>'+
                 '<td class="text-center">'+fmt(d.min_stock)+'</td><td class="text-center">'+fmt(d.max_stock)+'</td><td class="text-center">'+restockHtml+'</td>'+
-                '<td class="text-right">'+fmtD(d.cost_price)+'</td><td class="text-right"><strong>'+fmtD(d.stock_value)+'</strong></td>'+
+                '<td class="text-right">'+fmtD(d.valuation_price)+valuationSourceHtml+'</td><td class="text-right"><strong>'+fmtD(d.stock_value)+'</strong></td>'+
                 '<td class="text-center">'+alertBadge+'</td></tr>';
         });
         if(!h) h = '<tr><td colspan="13" class="text-center text-muted py-3">'+(alert_filter ? 'Không có sản phẩm thuộc cảnh báo đã chọn' : 'Không có dữ liệu')+'</td></tr>';

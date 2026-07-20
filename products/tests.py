@@ -968,6 +968,16 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'transport:function(params, success)')
         self.assertContains(response, 'ajax: buildGoodsReceiptProductAjaxConfig()')
 
+    def test_goods_receipt_product_picker_is_rebuilt_after_modal_closes(self):
+        response = self.client.get(reverse('goods_receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function resetQuickReceiptProductSelect()')
+        self.assertContains(response, 'function clearGoodsReceiptItemRows()')
+        self.assertContains(response, "$('#modal_form').on('hidden.bs.modal', function()")
+        self.assertContains(response, "destroyGoodsReceiptSelect2($select);")
+        self.assertContains(response, "$('#items_body .select2-item').each(function()")
+
     def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
         ProductStock.objects.create(
             product=self.product,

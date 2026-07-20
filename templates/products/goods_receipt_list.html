@@ -203,10 +203,9 @@ $(document).ready(function(){
         $('#inp_code').val('');
         $('#inp_note').val('');
         $('#inp_supplier_id,#inp_warehouse_id').val('');
-        $('#items_body').html('');
+        resetQuickReceiptProductSelect();
+        clearGoodsReceiptItemRows();
         $('#goods_receipt_extra').collapse('hide');
-        itemRowIndex = 0;
-        updateTotal();
         $('#modal_title').text('Tạo phiếu nhập');
         setQuickReceiptProductLoadState(PRODUCTS_LOADED ? 'refreshing' : 'loading');
         $('#modal_form').one('shown.bs.modal', function(){
@@ -375,7 +374,37 @@ $(document).ready(function(){
         GOODS_RECEIPT_PAGE_STATE.page = page;
         loadData();
     });
+
+    // Select2 gắn trạng thái riêng vào phần tử select. Dọn instance khi đóng
+    // để lần mở modal tiếp theo luôn khởi tạo một dropdown sản phẩm mới.
+    $('#modal_form').on('hidden.bs.modal', function(){
+        resetQuickReceiptProductSelect();
+        clearGoodsReceiptItemRows();
+    });
 });
+
+function destroyGoodsReceiptSelect2($select){
+    if(!$select || !$select.length || !$select.hasClass('select2-hidden-accessible')) return;
+    try { $select.select2('close'); } catch(error) {}
+    try { $select.select2('destroy'); } catch(error) {}
+}
+
+function resetQuickReceiptProductSelect(){
+    var $select = $('#quick_receipt_product');
+    destroyGoodsReceiptSelect2($select);
+    $select.prop('disabled', false).val(null).html(
+        '<option value="">-- Tìm và chọn sản phẩm --</option>'
+    );
+}
+
+function clearGoodsReceiptItemRows(){
+    $('#items_body .select2-item').each(function(){
+        destroyGoodsReceiptSelect2($(this));
+    });
+    $('#items_body').empty();
+    itemRowIndex = 0;
+    updateTotal();
+}
 
 function getGoodsReceiptProductById(productId){
     return PRODUCTS.find(function(product){
@@ -951,9 +980,9 @@ function editItem(d){
         $('#goods_receipt_extra').collapse('hide');
     }
 
-    // Clear items first
-    $('#items_body').html('');
-    itemRowIndex = 0;
+    // Clear items and rebuild the reusable product picker first.
+    resetQuickReceiptProductSelect();
+    clearGoodsReceiptItemRows();
 
     $('#modal_title').text('Sửa phiếu nhập: ' + d.code);
     $('#modal_form').modal('show');

@@ -1468,6 +1468,13 @@ $(document).ready(function(){
         if(productId) viewPurchaseHistory(productId, productName);
     });
 
+    $(document).on('click', '.btn-product-history', function(event){
+        event.preventDefault();
+        var productId = $(this).attr('data-product-id');
+        var productName = $(this).attr('data-product-name') || '';
+        if(productId) viewPurchaseHistory(productId, productName);
+    });
+
     $('#btn_save').click(function(){
         if(!$('#inp_name').val()){
             alert('Vui lòng nhập tên SP'); return;
@@ -1577,9 +1584,10 @@ function renderPurchasePriceRange(receipt){
     return fmt(receipt.avg_unit_price || minPrice || maxPrice || 0) + 'đ';
 }
 
-function renderRecentPurchaseReceipts(product, productNameJs){
+function renderRecentPurchaseReceipts(product){
     var receipts = product.recent_purchase_receipts || [];
-    var detailButton = '<button type="button" class="btn btn-xs btn-outline-primary mt-1" onclick="viewPurchaseHistory('+product.id+','+productNameJs+')" title="Xem từng phiếu nhập của sản phẩm"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button>';
+    var historyData = ' data-product-id="' + product.id + '" data-product-name="' + escapeAttr(product.name || '') + '"';
+    var detailButton = '<button type="button" class="btn btn-xs btn-outline-primary mt-1 btn-product-history"' + historyData + ' title="Xem từng phiếu nhập của sản phẩm"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button>';
     if(!receipts.length){
         return '<div class="small text-muted" style="min-width:180px;">' +
             '<span class="badge badge-light border">Chưa có phiếu nhập</span><br>' +
@@ -1594,7 +1602,7 @@ function renderRecentPurchaseReceipts(product, productNameJs){
         var codeDate = escapeHtml(receipt.receipt_code || 'Phiếu nhập') +
             (receipt.receipt_date ? ' · ' + escapeHtml(receipt.receipt_date) : '');
         return '<div class="border-bottom pb-1 mb-1">' +
-            '<div class="font-weight-bold text-primary" style="cursor:pointer;" onclick="viewPurchaseHistory('+product.id+','+productNameJs+')">' + codeDate + '</div>' +
+            '<button type="button" class="btn btn-link btn-sm p-0 text-left font-weight-bold btn-product-history"' + historyData + '>' + codeDate + '</button>' +
             '<div class="text-muted">' + (meta.join(' · ') || 'Chưa rõ nguồn nhập') + '</div>' +
             '<div>SL: <strong>' + fmt(receipt.quantity) + '</strong> · Giá TB: <strong>' + renderPurchasePriceRange(receipt) + '</strong></div>' +
             '<div>Tổng SP: <strong>' + fmt(receipt.total_price) + 'đ</strong></div>' +
@@ -1644,7 +1652,6 @@ function loadData(done, requestOverrides){
 
         var h = '';
         filtered.forEach(function(d, i){
-            var productNameJs = JSON.stringify(d.name || '');
             var imgTd = d.image
                 ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" class="img-thumbnail product-zoom-img" onclick="openImageZoom(this.src)" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'" title="Click để phóng to">'
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
@@ -1703,7 +1710,7 @@ function loadData(done, requestOverrides){
 
             var sellingDisplay = '<span class="text-success font-weight-bold">'+fmt(d.selling_price)+'đ</span>';
 
-            var purchaseHistoryHtml = renderRecentPurchaseReceipts(d, productNameJs);
+            var purchaseHistoryHtml = renderRecentPurchaseReceipts(d);
             var specUnitHtml = renderProductStackedCell([
                 {label: 'Quy cách', value: escapeHtml(d.specification || '')},
                 {label: 'ĐVT', value: escapeHtml(d.unit || '')}
@@ -1730,7 +1737,7 @@ function loadData(done, requestOverrides){
                 (d.is_combo
                 ? '<button class="btn btn-xs btn-warning" onclick="editItemById('+d.id+')">Sửa</button> '
                 : '<button class="btn btn-xs btn-info" onclick="editItemById('+d.id+')">Sửa</button> ') +
-                '<button class="btn btn-xs btn-outline-primary" onclick="viewPurchaseHistory('+d.id+','+productNameJs+')" title="Xem lịch sử từng đơn nhập, bán và biến động giá của sản phẩm này"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button> ' +
+                '<button type="button" class="btn btn-xs btn-outline-primary btn-product-history" data-product-id="'+d.id+'" data-product-name="'+escapeAttr(d.name || '')+'" title="Xem lịch sử từng đơn nhập, bán và biến động giá của sản phẩm này"><i class="fas fa-history mr-1"></i>Lịch sử nhập</button> ' +
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div>';
 
             h += '<tr id="product_row_'+d.id+'">'+

@@ -30,6 +30,7 @@
 .pk-table .item-location { color: #4e342e; font-weight: 700; text-align: center; }
 .pk-check-box { display: inline-block; width: 12px; height: 12px; margin: 0; border: 1px solid #555; vertical-align: middle; }
 .pk-total { margin: 5px 0; text-align: right; color: #4e342e; font-size: 10px; font-weight: 700; }
+.pk-package-count { margin-top: 4px; }
 .pk-note { margin: 5px 0; padding: 5px 7px; border: 1px solid #aaa; font-size: 9px; }
 .pk-footer { display: flex; justify-content: space-between; margin-top: 18px; text-align: center; }
 .pk-footer .sig-block { width: 31%; }
@@ -67,7 +68,7 @@
         <div class="block">
             <div class="label">Kho lấy hàng</div>
             <div><strong>{{ order.warehouse.name|default:"—" }}</strong></div>
-            <div class="closed-at">Giờ đóng: {{ packing_closed_at|date:"H:i d/m/Y" }}</div>
+            <div class="closed-at">Giờ đóng: ....................</div>
         </div>
         <div class="block">
             <div class="label">Thông tin giao hàng</div>
@@ -121,7 +122,10 @@
         </tbody>
     </table>
 
-    <div class="pk-total">Tổng: {{ items|length }} dòng hàng</div>
+    <div class="pk-total">
+        <div>Tổng: {{ items|length }} dòng hàng</div>
+        <div class="pk-package-count">Số kiện: ....................</div>
+    </div>
 
     {% if print_template.show_order_note and order.note %}<div class="pk-note"><strong>Lưu ý đóng gói:</strong> {{ order.note }}</div>{% endif %}
     {% if print_template.show_terms and print_template.terms %}<div class="pk-note"><strong>Hướng dẫn đóng gói:</strong> {{ print_template.terms|linebreaksbr }}</div>{% endif %}

@@ -925,6 +925,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
     for row in daily_map.values():
         row['cost'] = row['gross_cost'] - row['return_cost']
         row['profit'] = row['revenue'] - row['returns'] - row['cost']
+        net_revenue = row['revenue'] - row['returns']
+        row['profit_margin'] = round(row['profit'] / net_revenue * 100, 1) if net_revenue > 0 else 0
     daily_data = []
     for key in sorted(daily_map.keys()):
         row = daily_map[key]

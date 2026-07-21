@@ -11,7 +11,6 @@ urlpatterns = [
     path('stock-check-tbl/', views.stock_check_tbl, name='stock_check_tbl'),
     path('stock-transfer-tbl/', views.stock_transfer_tbl, name='stock_transfer_tbl'),
     path('supplier-tbl/', views.supplier_tbl, name='supplier_tbl'),
-    path('cost-adjustment-tbl/', views.cost_adjustment_tbl, name='cost_adjustment_tbl'),
     # APIs
     path('api/products/', views.api_get_products, name='api_get_products'),
     path('api/products/combo-source/', views.api_get_combo_source_products, name='api_get_combo_source_products'),
@@ -46,7 +45,6 @@ urlpatterns = [
     path('api/purchase-orders/', views.api_get_purchase_orders, name='api_get_purchase_orders'),
     path('api/purchase-orders/save/', views.api_save_purchase_order, name='api_save_purchase_order'),
     path('api/purchase-orders/delete/', views.api_delete_purchase_order, name='api_delete_purchase_order'),
-    path('api/cost-adjustments/', views.api_get_cost_adjustments, name='api_get_cost_adjustments'),
     path('api/products/purchase-history/', views.api_product_purchase_history, name='api_product_purchase_history'),
     path('api/products/sales-history/', views.api_product_sales_history, name='api_product_sales_history'),
     path('api/locations/', views.api_get_locations, name='api_get_locations'),

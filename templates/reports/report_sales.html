@@ -104,15 +104,14 @@
                 </div>
                 <!-- Biểu đồ doanh thu theo ngày -->
                 <div class="row mb-3">
-                    <div class="col-md-8"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0" id="timeline_chart_title"><i class="fas fa-chart-bar mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_daily"></canvas></div></div></div>
-                    <div class="col-md-4"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Top sản phẩm</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_products"></canvas></div></div></div>
+                    <div class="col-12" id="daily_chart_column"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0" id="timeline_chart_title"><i class="fas fa-chart-bar mr-1"></i>Doanh thu theo ngày</h6></div><div class="card-body" style="height:320px;"><canvas id="chart_daily"></canvas></div></div></div>
                 </div>
                 <!-- Bảng doanh thu ngày + chi tiết -->
                 <div class="row mb-3">
                     <div class="col-md-8">
                         <div class="card card-outline card-info">
                             <div class="card-header py-2"><h6 class="card-title mb-0" id="timeline_table_title"><i class="fas fa-table mr-1"></i>Doanh thu theo ngày</h6></div>
-                            <div class="card-body p-0"><div class="table-responsive"><table id="report_tbl" class="table table-bordered table-striped table-sm mb-0"><thead class="bg-light"><tr><th>STT</th><th id="timeline_col_label">Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th>Trả hàng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light"><tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_returns">0</td></tr></tfoot></table></div></div>
+                            <div class="card-body p-0"><div class="table-responsive"><table id="report_tbl" class="table table-bordered table-striped table-sm mb-0"><thead class="bg-light"><tr><th>STT</th><th id="timeline_col_label">Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th class="text-right" title="Lợi nhuận / Doanh thu thuần">Tỷ suất lợi nhuận</th><th>Trả hàng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light"><tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_profit_margin" class="text-right">0%</td><td id="ft_returns">0</td></tr></tfoot></table></div></div>
                         </div>
                         <div class="card card-outline card-warning mb-3">
                             <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:6px;">
@@ -615,7 +614,7 @@ function loadReport(){
         // Tab overview tables
         renderDailyTable(timeline);renderOverviewRankings();refreshOrderDetails();renderSupplierBreakdown(res.supplier_breakdown||[],res.supplier_summary||{});renderStoreBreakdown(res.store_breakdown||[]);
         renderDailyFinanceTab(res.daily_finance||timeline);
-        renderDailyChart(timeline);renderProductsPieChart(res.top_products);
+        renderDailyChart(timeline);
 
         // Tab 2: Product detail
         renderProductTab(res.product_breakdown||res.top_products||[], res.category_breakdown||[]);
@@ -635,9 +634,17 @@ function loadReport(){
 
 function renderDailyTable(daily){
     var h='',tc=0,tr=0,tco=0,tp=0,tre=0;
-    daily.forEach(function(d,i){tc+=d.count;tr+=d.revenue;tco+=d.cost;tp+=d.profit;tre+=d.returns;var pc=d.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td>'+renderDailyOrderDate(d)+'</td><td class="text-center">'+d.count+'</td><td class="text-right">'+fmtD(d.revenue)+'</td><td class="text-right">'+fmtD(d.cost)+'</td><td class="text-right '+pc+'"><strong>'+fmtD(d.profit)+'</strong></td><td class="text-right">'+(d.returns>0?'<span class="text-danger">'+fmtD(d.returns)+'</span>':'0')+'</td></tr>';});
-    if(!h)h='<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
-    $('#report_tbl tbody').html(h);$('#ft_count').text(tc);$('#ft_revenue').text(fmtD(tr));$('#ft_cost').text(fmtD(tco));$('#ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');$('#ft_returns').text(fmtD(tre));
+    daily.forEach(function(d,i){
+        var revenue=Number(d.revenue||0),returns=Number(d.returns||0),rowProfit=Number(d.profit||0),netRevenue=revenue-returns;
+        var margin=Number(d.profit_margin);
+        if(!isFinite(margin)) margin=netRevenue>0?(rowProfit/netRevenue*100):0;
+        tc+=Number(d.count||0);tr+=revenue;tco+=Number(d.cost||0);tp+=rowProfit;tre+=returns;
+        var pc=rowProfit>=0?'text-success':'text-danger';
+        h+='<tr><td>'+(i+1)+'</td><td>'+renderDailyOrderDate(d)+'</td><td class="text-center">'+d.count+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(d.cost)+'</td><td class="text-right '+pc+'"><strong>'+fmtD(rowProfit)+'</strong></td><td class="text-right '+pc+'"><strong>'+margin.toFixed(1)+'%</strong></td><td class="text-right">'+(returns>0?'<span class="text-danger">'+fmtD(returns)+'</span>':'0')+'</td></tr>';
+    });
+    if(!h)h='<tr><td colspan="8" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+    var totalNetRevenue=tr-tre,totalMargin=totalNetRevenue>0?(tp/totalNetRevenue*100):0,totalClass=tp>=0?'text-success':'text-danger';
+    $('#report_tbl tbody').html(h);$('#ft_count').text(tc);$('#ft_revenue').text(fmtD(tr));$('#ft_cost').text(fmtD(tco));$('#ft_profit').html('<span class="'+totalClass+'">'+fmtD(tp)+'</span>');$('#ft_profit_margin').html('<span class="'+totalClass+'">'+totalMargin.toFixed(1)+'%</span>');$('#ft_returns').text(fmtD(tre));
 }
 function renderDailyFinanceTab(rows){
     var h='',tg=0,tr=0,tnr=0,tc=0,tgp=0,tnp=0;
@@ -869,11 +876,6 @@ function renderDailyChart(daily){
     destroyChart('daily');var ctx=document.getElementById('chart_daily').getContext('2d');
     _charts.daily=new Chart(ctx,{type:'bar',data:{labels:daily.map(function(d){return d.date;}),datasets:[{label:'Doanh thu',data:daily.map(function(d){return d.revenue;}),backgroundColor:'rgba(54,162,235,0.7)',borderColor:'rgba(54,162,235,1)',borderWidth:1,borderRadius:4,order:2},{label:'Lợi nhuận',data:daily.map(function(d){return d.profit;}),type:'line',borderColor:'#28a745',backgroundColor:'rgba(40,167,69,0.1)',fill:true,tension:0.3,pointRadius:3,order:1}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top',labels:{usePointStyle:true,padding:15}}},scales:{y:{beginAtZero:true,ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}},x:{ticks:{maxRotation:45}}}}});
 }
-function renderProductsPieChart(tp){
-    destroyChart('productsPie');if(!tp||!tp.length)return;var ctx=document.getElementById('chart_products').getContext('2d');
-    _charts.productsPie=new Chart(ctx,{type:'doughnut',data:{labels:tp.map(function(p){return p.name?(p.name.length>15?p.name.substring(0,15)+'...':p.name):'N/A';}),datasets:[{data:tp.map(function(p){return p.amount;}),backgroundColor:COLORS.slice(0,tp.length),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,padding:8,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});
-}
-
 // TAB 2: Product breakdown
 function renderProductTab(products, catBreakdown){
     var filteredProducts=(products||[]).filter(matchesMetricRanges);

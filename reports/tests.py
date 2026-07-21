@@ -741,6 +741,11 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'id="supplier_sales_tbl"')
         self.assertContains(response, 'id="chart_supplier_consumption"')
         self.assertContains(response, 'id="chart_supplier_revenue"')
+        self.assertContains(response, 'id="daily_chart_column"')
+        self.assertNotContains(response, 'id="chart_products"')
+        self.assertNotContains(response, 'function renderProductsPieChart(tp)')
+        self.assertContains(response, 'Tỷ suất lợi nhuận')
+        self.assertContains(response, 'id="ft_profit_margin"')
         self.assertContains(response, 'id="supplier_sales_filter"')
         self.assertContains(response, 'id="btn_clear_supplier_filter"')
         self.assertContains(response, 'Bấm vào thanh hoặc tên NCC để lọc bảng')
@@ -1138,6 +1143,7 @@ class SalesReportTests(TestCase):
         self.assertEqual(row['gross_profit'], 80.0)
         self.assertEqual(row['gross_margin'], 53.3)
         self.assertEqual(row['net_profit'], 80.0)
+        self.assertEqual(payload['daily'][0]['profit_margin'], 53.3)
 
     def test_api_report_sales_groups_multiple_products_and_returns_by_supplier(self):
         today = date.today()

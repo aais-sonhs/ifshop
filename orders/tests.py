@@ -205,7 +205,7 @@ class OrderRiskFlowTests(TestCase):
             'PHIẾU ĐÓNG HÀNG',
             'size: A5 portrait',
             'Kho lấy hàng',
-            'Giờ đóng: 10:03 21/07/2026',
+            'Giờ đóng: ....................',
             'Thông tin giao hàng',
             'Mã hàng',
             'Sản phẩm / quy cách',
@@ -216,6 +216,7 @@ class OrderRiskFlowTests(TestCase):
             'Người soạn hàng',
             'Người đóng gói',
             'Người kiểm tra',
+            'Số kiện: ....................',
             self.product.code,
             self.product.name,
             'Thùng',
@@ -225,6 +226,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertLess(content.index('SL đóng'), content.index('ĐVT'))
         self.assertLess(content.index('ĐVT'), content.index('Vị trí'))
         self.assertLess(content.index('Vị trí'), content.index('Kiểm / ghi chú'))
+        self.assertLess(content.index('Tổng: 1 dòng hàng'), content.index('Số kiện: ....................'))
         self.assertContains(response, '<td class="text-center"><span class="pk-check-box"></span></td>', html=True)
         self.assertContains(response, '2')
         for unexpected in ('Đơn giá', 'Thành tiền', 'PHIẾU XUẤT KHO', 'Thủ kho'):

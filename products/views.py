@@ -28,7 +28,7 @@ from django.utils import timezone
 from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
     GoodsReceipt, GoodsReceiptItem, PurchaseOrder, PurchaseOrderItem,
-    StockCheck, StockCheckItem, StockTransfer, StockTransferItem, CostAdjustment,
+    StockCheck, StockCheckItem, StockTransfer, StockTransferItem,
     ComboItem, ProductLocation, PurchaseReturn, PurchaseReturnItem
 )
 
@@ -1228,12 +1228,6 @@ def stock_transfer_tbl(request):
 def supplier_tbl(request):
     context = {'active_tab': 'supplier_tbl'}
     return render(request, "products/supplier_list.html", context)
-
-
-@login_required(login_url="/login/")
-def cost_adjustment_tbl(request):
-    context = {'active_tab': 'cost_adjustment_tbl'}
-    return render(request, "products/cost_adjustment_list.html", context)
 
 
 # ============ API: PRODUCT ============
@@ -3207,39 +3201,6 @@ def api_delete_purchase_order(request):
         return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
-
-
-# ============ API: COST ADJUSTMENT ============
-
-@login_required(login_url="/login/")
-def api_get_cost_adjustments(request):
-    items = list(
-        filter_by_store(
-            CostAdjustment.objects.all(),
-            request,
-            field_name='product__store',
-        ).values(
-            'id',
-            'old_cost',
-            'new_cost',
-            'reason',
-            'adjusted_at',
-            product_name=F('product__name'),
-            product_code=F('product__code'),
-            adjusted_by_username=F('adjusted_by__username'),
-        )
-    )
-    data = [{
-        'id': row['id'],
-        'product': row['product_name'] or '',
-        'product_code': row['product_code'] or '',
-        'old_cost': float(row['old_cost']),
-        'new_cost': float(row['new_cost']),
-        'reason': row['reason'] or '',
-        'adjusted_by': row['adjusted_by_username'] or '',
-        'adjusted_at': row['adjusted_at'].strftime('%d/%m/%Y %H:%M') if row['adjusted_at'] else '',
-    } for row in items]
-    return JsonResponse({'data': data})
 
 
 @login_required(login_url="/login/")

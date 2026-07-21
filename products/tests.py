@@ -1010,6 +1010,23 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="btn_quick_supplier" style="margin-top:3px;"')
 
+    def test_product_history_buttons_use_delegated_click_handler(self):
+        response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "$(document).on('click', '.btn-product-history'")
+        self.assertContains(response, 'data-product-name=')
+        self.assertContains(response, 'function renderRecentPurchaseReceipts(product)')
+        self.assertNotContains(response, 'onclick="viewPurchaseHistory(')
+
+    def test_cost_adjustment_page_and_menu_are_removed(self):
+        page_response = self.client.get('/cost-adjustment-tbl/')
+        product_response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(page_response.status_code, 404)
+        self.assertNotContains(product_response, '/cost-adjustment-tbl/')
+        self.assertNotContains(product_response, 'Điều chỉnh giá vốn')
+
     def test_goods_receipt_product_picker_shows_code_name_and_stock_metrics(self):
         ProductStock.objects.create(
             product=self.product,
@@ -1027,6 +1044,11 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(page_response, "dropdownCssClass: 'goods-receipt-product-dropdown'")
         self.assertContains(page_response, 'background: #e3f2fd !important;')
         self.assertContains(page_response, 'class="item-stock align-middle"')
+        self.assertContains(page_response, 'function focusGoodsReceiptItemQuantity($row)')
+        self.assertContains(page_response, 'focusGoodsReceiptItemQuantity($addedRow)')
+        self.assertContains(page_response, 'focusGoodsReceiptItemQuantity($existing)')
+        self.assertContains(page_response, '}, {prepend:true});')
+        self.assertContains(page_response, "if(options.prepend) $('#items_body').prepend($newRow);")
 
         row = next(
             item for item in product_response.json()['data']

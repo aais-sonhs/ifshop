@@ -724,11 +724,22 @@ class SalesReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['summary']['total_orders'], 2)
+        self.assertEqual(payload['timeline'][0]['period_key'], today.isoformat())
         self.assertEqual(
             {row['code'] for row in payload['order_details']},
             {created_orders[1].code, created_orders[2].code},
         )
         self.assertEqual(payload['filters_applied']['order_scope'], 'realized')
+
+    def test_sales_report_daily_date_opens_filtered_order_list_in_new_tab(self):
+        response = self.client.get(reverse('report_sales'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function getDailyOrdersUrl(dateKey)')
+        self.assertContains(response, "'/order-tbl/?from_date='")
+        self.assertContains(response, 'renderDailyOrderDate(d)')
+        self.assertContains(response, 'sales-daily-order-link')
+        self.assertContains(response, 'target="_blank" rel="noopener"')
 
     def test_api_report_sales_all_active_scope_includes_non_cancelled_orders(self):
         today = date.today()

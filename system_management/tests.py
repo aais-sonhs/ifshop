@@ -788,6 +788,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Báo cáo hiển thị riêng 5 thẻ')
         self.assertContains(response, 'bấm thẻ Công nợ để mở bảng Chi tiết công nợ đơn hàng của tháng hiện tại')
         self.assertContains(response, 'Đơn đã thu đủ hoặc thu dư được quy về 0 nên không bù trừ vào đơn khác còn nợ')
+        self.assertContains(response, 'bấm vào ngày được làm nổi bật để mở DS Đơn hàng đã lọc đúng ngày đó')
         self.assertContains(response, 'Đọc Tổng thu và Tổng chi trên Báo cáo tài chính')
         self.assertContains(response, 'Bấm thẻ Công nợ đơn hàng để mở bảng chi tiết trong tab mới')
         self.assertContains(response, 'mặc định sắp xếp Còn nợ từ cao xuống thấp')

@@ -237,6 +237,22 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'data-print-type="packing"')
         self.assertContains(response, 'Phiếu đóng hàng A5')
 
+    def test_order_page_applies_date_filters_from_query_string_before_loading(self):
+        response = self.client.get(reverse('order_tbl'), {
+            'from_date': '2026-07-21',
+            'to_date': '2026-07-21',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function applyOrderListQueryFilters(params)')
+        self.assertContains(response, 'applyOrderListQueryFilters(pageParams);')
+        self.assertContains(response, "['from_date', 'to_date']")
+        content = response.content.decode()
+        self.assertLess(
+            content.index('applyOrderListQueryFilters(pageParams);'),
+            content.index('loadData();', content.index('applyOrderListQueryFilters(pageParams);')),
+        )
+
     def test_k80_print_uses_four_product_quantity_price_and_total_columns(self):
         self.product.unit = 'Bộ 12c'
         self.product.save(update_fields=['unit'])

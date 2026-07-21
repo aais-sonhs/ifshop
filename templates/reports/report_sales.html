@@ -266,6 +266,18 @@ function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n)+'đ';}
 function escapeHtml(value){return $('<div>').text(value || '').html();}
 function getOrderOpenUrl(order){return '/order-tbl/?open_order='+encodeURIComponent(order.id);}
+function getDailyOrdersUrl(dateKey){
+    return '/order-tbl/?from_date='+encodeURIComponent(dateKey)+'&to_date='+encodeURIComponent(dateKey);
+}
+function renderDailyOrderDate(row){
+    var dateKey=String(row.period_key||'');
+    var isDailyView=($('#filter_time_group').val()||'day')==='day';
+    if(!isDailyView || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)){
+        return escapeHtml(row.date||'');
+    }
+    var title='Mở danh sách đơn hàng ngày '+String(row.date||'');
+    return '<a class="badge badge-primary px-2 py-1 sales-daily-order-link" style="font-size:.82rem;" target="_blank" rel="noopener" href="'+getDailyOrdersUrl(dateKey)+'" title="'+escapeHtml(title)+'">'+escapeHtml(row.date||'')+' <i class="fas fa-external-link-alt fa-xs ml-1"></i></a>';
+}
 function renderLossProducts(order){
     if(!order.is_loss) return '<span class="text-muted">—</span>';
     var rows=order.loss_products||[];
@@ -499,7 +511,7 @@ function loadReport(){
 
 function renderDailyTable(daily){
     var h='',tc=0,tr=0,tco=0,tp=0,tre=0;
-    daily.forEach(function(d,i){tc+=d.count;tr+=d.revenue;tco+=d.cost;tp+=d.profit;tre+=d.returns;var pc=d.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(d.date)+'</td><td class="text-center">'+d.count+'</td><td class="text-right">'+fmtD(d.revenue)+'</td><td class="text-right">'+fmtD(d.cost)+'</td><td class="text-right '+pc+'"><strong>'+fmtD(d.profit)+'</strong></td><td class="text-right">'+(d.returns>0?'<span class="text-danger">'+fmtD(d.returns)+'</span>':'0')+'</td></tr>';});
+    daily.forEach(function(d,i){tc+=d.count;tr+=d.revenue;tco+=d.cost;tp+=d.profit;tre+=d.returns;var pc=d.profit>=0?'text-success':'text-danger';h+='<tr><td>'+(i+1)+'</td><td>'+renderDailyOrderDate(d)+'</td><td class="text-center">'+d.count+'</td><td class="text-right">'+fmtD(d.revenue)+'</td><td class="text-right">'+fmtD(d.cost)+'</td><td class="text-right '+pc+'"><strong>'+fmtD(d.profit)+'</strong></td><td class="text-right">'+(d.returns>0?'<span class="text-danger">'+fmtD(d.returns)+'</span>':'0')+'</td></tr>';});
     if(!h)h='<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
     $('#report_tbl tbody').html(h);$('#ft_count').text(tc);$('#ft_revenue').text(fmtD(tr));$('#ft_cost').text(fmtD(tco));$('#ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');$('#ft_returns').text(fmtD(tre));
 }

@@ -856,7 +856,11 @@ def _build_sales_report_payload(request, include_filter_options=True):
     for row in daily_map.values():
         row['cost'] = row['gross_cost'] - row['return_cost']
         row['profit'] = row['revenue'] - row['returns'] - row['cost']
-    daily_data = [daily_map[key] for key in sorted(daily_map.keys())]
+    daily_data = []
+    for key in sorted(daily_map.keys()):
+        row = daily_map[key]
+        row['period_key'] = key
+        daily_data.append(row)
 
     daily_finance_map = {}
     for row in sorted(order_rows, key=lambda item: item['date_raw'] or ''):

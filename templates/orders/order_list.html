@@ -4702,6 +4702,8 @@ $(document).ready(function(){
     $('#btn_toggle_stock_info').on('click', function(){
         setStockInfoVisible(!currentStockInfoVisible);
     });
+    var pageParams = new URLSearchParams(window.location.search);
+    applyOrderListQueryFilters(pageParams);
     loadData();
 
     // Khi thay đổi kho → cập nhật tồn kho hiển thị
@@ -4762,7 +4764,6 @@ $(document).ready(function(){
         if(!$('#edit_id').val()) fetchNextDocumentCode(getDocumentType());
     });
 
-    var pageParams = new URLSearchParams(window.location.search);
     var openOrderId = pageParams.get('open_order');
     var editQuotationId = pageParams.get('edit_quotation');
     var copyQuotationId = pageParams.get('copy_quotation');
@@ -6038,6 +6039,15 @@ function setOrderFormInitialFocus(mode){
             if(mode === 'edit' && focusExistingOrderItemSearch()) return;
             setTimeout(function(){ $('#quick_search_product').trigger('focus'); }, 0);
         });
+}
+
+function applyOrderListQueryFilters(params){
+    ['from_date', 'to_date'].forEach(function(key){
+        var value=String(params.get(key)||'');
+        if(/^\d{4}-\d{2}-\d{2}$/.test(value)){
+            $('#filter_'+key).val(value);
+        }
+    });
 }
 
 function getCurrentOrderFilters(){

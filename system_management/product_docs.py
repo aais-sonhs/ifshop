@@ -696,6 +696,7 @@ DETAILED_OPERATION_GUIDES = [
             'Giữ Phạm vi đơn là "Đã xuất kho + Hoàn thành" để xem doanh thu đã thực hiện. Nếu cần kiểm tra cả đơn đang xử lý nhưng chưa hủy, chọn "Tất cả đơn chưa hủy".',
             'Để xem toàn bộ kết quả, giữ bộ lọc Lợi nhuận là "Tất cả". Để chỉ xem đơn lỗ, chọn "Báo lỗ" rồi nhấn "Xem báo cáo".',
             'Mở tab Tổng quan để xem tổng số đơn, doanh thu, giá vốn thuần, lợi nhuận gộp, công nợ và số đơn báo lỗ trong khoảng ngày đã chọn.',
+            'Trong bảng Doanh thu theo ngày, bấm vào ngày được làm nổi bật để mở DS Đơn hàng đã lọc đúng ngày đó trong một tab mới.',
             'Mở tab Tổng hợp ngày để đối chiếu riêng từng ngày: tiền hàng, doanh thu, doanh thu thuần, giá vốn thuần, lợi nhuận gộp và tỷ suất lợi nhuận.',
             'Mở tab Theo đơn để xem từng đơn. Đơn lỗ được đánh dấu màu đỏ; các cột Sản phẩm lỗ, Doanh thu, Giá vốn và Lợi nhuận cho biết nguyên nhân và mức lỗ.',
             'Bấm vào mã đơn hoặc nút "Mở đơn lỗ" để kiểm tra chi tiết đơn hàng. Có thể nhấn "Xuất Excel" nếu cần gửi hoặc lưu báo cáo.',

@@ -180,8 +180,8 @@
             $(this).toggle(self.isVisible(key));
         });
 
-        // Apply to td cells
-        $table.find('tbody td[data-col]').each(function(){
+        // Apply to body and summary/footer cells
+        $table.find('tbody td[data-col], tfoot td[data-col]').each(function(){
             var key = $(this).data('col');
             $(this).toggle(self.isVisible(key));
         });

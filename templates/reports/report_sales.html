@@ -114,9 +114,18 @@
                             <div class="card-body p-0"><div class="table-responsive"><table id="report_tbl" class="table table-bordered table-striped table-sm mb-0"><thead class="bg-light"><tr><th>STT</th><th id="timeline_col_label">Ngày</th><th>Số ĐH</th><th>Doanh thu</th><th>Giá vốn</th><th>Lợi nhuận</th><th class="text-right" title="Lợi nhuận / Doanh thu thuần">Tỷ suất lợi nhuận</th><th>Trả hàng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light"><tr><td colspan="2">TỔNG</td><td id="ft_count">0</td><td id="ft_revenue">0</td><td id="ft_cost">0</td><td id="ft_profit">0</td><td id="ft_profit_margin" class="text-right">0%</td><td id="ft_returns">0</td></tr></tfoot></table></div></div>
                         </div>
                         <div class="card card-outline card-warning mb-3">
-                            <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:6px;">
-                                <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Top nhà cung cấp theo tiêu thụ ròng</h6>
-                                <small class="text-muted">Bấm vào thanh hoặc tên NCC để lọc bảng</small>
+                            <div class="card-header py-2 supplier-chart-header">
+                                <h6 class="mb-1">
+                                    <i class="fas fa-boxes mr-1"></i>Top nhà cung cấp theo tiêu thụ ròng
+                                    <button type="button" class="supplier-chart-help" aria-label="Giải thích biểu đồ tiêu thụ ròng">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span class="supplier-chart-help-popover" role="tooltip">
+                                            <strong>Tiêu thụ ròng = Số lượng đã bán − Số lượng khách trả.</strong>
+                                            <span>Biểu đồ xếp hạng nhà cung cấp có hàng bán ra thực tế nhiều nhất trong kỳ. Dùng để dự kiến nhập thêm hàng và nhận biết nhà cung cấp có tỷ lệ hàng trả cao.</span>
+                                            <span>Nên xem cùng doanh thu và lợi nhuận vì các sản phẩm có thể sử dụng đơn vị tính khác nhau.</span>
+                                        </span>
+                                    </button>
+                                </h6>
                             </div>
                             <div class="card-body position-relative" style="height:270px;">
                                 <canvas id="chart_supplier_consumption"></canvas>
@@ -124,9 +133,18 @@
                             </div>
                         </div>
                         <div class="card card-outline card-success mb-0">
-                            <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:6px;">
-                                <h6 class="mb-0"><i class="fas fa-chart-line mr-1"></i>Top nhà cung cấp theo doanh thu và lợi nhuận</h6>
-                                <small class="text-muted">Bấm vào thanh hoặc tên NCC để lọc bảng</small>
+                            <div class="card-header py-2 supplier-chart-header">
+                                <h6 class="mb-1">
+                                    <i class="fas fa-chart-line mr-1"></i>Top nhà cung cấp theo doanh thu và lợi nhuận
+                                    <button type="button" class="supplier-chart-help" aria-label="Giải thích biểu đồ doanh thu và lợi nhuận">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span class="supplier-chart-help-popover" role="tooltip">
+                                            <strong>Doanh thu thuần là tiền bán sản phẩm sau chiết khấu và hàng khách trả.</strong>
+                                            <span>Lợi nhuận = Doanh thu thuần − Giá vốn thuần. Biểu đồ giúp nhận biết nhà cung cấp tạo doanh thu cao nhưng chưa chắc tạo lợi nhuận cao.</span>
+                                            <span>Dùng để ưu tiên nhóm hàng hiệu quả, thương lượng giá nhập và kiểm tra các nhà cung cấp đang có lợi nhuận thấp hoặc âm.</span>
+                                        </span>
+                                    </button>
+                                </h6>
                             </div>
                             <div class="card-body position-relative" style="height:290px;">
                                 <canvas id="chart_supplier_revenue"></canvas>
@@ -158,11 +176,12 @@
                 <!-- Báo cáo bán hàng theo nhà cung cấp -->
                 <div class="card card-outline card-warning mb-3" id="supplier_sales_section">
                     <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
-                        <div>
-                            <h6 class="mb-1"><i class="fas fa-truck mr-1"></i>Báo cáo bán hàng theo nhà cung cấp</h6>
+                        <div class="supplier-sales-collapse-toggle collapsed" role="button" tabindex="0" data-toggle="collapse" data-target="#supplierSalesCollapse" aria-expanded="false" aria-controls="supplierSalesCollapse" style="cursor:pointer;">
+                            <h6 class="mb-1"><i class="fas fa-truck mr-1"></i>Báo cáo bán hàng theo nhà cung cấp <i class="fas fa-chevron-down ml-1 supplier-sales-collapse-icon"></i></h6>
                             <small class="text-muted d-block">Gom theo nhà cung cấp đang gắn trên từng sản phẩm · xếp hạng theo tiêu thụ ròng</small>
                         </div>
                         <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
+                            <span id="supplier_col_config_container"></span>
                             <label for="supplier_sales_filter" class="small text-muted mb-0"><i class="fas fa-filter mr-1"></i>Nhà cung cấp</label>
                             <select class="form-control form-control-sm" id="supplier_sales_filter" style="width:auto;min-width:230px;max-width:340px;">
                                 <option value="">Tất cả nhà cung cấp</option>
@@ -170,25 +189,27 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_supplier_filter" style="display:none;" title="Hiển thị tất cả nhà cung cấp"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
                         </div>
                     </div>
+                    <div class="collapse" id="supplierSalesCollapse">
                     <div class="card-body p-0">
                         <div class="small text-primary px-3 py-2 border-bottom" id="supplier_filter_status" style="display:none;"></div>
                         <div class="table-responsive" style="max-height:520px;overflow:auto;">
-                            <table class="table table-bordered table-striped table-sm table-hover mb-0" id="supplier_sales_tbl" style="min-width:1320px;">
+                            <table class="table table-bordered table-striped table-sm table-hover mb-0" id="supplier_sales_tbl" style="width:100%;min-width:1320px;">
                                 <thead class="bg-light" style="position:sticky;top:0;z-index:1;">
                                     <tr>
-                                        <th>STT</th><th>Nhà cung cấp</th><th class="text-right">Mặt hàng</th><th class="text-right">Số ĐH</th>
-                                        <th class="text-right">SL bán</th><th class="text-right">SL trả</th><th class="text-right">Tiêu thụ ròng</th>
-                                        <th class="text-right">Doanh thu thuần</th><th class="text-right">Giá vốn thuần</th><th class="text-right">Lợi nhuận</th>
-                                        <th class="text-right">Tỷ trọng DT</th><th style="min-width:260px;">Mặt hàng bán chạy</th>
+                                        <th data-col="stt">STT</th><th data-col="supplier">Nhà cung cấp</th><th data-col="product_count" class="text-right">Mặt hàng</th><th data-col="order_count" class="text-right">Số ĐH</th>
+                                        <th data-col="sold_quantity" class="text-right">SL bán</th><th data-col="returned_quantity" class="text-right">SL trả</th><th data-col="net_quantity" class="text-right">Tiêu thụ ròng</th>
+                                        <th data-col="net_revenue" class="text-right">Doanh thu thuần</th><th data-col="cost" class="text-right">Giá vốn thuần</th><th data-col="profit" class="text-right">Lợi nhuận</th>
+                                        <th data-col="contribution" class="text-right">Tỷ trọng DT</th><th data-col="top_products" style="min-width:260px;">Mặt hàng bán chạy</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
                                 <tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;">
-                                    <tr><td colspan="2">TỔNG</td><td id="ss_ft_products" class="text-right">0</td><td id="ss_ft_orders" class="text-right">0</td><td id="ss_ft_sold" class="text-right">0</td><td id="ss_ft_returned" class="text-right">0</td><td id="ss_ft_net" class="text-right">0</td><td id="ss_ft_revenue" class="text-right">0</td><td id="ss_ft_cost" class="text-right">0</td><td id="ss_ft_profit" class="text-right">0</td><td id="ss_ft_contribution" class="text-right">0%</td><td></td></tr>
+                                    <tr><td data-col="stt" colspan="2">TỔNG</td><td data-col="product_count" id="ss_ft_products" class="text-right">0</td><td data-col="order_count" id="ss_ft_orders" class="text-right">0</td><td data-col="sold_quantity" id="ss_ft_sold" class="text-right">0</td><td data-col="returned_quantity" id="ss_ft_returned" class="text-right">0</td><td data-col="net_quantity" id="ss_ft_net" class="text-right">0</td><td data-col="net_revenue" id="ss_ft_revenue" class="text-right">0</td><td data-col="cost" id="ss_ft_cost" class="text-right">0</td><td data-col="profit" id="ss_ft_profit" class="text-right">0</td><td data-col="contribution" id="ss_ft_contribution" class="text-right">0%</td><td data-col="top_products"></td></tr>
                                 </tfoot>
                             </table>
                         </div>
                         <small class="text-muted d-block px-3 py-2 border-top"><i class="fas fa-info-circle mr-1"></i>Tiêu thụ ròng = số lượng bán − số lượng trả; doanh thu và giá vốn thuần cũng đã trừ phần hàng trả trong kỳ. Dòng “Chưa gán nhà cung cấp” giúp nhận biết sản phẩm cần bổ sung NCC.</small>
+                    </div>
                     </div>
                 </div>
                 <div class="card card-outline card-secondary mb-3" id="store_breakdown_section" style="display:none;">
@@ -219,7 +240,7 @@
                     </div>
                 </div>
                 <!-- Chi tiết đơn -->
-                <div class="card card-outline card-dark"><div class="card-header py-2" style="cursor:pointer;" data-toggle="collapse" data-target="#orderDetailCollapse"><h6 class="card-title mb-0"><i class="fas fa-list-alt mr-1"></i>Chi tiết từng đơn hàng <small class="text-muted" id="order_detail_count"></small></h6></div>
+                <div class="card card-outline card-dark"><div class="card-header py-2 collapsed order-detail-collapse-toggle" role="button" tabindex="0" style="cursor:pointer;" data-toggle="collapse" data-target="#orderDetailCollapse" aria-expanded="false" aria-controls="orderDetailCollapse"><h6 class="card-title mb-0"><i class="fas fa-list-alt mr-1"></i>Chi tiết từng đơn hàng <small class="text-muted" id="order_detail_count"></small><i class="fas fa-chevron-down ml-1 order-detail-collapse-icon"></i></h6></div>
                 <div class="collapse" id="orderDetailCollapse"><div class="card-body p-0">
                     <div class="d-flex align-items-end flex-wrap px-2 py-2 bg-light border-bottom" style="gap:8px;">
                         <div><label class="small text-muted mb-1" for="order_detail_from_date">Từ ngày</label><input type="date" class="form-control form-control-sm" id="order_detail_from_date"></div>
@@ -344,6 +365,23 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.supplier-chart-header{position:relative;}
+.supplier-chart-header h6{line-height:1.35;}
+.supplier-chart-help{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;margin-left:4px;border:0;background:transparent;color:#007bff;cursor:help;vertical-align:middle;}
+.supplier-chart-help:hover,.supplier-chart-help:focus{color:#0056b3;outline:none;}
+.supplier-chart-help-popover{display:none;position:absolute;z-index:1080;top:calc(100% + 8px);left:50%;width:330px;max-width:80vw;padding:11px 12px;transform:translateX(-50%);border-radius:6px;background:#263238;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.24);font-size:12px;font-weight:400;line-height:1.45;text-align:left;white-space:normal;}
+.supplier-chart-help-popover::before{content:"";position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:#263238;}
+.supplier-chart-help-popover strong,.supplier-chart-help-popover span{display:block;}
+.supplier-chart-help-popover span{margin-top:6px;}
+.supplier-chart-help:hover .supplier-chart-help-popover,.supplier-chart-help:focus .supplier-chart-help-popover{display:block;}
+.supplier-sales-collapse-icon{transition:transform .2s ease;}
+.supplier-sales-collapse-toggle.collapsed .supplier-sales-collapse-icon{transform:rotate(-90deg);}
+.order-detail-collapse-icon{transition:transform .2s ease;}
+.order-detail-collapse-toggle.collapsed .order-detail-collapse-icon{transform:rotate(-90deg);}
+@media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
+</style>
+<script src="/static/js/column_config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
@@ -381,6 +419,51 @@ function getTimeGroupText(){return $('#filter_time_group option:selected').text(
 var _filtersLoaded=false, _charts={}, _overviewProductRows=[], _overviewCustomerRows=[], _orderDetailRows=[];
 var _supplierBreakdownRows=[], _supplierBreakdownSummary={};
 var COLORS=['#36A2EB','#FF6384','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#7BC8A4','#E7646A','#8B5CF6','#10B981','#F59E0B','#3B82F6','#EF4444','#6366F1'];
+
+var _supplierSalesStableWidth=1320;
+function captureSupplierSalesFullWidth(){
+    var table=document.getElementById('supplier_sales_tbl');
+    if(!table) return;
+    // Measure the complete table before ColumnConfig hides any columns. Once
+    // measured, keep that width so hiding columns does not collapse the table
+    // to the width of only the visible cells.
+    table.style.width='auto';
+    table.style.minWidth='1320px';
+    var containerWidth=table.parentElement ? table.parentElement.clientWidth : 0;
+    _supplierSalesStableWidth=Math.max(1320,Math.ceil(Math.max(table.scrollWidth||0,table.getBoundingClientRect().width||0,containerWidth||0)));
+    $(table).css({minWidth:_supplierSalesStableWidth,width:_supplierSalesStableWidth+'px'});
+}
+function syncSupplierSalesColumnLayout(){
+    var visibleCount=$('#supplier_sales_tbl thead th[data-col]').filter(function(){return $(this).css('display')!=='none';}).length;
+    $('#supplier_sales_tbl .supplier-sales-empty').attr('colspan',Math.max(visibleCount,1));
+    var table=document.getElementById('supplier_sales_tbl');
+    if(table){
+        $(table).css({minWidth:_supplierSalesStableWidth,width:_supplierSalesStableWidth+'px'});
+    }
+}
+
+captureSupplierSalesFullWidth();
+
+window.supplierSalesColConfig=new ColumnConfig({
+    storageKey:'ifshop_supplier_sales_columns_v1_user_{{ request.user.id|default:"anonymous" }}',
+    tableSelector:'#supplier_sales_tbl',
+    buttonContainer:'#supplier_col_config_container',
+    onApply:syncSupplierSalesColumnLayout,
+    columns:[
+        {key:'stt',label:'STT',default:true,alwaysOn:true},
+        {key:'supplier',label:'Nhà cung cấp',default:true,alwaysOn:true},
+        {key:'product_count',label:'Mặt hàng',default:true},
+        {key:'order_count',label:'Số đơn hàng',default:true},
+        {key:'sold_quantity',label:'Số lượng bán',default:true},
+        {key:'returned_quantity',label:'Số lượng trả',default:true},
+        {key:'net_quantity',label:'Tiêu thụ ròng',default:true},
+        {key:'net_revenue',label:'Doanh thu thuần',default:true},
+        {key:'cost',label:'Giá vốn thuần',default:true},
+        {key:'profit',label:'Lợi nhuận',default:true},
+        {key:'contribution',label:'Tỷ trọng doanh thu',default:true},
+        {key:'top_products',label:'Mặt hàng bán chạy',default:true}
+    ]
+});
 
 function destroyChart(name){if(_charts[name]){_charts[name].destroy();delete _charts[name];}}
 function populateSelect(selector, rows, placeholder, mapFn){
@@ -547,6 +630,7 @@ $(document).ready(function(){
     $('#order_detail_from_date,#order_detail_to_date').on('change', refreshOrderDetails);
     $('#btn_order_detail_current_month').on('click', function(){setOrderDetailCurrentMonth();refreshOrderDetails();});
     $('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails).on('hidden.bs.collapse', function(){$('#order_detail_tbl tbody').empty();});
+    $('#supplierSalesCollapse').on('shown.bs.collapse', function(){captureSupplierSalesFullWidth();syncSupplierSalesColumnLayout();});
     applyQuickRangeState();
     applyTimeGroupUi(getTimeGroupText());
     loadReport();
@@ -724,10 +808,25 @@ function renderSupplierSalesTable(rows){
             return '<span class="d-block text-nowrap">'+escapeHtml(product.name||'')+' <strong>('+fmt(product.net_quantity||0)+')</strong></span>';
         }).join('');
         if(!topProducts) topProducts='<span class="text-muted">Chưa có</span>';
-        h+='<tr'+($('#supplier_sales_filter').val()?' class="table-warning"':'')+'><td>'+(i+1)+'</td><td><strong>'+escapeHtml(row.supplier||'Chưa gán nhà cung cấp')+'</strong>'+badges+'</td><td class="text-right">'+fmt(row.product_count||0)+'</td><td class="text-right">'+fmt(row.order_count||0)+'</td><td class="text-right">'+fmt(row.sold_quantity||0)+'</td><td class="text-right text-danger">'+fmt(row.returned_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmt(row.net_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmtD(row.net_revenue||0)+'</td><td class="text-right">'+fmtD(row.cost||0)+'</td><td class="text-right '+profitClass+'">'+fmtD(rowProfit)+'</td><td class="text-right">'+Number(row.contribution||0).toFixed(1)+'%</td><td>'+topProducts+'</td></tr>';
+        var c = window.supplierSalesColConfig;
+        h += '<tr' + ($('#supplier_sales_filter').val() ? ' class="table-warning"' : '') + '>' +
+             c.td('stt', (i + 1)) +
+             c.td('supplier', '<strong>' + escapeHtml(row.supplier || 'Chưa gán nhà cung cấp') + '</strong>' + badges) +
+             c.td('product_count', fmt(row.product_count || 0), 'class="text-right"') +
+             c.td('order_count', fmt(row.order_count || 0), 'class="text-right"') +
+             c.td('sold_quantity', fmt(row.sold_quantity || 0), 'class="text-right"') +
+             c.td('returned_quantity', fmt(row.returned_quantity || 0), 'class="text-right text-danger"') +
+             c.td('net_quantity', fmt(row.net_quantity || 0), 'class="text-right font-weight-bold"') +
+             c.td('net_revenue', fmtD(row.net_revenue || 0), 'class="text-right font-weight-bold"') +
+             c.td('cost', fmtD(row.cost || 0), 'class="text-right"') +
+             c.td('profit', fmtD(rowProfit), 'class="text-right ' + profitClass + '"') +
+             c.td('contribution', Number(row.contribution || 0).toFixed(1) + '%', 'class="text-right"') +
+             c.td('top_products', topProducts, 'style="white-space:normal;min-width:260px;"') +
+             '</tr>';
     });
-    if(!h) h='<tr><td colspan="12" class="text-center text-muted py-3">Không có dữ liệu bán hàng của nhà cung cấp này trong kỳ</td></tr>';
+    if(!h) h='<tr><td colspan="12" class="supplier-sales-empty text-center text-muted py-3">Không có dữ liệu bán hàng của nhà cung cấp này trong kỳ</td></tr>';
     $('#supplier_sales_tbl tbody').html(h);
+    window.supplierSalesColConfig.apply();
     var summary=getSupplierTableSummary(rows), totalProfit=Number(summary.profit||0);
     $('#ss_ft_products').text(fmt(summary.product_count||0));$('#ss_ft_orders').text(fmt(summary.order_count||0));$('#ss_ft_sold').text(fmt(summary.sold_quantity||0));$('#ss_ft_returned').text(fmt(summary.returned_quantity||0));$('#ss_ft_net').text(fmt(summary.net_quantity||0));$('#ss_ft_revenue').text(fmtD(summary.net_revenue||0));$('#ss_ft_cost').text(fmtD(summary.cost||0));$('#ss_ft_profit').html('<span class="'+(totalProfit>=0?'text-success':'text-danger')+'">'+fmtD(totalProfit)+'</span>');$('#ss_ft_contribution').text(rows&&rows.length?Number(typeof summary.contribution==='undefined'?100:summary.contribution).toFixed(1)+'%':'0%');
 }
@@ -797,7 +896,7 @@ function renderSupplierCharts(rows){
     _charts.supplierConsumption=new Chart(canvas.getContext('2d'),{
         type:'bar',
         data:{labels:chartRows.map(function(row){return row.supplier||'Chưa gán NCC';}),datasets:[{label:'Tiêu thụ ròng',data:chartRows.map(function(row){return row.net_quantity||0;}),backgroundColor:supplierChartColors(chartRows,'rgba(255,193,7,.78)','rgba(253,126,20,.95)'),borderColor:supplierChartColors(chartRows,'#d39e00','#bd5200'),borderWidth:supplierChartBorderWidths(chartRows),borderRadius:4}]},
-        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(context){return 'Tiêu thụ ròng: '+fmt(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{ticks:{color:function(context){return getSupplierTickColor(chartRows,context);},font:function(context){return getSupplierTickFont(chartRows,context);}}}}}
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(context){return 'Tiêu thụ ròng: '+fmt(context.raw);},afterBody:function(items){if(!items||!items.length)return[];var row=chartRows[items[0].dataIndex]||{};return['Đã bán: '+fmt(row.sold_quantity||0),'Khách trả: '+fmt(row.returned_quantity||0),'Công thức: Đã bán − Khách trả'];},footer:function(){return 'Bấm để lọc bảng chi tiết theo nhà cung cấp.';}}}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{ticks:{color:function(context){return getSupplierTickColor(chartRows,context);},font:function(context){return getSupplierTickFont(chartRows,context);}}}}}
     });
     bindSupplierChartInteraction(canvas,_charts.supplierConsumption,chartRows);
 
@@ -811,7 +910,7 @@ function renderSupplierCharts(rows){
                 {label:'Lợi nhuận',data:revenueRows.map(function(row){return row.profit||0;}),backgroundColor:supplierChartColors(revenueRows,'rgba(54,162,235,.68)','rgba(0,105,217,.95)'),borderColor:supplierChartColors(revenueRows,'#2476a8','#004f9e'),borderWidth:supplierChartBorderWidths(revenueRows),borderRadius:4}
             ]
         },
-        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top'},tooltip:{callbacks:{label:function(context){return context.dataset.label+': '+fmtD(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{callback:function(value){var absolute=Math.abs(value);if(absolute>=1000000000)return (value/1000000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tỷ';if(absolute>=1000000)return (value/1000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tr';return fmt(value);}}},y:{ticks:{color:function(context){return getSupplierTickColor(revenueRows,context);},font:function(context){return getSupplierTickFont(revenueRows,context);}}}}}
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top'},tooltip:{callbacks:{label:function(context){return context.dataset.label+': '+fmtD(context.raw);},afterBody:function(items){if(!items||!items.length)return[];var row=revenueRows[items[0].dataIndex]||{},revenue=Number(row.net_revenue||0),profit=Number(row.profit||0),margin=revenue?(profit/revenue*100):0;return['Giá vốn thuần: '+fmtD(row.cost||0),'Biên lợi nhuận: '+margin.toLocaleString('vi-VN',{maximumFractionDigits:1})+'%','Lợi nhuận = Doanh thu thuần − Giá vốn thuần'];},footer:function(){return 'Bấm để lọc bảng chi tiết theo nhà cung cấp.';}}}},scales:{x:{beginAtZero:true,ticks:{callback:function(value){var absolute=Math.abs(value);if(absolute>=1000000000)return (value/1000000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tỷ';if(absolute>=1000000)return (value/1000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tr';return fmt(value);}}},y:{ticks:{color:function(context){return getSupplierTickColor(revenueRows,context);},font:function(context){return getSupplierTickFont(revenueRows,context);}}}}}
     });
     bindSupplierChartInteraction(revenueCanvas,_charts.supplierRevenue,revenueRows);
 }

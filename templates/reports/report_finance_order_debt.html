@@ -10,6 +10,7 @@
     </div>
     <div class="card-body">
         <form method="get" class="row mb-3">
+            <input type="hidden" name="sort" value="{{ filters.sort }}">
             <div class="col-lg-2 col-md-4 mb-2">
                 <label class="small text-muted mb-1" for="filter_from_date">Từ ngày</label>
                 <input type="date" class="form-control form-control-sm" id="filter_from_date" name="from_date" value="{{ filters.from_date }}">
@@ -33,7 +34,7 @@
             </div>
             <div class="col-lg-2 col-md-4 mb-2 d-flex align-items-end">
                 <button type="submit" class="btn btn-sm btn-info mr-2"><i class="fas fa-search mr-1"></i>Lọc</button>
-                <a href="{% url 'report_finance_order_debt' %}" class="btn btn-sm btn-outline-secondary" title="Xóa bộ lọc"><i class="fas fa-undo"></i></a>
+                <a href="{% url 'report_finance_order_debt' %}?sort=debt_desc" class="btn btn-sm btn-outline-secondary" title="Xóa bộ lọc"><i class="fas fa-undo"></i></a>
             </div>
         </form>
 
@@ -66,7 +67,7 @@
 
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="text-muted small">
-                Chỉ hiển thị đơn chưa hủy có Tổng thanh toán lớn hơn Đã thu.
+                Chỉ hiển thị đơn chưa hủy có Tổng thanh toán lớn hơn Đã thu. Đang xếp Còn nợ từ cao xuống thấp.
             </div>
             <div class="text-muted small">Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</div>
         </div>
@@ -126,11 +127,11 @@
         {% if page_obj.paginator.num_pages > 1 %}
         <div class="d-flex justify-content-center align-items-center mt-3">
             {% if page_obj.has_previous %}
-            <a class="btn btn-sm btn-outline-secondary mr-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;page={{ page_obj.previous_page_number }}"><i class="fas fa-chevron-left mr-1"></i>Trang trước</a>
+            <a class="btn btn-sm btn-outline-secondary mr-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;sort={{ filters.sort }}&amp;page={{ page_obj.previous_page_number }}"><i class="fas fa-chevron-left mr-1"></i>Trang trước</a>
             {% endif %}
             <span class="small text-muted px-2">Trang {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
             {% if page_obj.has_next %}
-            <a class="btn btn-sm btn-outline-secondary ml-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;page={{ page_obj.next_page_number }}">Trang sau<i class="fas fa-chevron-right ml-1"></i></a>
+            <a class="btn btn-sm btn-outline-secondary ml-2" href="?from_date={{ filters.from_date }}&amp;to_date={{ filters.to_date }}{% if filters.store_id %}&amp;store_id={{ filters.store_id }}{% endif %}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}&amp;sort={{ filters.sort }}&amp;page={{ page_obj.next_page_number }}">Trang sau<i class="fas fa-chevron-right ml-1"></i></a>
             {% endif %}
         </div>
         {% endif %}

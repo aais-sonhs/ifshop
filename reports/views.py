@@ -1618,7 +1618,8 @@ def report_finance_order_debt(request):
     for key in ('final_amount', 'paid_amount'):
         totals[key] = totals[key] or Decimal('0')
 
-    paginator = Paginator(orders.order_by('-debt_amount', '-order_date', '-id'), 30)
+    debt_descending = (F('final_amount') - F('paid_amount')).desc()
+    paginator = Paginator(orders.order_by(debt_descending, '-order_date', '-id'), 30)
     page_obj = paginator.get_page(request.GET.get('page'))
 
     from system_management.models import Store
@@ -1636,6 +1637,7 @@ def report_finance_order_debt(request):
             'to_date': to_date.isoformat(),
             'store_id': store_id,
             'q': keyword,
+            'sort': 'debt_desc',
         },
     }
     return render(request, 'reports/report_finance_order_debt.html', context)

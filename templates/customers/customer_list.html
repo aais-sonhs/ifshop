@@ -80,7 +80,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="customer_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_purchased" data-sort-label="Tổng mua" title="Sắp xếp Tổng mua tăng dần"><span>Tổng mua</span><i class="fas fa-sort sort-icon" aria-hidden="true"></i></button></th><th data-col="debt" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_debt" data-sort-label="Công nợ" title="Sắp xếp Công nợ tăng dần"><span>Công nợ</span><i class="fas fa-sort sort-icon" aria-hidden="true"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_purchased" data-sort-label="Tổng mua" title="Sắp xếp Tổng mua tăng dần"><span>Tổng mua</span><span class="sort-icon" aria-hidden="true">↕</span></button></th><th data-col="debt" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_debt" data-sort-label="Công nợ" title="Sắp xếp Công nợ tăng dần"><span>Công nợ</span><span class="sort-icon" aria-hidden="true">↕</span></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -334,7 +334,7 @@
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 #customer_pagination .page-link{min-width:36px;text-align:center;}
 .customer-sort-btn{display:inline-flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;}
-.customer-sort-btn .sort-icon{font-size:12px;color:#adb5bd;transition:color .15s;}
+.customer-sort-btn .sort-icon{display:inline-block;min-width:12px;text-align:center;font-family:Arial,sans-serif;font-size:13px;font-weight:700;line-height:1;color:#adb5bd;transition:color .15s;}
 .customer-sort-btn:hover .sort-icon,.customer-sort-btn.active .sort-icon{color:#007bff;}
 .customer-sort-btn:focus{outline:2px solid rgba(0,123,255,.35);outline-offset:3px;border-radius:2px;}
 </style>
@@ -760,9 +760,7 @@ function updateCustomerSortControls(){
         $button.toggleClass('active', isActive);
         $button.attr('title', 'Sắp xếp ' + label + ' ' + nextDirection);
         $button.attr('aria-label', 'Sắp xếp ' + label + ' ' + nextDirection);
-        $button.find('.sort-icon')
-            .removeClass('fa-sort fa-sort-up fa-sort-down')
-            .addClass(direction === 'asc' ? 'fa-sort-up' : (direction === 'desc' ? 'fa-sort-down' : 'fa-sort'));
+        $button.find('.sort-icon').text(direction === 'asc' ? '▲' : (direction === 'desc' ? '▼' : '↕'));
         $button.closest('th').attr('aria-sort', direction === 'asc' ? 'ascending' : (direction === 'desc' ? 'descending' : 'none'));
     });
 }

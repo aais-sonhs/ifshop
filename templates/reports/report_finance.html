@@ -63,7 +63,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <a id="order_debt_link" href="{% url 'report_finance_order_debt' %}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" title="Mở bảng chi tiết công nợ đơn hàng">
+                <a id="order_debt_link" href="{% url 'report_finance_order_debt' %}?sort=debt_desc" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" title="Mở bảng chi tiết công nợ đơn hàng">
                     <div class="info-box" style="cursor:pointer;">
                         <span class="info-box-icon bg-warning"><i class="fas fa-exclamation-triangle"></i></span>
                         <div class="info-box-content">
@@ -270,6 +270,7 @@ function updateOrderDebtLink(){
     if(fromDate) params.set('from_date', fromDate);
     if(toDate) params.set('to_date', toDate);
     if(storeId) params.set('store_id', storeId);
+    params.set('sort', 'debt_desc');
     $('#order_debt_link').attr('href', '{% url "report_finance_order_debt" %}?' + params.toString());
 }
 function updatePaymentExpenseLink(){

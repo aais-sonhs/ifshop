@@ -331,6 +331,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, reverse('report_finance_order_debt'))
         self.assertContains(response, 'target="_blank"')
         self.assertContains(response, 'Xem bảng chi tiết')
+        self.assertContains(response, "params.set('sort', 'debt_desc')")
         self.assertContains(response, 'id="payment_expense_link"')
         self.assertContains(response, reverse('payment_tbl'))
         self.assertNotContains(response, 'Xem bảng phiếu chi')
@@ -462,6 +463,7 @@ class SalesReportTests(TestCase):
         self.assertEqual(response.context['page_obj'].paginator.count, 31)
         self.assertEqual(len(response.context['page_obj']), 1)
         self.assertContains(response, 'Trang 2/2')
+        self.assertContains(response, 'sort=debt_desc')
 
     def test_finance_order_debt_page_orders_highest_debt_first(self):
         self.brand.owner = self.user
@@ -501,6 +503,7 @@ class SalesReportTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filters']['sort'], 'debt_desc')
         self.assertEqual(
             [order.code for order in response.context['page_obj']],
             ['DH-DEBT-HIGH', 'DH-DEBT-LOW'],

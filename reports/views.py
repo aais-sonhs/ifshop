@@ -453,7 +453,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
     orders_list = list(orders_qs.order_by('-order_date', '-id'))
 
     order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
-        'product', 'product__category', 'product__category__parent', 'variant',
+        'product', 'product__supplier', 'product__category', 'product__category__parent', 'variant',
         'order', 'order__customer', 'order__customer__group', 'order__created_by'
     )
     if filters['category_id']:
@@ -492,8 +492,11 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
             'customer_name': order.customer.name if order.customer else '',
             'salesperson': salesperson,
+            'product_id': item.product_id,
             'product_name': product.name if product else (item.item_name or 'Dịch vụ'),
             'sku': item.variant.sku if item.variant else (product.code if product else 'DV'),
+            'supplier_id': product.supplier_id if product else None,
+            'supplier_name': product.supplier.name if product and product.supplier else '',
             'category_name': root_category.name if root_category else '',
             'product_type_name': product_type.name if product_type else '',
             'quantity': float(item.quantity or 0),
@@ -613,6 +616,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
     allowed_order_id_set = set(allowed_order_ids)
     product_map = {}
     category_map = {}
+    supplier_map = {}
     sku_details = []
     for item_row in adjusted_item_rows:
         if item_row['order_id'] not in allowed_order_id_set:
@@ -643,6 +647,40 @@ def _build_sales_report_payload(request, include_filter_options=True):
         category_map[category_key]['qty'] += item_row['quantity']
         category_map[category_key]['revenue'] += item_row['revenue']
         category_map[category_key]['cost'] += item_row['cost']
+
+        # Dòng dịch vụ không có sản phẩm không thuộc hàng hóa của nhà cung cấp.
+        # Sản phẩm chưa gắn NCC vẫn được gom riêng để người dùng nhận biết dữ liệu cần bổ sung.
+        if item_row['product_id']:
+            supplier_key = item_row['supplier_id'] or 0
+            if supplier_key not in supplier_map:
+                supplier_map[supplier_key] = {
+                    'supplier_id': item_row['supplier_id'],
+                    'supplier': item_row['supplier_name'] or 'Chưa gán nhà cung cấp',
+                    'order_ids': set(),
+                    'product_ids': set(),
+                    'sold_quantity': 0,
+                    'returned_quantity': 0,
+                    'gross_revenue': 0,
+                    'returns_amount': 0,
+                    'gross_cost': 0,
+                    'return_cost': 0,
+                    'products': {},
+                }
+            supplier_row = supplier_map[supplier_key]
+            supplier_row['order_ids'].add(item_row['order_id'])
+            supplier_row['product_ids'].add(item_row['product_id'])
+            supplier_row['sold_quantity'] += item_row['quantity']
+            supplier_row['gross_revenue'] += item_row['revenue']
+            supplier_row['gross_cost'] += item_row['cost']
+            supplier_product = supplier_row['products'].setdefault(item_row['product_id'], {
+                'name': item_row['product_name'],
+                'sold_quantity': 0,
+                'returned_quantity': 0,
+                'gross_revenue': 0,
+                'returns_amount': 0,
+            })
+            supplier_product['sold_quantity'] += item_row['quantity']
+            supplier_product['gross_revenue'] += item_row['revenue']
 
         if _matches_metric_filters(item_row):
             sku_details.append({
@@ -722,6 +760,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         return_items_qs = return_items_qs.filter(product_id=filters['product_id'])
     return_items_for_breakdown = list(return_items_qs.select_related(
         'product',
+        'product__supplier',
         'order_return',
         'order_return__order',
         'order_return__customer',
@@ -785,6 +824,36 @@ def _build_sales_report_payload(request, include_filter_options=True):
         if item.order_return.return_date:
             date_key = item.order_return.return_date.strftime('%Y-%m-%d')
             return_cost_by_date[date_key] = return_cost_by_date.get(date_key, 0) + item_return_cost
+
+        supplier_key = item.product.supplier_id or 0
+        if supplier_key not in supplier_map:
+            supplier_map[supplier_key] = {
+                'supplier_id': item.product.supplier_id,
+                'supplier': item.product.supplier.name if item.product.supplier else 'Chưa gán nhà cung cấp',
+                'order_ids': set(),
+                'product_ids': set(),
+                'sold_quantity': 0,
+                'returned_quantity': 0,
+                'gross_revenue': 0,
+                'returns_amount': 0,
+                'gross_cost': 0,
+                'return_cost': 0,
+                'products': {},
+            }
+        supplier_row = supplier_map[supplier_key]
+        supplier_row['product_ids'].add(item.product_id)
+        supplier_row['returned_quantity'] += quantity
+        supplier_row['returns_amount'] += float(item.total_price or 0)
+        supplier_row['return_cost'] += item_return_cost
+        supplier_product = supplier_row['products'].setdefault(item.product_id, {
+            'name': item.product.name,
+            'sold_quantity': 0,
+            'returned_quantity': 0,
+            'gross_revenue': 0,
+            'returns_amount': 0,
+        })
+        supplier_product['returned_quantity'] += quantity
+        supplier_product['returns_amount'] += float(item.total_price or 0)
 
     purchases = GoodsReceipt.objects.filter(
         receipt_date__gte=filters['from_date'],
@@ -951,6 +1020,65 @@ def _build_sales_report_payload(request, include_filter_options=True):
     } for row in sorted(product_map.values(), key=lambda row: (-row['amount'], -row['qty'], row['name']))]
     product_breakdown = [row for row in product_breakdown if _matches_metric_filters(row)]
 
+    supplier_breakdown = []
+    supplier_order_ids = set()
+    supplier_product_ids = set()
+    for supplier_row in supplier_map.values():
+        net_revenue = supplier_row['gross_revenue'] - supplier_row['returns_amount']
+        net_cost = supplier_row['gross_cost'] - supplier_row['return_cost']
+        profit = net_revenue - net_cost
+        top_products = []
+        for product_row in supplier_row['products'].values():
+            product_net_quantity = product_row['sold_quantity'] - product_row['returned_quantity']
+            product_net_revenue = product_row['gross_revenue'] - product_row['returns_amount']
+            top_products.append({
+                'name': product_row['name'],
+                'net_quantity': product_net_quantity,
+                'net_revenue': product_net_revenue,
+            })
+        top_products.sort(key=lambda row: (-row['net_quantity'], -row['net_revenue'], row['name']))
+        row = {
+            'supplier_id': supplier_row['supplier_id'],
+            'supplier': supplier_row['supplier'],
+            'product_count': len(supplier_row['product_ids']),
+            'order_count': len(supplier_row['order_ids']),
+            'sold_quantity': supplier_row['sold_quantity'],
+            'returned_quantity': supplier_row['returned_quantity'],
+            'net_quantity': supplier_row['sold_quantity'] - supplier_row['returned_quantity'],
+            'gross_revenue': supplier_row['gross_revenue'],
+            'returns_amount': supplier_row['returns_amount'],
+            'net_revenue': net_revenue,
+            'gross_cost': supplier_row['gross_cost'],
+            'return_cost': supplier_row['return_cost'],
+            'cost': net_cost,
+            'profit': profit,
+            'top_products': top_products[:3],
+        }
+        if _matches_metric_filters({'revenue': net_revenue, 'cost': net_cost, 'profit': profit}):
+            supplier_breakdown.append(row)
+            supplier_order_ids.update(supplier_row['order_ids'])
+            supplier_product_ids.update(supplier_row['product_ids'])
+
+    supplier_breakdown.sort(
+        key=lambda row: (-row['net_quantity'], -row['net_revenue'], row['supplier'])
+    )
+    supplier_net_revenue = sum(row['net_revenue'] for row in supplier_breakdown)
+    for row in supplier_breakdown:
+        row['contribution'] = round(
+            row['net_revenue'] / supplier_net_revenue * 100, 1
+        ) if supplier_net_revenue > 0 else 0
+    supplier_summary = {
+        'supplier_count': len(supplier_breakdown),
+        'product_count': len(supplier_product_ids),
+        'order_count': len(supplier_order_ids),
+        'sold_quantity': sum(row['sold_quantity'] for row in supplier_breakdown),
+        'returned_quantity': sum(row['returned_quantity'] for row in supplier_breakdown),
+        'net_quantity': sum(row['net_quantity'] for row in supplier_breakdown),
+        'net_revenue': supplier_net_revenue,
+        'cost': sum(row['cost'] for row in supplier_breakdown),
+        'profit': sum(row['profit'] for row in supplier_breakdown),
+    }
+
     category_breakdown = [{
         'name': row['name'],
         'qty': row['qty'],
@@ -1088,7 +1216,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
             staff_map[staff_name]['returns_amount'] += ret_amount
 
     customer_breakdown = sorted(customer_map.values(), key=lambda row: (-row['amount'], -row['orders'], row['name']))
-    customer_breakdown = [row for row in customer_breakdown if _matches_metric_filters(row)][:50]
+    customer_breakdown = [row for row in customer_breakdown if _matches_metric_filters(row)][:200]
     top_customers = customer_breakdown[:5]
     group_breakdown = sorted(group_map.values(), key=lambda row: (-row['amount'], row['name']))
     group_breakdown = [row for row in group_breakdown if _matches_metric_filters(row)]
@@ -1251,6 +1379,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
         'top_products': top_products,
         'top_customers': top_customers,
         'product_breakdown': product_breakdown,
+        'supplier_breakdown': supplier_breakdown,
+        'supplier_summary': supplier_summary,
         'sku_details': sku_details,
         'customer_breakdown': customer_breakdown,
         'staff_breakdown': staff_breakdown,
@@ -2279,6 +2409,8 @@ def export_sales_excel(request):
     summary = payload.get('summary', {})
     daily = payload.get('daily', [])
     daily_finance = payload.get('daily_finance') or daily
+    supplier_breakdown = payload.get('supplier_breakdown', [])
+    supplier_summary = payload.get('supplier_summary', {})
     product_breakdown = payload.get('product_breakdown', [])
     sku_details = payload.get('sku_details', [])
     category_breakdown = payload.get('category_breakdown', [])
@@ -2436,7 +2568,68 @@ def export_sales_excel(request):
     for i, w in enumerate([16, 18, 18, 18, 18, 18, 20, 18], 1):
         ws_daily.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 3: Mặt hàng =====
+    # ===== Sheet 3: Bán hàng theo nhà cung cấp =====
+    ws_supplier = wb.create_sheet('Bán hàng theo NCC')
+    supplier_headers = [
+        'STT', 'Nhà cung cấp', 'Số mặt hàng', 'Số đơn hàng', 'SL bán', 'SL trả',
+        'Tiêu thụ ròng', 'Doanh thu thuần', 'Giá vốn thuần', 'Lợi nhuận',
+        'Tỷ trọng doanh thu', 'Mặt hàng bán chạy',
+    ]
+    for col, h in enumerate(supplier_headers, 1):
+        cell = ws_supplier.cell(row=1, column=col, value=h)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+
+    for idx, supplier in enumerate(supplier_breakdown, 2):
+        top_products = ', '.join(
+            f"{product.get('name') or ''} ({float(product.get('net_quantity') or 0):g})"
+            for product in supplier.get('top_products', [])
+        )
+        values = [
+            idx - 1,
+            supplier.get('supplier') or 'Chưa gán nhà cung cấp',
+            supplier.get('product_count', 0),
+            supplier.get('order_count', 0),
+            supplier.get('sold_quantity', 0),
+            supplier.get('returned_quantity', 0),
+            supplier.get('net_quantity', 0),
+            supplier.get('net_revenue', 0),
+            supplier.get('cost', 0),
+            supplier.get('profit', 0),
+            float(supplier.get('contribution') or 0) / 100,
+            top_products,
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws_supplier.cell(row=idx, column=col, value=val)
+            cell.border = thin
+            if col in (8, 9, 10):
+                cell.number_format = money_fmt
+            if col == 11:
+                cell.number_format = '0.0%'
+            if col == 10 and float(val or 0) < 0:
+                cell.font = Font(bold=True, color='FF0000')
+    supplier_total_row = len(supplier_breakdown) + 2
+    supplier_total_values = [
+        '', 'TỔNG', supplier_summary.get('product_count', 0), supplier_summary.get('order_count', 0),
+        supplier_summary.get('sold_quantity', 0), supplier_summary.get('returned_quantity', 0),
+        supplier_summary.get('net_quantity', 0), supplier_summary.get('net_revenue', 0),
+        supplier_summary.get('cost', 0), supplier_summary.get('profit', 0),
+        1 if supplier_breakdown else 0, '',
+    ]
+    for col, val in enumerate(supplier_total_values, 1):
+        cell = ws_supplier.cell(row=supplier_total_row, column=col, value=val)
+        cell.font = Font(bold=True)
+        cell.fill = total_fill
+        cell.border = thin
+        if col in (8, 9, 10):
+            cell.number_format = money_fmt
+        if col == 11:
+            cell.number_format = '0.0%'
+    for i, width in enumerate([6, 30, 14, 14, 12, 12, 16, 20, 20, 18, 20, 55], 1):
+        ws_supplier.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+    # ===== Sheet 4: Mặt hàng =====
     ws2 = wb.create_sheet('Mặt hàng')
     sp_headers = ['STT', 'Sản phẩm', 'Nhóm mặt hàng', 'Loại SP', 'SL bán', 'Doanh thu', 'Giá vốn', 'LN dòng', 'Biên LN']
     for col, h in enumerate(sp_headers, 1):
@@ -2472,7 +2665,7 @@ def export_sales_excel(request):
     for i, w in enumerate([6, 35, 20, 18, 12, 18, 18, 18, 12], 1):
         ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
-    # ===== Sheet 4: Chi tiết SKU =====
+    # ===== Sheet 5: Chi tiết SKU =====
     ws_sku = wb.create_sheet('Chi tiết SKU')
     sku_headers = [
         'Ngày', 'Tên khách hàng', 'Tên sản phẩm', 'Mã SKU', 'Mã đơn hàng',

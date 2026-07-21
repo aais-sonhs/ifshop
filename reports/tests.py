@@ -735,11 +735,42 @@ class SalesReportTests(TestCase):
         response = self.client.get(reverse('report_sales'))
 
         self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertContains(response, 'id="supplier_sales_section"')
+        self.assertContains(response, 'Báo cáo bán hàng theo nhà cung cấp')
+        self.assertContains(response, 'id="supplier_sales_tbl"')
+        self.assertContains(response, 'id="chart_supplier_consumption"')
+        self.assertContains(response, 'id="chart_supplier_revenue"')
+        self.assertContains(response, 'Gợi ý ưu tiên nhập hàng')
+        self.assertContains(response, 'Gợi ý bán hàng và marketing')
+        self.assertContains(response, 'function renderSupplierBreakdown(rows,summary)')
+        self.assertLess(html.index('id="report_tbl"'), html.index('id="supplier_sales_section"'))
+        self.assertLess(html.index('id="report_tbl"'), html.index('id="chart_supplier_consumption"'))
+        self.assertLess(html.index('id="chart_supplier_consumption"'), html.index('id="supplier_sales_section"'))
+        self.assertLess(html.index('id="supplier_sales_section"'), html.index('id="store_breakdown_section"'))
         self.assertContains(response, 'function getDailyOrdersUrl(dateKey)')
         self.assertContains(response, "'/order-tbl/?from_date='")
         self.assertContains(response, 'renderDailyOrderDate(d)')
         self.assertContains(response, 'sales-daily-order-link')
         self.assertContains(response, 'target="_blank" rel="noopener"')
+        self.assertContains(response, 'id="top_products_limit"')
+        self.assertContains(response, '10 sản phẩm')
+        self.assertContains(response, '200 sản phẩm')
+        self.assertContains(response, 'id="top_customers_limit"')
+        self.assertContains(response, '5 khách hàng')
+        self.assertContains(response, '200 khách hàng')
+        self.assertContains(response, 'renderOverviewRankings();')
+        self.assertContains(response, '(_overviewProductRows||[]).slice(0,productLimit)')
+        self.assertContains(response, '(_overviewCustomerRows||[]).slice(0,customerLimit)')
+        self.assertContains(response, 'id="order_detail_from_date"')
+        self.assertContains(response, 'id="order_detail_to_date"')
+        self.assertContains(response, 'function setOrderDetailCurrentMonth()')
+        self.assertContains(response, 'new Date(today.getFullYear(),today.getMonth()+1,0)')
+        self.assertContains(response, 'function getDateFilteredOrderDetails()')
+        self.assertContains(response, "orderDate<from")
+        self.assertContains(response, "orderDate>to")
+        self.assertContains(response, "$('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails)")
+        self.assertContains(response, "$('#order_detail_tbl tbody').empty()")
 
     def test_api_report_sales_all_active_scope_includes_non_cancelled_orders(self):
         today = date.today()
@@ -1104,6 +1135,128 @@ class SalesReportTests(TestCase):
         self.assertEqual(row['gross_profit'], 80.0)
         self.assertEqual(row['gross_margin'], 53.3)
         self.assertEqual(row['net_profit'], 80.0)
+
+    def test_api_report_sales_groups_multiple_products_and_returns_by_supplier(self):
+        today = date.today()
+        supplier_a = Supplier.objects.create(code='NCC-RP-SALES-A', name='NCC bán hàng A')
+        supplier_b = Supplier.objects.create(code='NCC-RP-SALES-B', name='NCC bán hàng B')
+        product_a1 = Product.objects.create(
+            store=self.store,
+            supplier=supplier_a,
+            code='SP-RP-NCC-A1',
+            name='Sản phẩm NCC A1',
+            created_by=self.user,
+        )
+        product_a2 = Product.objects.create(
+            store=self.store,
+            supplier=supplier_a,
+            code='SP-RP-NCC-A2',
+            name='Sản phẩm NCC A2',
+            created_by=self.user,
+        )
+        product_b = Product.objects.create(
+            store=self.store,
+            supplier=supplier_b,
+            code='SP-RP-NCC-B',
+            name='Sản phẩm NCC B',
+            created_by=self.user,
+        )
+        first_order = Order.objects.create(
+            code='DH-RP-NCC-1',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=550,
+            final_amount=550,
+            order_date=today,
+            created_by=self.user,
+        )
+        for product, quantity, total_price, cost_price in (
+            (product_a1, 2, 200, 60),
+            (product_a2, 3, 150, 20),
+            (product_b, 1, 200, 100),
+        ):
+            OrderItem.objects.create(
+                order=first_order,
+                product=product,
+                quantity=quantity,
+                unit_price=total_price / quantity,
+                cost_price=cost_price,
+                total_price=total_price,
+            )
+        second_order = Order.objects.create(
+            code='DH-RP-NCC-2',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=100,
+            final_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=second_order,
+            product=product_a1,
+            quantity=1,
+            unit_price=100,
+            cost_price=60,
+            total_price=100,
+        )
+        order_return = OrderReturn.objects.create(
+            code='TH-RP-NCC-1',
+            order=first_order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            total_refund=50,
+            return_date=today,
+            created_by=self.user,
+        )
+        OrderReturnItem.objects.create(
+            order_return=order_return,
+            product=product_a2,
+            quantity=1,
+            unit_price=50,
+            total_price=50,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()['supplier_breakdown']
+        supplier_summary = response.json()['supplier_summary']
+        self.assertEqual([row['supplier'] for row in rows], [supplier_a.name, supplier_b.name])
+        self.assertEqual(supplier_summary['supplier_count'], 2)
+        self.assertEqual(supplier_summary['product_count'], 3)
+        self.assertEqual(supplier_summary['order_count'], 2)
+        supplier_a_row = rows[0]
+        self.assertEqual(supplier_a_row['product_count'], 2)
+        self.assertEqual(supplier_a_row['order_count'], 2)
+        self.assertEqual(supplier_a_row['sold_quantity'], 6.0)
+        self.assertEqual(supplier_a_row['returned_quantity'], 1.0)
+        self.assertEqual(supplier_a_row['net_quantity'], 5.0)
+        self.assertEqual(supplier_a_row['net_revenue'], 400.0)
+        self.assertEqual(supplier_a_row['cost'], 220.0)
+        self.assertEqual(supplier_a_row['profit'], 180.0)
+        self.assertEqual(supplier_a_row['contribution'], 66.7)
+        self.assertEqual(supplier_a_row['top_products'][0]['name'], product_a1.name)
+        self.assertEqual(supplier_a_row['top_products'][0]['net_quantity'], 3.0)
+
+        export_response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        self.assertIn('Bán hàng theo NCC', workbook.sheetnames)
+        supplier_sheet = workbook['Bán hàng theo NCC']
+        self.assertEqual(supplier_sheet['B2'].value, supplier_a.name)
+        self.assertEqual(supplier_sheet['G2'].value, 5)
+        self.assertEqual(supplier_sheet['H2'].value, 400)
 
     def test_api_report_sales_filter_options_include_store_users_without_orders(self):
         today = date.today()

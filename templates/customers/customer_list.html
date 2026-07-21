@@ -28,7 +28,7 @@
                     <option value="3">Hộ kinh doanh</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2" id="filter_membership_container">
                 <select class="form-control form-control-sm" id="filter_membership">
                     <option value="">-- Hạng thành viên --</option>
                     <option value="0">Thường</option>
@@ -38,7 +38,7 @@
                     <option value="4">Kim cương</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2" id="filter_status_container">
                 <select class="form-control form-control-sm" id="filter_status">
                     <option value="">-- Trạng thái --</option>
                     <option value="active">Đang hoạt động</option>
@@ -917,11 +917,35 @@ function renderCustomerSavedFilters(){
     });
 }
 
+function syncCustomerColumnFilters(columnState){
+    var filterMappings = [
+        {key: 'membership', container: '#filter_membership_container', input: '#filter_membership'},
+        {key: 'status', container: '#filter_status_container', input: '#filter_status'},
+    ];
+    var clearedHiddenFilter = false;
+
+    filterMappings.forEach(function(mapping){
+        var isVisible = columnState[mapping.key] !== false;
+        $(mapping.container).toggle(isVisible);
+        if(!isVisible && $(mapping.input).val()){
+            $(mapping.input).val('');
+            clearedHiddenFilter = true;
+        }
+    });
+
+    // A hidden filter must not keep filtering the table without the user seeing it.
+    if(clearedHiddenFilter){
+        resetCustomerPagination();
+        renderTable();
+    }
+}
+
 // Column Config
 var customerColConfig = new ColumnConfig({
-    storageKey: 'ifshop_customer_columns',
+    storageKey: 'ifshop_customer_columns_v2',
     tableSelector: '#data_tbl',
     buttonContainer: '#col_config_container',
+    onApply: syncCustomerColumnFilters,
     columns: [
         {key: 'stt',              label: 'STT',             default: true,  alwaysOn: true},
         {key: 'avatar',           label: 'Ảnh',             default: true},
@@ -931,13 +955,13 @@ var customerColConfig = new ColumnConfig({
         {key: 'phone',            label: 'SĐT',             default: true},
         {key: 'email',            label: 'Email',           default: false},
         {key: 'group',            label: 'Nhóm',            default: true},
-        {key: 'membership',       label: 'Hạng TV',         default: true},
+        {key: 'membership',       label: 'Hạng TV',         default: false},
         {key: 'points',           label: 'Điểm',            default: false},
         {key: 'total_purchased',  label: 'Tổng mua',        default: true},
         {key: 'debt',             label: 'Công nợ',         default: true},
         {key: 'created_at',       label: 'Ngày tạo',        default: false},
         {key: 'creator',          label: 'Người tạo',       default: false},
-        {key: 'status',           label: 'Trạng thái',      default: true},
+        {key: 'status',           label: 'Trạng thái',      default: false},
         {key: 'actions',          label: 'Thao tác',        default: true},
     ]
 });

@@ -319,6 +319,22 @@ class CustomerScopeTests(TestCase):
         ):
             self.assertContains(response, f'id="{remaining_filter_id}"')
 
+    def test_customer_list_hides_membership_and_status_columns_by_default(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('customer_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "storageKey: 'ifshop_customer_columns_v2'")
+        self.assertContains(
+            response,
+            "{key: 'membership',       label: 'Hạng TV',         default: false}",
+        )
+        self.assertContains(
+            response,
+            "{key: 'status',           label: 'Trạng thái',      default: false}",
+        )
+
     def test_customer_list_includes_purchase_and_debt_sort_controls(self):
         self.client.force_login(self.manager)
 

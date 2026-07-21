@@ -80,7 +80,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="customer_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased">Tổng mua</th><th data-col="debt">Công nợ</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_purchased" data-sort-label="Tổng mua" title="Sắp xếp Tổng mua tăng dần"><span>Tổng mua</span><i class="fas fa-sort sort-icon" aria-hidden="true"></i></button></th><th data-col="debt" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_debt" data-sort-label="Công nợ" title="Sắp xếp Công nợ tăng dần"><span>Công nợ</span><i class="fas fa-sort sort-icon" aria-hidden="true"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -333,6 +333,10 @@
 .customer-order-items .badge{font-weight:normal;}
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 #customer_pagination .page-link{min-width:36px;text-align:center;}
+.customer-sort-btn{display:inline-flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;}
+.customer-sort-btn .sort-icon{font-size:12px;color:#adb5bd;transition:color .15s;}
+.customer-sort-btn:hover .sort-icon,.customer-sort-btn.active .sort-icon{color:#007bff;}
+.customer-sort-btn:focus{outline:2px solid rgba(0,123,255,.35);outline-offset:3px;border-radius:2px;}
 </style>
 {% endblock %}
 
@@ -460,6 +464,8 @@ var customerListState = {
     page: 1,
     pageSize: 50,
     pageButtonCount: 5,
+    sortKey: '',
+    sortDirection: 'asc',
 };
 
 function getStoredCustomerPageSize(){
@@ -725,6 +731,54 @@ function filterCustomers(list){
     });
 }
 
+function sortCustomers(list){
+    var sortKey = customerListState.sortKey;
+    if(['total_purchased', 'total_debt'].indexOf(sortKey) < 0) return list;
+    var direction = customerListState.sortDirection === 'desc' ? -1 : 1;
+    return list.map(function(customer, index){
+        return {customer: customer, index: index};
+    }).sort(function(a, b){
+        var aValue = Number(a.customer[sortKey] || 0);
+        var bValue = Number(b.customer[sortKey] || 0);
+        if(!Number.isFinite(aValue)) aValue = 0;
+        if(!Number.isFinite(bValue)) bValue = 0;
+        if(aValue === bValue) return a.index - b.index;
+        return (aValue - bValue) * direction;
+    }).map(function(item){
+        return item.customer;
+    });
+}
+
+function updateCustomerSortControls(){
+    $('.customer-sort-btn').each(function(){
+        var $button = $(this);
+        var key = $button.data('sort-key');
+        var label = $button.data('sort-label');
+        var isActive = customerListState.sortKey === key;
+        var direction = isActive ? customerListState.sortDirection : '';
+        var nextDirection = direction === 'asc' ? 'giảm dần' : 'tăng dần';
+        $button.toggleClass('active', isActive);
+        $button.attr('title', 'Sắp xếp ' + label + ' ' + nextDirection);
+        $button.attr('aria-label', 'Sắp xếp ' + label + ' ' + nextDirection);
+        $button.find('.sort-icon')
+            .removeClass('fa-sort fa-sort-up fa-sort-down')
+            .addClass(direction === 'asc' ? 'fa-sort-up' : (direction === 'desc' ? 'fa-sort-down' : 'fa-sort'));
+        $button.closest('th').attr('aria-sort', direction === 'asc' ? 'ascending' : (direction === 'desc' ? 'descending' : 'none'));
+    });
+}
+
+function toggleCustomerSort(sortKey){
+    if(['total_purchased', 'total_debt'].indexOf(sortKey) < 0) return;
+    if(customerListState.sortKey === sortKey){
+        customerListState.sortDirection = customerListState.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        customerListState.sortKey = sortKey;
+        customerListState.sortDirection = 'asc';
+    }
+    resetCustomerPagination();
+    renderTable();
+}
+
 function normalizeCustomerText(value){
     var text = String(value || '').toLowerCase();
     if(text.normalize) text = text.normalize('NFD');
@@ -782,7 +836,7 @@ function findBestCustomerMatch(list, term){
 }
 
 function focusCustomerRow(customerId){
-    var filtered = filterCustomers(allCustomers);
+    var filtered = sortCustomers(filterCustomers(allCustomers));
     var index = filtered.findIndex(function(item){ return item.id === customerId; });
     if(index >= 0){
         var targetPage = Math.floor(index / customerListState.pageSize) + 1;
@@ -1067,6 +1121,9 @@ $(document).ready(function(){
         customerListState.page = page;
         renderTable();
     });
+    $('#data_tbl thead').on('click', '.customer-sort-btn', function(){
+        toggleCustomerSort($(this).data('sort-key'));
+    });
 });
 
 function populateHistoryWarehouseFilter(orders){
@@ -1239,7 +1296,7 @@ function openRequestedCustomerEditor(){
 }
 
 function renderTable(){
-    var filtered = filterCustomers(allCustomers);
+    var filtered = sortCustomers(filterCustomers(allCustomers));
     var pagination = renderCustomerPagination(filtered.length);
     var pagedCustomers = filtered.slice(pagination.startIndex, pagination.endIndex);
     var h = '';
@@ -1287,6 +1344,7 @@ function renderTable(){
     }
     $('#data_tbl tbody').html(h);
     customerColConfig.apply();
+    updateCustomerSortControls();
     renderCustomerFilterSummary(filtered.length, allCustomers.length);
 }
 

@@ -463,6 +463,50 @@ class SalesReportTests(TestCase):
         self.assertEqual(len(response.context['page_obj']), 1)
         self.assertContains(response, 'Trang 2/2')
 
+    def test_finance_order_debt_page_orders_highest_debt_first(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        Order.objects.create(
+            code='DH-DEBT-LOW',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=1,
+            total_amount=200,
+            final_amount=200,
+            paid_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DEBT-HIGH',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=1,
+            total_amount=1200,
+            final_amount=1200,
+            paid_amount=200,
+            order_date=yesterday,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('report_finance_order_debt'), {
+            'from_date': yesterday.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [order.code for order in response.context['page_obj']],
+            ['DH-DEBT-HIGH', 'DH-DEBT-LOW'],
+        )
+        self.assertContains(response, 'Sắp xếp công nợ từ cao đến thấp')
+
     def test_inventory_report_alert_card_controls_are_available(self):
         owner = User.objects.create_user(username='owner_inventory_report', password='pass123')
         self.brand.owner = owner

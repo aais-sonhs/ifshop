@@ -612,6 +612,7 @@ class OrderRiskFlowTests(TestCase):
         response = self.client.get(reverse('api_get_products_for_select'))
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('no-cache', response.headers.get('Cache-Control', ''))
         row = next(item for item in response.json()['data'] if item['id'] == self.product.id)
         self.assertEqual(row['note'], 'Tặng kèm dây nguồn')
         self.assertEqual(row['specification'], 'Thùng 24 chai - 330ml')
@@ -632,8 +633,10 @@ class OrderRiskFlowTests(TestCase):
         response = self.client.get(reverse('api_get_order_detail'), {'id': order.id})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['items'][0]['product_note'], 'Tặng kèm dây nguồn')
-        self.assertEqual(response.json()['items'][0]['specification'], 'Thùng 24 chai - 330ml')
+        detail_item = response.json()['items'][0]
+        self.assertEqual(detail_item['product_note'], 'Tặng kèm dây nguồn')
+        self.assertEqual(detail_item['effective_note'], 'Tặng kèm dây nguồn')
+        self.assertEqual(detail_item['specification'], 'Thùng 24 chai - 330ml')
 
         print_response = self.client.get(
             reverse('api_print_order'),
@@ -864,12 +867,14 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'Mã đơn, tên khách hàng, SĐT, ghi chú, tag...')
         self.assertContains(response, 'Tạo đơn mới giống đơn này')
         self.assertContains(response, 'id="btn_quick_view_copy"')
-        self.assertContains(response, 'class="quick-view-order-edit-link"')
+        self.assertContains(response, 'class="quick-view-product-code-link"')
         self.assertContains(response, 'target="_blank" rel="noopener"')
-        self.assertContains(response, 'function buildOrderEditUrl(orderId)')
-        self.assertContains(response, '?edit_order=')
-        self.assertContains(response, "var editOrderId = pageParams.get('edit_order')")
-        self.assertContains(response, 'editItem(parseInt(editOrderId, 10))')
+        self.assertContains(response, 'renderQuickViewProductSpecification(it.specification)')
+        self.assertContains(response, "'<td><div class=\"quick-view-product-name\">' + escapeHtml(it.product_name || it.item_name || '') + '</div>' + productMetaHtml")
+        self.assertContains(response, 'item.effective_note')
+        self.assertContains(response, '<strong>Note:</strong>')
+        self.assertNotContains(response, 'quick-view-order-edit-link')
+        self.assertNotContains(response, "pageParams.get('edit_order')")
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertContains(response, 'clearPaymentLines()')
 
@@ -1133,6 +1138,8 @@ class OrderRiskFlowTests(TestCase):
         response = self.client.get(reverse('order_tbl'))
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('no-cache', response.headers.get('Cache-Control', ''))
+        self.assertContains(response, "$.ajax({url: '/api/products-select/', type: 'GET', cache: false})")
         self.assertContains(response, 'class="order-product-edit-link"')
         self.assertContains(response, 'target="_blank" rel="noopener"')
         self.assertContains(response, '/product-tbl/?edit_product_id=')
@@ -1140,6 +1147,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'updateOrderRowProductEditLink($row)')
         self.assertContains(response, 'class="order-product-meta-line"')
         self.assertContains(response, 'data-specification-value=')
+        self.assertContains(response, "escapeHtml(normalizedSpecification || '—')", count=2)
         self.assertContains(response, "setOrderRowProductSpecification($row, product.specification || '')")
         self.assertContains(response, '#items_tbl .order-product-edit-link-wrap')
         self.assertContains(response, '#items_tbl .order-item-product-specification')

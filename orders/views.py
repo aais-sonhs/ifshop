@@ -13,6 +13,7 @@ from django.db import transaction, IntegrityError
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Lower, Replace
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from .models import (
     Order, OrderItem, Quotation, QuotationItem, OrderReturn,
     OrderReturnItem, OrderReturnExchangeItem, Packaging, OrderEditHistory,
@@ -2259,6 +2260,7 @@ def _ensure_order_customer_shipping_point(order):
         }, True
 
 
+@never_cache
 @login_required(login_url="/login/")
 @brand_owner_required
 def order_tbl(request):
@@ -2509,6 +2511,7 @@ def packaging_tbl(request):
 
 # ============ API: PRODUCTS for selection ============
 
+@never_cache
 @login_required(login_url="/login/")
 def api_get_products_for_select(request):
     """Lấy danh sách SP cho ô chọn sản phẩm, kèm tồn kho theo từng kho"""

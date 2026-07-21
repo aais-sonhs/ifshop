@@ -1525,24 +1525,47 @@
 	    border-bottom: 2px solid #e2e8f0;
 	    color: #334155;
 	}
-	.quick-view-order-edit-link {
+	.quick-view-product-meta-line {
+	    display: flex;
+	    align-items: center;
+	    flex-wrap: wrap;
+	    gap: 8px;
+	}
+	.quick-view-product-code-link {
 	    display: inline-flex;
 	    align-items: center;
-	    gap: 6px;
-	    padding: 4px 9px;
+	    gap: 5px;
+	    padding: 2px 7px;
 	    color: #0756a3;
 	    background: #eaf4ff;
 	    border: 1px solid #9bc8f5;
-	    border-radius: 5px;
+	    border-radius: 4px;
+	    font-size: 12px;
 	    font-weight: 700;
 	    text-decoration: none;
 	}
-	.quick-view-order-edit-link:hover,
-	.quick-view-order-edit-link:focus {
+	.quick-view-product-code-link:hover,
+	.quick-view-product-code-link:focus {
 	    color: #063f78;
 	    background: #d8ebff;
 	    border-color: #69aef0;
 	    text-decoration: underline;
+	}
+	.quick-view-product-specification {
+	    color: #495057;
+	    font-size: 12px;
+	}
+	.quick-view-product-name {
+	    color: #212529;
+	    margin-bottom: 3px;
+	}
+	.quick-view-product-note {
+	    margin-top: 3px;
+	    color: #6c757d;
+	    font-size: 12px;
+	    line-height: 1.35;
+	    white-space: pre-line;
+	    word-break: break-word;
 	}
 	.quick-view-return-card {
 	    border: 1px solid #dbe3eb;
@@ -2374,9 +2397,9 @@ function normalizeOrderProductSpecification(specification){
 function renderOrderProductSpecification(specification){
     var normalizedSpecification = normalizeOrderProductSpecification(specification);
     return '<div class="order-item-product-specification" data-specification-value="' + escapeAttr(normalizedSpecification) + '"' +
-        (normalizedSpecification ? '' : ' style="display:none;"') + '>' +
+        '>' +
         '<span class="order-item-product-specification-label">Quy cách:</span> ' +
-        escapeHtml(normalizedSpecification) + '</div>';
+        escapeHtml(normalizedSpecification || '—') + '</div>';
 }
 
 function setOrderRowProductSpecification($row, specification){
@@ -4586,7 +4609,7 @@ $(document).ready(function(){
     syncStockInfoVisibility();
     $('#order_page_size').val(String(ORDER_PAGE_STATE.page_size));
     setQuickSearchStatusHint('<i class="fas fa-bolt text-warning mr-1"></i>Sẵn sàng — gõ để tìm, <b>Enter</b> thêm ngay');
-    $.get('/api/products-select/', function(res){
+    $.ajax({url: '/api/products-select/', type: 'GET', cache: false}).done(function(res){
         applyOrderProductDataset(res.data, getOrderProductSelectCacheKey(null));
     });
     $('#items_tbl')
@@ -4741,13 +4764,10 @@ $(document).ready(function(){
 
     var pageParams = new URLSearchParams(window.location.search);
     var openOrderId = pageParams.get('open_order');
-    var editOrderId = pageParams.get('edit_order');
     var editQuotationId = pageParams.get('edit_quotation');
     var copyQuotationId = pageParams.get('copy_quotation');
     var createMode = pageParams.get('create');
-    if(editOrderId && /^\d+$/.test(editOrderId)){
-        editItem(parseInt(editOrderId, 10));
-    } else if(openOrderId && /^\d+$/.test(openOrderId)){
+    if(openOrderId && /^\d+$/.test(openOrderId)){
         viewItem(parseInt(openOrderId, 10));
     } else if(editQuotationId){
         openQuotationDocument(editQuotationId, false);
@@ -6698,21 +6718,29 @@ function rejectOrder(id, code){
 	        '</div>' + cards;
 	}
 
-	function buildOrderEditUrl(orderId){
-	    return "{% url 'order_tbl' %}?edit_order=" + encodeURIComponent(orderId);
+	function renderQuickViewProductCode(item){
+	    var productId = String(item && item.product_id != null ? item.product_id : '').trim();
+	    var productCode = String((item && item.product_code) || 'DV').trim();
+	    if(!/^\d+$/.test(productId)){
+	        return '<strong>' + escapeHtml(productCode) + '</strong>';
+	    }
+	    var label = 'Mở chi tiết sản phẩm ' + productCode + ' trong tab mới';
+	    return '<a class="quick-view-product-code-link" href="' + escapeAttr(buildOrderProductEditUrl(productId)) + '" target="_blank" rel="noopener" title="' + escapeAttr(label) + '" aria-label="' + escapeAttr(label) + '">' +
+	        '<i class="fas fa-external-link-alt" aria-hidden="true"></i>' +
+	        '<span>' + escapeHtml(productCode) + '</span>' +
+	    '</a>';
 	}
 
-	function renderQuickViewOrderEditLink(orderId, orderCode){
-	    var normalizedOrderId = String(orderId == null ? '' : orderId).trim();
-	    var normalizedOrderCode = String(orderCode == null ? '' : orderCode).trim();
-	    if(!/^\d+$/.test(normalizedOrderId)){
-	        return '<strong>' + escapeHtml(normalizedOrderCode) + '</strong>';
-	    }
-	    var label = 'Mở đơn hàng ' + normalizedOrderCode + ' để chỉnh sửa trong tab mới';
-	    return '<a class="quick-view-order-edit-link" href="' + escapeAttr(buildOrderEditUrl(normalizedOrderId)) + '" target="_blank" rel="noopener" title="' + escapeAttr(label) + '" aria-label="' + escapeAttr(label) + '">' +
-	        '<i class="fas fa-external-link-alt" aria-hidden="true"></i>' +
-	        '<span>' + escapeHtml(normalizedOrderCode) + '</span>' +
-	    '</a>';
+	function renderQuickViewProductSpecification(specification){
+	    var normalizedSpecification = normalizeOrderProductSpecification(specification);
+	    return '<span class="quick-view-product-specification"><strong>Quy cách:</strong> ' + escapeHtml(normalizedSpecification || '—') + '</span>';
+	}
+
+	function renderQuickViewProductNote(item){
+	    var note = normalizeOrderProductNote(
+	        (item && item.effective_note) || (item && item.note) || (item && item.product_note) || ''
+	    );
+	    return '<div class="quick-view-product-note"><strong>Note:</strong> ' + escapeHtml(note || '—') + '</div>';
 	}
 
 	function quickViewOrder(id){
@@ -6736,9 +6764,13 @@ function rejectOrder(id, code){
 	            var img = it.image_url
 	                ? '<img src="' + escapeAttr(it.image_url) + '" class="quick-view-product-img" loading="lazy" decoding="async" alt="">'
 	                : '<span class="quick-view-product-placeholder"><i class="fas fa-image"></i></span>';
+	            var productMetaHtml = '<div class="quick-view-product-meta-line">' +
+	                renderQuickViewProductCode(it) +
+	                renderQuickViewProductSpecification(it.specification) +
+	                '</div>';
 	            itemsHtml += '<tr>' +
 	                '<td class="text-center">' + img + '</td>' +
-	                '<td><strong>' + escapeHtml(it.product_code || 'DV') + '</strong><br><span>' + escapeHtml(it.product_name || it.item_name || '') + '</span>' + renderOrderProductNote(getOrderItemDisplayNote(it), 'quick-view-product-note') + '</td>' +
+	                '<td><div class="quick-view-product-name">' + escapeHtml(it.product_name || it.item_name || '') + '</div>' + productMetaHtml + renderQuickViewProductNote(it) + '</td>' +
 	                '<td class="text-center">' + escapeHtml(it.unit || '') + '</td>' +
 	                '<td class="text-right">' + fmt(it.quantity || 0) + '</td>' +
 	                '<td class="text-right">' + fmt(it.unit_price || 0) + '</td>' +
@@ -6753,10 +6785,9 @@ function rejectOrder(id, code){
 	            ? formatOrderDiscountPercent(o.discount_percent || 0) + '% (' + fmt(o.discount_amount || 0) + 'đ)'
 	            : fmt(o.discount_amount || 0) + 'đ';
 	        var returnHistoryHtml = renderQuickViewReturnHistory(o);
-	        var orderCodeLink = renderQuickViewOrderEditLink(o.id || id, o.code || '');
 	        var html = '<div class="row">' +
 	            '<div class="col-md-7">' +
-	            '<div class="mb-2">' + orderCodeLink + ' <span class="ml-1">· ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</span></div>' +
+	            '<div class="mb-2"><strong>' + escapeHtml(o.code || '') + '</strong> · ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</div>' +
 	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' +
 	                escapeHtml(o.customer_label || '') +
                 ((o.shipping_phone || o.customer_phone) ? '<br><small>SĐT nhận: ' + escapeHtml(o.shipping_phone || o.customer_phone) + '</small>' : '') +

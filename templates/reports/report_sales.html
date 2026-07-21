@@ -117,7 +117,7 @@
                         <div class="card card-outline card-warning mb-3">
                             <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:6px;">
                                 <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Top nhà cung cấp theo tiêu thụ ròng</h6>
-                                <small class="text-muted">Gợi ý ưu tiên nhập hàng</small>
+                                <small class="text-muted">Bấm vào thanh hoặc tên NCC để lọc bảng</small>
                             </div>
                             <div class="card-body position-relative" style="height:270px;">
                                 <canvas id="chart_supplier_consumption"></canvas>
@@ -127,7 +127,7 @@
                         <div class="card card-outline card-success mb-0">
                             <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:6px;">
                                 <h6 class="mb-0"><i class="fas fa-chart-line mr-1"></i>Top nhà cung cấp theo doanh thu và lợi nhuận</h6>
-                                <small class="text-muted">Gợi ý bán hàng và marketing</small>
+                                <small class="text-muted">Bấm vào thanh hoặc tên NCC để lọc bảng</small>
                             </div>
                             <div class="card-body position-relative" style="height:290px;">
                                 <canvas id="chart_supplier_revenue"></canvas>
@@ -159,10 +159,20 @@
                 <!-- Báo cáo bán hàng theo nhà cung cấp -->
                 <div class="card card-outline card-warning mb-3" id="supplier_sales_section">
                     <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
-                        <h6 class="card-title mb-0"><i class="fas fa-truck mr-1"></i>Báo cáo bán hàng theo nhà cung cấp</h6>
-                        <small class="text-muted">Gom theo nhà cung cấp đang gắn trên từng sản phẩm · xếp hạng theo tiêu thụ ròng</small>
+                        <div>
+                            <h6 class="mb-1"><i class="fas fa-truck mr-1"></i>Báo cáo bán hàng theo nhà cung cấp</h6>
+                            <small class="text-muted d-block">Gom theo nhà cung cấp đang gắn trên từng sản phẩm · xếp hạng theo tiêu thụ ròng</small>
+                        </div>
+                        <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
+                            <label for="supplier_sales_filter" class="small text-muted mb-0"><i class="fas fa-filter mr-1"></i>Nhà cung cấp</label>
+                            <select class="form-control form-control-sm" id="supplier_sales_filter" style="width:auto;min-width:230px;max-width:340px;">
+                                <option value="">Tất cả nhà cung cấp</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_supplier_filter" style="display:none;" title="Hiển thị tất cả nhà cung cấp"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+                        </div>
                     </div>
                     <div class="card-body p-0">
+                        <div class="small text-primary px-3 py-2 border-bottom" id="supplier_filter_status" style="display:none;"></div>
                         <div class="table-responsive" style="max-height:520px;overflow:auto;">
                             <table class="table table-bordered table-striped table-sm table-hover mb-0" id="supplier_sales_tbl" style="min-width:1320px;">
                                 <thead class="bg-light" style="position:sticky;top:0;z-index:1;">
@@ -370,6 +380,7 @@ function renderLossProducts(order){
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
 function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
 var _filtersLoaded=false, _charts={}, _overviewProductRows=[], _overviewCustomerRows=[], _orderDetailRows=[];
+var _supplierBreakdownRows=[], _supplierBreakdownSummary={};
 var COLORS=['#36A2EB','#FF6384','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#7BC8A4','#E7646A','#8B5CF6','#10B981','#F59E0B','#3B82F6','#EF4444','#6366F1'];
 
 function destroyChart(name){if(_charts[name]){_charts[name].destroy();delete _charts[name];}}
@@ -532,6 +543,8 @@ $(document).ready(function(){
     $('#filter_order_scope').val('realized');
     setOrderDetailCurrentMonth();
     $('#top_products_limit,#top_customers_limit').on('change', renderOverviewRankings);
+    $('#supplier_sales_filter').on('change', function(){applySupplierFilter($(this).val(),false);});
+    $('#btn_clear_supplier_filter').on('click', function(){applySupplierFilter('',false);});
     $('#order_detail_from_date,#order_detail_to_date').on('change', refreshOrderDetails);
     $('#btn_order_detail_current_month').on('click', function(){setOrderDetailCurrentMonth();refreshOrderDetails();});
     $('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails).on('hidden.bs.collapse', function(){$('#order_detail_tbl tbody').empty();});
@@ -546,7 +559,7 @@ $(document).ready(function(){
     $('.btn-quick-range').click(function(){ setQuickRange($(this).data('range')); });
     $('#btn_reset_filter').click(function(){
         var resetToday=new Date(), resetFirstDay=new Date(resetToday.getFullYear(),resetToday.getMonth(),1);
-        $('#filter_customer_kind,#filter_customer_group,#filter_category,#filter_product_type,#filter_profit,#filter_store_id,#filter_customer_id,#filter_product_id,#filter_salesperson').val('');
+        $('#filter_customer_kind,#filter_customer_group,#filter_category,#filter_product_type,#filter_profit,#filter_store_id,#filter_customer_id,#filter_product_id,#filter_salesperson,#supplier_sales_filter').val('');
         $('#filter_time_group').val('day');
         $('#filter_order_scope').val('realized');
         $('#filter_search,#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_line_profit_min,#filter_line_profit_max,#filter_profit_min,#filter_profit_max').val('');
@@ -665,54 +678,158 @@ function renderOverviewRankings(){
     renderTopProducts((_overviewProductRows||[]).slice(0,productLimit));
     renderTopCustomers((_overviewCustomerRows||[]).slice(0,customerLimit));
 }
-function renderSupplierBreakdown(rows,summary){
-    var h='', productCount=0, orderCount=0, sold=0, returned=0, net=0, revenue=0, cost=0, profit=0;
-    var topRevenue=0;
-    (rows||[]).forEach(function(row){ topRevenue=Math.max(topRevenue,Number(row.net_revenue||0)); });
+function getSupplierRowKey(row){
+    return row && row.supplier_id!==null && typeof row.supplier_id!=='undefined' ? 'supplier:'+row.supplier_id : 'unassigned';
+}
+function populateSupplierSalesFilter(rows){
+    var current=$('#supplier_sales_filter').val()||'';
+    var h='<option value="">Tất cả nhà cung cấp ('+(rows||[]).length+')</option>';
+    (rows||[]).forEach(function(row){
+        h+='<option value="'+getSupplierRowKey(row)+'">'+escapeHtml(row.supplier||'Chưa gán nhà cung cấp')+'</option>';
+    });
+    $('#supplier_sales_filter').html(h);
+    if(current && (rows||[]).some(function(row){return getSupplierRowKey(row)===current;})) $('#supplier_sales_filter').val(current);
+    else $('#supplier_sales_filter').val('');
+}
+function getSelectedSupplierRow(){
+    var selected=$('#supplier_sales_filter').val()||'';
+    if(!selected) return null;
+    return (_supplierBreakdownRows||[]).find(function(row){return getSupplierRowKey(row)===selected;})||null;
+}
+function getSupplierTableSummary(rows){
+    if(!$('#supplier_sales_filter').val()) return _supplierBreakdownSummary||{};
+    var supplierOrderCount=0, supplierProductCount=0, sold=0, returned=0, net=0, revenue=0, cost=0, profit=0, contribution=0;
+    (rows||[]).forEach(function(row){
+        supplierOrderCount+=Number(row.order_count||0);supplierProductCount+=Number(row.product_count||0);sold+=Number(row.sold_quantity||0);returned+=Number(row.returned_quantity||0);net+=Number(row.net_quantity||0);revenue+=Number(row.net_revenue||0);cost+=Number(row.cost||0);profit+=Number(row.profit||0);contribution+=Number(row.contribution||0);
+    });
+    return {product_count:supplierProductCount,order_count:supplierOrderCount,sold_quantity:sold,returned_quantity:returned,net_quantity:net,net_revenue:revenue,cost:cost,profit:profit,contribution:contribution};
+}
+function renderSupplierSalesTable(rows){
+    var h='', topRevenue=0;
+    (_supplierBreakdownRows||[]).forEach(function(row){ topRevenue=Math.max(topRevenue,Number(row.net_revenue||0)); });
     (rows||[]).forEach(function(row,i){
+        var overallIndex=(_supplierBreakdownRows||[]).indexOf(row);
         var rowProfit=Number(row.profit||0), profitClass=rowProfit>=0?'text-success':'text-danger';
         var badges='';
-        if(i===0) badges+='<span class="badge badge-warning ml-1" title="Tiêu thụ ròng cao nhất">Top tiêu thụ</span>';
+        if(overallIndex===0) badges+='<span class="badge badge-warning ml-1" title="Tiêu thụ ròng cao nhất">Top tiêu thụ</span>';
         if(topRevenue>0 && Number(row.net_revenue||0)===topRevenue) badges+='<span class="badge badge-success ml-1" title="Doanh thu thuần cao nhất">Top doanh thu</span>';
         var topProducts=(row.top_products||[]).map(function(product){
             return '<span class="d-block text-nowrap">'+escapeHtml(product.name||'')+' <strong>('+fmt(product.net_quantity||0)+')</strong></span>';
         }).join('');
         if(!topProducts) topProducts='<span class="text-muted">Chưa có</span>';
-        productCount+=Number(row.product_count||0);orderCount+=Number(row.order_count||0);sold+=Number(row.sold_quantity||0);returned+=Number(row.returned_quantity||0);net+=Number(row.net_quantity||0);revenue+=Number(row.net_revenue||0);cost+=Number(row.cost||0);profit+=rowProfit;
-        h+='<tr><td>'+(i+1)+'</td><td><strong>'+escapeHtml(row.supplier||'Chưa gán nhà cung cấp')+'</strong>'+badges+'</td><td class="text-right">'+fmt(row.product_count||0)+'</td><td class="text-right">'+fmt(row.order_count||0)+'</td><td class="text-right">'+fmt(row.sold_quantity||0)+'</td><td class="text-right text-danger">'+fmt(row.returned_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmt(row.net_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmtD(row.net_revenue||0)+'</td><td class="text-right">'+fmtD(row.cost||0)+'</td><td class="text-right '+profitClass+'">'+fmtD(rowProfit)+'</td><td class="text-right">'+Number(row.contribution||0).toFixed(1)+'%</td><td>'+topProducts+'</td></tr>';
+        h+='<tr'+($('#supplier_sales_filter').val()?' class="table-warning"':'')+'><td>'+(i+1)+'</td><td><strong>'+escapeHtml(row.supplier||'Chưa gán nhà cung cấp')+'</strong>'+badges+'</td><td class="text-right">'+fmt(row.product_count||0)+'</td><td class="text-right">'+fmt(row.order_count||0)+'</td><td class="text-right">'+fmt(row.sold_quantity||0)+'</td><td class="text-right text-danger">'+fmt(row.returned_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmt(row.net_quantity||0)+'</td><td class="text-right font-weight-bold">'+fmtD(row.net_revenue||0)+'</td><td class="text-right">'+fmtD(row.cost||0)+'</td><td class="text-right '+profitClass+'">'+fmtD(rowProfit)+'</td><td class="text-right">'+Number(row.contribution||0).toFixed(1)+'%</td><td>'+topProducts+'</td></tr>';
     });
-    if(!h) h='<tr><td colspan="12" class="text-center text-muted py-3">Không có hàng hóa gắn nhà cung cấp được bán trong kỳ</td></tr>';
+    if(!h) h='<tr><td colspan="12" class="text-center text-muted py-3">Không có dữ liệu bán hàng của nhà cung cấp này trong kỳ</td></tr>';
     $('#supplier_sales_tbl tbody').html(h);
-    summary=summary||{};
-    $('#ss_ft_products').text(fmt(summary.product_count||productCount));$('#ss_ft_orders').text(fmt(summary.order_count||0));$('#ss_ft_sold').text(fmt(summary.sold_quantity||sold));$('#ss_ft_returned').text(fmt(summary.returned_quantity||returned));$('#ss_ft_net').text(fmt(summary.net_quantity||net));$('#ss_ft_revenue').text(fmtD(summary.net_revenue||revenue));$('#ss_ft_cost').text(fmtD(summary.cost||cost));var totalProfit=typeof summary.profit==='undefined'?profit:Number(summary.profit||0);$('#ss_ft_profit').html('<span class="'+(totalProfit>=0?'text-success':'text-danger')+'">'+fmtD(totalProfit)+'</span>');$('#ss_ft_contribution').text(rows&&rows.length?'100%':'0%');
-
+    var summary=getSupplierTableSummary(rows), totalProfit=Number(summary.profit||0);
+    $('#ss_ft_products').text(fmt(summary.product_count||0));$('#ss_ft_orders').text(fmt(summary.order_count||0));$('#ss_ft_sold').text(fmt(summary.sold_quantity||0));$('#ss_ft_returned').text(fmt(summary.returned_quantity||0));$('#ss_ft_net').text(fmt(summary.net_quantity||0));$('#ss_ft_revenue').text(fmtD(summary.net_revenue||0));$('#ss_ft_cost').text(fmtD(summary.cost||0));$('#ss_ft_profit').html('<span class="'+(totalProfit>=0?'text-success':'text-danger')+'">'+fmtD(totalProfit)+'</span>');$('#ss_ft_contribution').text(rows&&rows.length?Number(typeof summary.contribution==='undefined'?100:summary.contribution).toFixed(1)+'%':'0%');
+}
+function getSupplierChartRows(rows,sortFn){
+    var selected=getSelectedSupplierRow();
+    var top=(rows||[]).slice().sort(sortFn).slice(0,10);
+    if(selected && !top.some(function(row){return getSupplierRowKey(row)===getSupplierRowKey(selected);})){
+        if(top.length>=10) top.pop();
+        top.push(selected);
+    }
+    return top.reverse();
+}
+function getSupplierTickColor(rows,context){
+    var selected=$('#supplier_sales_filter').val()||'';
+    return selected && rows[context.index] && getSupplierRowKey(rows[context.index])===selected ? '#c45100' : '#007bff';
+}
+function getSupplierTickFont(rows,context){
+    var selected=$('#supplier_sales_filter').val()||'';
+    return selected && rows[context.index] && getSupplierRowKey(rows[context.index])===selected ? {weight:'bold',size:12} : {weight:'bold'};
+}
+function supplierChartColors(rows,normal,selectedColor){
+    var selected=$('#supplier_sales_filter').val()||'';
+    return rows.map(function(row){return !selected?normal:(getSupplierRowKey(row)===selected?selectedColor:'rgba(173,181,189,.28)');});
+}
+function supplierChartBorderWidths(rows){
+    var selected=$('#supplier_sales_filter').val()||'';
+    return rows.map(function(row){return selected&&getSupplierRowKey(row)===selected?3:1;});
+}
+function getSupplierChartRowIndex(chart,clientY,rows){
+    if(!chart||!chart.scales||!chart.scales.y||!rows||!rows.length) return -1;
+    var rect=chart.canvas.getBoundingClientRect();
+    var y=clientY-rect.top;
+    var scale=chart.scales.y;
+    if(y<scale.top||y>scale.bottom) return -1;
+    var closestIndex=-1,closestDistance=Infinity;
+    rows.forEach(function(row,index){
+        var distance=Math.abs(scale.getPixelForTick(index)-y);
+        if(distance<closestDistance){closestDistance=distance;closestIndex=index;}
+    });
+    return closestIndex;
+}
+function bindSupplierChartInteraction(canvas,chart,rows){
+    $(canvas).off('.supplierFilter');
+    $(canvas).on('click.supplierFilter',function(event){
+        var index=getSupplierChartRowIndex(chart,event.clientY,rows);
+        if(index<0||!rows[index]) return;
+        var key=getSupplierRowKey(rows[index]);
+        setTimeout(function(){applySupplierFilter(key,true);},0);
+    });
+    $(canvas).on('mousemove.supplierFilter',function(event){
+        canvas.style.cursor=getSupplierChartRowIndex(chart,event.clientY,rows)>=0?'pointer':'default';
+    });
+    $(canvas).on('mouseleave.supplierFilter',function(){canvas.style.cursor='default';});
+}
+function renderSupplierCharts(rows){
     destroyChart('supplierConsumption');
     destroyChart('supplierRevenue');
     var canvas=document.getElementById('chart_supplier_consumption');
     var revenueCanvas=document.getElementById('chart_supplier_revenue');
+    if(canvas) $(canvas).off('.supplierFilter');
+    if(revenueCanvas) $(revenueCanvas).off('.supplierFilter');
     var hasSupplierData=!!(rows&&rows.length);
     $('.supplier-chart-empty').css('display',hasSupplierData?'none':'flex');
     $(canvas).toggle(hasSupplierData);$(revenueCanvas).toggle(hasSupplierData);
     if(!canvas || !revenueCanvas || !hasSupplierData) return;
-    var chartRows=rows.slice(0,10).reverse();
+    var chartRows=getSupplierChartRows(rows,function(a,b){return Number(b.net_quantity||0)-Number(a.net_quantity||0);});
     _charts.supplierConsumption=new Chart(canvas.getContext('2d'),{
         type:'bar',
-        data:{labels:chartRows.map(function(row){return row.supplier||'Chưa gán NCC';}),datasets:[{label:'Tiêu thụ ròng',data:chartRows.map(function(row){return row.net_quantity||0;}),backgroundColor:'rgba(255,193,7,.78)',borderColor:'#d39e00',borderWidth:1,borderRadius:4}]},
-        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(context){return 'Tiêu thụ ròng: '+fmt(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}
+        data:{labels:chartRows.map(function(row){return row.supplier||'Chưa gán NCC';}),datasets:[{label:'Tiêu thụ ròng',data:chartRows.map(function(row){return row.net_quantity||0;}),backgroundColor:supplierChartColors(chartRows,'rgba(255,193,7,.78)','rgba(253,126,20,.95)'),borderColor:supplierChartColors(chartRows,'#d39e00','#bd5200'),borderWidth:supplierChartBorderWidths(chartRows),borderRadius:4}]},
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(context){return 'Tiêu thụ ròng: '+fmt(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{ticks:{color:function(context){return getSupplierTickColor(chartRows,context);},font:function(context){return getSupplierTickFont(chartRows,context);}}}}}
     });
+    bindSupplierChartInteraction(canvas,_charts.supplierConsumption,chartRows);
 
-    var revenueRows=rows.slice().sort(function(a,b){return Number(b.net_revenue||0)-Number(a.net_revenue||0);}).slice(0,10).reverse();
+    var revenueRows=getSupplierChartRows(rows,function(a,b){return Number(b.net_revenue||0)-Number(a.net_revenue||0);});
     _charts.supplierRevenue=new Chart(revenueCanvas.getContext('2d'),{
         type:'bar',
         data:{
             labels:revenueRows.map(function(row){return row.supplier||'Chưa gán NCC';}),
             datasets:[
-                {label:'Doanh thu thuần',data:revenueRows.map(function(row){return row.net_revenue||0;}),backgroundColor:'rgba(40,167,69,.72)',borderColor:'#218838',borderWidth:1,borderRadius:4},
-                {label:'Lợi nhuận',data:revenueRows.map(function(row){return row.profit||0;}),backgroundColor:'rgba(54,162,235,.68)',borderColor:'#2476a8',borderWidth:1,borderRadius:4}
+                {label:'Doanh thu thuần',data:revenueRows.map(function(row){return row.net_revenue||0;}),backgroundColor:supplierChartColors(revenueRows,'rgba(40,167,69,.72)','rgba(32,143,61,.96)'),borderColor:supplierChartColors(revenueRows,'#218838','#146c2e'),borderWidth:supplierChartBorderWidths(revenueRows),borderRadius:4},
+                {label:'Lợi nhuận',data:revenueRows.map(function(row){return row.profit||0;}),backgroundColor:supplierChartColors(revenueRows,'rgba(54,162,235,.68)','rgba(0,105,217,.95)'),borderColor:supplierChartColors(revenueRows,'#2476a8','#004f9e'),borderWidth:supplierChartBorderWidths(revenueRows),borderRadius:4}
             ]
         },
-        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top'},tooltip:{callbacks:{label:function(context){return context.dataset.label+': '+fmtD(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{callback:function(value){var absolute=Math.abs(value);if(absolute>=1000000000)return (value/1000000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tỷ';if(absolute>=1000000)return (value/1000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tr';return fmt(value);}}}}}
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'top'},tooltip:{callbacks:{label:function(context){return context.dataset.label+': '+fmtD(context.raw);}}}},scales:{x:{beginAtZero:true,ticks:{callback:function(value){var absolute=Math.abs(value);if(absolute>=1000000000)return (value/1000000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tỷ';if(absolute>=1000000)return (value/1000000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' tr';return fmt(value);}}},y:{ticks:{color:function(context){return getSupplierTickColor(revenueRows,context);},font:function(context){return getSupplierTickFont(revenueRows,context);}}}}}
     });
+    bindSupplierChartInteraction(revenueCanvas,_charts.supplierRevenue,revenueRows);
+}
+function applySupplierFilter(key,scrollToTable){
+    var normalized=key||'';
+    if(normalized && !(_supplierBreakdownRows||[]).some(function(row){return getSupplierRowKey(row)===normalized;})) normalized='';
+    $('#supplier_sales_filter').val(normalized);
+    var filteredRows=normalized?(_supplierBreakdownRows||[]).filter(function(row){return getSupplierRowKey(row)===normalized;}):(_supplierBreakdownRows||[]);
+    renderSupplierSalesTable(filteredRows);
+    renderSupplierCharts(_supplierBreakdownRows||[]);
+    var selected=getSelectedSupplierRow();
+    $('#btn_clear_supplier_filter').toggle(!!selected);
+    if(selected){
+        $('#supplier_filter_status').html('<i class="fas fa-check-circle mr-1"></i>Đang hiển thị <strong>'+escapeHtml(selected.supplier||'Chưa gán nhà cung cấp')+'</strong> · '+Number(selected.contribution||0).toFixed(1)+'% doanh thu thuần trong bảng').show();
+    }else $('#supplier_filter_status').hide().empty();
+    if(scrollToTable){
+        var section=document.getElementById('supplier_sales_section');
+        if(section) section.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+}
+function renderSupplierBreakdown(rows,summary){
+    _supplierBreakdownRows=rows||[];
+    _supplierBreakdownSummary=summary||{};
+    populateSupplierSalesFilter(_supplierBreakdownRows);
+    applySupplierFilter($('#supplier_sales_filter').val()||'',false);
 }
 function renderStoreBreakdown(stores){
     if(!stores||!stores.length){

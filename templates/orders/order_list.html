@@ -1866,6 +1866,8 @@ var ORDER_WAREHOUSE_STORAGE_KEY = 'ifshop_order_default_warehouse_id';
 var ORDER_PAYMENT_PREFERENCE_STORAGE_KEY = 'ifshop_order_payment_preferences';
 var ORDER_STOCK_INFO_STORAGE_KEY = 'ifshop_order_stock_info_visible_v2';
 var ORDER_PAGE_SIZE_KEY = 'ifshop_order_page_size';
+var ORDER_OPEN_FILTER_ID = '';
+var ORDER_OPEN_FILTER_LABEL = '';
 var ORDER_PAGE_STATE = {
     page: 1,
     page_size: (function(){
@@ -6086,6 +6088,9 @@ function setOrderFormInitialFocus(mode){
 }
 
 function applyOrderListQueryFilters(params){
+    var openOrderId = String(params.get('open_order') || '').trim();
+    ORDER_OPEN_FILTER_ID = /^\d+$/.test(openOrderId) ? openOrderId : '';
+    ORDER_OPEN_FILTER_LABEL = '';
     ['from_date', 'to_date'].forEach(function(key){
         var value=String(params.get(key)||'');
         if(/^\d{4}-\d{2}-\d{2}$/.test(value)){
@@ -6098,6 +6103,7 @@ function getCurrentOrderFilters(){
     var activeStatus = $('.filter-tab.active').data('status');
     if(activeStatus === undefined || activeStatus === null) activeStatus = '';
     return {
+        order_id: ORDER_OPEN_FILTER_ID,
         status: String(activeStatus),
         customer: $('#filter_customer').val() || '',
         export_status: $('#filter_export_status').val() || '',
@@ -6142,6 +6148,13 @@ function renderOrderStatusCounts(meta){
 
 function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
     var chips = [];
+    if(ORDER_OPEN_FILTER_ID){
+        chips.push({
+            key:'open_order',
+            label:'Đơn từ liên kết',
+            value:ORDER_OPEN_FILTER_LABEL || ('ID ' + ORDER_OPEN_FILTER_ID)
+        });
+    }
     var activeStatus = getCurrentOrderFilters().status || '';
     if(activeStatus !== ''){
         chips.push({key:'status', label:'Trạng thái', value:getOrderStatusFilterText(activeStatus)});
@@ -6259,6 +6272,9 @@ function loadData(){
     ORDER_LIST_XHR = $.get('/api/orders/', params, function(res){
         var meta = res.meta || {};
         var filtered = res.data || [];
+        if(ORDER_OPEN_FILTER_ID && filtered.length === 1 && String(filtered[0].id) === String(ORDER_OPEN_FILTER_ID)){
+            ORDER_OPEN_FILTER_LABEL = filtered[0].code || ('ID ' + ORDER_OPEN_FILTER_ID);
+        }
         ORDER_PAGE_STATE.meta = meta;
         ORDER_PAGE_STATE.page = Number(meta.page || ORDER_PAGE_STATE.page || 1);
         ORDER_PAGE_STATE.page_size = Number(meta.page_size || ORDER_PAGE_STATE.page_size || 50);
@@ -6400,8 +6416,19 @@ $(document).on('click', '.filter-tab', function(){
     loadData();
 });
 
+function clearOpenOrderListFilter(){
+    ORDER_OPEN_FILTER_ID = '';
+    ORDER_OPEN_FILTER_LABEL = '';
+    if(window.history && typeof window.history.replaceState === 'function'){
+        var currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.delete('open_order');
+        window.history.replaceState({}, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
+    }
+}
+
 // Clear all filters
 $('#btn_clear_filter').click(function(){
+    clearOpenOrderListFilter();
     $('#filter_text').val('');
     $('#filter_customer').val('').trigger('change.select2');
     $('#filter_export_status').val('');
@@ -6423,7 +6450,9 @@ $(document).on('click', '#btn_clear_filter_summary', function(){
 
 $(document).on('click', '.order-filter-chip-remove', function(){
     var key = $(this).data('filter');
-    if(key === 'status'){
+    if(key === 'open_order'){
+        clearOpenOrderListFilter();
+    } else if(key === 'status'){
         $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
         $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
     } else if(key === 'customer'){

@@ -166,6 +166,11 @@ var STOCK_CHECK_MODAL_SESSION = 0;
 
 var itemRowIndex = 0;
 var STOCK_CHECK_PAGE_SIZE_KEY = 'ifshop_stock_check_page_size';
+var STOCK_CHECK_OPEN_ID = (function(){
+    var value = new URLSearchParams(window.location.search).get('open_stock_check') || '';
+    return /^\d+$/.test(value) ? value : '';
+})();
+var STOCK_CHECK_OPENED = false;
 var STOCK_CHECK_PAGE_STATE = {
     page: 1,
     page_size: (function(){
@@ -903,6 +908,7 @@ function loadData(){
     if(STOCK_CHECK_LIST_XHR) STOCK_CHECK_LIST_XHR.abort();
     $('#data_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted">Đang tải...</td></tr>');
     var request = $.get('/api/stock-checks/', {
+        stock_check_id: STOCK_CHECK_OPEN_ID,
         q: ($('#stock_check_search').val() || '').trim(),
         warehouse_id: $('#stock_check_filter_warehouse').val() || '',
         status: $('#stock_check_filter_status').val() || '',
@@ -937,6 +943,10 @@ function loadData(){
             : 'Chưa có dữ liệu';
         $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">' + emptyMessage + '</td></tr>');
         renderStockCheckPagination(meta);
+        if(!STOCK_CHECK_OPENED && STOCK_CHECK_OPEN_ID && res.data.length === 1){
+            STOCK_CHECK_OPENED = true;
+            editItem(res.data[0]);
+        }
     }).fail(function(xhr, status){
         if(status === 'abort') return;
         $('#data_tbl tbody').html('<tr><td colspan="8" class="text-center text-danger">Không tải được danh sách phiếu kiểm.</td></tr>');

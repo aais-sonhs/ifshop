@@ -205,6 +205,14 @@ def _to_positive_int(value, default, minimum=1, maximum=None):
     return parsed
 
 
+def _to_optional_positive_int(value):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _adjust_stock_quantity(stock, delta):
     """Cộng/trừ tồn kho bằng Decimal để tránh lệch số sau nhiều lần cập nhật."""
     stock.quantity = _to_decimal(stock.quantity) + _to_decimal(delta)
@@ -2202,6 +2210,7 @@ def api_get_goods_receipts(request):
     """Trả về danh sách phiếu nhập trong phạm vi store mà user được phép xem."""
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
     page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    receipt_id = _to_optional_positive_int(request.GET.get('receipt_id') or request.GET.get('open_receipt'))
 
     receipts = (
         GoodsReceipt.objects
@@ -2209,6 +2218,8 @@ def api_get_goods_receipts(request):
         .order_by('-receipt_date', '-created_at', '-id')
     )
     receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    if receipt_id:
+        receipts = receipts.filter(id=receipt_id)
     paginator = Paginator(receipts, page_size)
     page_obj = paginator.get_page(page)
     page_receipts = (
@@ -2849,6 +2860,9 @@ def api_get_stock_checks(request):
     warehouse_id = (request.GET.get('warehouse_id') or '').strip()
     date_from_raw = (request.GET.get('date_from') or '').strip()
     date_to_raw = (request.GET.get('date_to') or '').strip()
+    stock_check_id = _to_optional_positive_int(
+        request.GET.get('stock_check_id') or request.GET.get('open_stock_check')
+    )
 
     try:
         warehouse_id = int(warehouse_id) if warehouse_id else None
@@ -2870,6 +2884,8 @@ def api_get_stock_checks(request):
     )
     checks = filter_by_store(checks, request, field_name='warehouse__store')
     total_all_count = checks.count()
+    if stock_check_id:
+        checks = checks.filter(id=stock_check_id)
     if search:
         checks = checks.filter(
             Q(code__icontains=search)
@@ -3351,6 +3367,183 @@ def api_product_sales_history(request):
             'total_amount': total_amount,
             'avg_unit_price': round(avg_price),
         },
+    })
+
+
+@login_required(login_url="/login/")
+def api_product_stock_history(request):
+    """Lịch sử biến động tồn của một sản phẩm từ các chứng từ đã áp dụng."""
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        return JsonResponse({'status': 'error', 'message': 'Missing product_id'})
+
+    product = _product_queryset_for_request(request).filter(id=product_id).first()
+    if not product:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy sản phẩm'})
+
+    from orders.models import OrderEditHistory, OrderItem
+
+    store_ids = get_managed_store_ids(request.user)
+    events = {}
+
+    def display_user(user):
+        if not user:
+            return ''
+        return user.get_full_name() or user.username
+
+    def add_event(key, *, recorded_at, employee, operation, quantity_change,
+                  warehouse, document_code, document_url, document_type, document_id):
+        event = events.get(key)
+        if event is None:
+            event = {
+                'recorded_at_value': recorded_at,
+                'employee': employee,
+                'operation': operation,
+                'quantity_change_value': Decimal('0'),
+                'warehouse': warehouse,
+                'document_code': document_code,
+                'document_url': document_url,
+                'document_type': document_type,
+                'document_id': document_id,
+            }
+            events[key] = event
+        event['quantity_change_value'] += _to_decimal(quantity_change)
+
+    receipt_items = (
+        GoodsReceiptItem.objects
+        .filter(
+            product=product,
+            goods_receipt__status=1,
+            goods_receipt__is_deleted=False,
+            goods_receipt__warehouse__store_id__in=store_ids,
+        )
+        .select_related('goods_receipt', 'goods_receipt__warehouse', 'goods_receipt__created_by')
+    )
+    for item in receipt_items:
+        receipt = item.goods_receipt
+        add_event(
+            ('goods_receipt', receipt.id),
+            recorded_at=receipt.updated_at or receipt.created_at,
+            employee=display_user(receipt.created_by),
+            operation='Nhập kho',
+            quantity_change=item.quantity,
+            warehouse=receipt.warehouse.name if receipt.warehouse else '',
+            document_code=receipt.code,
+            document_url=f'/goods-receipt-tbl/?open_receipt={receipt.id}',
+            document_type='goods_receipt',
+            document_id=receipt.id,
+        )
+
+    # Bán combo làm giảm tồn các sản phẩm thành phần, vì vậy lịch sử của một
+    # sản phẩm vật lý phải bao gồm cả các đơn bán combo có chứa sản phẩm đó.
+    combo_factors = {
+        row['combo_id']: _to_decimal(row['quantity'])
+        for row in ComboItem.objects.filter(product=product).values('combo_id', 'quantity')
+    }
+    order_product_ids = []
+    if not product.is_service and not product.is_combo:
+        order_product_ids = [product.id, *combo_factors.keys()]
+    order_items = list(
+        OrderItem.objects
+        .filter(
+            product_id__in=order_product_ids,
+            order__status__in=(4, 5),
+            order__is_deleted=False,
+            order__store_id__in=store_ids,
+        )
+        .select_related('order', 'order__warehouse', 'order__created_by')
+    ) if order_product_ids else []
+    order_ids = {item.order_id for item in order_items}
+    export_history_by_order = {}
+    if order_ids:
+        for history in (
+            OrderEditHistory.objects
+            .filter(order_id__in=order_ids, action='stock_export')
+            .select_related('actor')
+            .order_by('-created_at', '-id')
+        ):
+            export_history_by_order.setdefault(history.order_id, history)
+    for item in order_items:
+        order = item.order
+        factor = combo_factors.get(item.product_id, Decimal('1'))
+        export_history = export_history_by_order.get(order.id)
+        add_event(
+            ('order', order.id),
+            recorded_at=(export_history.created_at if export_history else (order.updated_at or order.created_at)),
+            employee=display_user(export_history.actor if export_history else order.created_by),
+            operation='Xuất kho',
+            quantity_change=-_to_decimal(item.quantity) * factor,
+            warehouse=order.warehouse.name if order.warehouse else '',
+            document_code=order.code,
+            document_url=f'/order-tbl/?open_order={order.id}',
+            document_type='order',
+            document_id=order.id,
+        )
+
+    check_items = (
+        StockCheckItem.objects
+        .filter(
+            product=product,
+            stock_check__status=1,
+            stock_check__stock_applied=True,
+            stock_check__is_deleted=False,
+            stock_check__warehouse__store_id__in=store_ids,
+        )
+        .select_related('stock_check', 'stock_check__warehouse', 'stock_check__created_by')
+    )
+    for item in check_items:
+        stock_check = item.stock_check
+        add_event(
+            ('stock_check', stock_check.id),
+            recorded_at=stock_check.updated_at or stock_check.created_at,
+            employee=display_user(stock_check.created_by),
+            operation='Kiểm hàng',
+            quantity_change=item.difference,
+            warehouse=stock_check.warehouse.name if stock_check.warehouse else '',
+            document_code=stock_check.code,
+            document_url=f'/stock-check-tbl/?open_stock_check={stock_check.id}',
+            document_type='stock_check',
+            document_id=stock_check.id,
+        )
+
+    current_stock = _to_decimal(
+        ProductStock.objects.filter(
+            product=product,
+            warehouse__store_id__in=store_ids,
+        ).aggregate(total=Sum('quantity'))['total']
+    )
+    ordered_events = sorted(
+        events.values(),
+        key=lambda event: (
+            event['recorded_at_value'] or timezone.now(),
+            event['document_type'],
+            event['document_id'],
+        ),
+        reverse=True,
+    )
+    running_stock = current_stock
+    data = []
+    for event in ordered_events:
+        recorded_at = event.pop('recorded_at_value')
+        quantity_change = event.pop('quantity_change_value')
+        local_recorded_at = timezone.localtime(recorded_at) if recorded_at and timezone.is_aware(recorded_at) else recorded_at
+        event.update({
+            'recorded_at': local_recorded_at.strftime('%d/%m/%Y %H:%M') if local_recorded_at else '',
+            'recorded_at_raw': local_recorded_at.isoformat() if local_recorded_at else '',
+            'quantity_change': float(quantity_change),
+            'stock_after': float(running_stock),
+        })
+        data.append(event)
+        running_stock -= quantity_change
+
+    return JsonResponse({
+        'status': 'ok',
+        'product': {'id': product.id, 'code': product.code, 'name': product.name},
+        'summary': {
+            'current_stock': float(current_stock),
+            'total_events': len(data),
+        },
+        'data': data[:500],
     })
 
 # ============ API: PRODUCT LOCATION ============

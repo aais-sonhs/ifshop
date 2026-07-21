@@ -2796,6 +2796,7 @@ def api_quick_create_customer(request):
 def _get_order_list_filters(request):
     params = request.GET
     return {
+        'order_id': (params.get('order_id') or params.get('open_order') or '').strip(),
         'status': (params.get('status') or '').strip(),
         'customer': (params.get('customer_id') or params.get('customer') or '').strip(),
         'export_status': (params.get('export_status') or params.get('stock_status') or '').strip(),
@@ -2814,6 +2815,12 @@ def _get_order_list_filters(request):
 
 def _apply_order_list_filters(queryset, filters, include_status=True):
     need_distinct = False
+
+    if filters.get('order_id'):
+        if filters['order_id'].isdigit():
+            queryset = queryset.filter(id=int(filters['order_id']))
+        else:
+            queryset = queryset.none()
 
     if filters.get('from_date'):
         queryset = queryset.filter(order_date__gte=filters['from_date'])

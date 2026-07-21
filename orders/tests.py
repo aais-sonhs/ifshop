@@ -266,6 +266,15 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'setCurrentOrderReturnState(o, res.items);')
         self.assertContains(response, 'resetCurrentOrderReturnState();')
 
+    def test_order_page_keeps_open_order_as_exact_list_filter(self):
+        response = self.client.get(reverse('order_tbl'), {'open_order': '14'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ORDER_OPEN_FILTER_ID = /^\\d+$/.test(openOrderId) ? openOrderId : '';")
+        self.assertContains(response, 'order_id: ORDER_OPEN_FILTER_ID')
+        self.assertContains(response, "key:'open_order'")
+        self.assertContains(response, "currentUrl.searchParams.delete('open_order')")
+
     def test_k80_print_uses_four_product_quantity_price_and_total_columns(self):
         self.product.unit = 'Bộ 12c'
         self.product.save(update_fields=['unit'])
@@ -1422,6 +1431,22 @@ class OrderRiskFlowTests(TestCase):
                     [row['id'] for row in response.json()['data']],
                     [matching_order.id],
                 )
+
+    def test_get_orders_filters_exactly_by_open_order_id(self):
+        matching_order = self._create_order(code='DH-OPEN-EXACT', status=1)
+        self._create_order(code='DH-OPEN-OTHER', status=1)
+
+        for parameter in ('order_id', 'open_order'):
+            with self.subTest(parameter=parameter):
+                response = self.client.get(
+                    reverse('api_get_orders'),
+                    {parameter: matching_order.id},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertEqual(payload['meta']['total_filtered_count'], 1)
+                self.assertEqual([row['id'] for row in payload['data']], [matching_order.id])
 
     def test_get_orders_sorts_by_created_at_not_latest_update(self):
         first_created = self._create_order(code='DH-CREATED-FIRST', status=1)

@@ -10,6 +10,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from orders.models import Order, OrderEditHistory, OrderItem
 from products.models import (
     ComboItem,
     GoodsReceipt,
@@ -1019,6 +1020,36 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'function renderRecentPurchaseReceipts(product)')
         self.assertNotContains(response, 'onclick="viewPurchaseHistory(')
 
+    def test_product_stock_history_buttons_are_in_actions_column(self):
+        response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-col="purchase_history" title="Thông tin phiếu nhập gần nhất"')
+        self.assertContains(response, '>Nhập gần nhất</th>')
+        self.assertNotContains(response, 'data-col="history"')
+        self.assertContains(response, 'label: \'Nhập gần nhất\'')
+        self.assertContains(response, 'function renderProductHistoryButtons(product)')
+        self.assertContains(response, 'Chưa có phiếu nhập')
+        self.assertContains(response, "d-flex flex-column align-items-start")
+        self.assertContains(response, '#data_tbl .btn-edit-delete-row{display:flex;')
+        self.assertContains(response, 'var editDeleteHtml = \'<div class="btn-edit-delete-row">\' +')
+        self.assertContains(response, 'class="btn btn-xs btn-outline-dark mt-1 btn-product-stock-history"')
+        self.assertContains(response, "$(document).on('click', '.btn-product-stock-history'")
+        self.assertContains(response, "'<div class=\"btn-action-group\">' +\n                productHistoryButtonsHtml +")
+        self.assertContains(response, 'id="modal_stock_history"')
+        for heading in ('Ngày ghi nhận', 'Nhân viên', 'Số lượng thay đổi', 'Mã chứng từ'):
+            self.assertContains(response, heading)
+        self.assertNotContains(
+            response,
+            'title="Xem lịch sử từng đơn nhập, bán và biến động giá của sản phẩm này"',
+        )
+        goods_receipt_response = self.client.get(reverse('goods_receipt_tbl'))
+        self.assertContains(goods_receipt_response, 'GOODS_RECEIPT_OPEN_ID')
+        self.assertContains(goods_receipt_response, 'open_receipt')
+        stock_check_response = self.client.get(reverse('stock_check_tbl'))
+        self.assertContains(stock_check_response, 'STOCK_CHECK_OPEN_ID')
+        self.assertContains(stock_check_response, 'open_stock_check')
+
     def test_cost_adjustment_page_and_menu_are_removed(self):
         page_response = self.client.get('/cost-adjustment-tbl/')
         product_response = self.client.get(reverse('product_tbl'))
@@ -1750,6 +1781,100 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(receipt_row['min_unit_price'], 20.0)
         self.assertEqual(receipt_row['max_unit_price'], 50.0)
         self.assertEqual(len(receipt_row['items']), 2)
+
+    def test_product_stock_history_api_returns_import_export_check_and_running_stock(self):
+        now = timezone.now()
+        receipt, receipt_item = self._create_completed_goods_receipt(
+            code='P-STOCK-HISTORY-001',
+            quantity=Decimal('10'),
+            unit_price=Decimal('20'),
+        )
+        receipt_time = now - timedelta(hours=3)
+        GoodsReceipt.objects.filter(id=receipt.id).update(
+            created_at=receipt_time,
+            updated_at=receipt_time,
+        )
+
+        order = Order.objects.create(
+            code='DH-STOCK-HISTORY-001',
+            store=self.store,
+            customer=None,
+            warehouse=self.warehouse_a,
+            status=5,
+            total_amount=60,
+            final_amount=60,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=3,
+            unit_price=20,
+            total_price=60,
+        )
+        order_time = now - timedelta(hours=2)
+        Order.objects.filter(id=order.id).update(created_at=order_time, updated_at=order_time)
+        export_history = OrderEditHistory.objects.create(
+            order=order,
+            actor=self.user,
+            action='stock_export',
+            summary='Xuất kho test',
+        )
+        OrderEditHistory.objects.filter(id=export_history.id).update(
+            created_at=order_time,
+        )
+
+        stock_check = StockCheck.objects.create(
+            code='KK-STOCK-HISTORY-001',
+            warehouse=self.warehouse_a,
+            status=1,
+            stock_applied=True,
+            check_date=date.today(),
+            created_by=self.user,
+        )
+        StockCheckItem.objects.create(
+            stock_check=stock_check,
+            product=self.product,
+            system_quantity=7,
+            actual_quantity=8,
+            difference=1,
+        )
+        check_time = now - timedelta(hours=1)
+        StockCheck.objects.filter(id=stock_check.id).update(
+            created_at=check_time,
+            updated_at=check_time,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=8)
+
+        response = self.client.get(
+            reverse('api_product_stock_history'),
+            {'product_id': self.product.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['summary']['current_stock'], 8.0)
+        self.assertEqual(payload['summary']['total_events'], 3)
+        rows = payload['data']
+        self.assertEqual([row['operation'] for row in rows], ['Kiểm hàng', 'Xuất kho', 'Nhập kho'])
+        self.assertEqual([row['quantity_change'] for row in rows], [1.0, -3.0, 10.0])
+        self.assertEqual([row['stock_after'] for row in rows], [8.0, 7.0, 10.0])
+        self.assertIn(f'/stock-check-tbl/?open_stock_check={stock_check.id}', rows[0]['document_url'])
+        self.assertIn(f'/order-tbl/?open_order={order.id}', rows[1]['document_url'])
+        self.assertIn(f'/goods-receipt-tbl/?open_receipt={receipt.id}', rows[2]['document_url'])
+
+        receipt_page = self.client.get(
+            reverse('api_get_goods_receipts'),
+            {'open_receipt': receipt.id},
+        )
+        self.assertEqual([row['id'] for row in receipt_page.json()['data']], [receipt.id])
+        check_page = self.client.get(
+            reverse('api_get_stock_checks'),
+            {'open_stock_check': stock_check.id},
+        )
+        self.assertEqual([row['id'] for row in check_page.json()['data']], [stock_check.id])
 
     def test_delete_goods_receipt_reverts_stock(self):
         receipt = GoodsReceipt.objects.create(

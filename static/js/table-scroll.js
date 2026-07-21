@@ -57,6 +57,15 @@
         return delta;
     }
 
+    function isOverlayElement(node) {
+        if (!isElement(node)) {
+            return false;
+        }
+
+        return node.classList.contains('modal') ||
+            node.classList.contains('modal-backdrop');
+    }
+
     function scrollAxis(container, property, delta, max) {
         if (!delta || max <= 0) {
             return false;
@@ -162,10 +171,15 @@
             // Sum heights of all siblings AFTER current element
             var sibling = current.nextElementSibling;
             while (sibling) {
-                var sibStyle = window.getComputedStyle(sibling);
-                total += sibling.offsetHeight || 0;
-                total += parseFloat(sibStyle.marginTop) || 0;
-                total += parseFloat(sibStyle.marginBottom) || 0;
+                // Modals are overlays, not page content. Their viewport-sized
+                // height must not push the underlying page table upward when
+                // Bootstrap toggles the modal or updates its rows.
+                if (!isOverlayElement(sibling)) {
+                    var sibStyle = window.getComputedStyle(sibling);
+                    total += sibling.offsetHeight || 0;
+                    total += parseFloat(sibStyle.marginTop) || 0;
+                    total += parseFloat(sibStyle.marginBottom) || 0;
+                }
                 sibling = sibling.nextElementSibling;
             }
 

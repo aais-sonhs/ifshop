@@ -8,6 +8,7 @@ urlpatterns = [
     path('permission-tbl/', views.permission_tbl, name='permission_tbl'),
     path('category-tbl/', views.category_tbl, name='category_tbl'),
     path('service-price-tbl/', views.service_price_tbl, name='service_price_tbl'),
+    path('system-log-tbl/', views.system_log_tbl, name='system_log_tbl'),
     path('api/service-prices/', views.api_get_service_prices, name='api_get_service_prices'),
     path('api/service-prices/save/', views.api_save_service_price, name='api_save_service_price'),
     path('api/service-prices/delete/', views.api_delete_service_price, name='api_delete_service_price'),

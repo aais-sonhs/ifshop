@@ -10,7 +10,7 @@ from django.urls import reverse
 from core.store_utils import can_access_module
 from system_management.models import (
     Brand, BusinessConfig, PrinterSetting, PrintTemplate, PrintTemplateHistory,
-    RoleGroup, Store, UserProfile,
+    RoleGroup, Store, SystemLog, UserProfile,
 )
 
 
@@ -162,6 +162,11 @@ class SystemManagementScopeTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'error')
         self.assertEqual(payload['message'], 'Không tìm thấy cửa hàng')
+        self.assertFalse(SystemLog.objects.filter(
+            user=self.owner,
+            action='delete',
+            object_id=str(self.other_store.id),
+        ).exists())
 
     def test_brand_owner_can_delete_store(self):
         response = self.client.post(
@@ -173,6 +178,37 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
         self.assertFalse(Store.objects.filter(id=self.store.id).exists())
+        log = SystemLog.objects.filter(
+            user=self.owner,
+            action='delete',
+            object_id=str(self.store.id),
+        ).order_by('-created_at').first()
+        self.assertIsNotNone(log)
+        self.assertIn('api_delete_store', log.description)
+
+    def test_system_log_page_is_available_to_brand_owner(self):
+        SystemLog.objects.create(
+            user=self.owner,
+            action='delete',
+            module='Cửa hàng',
+            description='Xóa cửa hàng test',
+            object_id='123',
+        )
+        SystemLog.objects.create(
+            user=self.other_owner,
+            action='delete',
+            module='Cửa hàng',
+            description='Log thương hiệu khác không được thấy',
+            object_id='999',
+        )
+
+        response = self.client.get(reverse('system_log_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Log hệ thống')
+        self.assertContains(response, 'Xóa cửa hàng test')
+        self.assertNotContains(response, 'Log thương hiệu khác không được thấy')
+        self.assertContains(response, 'Hành động')
 
     def test_superadmin_can_create_brand_for_specific_owner(self):
         self.client.force_login(self.superuser)
@@ -718,7 +754,7 @@ class SystemManagementScopeTests(TestCase):
     def test_superadmin_can_open_platform_management_routes(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('brand_tbl', 'user_management_tbl', 'service_price_tbl'):
+        for route_name in ('brand_tbl', 'user_management_tbl', 'service_price_tbl', 'system_log_tbl'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 200, msg=route_name)
 
@@ -767,6 +803,13 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Địa chỉ giao hàng đã dùng được tổng hợp tự động từ các đơn')
         self.assertContains(response, 'Tìm và thêm sản phẩm nhanh')
         self.assertContains(response, 'Bảo mật giá nhập và giá vốn khi bán hàng')
+        self.assertContains(response, 'Sản phẩm, lịch sử nhập và lịch sử kho')
+        self.assertContains(response, 'Cột Nhập gần nhất tiếp tục hiển thị thông tin phiếu nhập mới nhất')
+        self.assertContains(response, 'nút Lịch sử nhập và Lịch sử kho được xếp phía trên')
+        self.assertContains(response, 'Xem lịch sử nhập và lịch sử kho từ DS Sản phẩm')
+        self.assertContains(response, 'Phiếu nhập, Lịch sử bán hàng và Biến động giá nhập')
+        self.assertContains(response, 'Ngày ghi nhận, Nhân viên, Thao tác, Số lượng thay đổi, Tồn và Mã chứng từ')
+        self.assertContains(response, 'Mở và đóng hai cửa sổ lịch sử không thu nhỏ bảng sản phẩm')
         self.assertContains(response, 'Quản lý tồn kho và số lượng có thể bán')
         self.assertContains(response, 'Có thể bán = Tồn kho thực tế − số lượng đang giữ')
         self.assertContains(response, 'Tồn kho tối thiểu và Tồn kho tối đa là ngưỡng riêng của từng sản phẩm')
@@ -804,6 +847,12 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'cả giá trị phiếu nhập và phiếu chi đều được cộng vào Tổng chi')
         self.assertContains(response, 'Lãi/Lỗ = Tổng thu − Tổng chi')
         self.assertContains(response, 'không phải lợi nhuận gộp của hoạt động bán hàng')
+        self.assertContains(response, 'Đơn hoàn và cảnh báo bán lỗ')
+        self.assertContains(response, 'không còn được đánh dấu là đơn lỗ')
+        self.assertContains(response, 'không xuất hiện khi lọc Báo lỗ')
+        self.assertContains(response, 'Quản trị và Log hệ thống')
+        self.assertContains(response, 'Tra cứu Log hệ thống khi xóa dữ liệu')
+        self.assertContains(response, 'Log xóa chỉ được tạo sau khi API xóa trả kết quả thành công')
         self.assertContains(response, 'Phiếu bảo hành theo đơn')
         self.assertContains(response, 'Vào Cài đặt → Phương thức TT, bấm Sửa phương thức hoàn tiền')
         self.assertContains(response, 'Nếu phương thức chưa có quỹ mặc định, chọn Tài khoản/quỹ hoàn tiền trực tiếp trên phiếu')

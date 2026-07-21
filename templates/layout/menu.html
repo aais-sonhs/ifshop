@@ -693,8 +693,8 @@ $(document).ready(function(){
                 {% endif %}
 
                 {% if is_brand_owner %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' %}menu-open{% endif %}" data-menu-key="admin">
-                    <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'system_log_tbl' %}menu-open{% endif %}" data-menu-key="admin">
+                    <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'system_log_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-tools"></i>
                         <p>Quản trị <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -703,6 +703,12 @@ $(document).ready(function(){
                             <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Quản lý người dùng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'system_log_tbl' %}" class="nav-link {% if active_tab == 'system_log_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Log hệ thống</p>
                             </a>
                         </li>
                         <li class="nav-item">
@@ -791,8 +797,8 @@ $(document).ready(function(){
                 {% endif %}{# end not superuser #}
 
                 {% if request.user.is_superuser %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' %}menu-open{% endif %}" data-menu-key="superadmin_system">
-                    <a href="#" class="nav-link {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}menu-open{% endif %}" data-menu-key="superadmin_system">
+                    <a href="#" class="nav-link {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-server"></i>
                         <p>Hệ thống <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -813,6 +819,12 @@ $(document).ready(function(){
                             <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Giá dịch vụ</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'system_log_tbl' %}" class="nav-link {% if active_tab == 'system_log_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Log hệ thống</p>
                             </a>
                         </li>
                     </ul>

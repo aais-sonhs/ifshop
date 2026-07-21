@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
+        <h3 class="card-title mb-0"><i class="fas fa-clipboard-list mr-2"></i>Log hệ thống</h3>
+        <span class="badge badge-light border">{{ logs_page.paginator.count }} bản ghi</span>
+    </div>
+    <div class="card-body">
+        <form method="get" class="border rounded p-2 mb-3 bg-light">
+            <div class="form-row align-items-end">
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Hành động</label>
+                    <select name="action" class="form-control form-control-sm">
+                        <option value="">Tất cả</option>
+                        {% for value, label in action_choices %}
+                        <option value="{{ value }}" {% if filters.action == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Module</label>
+                    <select name="module" class="form-control form-control-sm">
+                        <option value="">Tất cả</option>
+                        {% for item in module_options %}
+                        <option value="{{ item }}" {% if filters.module == item %}selected{% endif %}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Người dùng</label>
+                    <select name="user_id" class="form-control form-control-sm">
+                        <option value="">Tất cả</option>
+                        {% for item in manageable_users %}
+                        <option value="{{ item.id }}" {% if filters.user_id == item.id|stringformat:'s' %}selected{% endif %}>{{ item.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Từ ngày</label>
+                    <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Đến ngày</label>
+                    <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2 mb-2">
+                    <label class="small mb-1">Tìm kiếm</label>
+                    <div class="input-group input-group-sm">
+                        <input type="search" name="q" value="{{ filters.q }}" class="form-control" placeholder="Mô tả, ID, tài khoản...">
+                        <div class="input-group-append"><button class="btn btn-primary" type="submit"><i class="fas fa-search"></i></button></div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:55px;">STT</th>
+                        <th style="min-width:145px;">Thời gian</th>
+                        <th>Người dùng</th>
+                        <th>Hành động</th>
+                        <th>Module</th>
+                        <th>Mô tả</th>
+                        <th>ID đối tượng</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs_page %}
+                    <tr>
+                        <td>{{ logs_page.start_index|add:forloop.counter0 }}</td>
+                        <td class="text-nowrap">{{ log.created_at|date:"d/m/Y H:i:s" }}</td>
+                        <td>{{ log.user.get_username|default:"—" }}</td>
+                        <td>
+                            {% if log.action == 'delete' %}<span class="badge badge-danger">Xóa</span>
+                            {% elif log.action == 'create' %}<span class="badge badge-success">Tạo mới</span>
+                            {% elif log.action == 'update' %}<span class="badge badge-primary">Cập nhật</span>
+                            {% elif log.action == 'login' %}<span class="badge badge-info">Đăng nhập</span>
+                            {% else %}<span class="badge badge-secondary">{{ log.get_action_display }}</span>{% endif %}
+                        </td>
+                        <td><span class="badge badge-light border">{{ log.module }}</span></td>
+                        <td>{{ log.description|default:"—" }}</td>
+                        <td class="text-nowrap">{{ log.object_id|default:"—" }}</td>
+                        <td class="text-nowrap">{{ log.ip_address|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Chưa có log hệ thống.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if logs_page.paginator.num_pages > 1 %}
+        <nav class="mt-3" aria-label="Phân trang log hệ thống">
+            <ul class="pagination pagination-sm justify-content-end mb-0">
+                {% if logs_page.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ logs_page.previous_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value|urlencode }}{% endif %}{% endfor %}">Trước</a></li>
+                {% endif %}
+                <li class="page-item active"><span class="page-link">{{ logs_page.number }}/{{ logs_page.paginator.num_pages }}</span></li>
+                {% if logs_page.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ logs_page.next_page_number }}{% for key,value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value|urlencode }}{% endif %}{% endfor %}">Sau</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

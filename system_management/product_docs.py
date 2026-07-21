@@ -23,9 +23,9 @@ DOCUMENT_REVISION = {
     'date': '21/07/2026',
     'title': 'Cập nhật nghiệp vụ ngày 21/07/2026',
     'summary': (
-        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về danh sách khách hàng, '
-        'mã đơn hàng, Phiếu đóng hàng, công nợ trên Báo cáo tài chính, quản lý kho '
-        'và cơ chế sinh mã chứng từ an toàn.'
+        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về lịch sử nhập và lịch sử kho '
+        'trên danh sách sản phẩm, cảnh báo bán lỗ sau khi hoàn hàng, Log hệ thống khi xóa dữ liệu, '
+        'danh sách khách hàng, mã đơn hàng, Phiếu đóng hàng và công nợ trên Báo cáo tài chính.'
     ),
 }
 
@@ -65,11 +65,39 @@ DOCUMENT_UPDATES = [
     },
     {
         'icon': 'fas fa-box-open',
-        'title': 'Sản phẩm và nhập Excel',
+        'title': 'Sản phẩm, lịch sử nhập và lịch sử kho',
         'items': [
             'Danh sách sản phẩm tập trung vào thông tin nhận diện, phân loại và giá; tồn kho được quản lý riêng tại Kho & Sản phẩm → Quản lý kho.',
+            'Cột Nhập gần nhất tiếp tục hiển thị thông tin phiếu nhập mới nhất; hai chức năng tra cứu được đặt trong cột Thao tác, không tạo thêm cột Lịch sử.',
+            'Trong cột Thao tác, nút Lịch sử nhập và Lịch sử kho được xếp phía trên; nút Sửa và Xóa nằm cùng một dòng để bảng gọn và giảm chiều cao mỗi sản phẩm.',
+            'Lịch sử nhập có ba phần Phiếu nhập, Lịch sử bán hàng và Biến động giá nhập; có thể lọc theo ngày, nhà cung cấp, kho và mã phiếu nhập.',
+            'Lịch sử kho hiển thị Ngày ghi nhận, Nhân viên, Thao tác, Số lượng thay đổi, Tồn và Mã chứng từ cho từng lần nhập kho, xuất kho hoặc kiểm hàng.',
+            'Mã chứng từ trong Lịch sử kho là liên kết mở thẳng đúng đơn hàng, phiếu nhập hoặc phiếu kiểm tương ứng trong tab mới.',
+            'Mở hoặc đóng cửa sổ lịch sử không làm thay đổi chiều cao và vị trí chân của bảng sản phẩm.',
             'Form sản phẩm được mở rộng và bổ sung kỳ hạn, chính sách bảo hành; chỉnh tồn theo từng kho đã được chuyển khỏi form sản phẩm.',
             'Nhập Excel nhận diện các cột Nhãn hiệu, Thương hiệu, NCC hoặc Nhà cung cấp để gắn nhà cung cấp cho sản phẩm; đồng thời hỗ trợ dữ liệu bảo hành.',
+        ],
+    },
+    {
+        'icon': 'fas fa-undo-alt',
+        'title': 'Đơn hoàn và cảnh báo bán lỗ',
+        'items': [
+            'Đơn đã có phiếu hoàn ở trạng thái Hoàn thành và đã hoàn đủ toàn bộ số lượng hàng bán không còn được tính là đơn báo lỗ.',
+            'Dữ liệu hoàn cũ chỉ có tổng giá trị, không có dòng sản phẩm, vẫn được nhận diện là hoàn đủ khi tổng giá trị hoàn bằng hoặc lớn hơn tiền hàng của đơn.',
+            'Đơn mới hoàn một phần vẫn được kiểm tra cảnh báo; chỉ khi hoàn đủ toàn bộ hàng bán thì cảnh báo lỗ và chi tiết sản phẩm lỗ mới được tắt.',
+            'Tại BC Bán hàng, số Đơn báo lỗ và bộ lọc Báo lỗ đều loại đơn đã hoàn đủ; bấm mã đơn vẫn mở đúng đơn cần đối chiếu.',
+            'Khi mở DS Đơn hàng bằng liên kết có mã định danh đơn, bảng chỉ hiển thị đúng đơn đó để tránh nhầm với kết quả khác.',
+        ],
+    },
+    {
+        'icon': 'fas fa-clipboard-list',
+        'title': 'Quản trị và Log hệ thống',
+        'items': [
+            'Trong module Quản trị có thêm màn hình Log hệ thống để truy vết các thao tác xóa thành công trên các bảng nghiệp vụ.',
+            'Mỗi log ghi thời gian, người dùng, hành động, module, mô tả, ID đối tượng và địa chỉ IP thực hiện.',
+            'Có thể lọc theo hành động, module, người dùng, khoảng ngày hoặc tìm theo mô tả, ID và tài khoản.',
+            'Thao tác hủy xác nhận, yêu cầu bị lỗi hoặc API xóa không trả kết quả thành công sẽ không tạo log xóa.',
+            'Chủ thương hiệu chỉ xem log của người dùng thuộc phạm vi mình quản lý; tài khoản quản trị hệ thống xem được toàn bộ.',
         ],
     },
     {
@@ -594,6 +622,28 @@ DETAILED_OPERATION_GUIDES = [
         ],
     },
     {
+        'title': 'Xem lịch sử nhập và lịch sử kho từ DS Sản phẩm',
+        'goal': 'Tra cứu nhanh nguồn nhập, lịch sử bán, biến động giá và toàn bộ phát sinh kho của một sản phẩm mà không rời danh sách sản phẩm.',
+        'steps': [
+            'Vào Kho & Sản phẩm → DS Sản phẩm và tìm đúng sản phẩm theo tên, mã, barcode hoặc bộ lọc đang sử dụng.',
+            'Đọc cột Nhập gần nhất nếu cần xem nhanh các phiếu nhập mới nhất. Cột này được giữ riêng và không thay thế bằng cột Lịch sử.',
+            'Tại cột Thao tác, bấm Lịch sử nhập. Hai nút Lịch sử nhập và Lịch sử kho nằm phía trên; Sửa và Xóa nằm cùng một dòng phía dưới.',
+            'Trong cửa sổ Lịch sử nhập, mở tab Phiếu nhập để xem mã phiếu, ngày nhập, nhà cung cấp, kho, chi tiết dòng hàng, tổng số lượng, giá nhập trung bình và tổng tiền sản phẩm.',
+            'Dùng Từ ngày, Đến ngày, Nhà cung cấp, Kho hoặc Mã phiếu nhập để thu hẹp dữ liệu; bấm Xóa để bỏ các điều kiện lọc.',
+            'Mở tab Lịch sử bán hàng để đối chiếu mã đơn, ngày bán, khách hàng, quy cách, số lượng, đơn giá, chiết khấu và thành tiền.',
+            'Mở tab Biến động giá nhập để theo dõi xu hướng giá nhập của sản phẩm qua các lần nhập hàng.',
+            'Đóng cửa sổ và bấm Lịch sử kho tại cùng dòng sản phẩm để xem lần lượt Ngày ghi nhận, Nhân viên, Thao tác, Số lượng thay đổi, Tồn và Mã chứng từ.',
+            'Bấm Mã chứng từ để mở đúng đơn hàng, phiếu nhập hoặc phiếu kiểm trong tab mới và đối chiếu chi tiết phát sinh.',
+        ],
+        'checks': [
+            'Nhập kho hiển thị số lượng tăng, Xuất kho hiển thị số lượng giảm; Kiểm hàng thể hiện phần chênh lệch được ghi nhận sau kiểm.',
+            'Cột Tồn cho biết số tồn của sản phẩm sau từng phát sinh, giúp lần ngược thời điểm bắt đầu sai lệch.',
+            'Nếu chưa có phát sinh, Lịch sử kho hiển thị trạng thái chưa có nhập kho, xuất kho hoặc kiểm hàng.',
+            'Mã chứng từ chỉ tạo liên kết khi hệ thống xác định được chứng từ nguồn; dữ liệu cũ không còn nguồn sẽ hiển thị mã để tra cứu thủ công.',
+            'Mở và đóng hai cửa sổ lịch sử không thu nhỏ bảng sản phẩm hoặc làm chân bảng nhảy lên; bộ lọc và phân trang sản phẩm đang xem vẫn được giữ.',
+        ],
+    },
+    {
         'title': 'Kiểm hàng và điều chỉnh tồn kho',
         'goal': 'Đối chiếu tồn hệ thống với tồn thực tế, phát hiện thất thoát, sai lệch nhập xuất hoặc hàng hỏng.',
         'steps': [
@@ -707,6 +757,9 @@ DETAILED_OPERATION_GUIDES = [
             'Khoảng ngày trên BC Bán hàng hiện được lọc theo Ngày đặt hàng, không phải ngày khách chuyển khoản, ngày ghi phiếu thu hoặc ngày hoàn thành đơn.',
             'Doanh thu của đơn được tính từ tiền hàng sau chiết khấu, cộng phí vận chuyển và chi phí khác; lợi nhuận bằng doanh thu trừ giá vốn.',
             'Muốn số liệu lãi/lỗ chính xác, sản phẩm phải có giá vốn hoặc giá nhập đúng và đơn hàng phải ghi nhận đủ số lượng, chiết khấu, phí phát sinh và trả hàng.',
+            'Đơn đã hoàn đủ toàn bộ số lượng hàng bán bằng phiếu hoàn Hoàn thành không còn được đánh dấu là đơn lỗ, không cộng vào số Đơn báo lỗ và không xuất hiện khi lọc Báo lỗ.',
+            'Đơn hoàn một phần vẫn được kiểm tra cảnh báo bán lỗ. Chỉ tắt cảnh báo khi mọi sản phẩm hàng hóa trong đơn đã được hoàn đủ; phiếu hoàn Nháp, Hủy hoặc đã xóa không được dùng để xác định hoàn đủ.',
+            'Với dữ liệu hoàn cũ không có dòng sản phẩm, hệ thống dùng tổng giá trị hoàn so với tiền hàng để nhận diện trường hợp đã hoàn đủ.',
             'Nếu không thấy dữ liệu, kiểm tra lại khoảng ngày, Phạm vi đơn, cửa hàng và bộ lọc Lợi nhuận trước khi kết luận báo cáo bị thiếu.',
         ],
     },
@@ -731,6 +784,24 @@ DETAILED_OPERATION_GUIDES = [
             'File Excel BC Kho giữ bộ lọc Danh mục và Loại sản phẩm đang chọn; giá trị tồn của dòng âm bằng 0.',
             'Nếu doanh thu và tiền thu lệch nhau, kiểm tra công nợ và phương thức thanh toán.',
             'Nếu tồn kho âm hoặc lệch, kiểm tra đơn bán, phiếu nhập, phiếu trả và phiếu kiểm hàng.',
+        ],
+    },
+    {
+        'title': 'Tra cứu Log hệ thống khi xóa dữ liệu',
+        'goal': 'Xác định ai đã xóa dữ liệu, xóa tại module nào và thời điểm thực hiện để phục vụ kiểm tra vận hành.',
+        'steps': [
+            'Đăng nhập bằng tài khoản Chủ thương hiệu hoặc quản trị hệ thống có quyền vào module Quản trị.',
+            'Vào Quản trị → Log hệ thống. Màn hình hiển thị các bản ghi mới nhất trong phạm vi tài khoản được quản lý.',
+            'Đọc các cột Thời gian, Người dùng, Hành động, Module, Mô tả, ID đối tượng và IP để xác định thao tác cần kiểm tra.',
+            'Chọn Hành động là Xóa nếu chỉ muốn xem các lần xóa dữ liệu; chọn thêm Module hoặc Người dùng để thu hẹp kết quả.',
+            'Nhập Từ ngày và Đến ngày để tra cứu theo khoảng thời gian, hoặc dùng ô Tìm kiếm để tìm theo mô tả, ID đối tượng hay tên tài khoản.',
+            'Dùng ID đối tượng, tên API trong mô tả và thời gian ghi nhận để đối chiếu với chứng từ, người thao tác và quy trình nội bộ.',
+        ],
+        'checks': [
+            'Log xóa chỉ được tạo sau khi API xóa trả kết quả thành công; đóng hộp xác nhận, xóa bị từ chối hoặc xảy ra lỗi không tạo bản ghi.',
+            'Log là dữ liệu truy vết, không phải chức năng khôi phục. Việc có thể phục hồi hay không phụ thuộc cơ chế xóa của từng module.',
+            'Chủ thương hiệu chỉ thấy log của các tài khoản trong phạm vi quản lý; quản trị hệ thống có thể xem toàn bộ log.',
+            'Danh sách hiển thị 50 bản ghi mỗi trang; giữ nguyên bộ lọc khi chuyển sang trang Trước hoặc Sau.',
         ],
     },
 ]

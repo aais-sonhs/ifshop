@@ -7,12 +7,13 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.contrib.auth.models import Group, User
+from django.core.paginator import Paginator
 from django.db import models as db_models
 from django.contrib import messages
 from django.template.loader import render_to_string
 from .models import (
     UserProfile, RoleGroup, ModulePermission, ServicePrice, PrinterSetting, PrintTemplate,
-    PrintTemplateHistory, BusinessConfig, Brand, Store,
+    PrintTemplateHistory, BusinessConfig, Brand, Store, SystemLog,
 )
 from .product_docs import (
     COMMON_DAILY_FLOW,
@@ -529,6 +530,68 @@ def service_price_tbl(request):
         return _redirect_no_system_access(request)
     context = {'active_tab': 'service_price_tbl'}
     return render(request, "system/service_price.html", context)
+
+
+@login_required(login_url="/login/")
+def system_log_tbl(request):
+    """Trang tra cứu nhật ký hệ thống trong phạm vi quản trị của người dùng."""
+    if not can_manage_users(request.user):
+        return _redirect_no_system_access(request)
+
+    manageable_users = _get_manageable_users_queryset(request).order_by('username')
+    logs = SystemLog.objects.select_related('user').all()
+    if not request.user.is_superuser:
+        manageable_user_ids = manageable_users.values_list('id', flat=True)
+        logs = logs.filter(user_id__in=manageable_user_ids)
+    module_options = logs.order_by('module').values_list('module', flat=True).distinct()
+
+    action = (request.GET.get('action') or '').strip()
+    module = (request.GET.get('module') or '').strip()
+    user_id = (request.GET.get('user_id') or '').strip()
+    search = (request.GET.get('q') or '').strip()
+    date_from = (request.GET.get('date_from') or '').strip()
+    date_to = (request.GET.get('date_to') or '').strip()
+
+    if action:
+        logs = logs.filter(action=action)
+    if module:
+        logs = logs.filter(module=module)
+    if user_id.isdigit():
+        logs = logs.filter(user_id=int(user_id))
+    if search:
+        logs = logs.filter(
+            db_models.Q(description__icontains=search) |
+            db_models.Q(module__icontains=search) |
+            db_models.Q(object_id__icontains=search) |
+            db_models.Q(user__username__icontains=search)
+        )
+    try:
+        if date_from:
+            logs = logs.filter(created_at__date__gte=date.fromisoformat(date_from))
+        if date_to:
+            logs = logs.filter(created_at__date__lte=date.fromisoformat(date_to))
+    except ValueError:
+        # Bỏ qua ngày không hợp lệ thay vì làm hỏng trang tra cứu log.
+        pass
+
+    page_number = request.GET.get('page') or 1
+    logs_page = Paginator(logs, 50).get_page(page_number)
+
+    return render(request, 'system/system_log.html', {
+        'active_tab': 'system_log_tbl',
+        'logs_page': logs_page,
+        'action_choices': SystemLog.ACTION_CHOICES,
+        'module_options': module_options,
+        'manageable_users': manageable_users,
+        'filters': {
+            'action': action,
+            'module': module,
+            'user_id': user_id,
+            'q': search,
+            'date_from': date_from,
+            'date_to': date_to,
+        },
+    })
 
 
 # ============ API: ROLE GROUP ============

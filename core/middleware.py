@@ -10,7 +10,7 @@ class SuperadminAccessMiddleware:
     """Block superadmin from accessing business routes.
     Allowed paths for superadmin (platform management only):
     - /brand-tbl/, /api/brands/*, /api/stores/*
-    - /user-management-tbl/, /api/users/*
+    - /user-management-tbl/, /api/users/*, /system-log-tbl/
     - /service-price-tbl/, /api/service-prices/*
     - /business-config/, /api/business-config/*
     - /api/role-groups/*
@@ -24,6 +24,7 @@ class SuperadminAccessMiddleware:
         '/brand-tbl/', '/api/brands/', '/api/stores/',
         '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
         '/service-price-tbl/', '/api/service-prices/',
+        '/system-log-tbl/',
         '/business-config/', '/api/business-config/',
         '/api/role-groups/',
         '/product-guide/',

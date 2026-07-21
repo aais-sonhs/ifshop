@@ -776,6 +776,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'các mã cũ như DH-015 được giữ nguyên')
         self.assertContains(response, 'mã sản phẩm ở mỗi dòng được làm nổi bật')
         self.assertContains(response, 'mở form chỉnh sửa sản phẩm tương ứng trong tab mới')
+        self.assertContains(response, 'Trong cửa sổ Xem nhanh đơn hàng, mã đơn được làm nổi bật')
         self.assertContains(response, 'Tại cột Tổng mua và Công nợ, bấm nút hai mũi tên')
         self.assertContains(response, 'In Phiếu đóng hàng để lấy và kiểm hàng')
         self.assertContains(response, 'Cột Vị trí lấy trực tiếp từ cột Vị trí trên DS Sản phẩm')

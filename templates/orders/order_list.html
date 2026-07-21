@@ -1210,8 +1210,17 @@
 #items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
     padding-left: 0;
 }
-#items_tbl .order-product-edit-link-wrap {
+#items_tbl .order-product-meta-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-top: 4px;
+}
+#items_tbl .order-product-edit-link-wrap {
+    display: inline-block;
+    margin: 0;
+    vertical-align: middle;
 }
 #items_tbl .order-product-edit-link {
     display: inline-flex;
@@ -1227,6 +1236,7 @@
     font-weight: 700;
     line-height: 1.4;
     text-decoration: none;
+    white-space: nowrap;
 }
 #items_tbl .order-product-edit-link:hover,
 #items_tbl .order-product-edit-link:focus {
@@ -1254,6 +1264,12 @@
 }
 .order-item-product-specification {
     color: #495057;
+}
+#items_tbl .order-item-product-specification {
+    display: inline-block;
+    margin: 0;
+    vertical-align: middle;
+    white-space: normal;
 }
 .order-item-product-specification-label {
     font-weight: 600;
@@ -1508,6 +1524,25 @@
 	    padding-bottom: 6px;
 	    border-bottom: 2px solid #e2e8f0;
 	    color: #334155;
+	}
+	.quick-view-order-edit-link {
+	    display: inline-flex;
+	    align-items: center;
+	    gap: 6px;
+	    padding: 4px 9px;
+	    color: #0756a3;
+	    background: #eaf4ff;
+	    border: 1px solid #9bc8f5;
+	    border-radius: 5px;
+	    font-weight: 700;
+	    text-decoration: none;
+	}
+	.quick-view-order-edit-link:hover,
+	.quick-view-order-edit-link:focus {
+	    color: #063f78;
+	    background: #d8ebff;
+	    border-color: #69aef0;
+	    text-decoration: underline;
 	}
 	.quick-view-return-card {
 	    border: 1px solid #dbe3eb;
@@ -2304,8 +2339,14 @@ function updateOrderRowProductEditLink($row){
     if($current.length){
         $current.replaceWith(html);
     } else {
-        var $select2 = $row.find('.order-item-product-cell .select2-container').first();
-        ($select2.length ? $select2 : $row.find('.sel_product').first()).after(html);
+        var $metaLine = $row.find('.order-product-meta-line').first();
+        if($metaLine.length){
+            $metaLine.prepend(html);
+        } else {
+            var $select2 = $row.find('.order-item-product-cell .select2-container').first();
+            var $anchor = $select2.length ? $select2 : $row.find('.sel_product').first();
+            $anchor.after('<div class="order-product-meta-line">' + html + '</div>');
+        }
     }
 }
 
@@ -2332,7 +2373,7 @@ function normalizeOrderProductSpecification(specification){
 
 function renderOrderProductSpecification(specification){
     var normalizedSpecification = normalizeOrderProductSpecification(specification);
-    return '<div class="order-item-product-specification"' +
+    return '<div class="order-item-product-specification" data-specification-value="' + escapeAttr(normalizedSpecification) + '"' +
         (normalizedSpecification ? '' : ' style="display:none;"') + '>' +
         '<span class="order-item-product-specification-label">Quy cách:</span> ' +
         escapeHtml(normalizedSpecification) + '</div>';
@@ -2342,17 +2383,21 @@ function setOrderRowProductSpecification($row, specification){
     var normalizedSpecification = normalizeOrderProductSpecification(specification);
     var html = renderOrderProductSpecification(normalizedSpecification);
     var $display = $row.find('.order-item-product-specification').first();
-    if($display.length && $row.attr('data-product-specification') === normalizedSpecification){
+    if($display.length &&
+        $row.attr('data-product-specification') === normalizedSpecification &&
+        String($display.attr('data-specification-value') || '') === normalizedSpecification){
         return;
     }
     if($display.length){
         $display.replaceWith(html);
     } else {
-        var $select2 = $row.find('.order-item-product-cell .select2-container').first();
-        if($select2.length){
-            $select2.after(html);
+        var $metaLine = $row.find('.order-product-meta-line').first();
+        if($metaLine.length){
+            $metaLine.append(html);
         } else {
-            $row.find('.sel_product').after(html);
+            var $select2 = $row.find('.order-item-product-cell .select2-container').first();
+            var $anchor = $select2.length ? $select2 : $row.find('.sel_product').first();
+            $anchor.after('<div class="order-product-meta-line">' + html + '</div>');
         }
     }
     $row.attr('data-product-specification', normalizedSpecification);
@@ -4696,10 +4741,13 @@ $(document).ready(function(){
 
     var pageParams = new URLSearchParams(window.location.search);
     var openOrderId = pageParams.get('open_order');
+    var editOrderId = pageParams.get('edit_order');
     var editQuotationId = pageParams.get('edit_quotation');
     var copyQuotationId = pageParams.get('copy_quotation');
     var createMode = pageParams.get('create');
-    if(openOrderId && /^\d+$/.test(openOrderId)){
+    if(editOrderId && /^\d+$/.test(editOrderId)){
+        editItem(parseInt(editOrderId, 10));
+    } else if(openOrderId && /^\d+$/.test(openOrderId)){
         viewItem(parseInt(openOrderId, 10));
     } else if(editQuotationId){
         openQuotationDocument(editQuotationId, false);
@@ -5465,6 +5513,8 @@ function addItemFromProduct(product){
     var item = {
         product_id: product.id,
         variant_id: null,
+        product_code: product.code || '',
+        product_name: product.name || '',
         product_note: product.note || '',
         specification: product.specification || '',
         note: product.note || '',
@@ -5477,6 +5527,7 @@ function addItemFromProduct(product){
         image_url: product.image_url || '',
     };
     var $row = addItemRow(item, {deferEnhancement: true});
+    setOrderRowProductSpecification($row, product.specification || '');
     calcTotal({syncDuplicates: true});
     focusOrderItemQuantity($row);
 }
@@ -5701,7 +5752,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductEditLink(item && item.product_id, productCode)+renderOrderProductSpecification(productSpecification)+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-product-meta-line">'+renderOrderProductEditLink(item && item.product_id, productCode)+renderOrderProductSpecification(productSpecification)+'</div>'+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
@@ -6647,6 +6698,23 @@ function rejectOrder(id, code){
 	        '</div>' + cards;
 	}
 
+	function buildOrderEditUrl(orderId){
+	    return "{% url 'order_tbl' %}?edit_order=" + encodeURIComponent(orderId);
+	}
+
+	function renderQuickViewOrderEditLink(orderId, orderCode){
+	    var normalizedOrderId = String(orderId == null ? '' : orderId).trim();
+	    var normalizedOrderCode = String(orderCode == null ? '' : orderCode).trim();
+	    if(!/^\d+$/.test(normalizedOrderId)){
+	        return '<strong>' + escapeHtml(normalizedOrderCode) + '</strong>';
+	    }
+	    var label = 'Mở đơn hàng ' + normalizedOrderCode + ' để chỉnh sửa trong tab mới';
+	    return '<a class="quick-view-order-edit-link" href="' + escapeAttr(buildOrderEditUrl(normalizedOrderId)) + '" target="_blank" rel="noopener" title="' + escapeAttr(label) + '" aria-label="' + escapeAttr(label) + '">' +
+	        '<i class="fas fa-external-link-alt" aria-hidden="true"></i>' +
+	        '<span>' + escapeHtml(normalizedOrderCode) + '</span>' +
+	    '</a>';
+	}
+
 	function quickViewOrder(id){
 	    $('#order_quick_view_body').html('<div class="text-center text-muted py-4">Đang tải...</div>');
 	    $('#modal_order_quick_view').data('order-id', id).modal('show');
@@ -6685,9 +6753,10 @@ function rejectOrder(id, code){
 	            ? formatOrderDiscountPercent(o.discount_percent || 0) + '% (' + fmt(o.discount_amount || 0) + 'đ)'
 	            : fmt(o.discount_amount || 0) + 'đ';
 	        var returnHistoryHtml = renderQuickViewReturnHistory(o);
+	        var orderCodeLink = renderQuickViewOrderEditLink(o.id || id, o.code || '');
 	        var html = '<div class="row">' +
 	            '<div class="col-md-7">' +
-	            '<div class="mb-2"><strong>' + escapeHtml(o.code || '') + '</strong> · ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</div>' +
+	            '<div class="mb-2">' + orderCodeLink + ' <span class="ml-1">· ' + escapeHtml(STATUS_LABELS[o.status] || '') + '</span></div>' +
 	            '<div class="small text-muted">Khách hàng</div><div class="mb-2">' +
 	                escapeHtml(o.customer_label || '') +
                 ((o.shipping_phone || o.customer_phone) ? '<br><small>SĐT nhận: ' + escapeHtml(o.shipping_phone || o.customer_phone) + '</small>' : '') +

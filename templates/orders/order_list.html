@@ -1210,6 +1210,31 @@
 #items_tbl .order-item-product-cell .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
     padding-left: 0;
 }
+#items_tbl .order-product-edit-link-wrap {
+    margin-top: 4px;
+}
+#items_tbl .order-product-edit-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 2px 7px;
+    color: #0756a3;
+    background: #eaf4ff;
+    border: 1px solid #9bc8f5;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-decoration: none;
+}
+#items_tbl .order-product-edit-link:hover,
+#items_tbl .order-product-edit-link:focus {
+    color: #063f78;
+    background: #d8ebff;
+    border-color: #69aef0;
+    text-decoration: underline;
+}
 #quick_product_search_form .quick-product-action-buttons {
     gap: 7px;
     flex: 0 0 auto;
@@ -2238,6 +2263,52 @@ function getOrderProductById(productId){
     return ORDER_PRODUCT_BY_ID[String(productId)] || null;
 }
 
+function buildOrderProductEditUrl(productId){
+    return "{% url 'product_tbl' %}?edit_product_id=" + encodeURIComponent(productId);
+}
+
+function renderOrderProductEditLink(productId, productCode){
+    var normalizedProductId = String(productId == null ? '' : productId).trim();
+    var normalizedProductCode = String(productCode == null ? '' : productCode).trim();
+    if(!/^\d+$/.test(normalizedProductId)){
+        return '<div class="order-product-edit-link-wrap" style="display:none;"></div>';
+    }
+    if(!normalizedProductCode){
+        normalizedProductCode = 'SP #' + normalizedProductId;
+    }
+    var label = 'Mở chi tiết sản phẩm ' + normalizedProductCode + ' trong tab mới';
+    return '<div class="order-product-edit-link-wrap">' +
+        '<a class="order-product-edit-link" href="' + escapeAttr(buildOrderProductEditUrl(normalizedProductId)) + '" target="_blank" rel="noopener" title="' + escapeAttr(label) + '" aria-label="' + escapeAttr(label) + '">' +
+            '<i class="fas fa-external-link-alt" aria-hidden="true"></i>' +
+            '<span>' + escapeHtml(normalizedProductCode) + '</span>' +
+        '</a>' +
+    '</div>';
+}
+
+function getOrderRowProductCode($row, product){
+    if(product && product.code){
+        return product.code;
+    }
+    var optionLabel = String($row.find('.sel_product option:selected').text() || '').trim();
+    if(optionLabel && optionLabel !== '-- Chọn SP --'){
+        return optionLabel.split(' - ')[0].trim();
+    }
+    return '';
+}
+
+function updateOrderRowProductEditLink($row){
+    var productId = $row.find('.sel_product').val();
+    var product = getOrderProductById(productId);
+    var html = renderOrderProductEditLink(productId, getOrderRowProductCode($row, product));
+    var $current = $row.find('.order-product-edit-link-wrap').first();
+    if($current.length){
+        $current.replaceWith(html);
+    } else {
+        var $select2 = $row.find('.order-item-product-cell .select2-container').first();
+        ($select2.length ? $select2 : $row.find('.sel_product').first()).after(html);
+    }
+}
+
 function getOrderProductVariant(product, variantId){
     if(!product || !variantId || !(product.variants && product.variants.length)) return null;
     return product.variants.find(function(variant){
@@ -2489,6 +2560,7 @@ function syncOrderRowProductVisuals($row, preservePrice, resetItemNote){
         }
         setOrderRowProductNote($row, productNote);
     }
+    updateOrderRowProductEditLink($row);
     updateOrderRowComboComponents($row);
     $row.find('.inp_qty').attr('step', '1');
 }
@@ -5578,6 +5650,9 @@ function addItemRow(item, options){
     var productSpecification = item && item.specification
         ? item.specification
         : (selectedProduct ? selectedProduct.specification : '');
+    var productCode = hasSelectedProduct
+        ? ((selectedProduct && selectedProduct.code) || item.product_code || ('SP #' + item.product_id))
+        : '';
     var unit=item?item.unit:'';
     if(!unit && selectedProduct){
         unit = selectedProduct.unit || '';
@@ -5626,7 +5701,7 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductSpecification(productSpecification)+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select>'+renderOrderProductEditLink(item && item.product_id, productCode)+renderOrderProductSpecification(productSpecification)+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+

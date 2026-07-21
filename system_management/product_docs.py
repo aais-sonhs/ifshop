@@ -20,11 +20,11 @@ DEMO_ACCOUNT = {
 }
 
 DOCUMENT_REVISION = {
-    'date': '20/07/2026',
-    'title': 'Cập nhật nghiệp vụ ngày 20/07/2026',
+    'date': '21/07/2026',
+    'title': 'Cập nhật nghiệp vụ ngày 21/07/2026',
     'summary': (
-        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về khách hàng và đơn hàng, '
-        'tìm sản phẩm khi nhập hàng, quản lý kho, dashboard, báo cáo tồn kho, báo cáo tài chính '
+        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về danh sách khách hàng, '
+        'mã đơn hàng, Phiếu đóng hàng, công nợ trên Báo cáo tài chính, quản lý kho '
         'và cơ chế sinh mã chứng từ an toàn.'
     ),
 }
@@ -43,6 +43,7 @@ DOCUMENT_UPDATES = [
             'Ở cả tạo mới và sửa đơn, luôn có lựa chọn Nhập địa chỉ khác; lựa chọn này dùng được cả khi khách chưa lưu địa chỉ hoặc đơn khách lẻ.',
             'Khi sửa khách hàng, phần Địa chỉ giao hàng đã dùng hiển thị các địa chỉ lấy từ lịch sử đơn, gộp địa chỉ trùng và cho biết đơn sử dụng gần nhất.',
             'Danh sách khách hàng hiển thị tên ở dòng đầu và mã khách hàng ở dòng dưới trong cùng một cột để bảng gọn hơn.',
+            'Tại cột Tổng mua và Công nợ, bấm nút hai mũi tên để sắp xếp tăng dần hoặc giảm dần trên toàn bộ kết quả đã lọc trước khi phân trang.',
             'Danh sách đơn luôn hiển thị thống nhất “Khách lẻ / khách vãng lai” cho đơn không gắn khách hoặc hồ sơ khách cũ bị trống tên.',
             'Tên khách hàng đã lưu trên danh sách đơn là liên kết; bấm vào sẽ mở trang chỉnh sửa khách đó trong tab mới. Khách lẻ không có hồ sơ sẽ không tạo liên kết.',
         ],
@@ -51,11 +52,15 @@ DOCUMENT_UPDATES = [
         'icon': 'fas fa-file-invoice-dollar',
         'title': 'Báo giá, đơn hàng và chiết khấu',
         'items': [
+            'Mã đơn bán tạo mới dùng định dạng DH001, DH002... không có dấu gạch ngang; các mã cũ như DH-015 được giữ nguyên và vẫn được tính khi xác định số tiếp theo.',
             'Chiết khấu từng dòng và toàn đơn hỗ trợ nhập theo phần trăm hoặc số tiền; hệ thống tự quy đổi để tính thành tiền.',
             'Có thể sao chép đơn cũ thành đơn nháp mới, sắp xếp dòng hàng theo STT và nhập ngày thanh toán trong quá khứ.',
             'Trường NV bán hàng nằm cùng hàng với địa chỉ giao; có thể tìm theo mã hoặc tên và chọn lại NV đã từng lưu trong đơn cũ.',
             'Form có hai ô sản phẩm: ô ngay dưới Thanh toán lọc mã/tên sản phẩm đã có trong đơn, còn ô tại Chi tiết sản phẩm dùng để tìm và thêm dòng mới. Khi sửa đơn, con trỏ tự vào ô lọc dòng đã có; khi tạo mới, con trỏ tự vào ô thêm sản phẩm.',
+            'Trong form tạo mới và sửa đơn, mã sản phẩm ở mỗi dòng được làm nổi bật; bấm vào mã sẽ mở form chỉnh sửa sản phẩm tương ứng trong tab mới.',
             'Tùy chọn Hiệu lực báo giá quyết định việc hiển thị trường, cột danh sách và nội dung hiệu lực trên bản in.',
+            'Phiếu đóng hàng hiển thị Kho lấy hàng, Giờ đóng và các cột SL đóng, ĐVT, Vị trí, Kiểm / ghi chú; checkbox kiểm hàng được căn giữa để nhân viên đánh dấu.',
+            'Cột Vị trí trên Phiếu đóng hàng lấy trực tiếp từ Vị trí của sản phẩm tại DS Sản phẩm; sản phẩm chưa khai báo vị trí hoặc dòng dịch vụ hiển thị dấu “—”.',
         ],
     },
     {
@@ -119,6 +124,7 @@ DOCUMENT_UPDATES = [
         'title': 'Sinh mã tự động và xử lý mã trùng',
         'items': [
             'Mã tự động được lấy theo số lớn nhất đã dùng và không tái sử dụng mã của bản ghi đã xóa mềm.',
+            'Riêng đơn bán mới dùng tiền tố liền số như DH001. Hệ thống đọc chung cả DH-001 và DH001 để tiếp tục đúng số thứ tự mà không đổi mã đơn cũ.',
             'Khi nhiều người lưu đồng thời, hệ thống tự sinh lại mã và thử lưu an toàn thay vì trả lỗi ràng buộc mã trùng.',
             'Áp dụng cho các luồng sinh mã liên quan như khách hàng, nhà cung cấp, sản phẩm, phiếu thu/chi, báo giá, POS, phiếu nhập, trả hàng nhập, kiểm kho, trả hàng bán và lịch hẹn.',
             'Nếu người dùng chủ động nhập một mã đã tồn tại, hệ thống báo rõ mã bị trùng để chọn mã khác.',
@@ -138,6 +144,7 @@ DOCUMENT_UPDATES = [
         'items': [
             'Báo cáo hiển thị riêng 5 thẻ: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ để người xem biết rõ từng thành phần.',
             'Tại Dashboard, bấm thẻ Công nợ để mở bảng Chi tiết công nợ đơn hàng của tháng hiện tại trong tab mới. Tại BC Tài chính, thẻ Công nợ đơn hàng mở cùng bảng theo khoảng ngày và cửa hàng đang chọn.',
+            'Bảng Chi tiết công nợ đơn hàng mặc định xếp cột Còn nợ từ cao xuống thấp trước khi phân trang; bộ lọc và các trang tiếp theo giữ nguyên thứ tự này.',
             'Công nợ đơn hàng = tổng phần còn nợ dương của từng đơn chưa hủy, trong đó phần còn nợ của một đơn = Tổng thanh toán − Đã thu. Đơn đã thu đủ hoặc thu dư được quy về 0 nên không bù trừ vào đơn khác còn nợ.',
             'Tổng hàng nhập cộng trường Tổng tiền của các phiếu nhập Hoàn thành theo Ngày nhập và cửa hàng của Kho nhập; không tính phiếu Nháp, phiếu Hủy hoặc phiếu ngoài kỳ.',
             'Tổng chi = Tổng phiếu chi + Tổng hàng nhập.',
@@ -283,6 +290,7 @@ COMMON_WORKFLOW_SECTIONS = [
         'items': [
             'Tạo danh mục để nhóm sản phẩm theo ngành hàng hoặc nhóm dịch vụ (ví dụ: Đồ uống, Món chính, Combo).',
             'Khai báo mã sản phẩm, tên, đơn vị tính, quy cách, vị trí lưu kho, ảnh và giá bán theo từng cửa hàng.',
+            'Khai báo đúng cột Vị trí trên DS Sản phẩm để nhân viên nhìn thấy vị trí lấy hàng tương ứng trên Phiếu đóng hàng.',
             'Theo dõi giá nhập gần nhất, giá vốn bình quân gia quyền từ lịch sử nhập và biên lợi nhuận.',
             'Giá nhập và giá vốn trong ô tìm sản phẩm khi tạo đơn chỉ hiển thị cho Chủ thương hiệu, Giám đốc và Kế toán; các vai trò khác chỉ thấy giá bán.',
             'Dùng biến thể cho sản phẩm có màu, size, dung tích hoặc nhiều phiên bản bán.',
@@ -298,6 +306,7 @@ COMMON_WORKFLOW_SECTIONS = [
             'Tạo hoặc sao chép đơn từ màn hình bán hàng, thêm sản phẩm, chọn địa chỉ giao, giảm giá theo tiền hoặc %, phí giao hàng và ghi chú.',
             'Tại danh sách đơn, bấm tên khách hàng đã lưu để mở trang chỉnh sửa khách trong tab mới; các đơn khách lẻ luôn có nhãn thống nhất.',
             'Theo dõi trạng thái đơn: chờ xử lý, đã duyệt, đang đóng gói, đã giao, hoàn thành, trả hàng.',
+            'Khi cần soạn hàng, in Phiếu đóng hàng để xem Kho lấy hàng, Giờ đóng, số lượng, đơn vị tính, vị trí sản phẩm và ô kiểm từng dòng.',
             'Sau khi xuất kho, lưu và in phiếu bảo hành có serial/lô, kỳ hạn, ngày bắt đầu/kết thúc và chính sách tại thời điểm bán.',
             'In hóa đơn A4, phiếu xuất, phiếu bảo hành hoặc hóa đơn khổ K80 tùy cách vận hành.',
             'Nếu doanh nghiệp bật duyệt đơn, nhân viên tạo đơn và quản lý duyệt trước khi giao hàng.',
@@ -325,6 +334,7 @@ COMMON_WORKFLOW_SECTIONS = [
             'Tra cứu lịch sử mua hàng để tư vấn lại, bảo hành, đổi trả hoặc chăm sóc khách thân thiết.',
             'Phân nhóm khách theo hạng (VIP, Thân thiết, Thường), nguồn (Online, Cửa hàng, Giới thiệu) và khu vực.',
             'Theo dõi công nợ của từng khách và nhắc thu đúng thời điểm.',
+            'Trên DS Khách hàng, dùng nút sắp xếp tại Tổng mua hoặc Công nợ để xem khách từ thấp lên cao hoặc từ cao xuống thấp.',
         ],
     },
     {
@@ -455,6 +465,7 @@ DETAILED_OPERATION_GUIDES = [
         'goal': 'Tra cứu đầy đủ nơi nhận hàng của khách để chọn đúng địa chỉ khi tư vấn, tạo đơn hoặc giao lại lần sau.',
         'steps': [
             'Vào Khách hàng → DS Khách hàng, tìm khách bằng tên, mã khách hàng hoặc số điện thoại.',
+            'Nếu cần ưu tiên chăm sóc hoặc nhắc nợ, bấm nút hai mũi tên tại Tổng mua hoặc Công nợ; bấm tiếp để đổi giữa tăng dần và giảm dần.',
             'Trong cột Tên khách hàng, dòng đầu là tên và dòng dưới là mã khách hàng để đối chiếu đúng hồ sơ.',
             'Bấm Sửa tại dòng khách hàng cần xem. Nếu đang ở DS Đơn hàng, có thể bấm trực tiếp tên khách để mở form sửa trong tab mới.',
             'Địa chỉ mặc định là địa chỉ được chọn ưu tiên khi tạo đơn mới.',
@@ -501,6 +512,7 @@ DETAILED_OPERATION_GUIDES = [
             'Chọn khách hàng nếu cần lưu lịch sử; với khách lẻ có thể dùng khách mặc định theo quy trình cửa hàng.',
             'Chọn địa chỉ giao hàng đã lưu của khách để tự lấy SĐT tại điểm nhận, hoặc nhập địa chỉ và SĐT khác cho riêng đơn này.',
             'Tìm sản phẩm bằng một phần tên, mã, barcode, quy cách hoặc danh mục; sau đó thêm sản phẩm, biến thể, combo hoặc dịch vụ vào đơn.',
+            'Nếu cần kiểm tra hoặc cập nhật thông tin hàng, bấm mã sản phẩm nổi bật ngay tại dòng vừa thêm để mở form sửa sản phẩm trong tab mới mà không mất nội dung đơn đang nhập.',
             'Có thể đổi thứ tự STT và cuộn riêng vùng dòng hàng khi đơn dài.',
             'Nhập số lượng và chiết khấu từng dòng theo % hoặc số tiền; nhập tiếp chiết khấu toàn đơn, phí giao hàng, chi phí khác và ghi chú.',
             'Chọn phương thức thanh toán, ngày thanh toán (có thể là ngày trong quá khứ nhưng không được sau hôm nay), số tiền đã thu rồi lưu đơn.',
@@ -515,6 +527,24 @@ DETAILED_OPERATION_GUIDES = [
             'Phiếu bảo hành chỉ lưu được cho sản phẩm thuộc đơn đã xuất kho và số lượng bảo hành không vượt số lượng đã bán.',
             'Nếu đơn cần duyệt, nhân viên không tự ý giao hàng trước khi trạng thái được duyệt.',
             'Kiểm tra lại tổng tiền trước khi lưu để tránh sai số tiền.',
+        ],
+    },
+    {
+        'title': 'In Phiếu đóng hàng để lấy và kiểm hàng',
+        'goal': 'Giúp nhân viên kho biết lấy sản phẩm ở đâu, đóng bao nhiêu và đánh dấu kiểm đủ trước khi bàn giao.',
+        'steps': [
+            'Trước khi vận hành, vào Kho & Sản phẩm → DS Sản phẩm và khai báo cột Vị trí cho từng sản phẩm, ví dụ Kệ A1, Tầng 2 hoặc Kho lạnh.',
+            'Mở DS Đơn hàng, chọn In tại đơn cần soạn rồi chọn Phiếu đóng hàng A5.',
+            'Đối chiếu Kho lấy hàng. Dòng Giờ đóng ưu tiên thời gian đóng gói đã lưu của đơn; nếu chưa có thì dùng thời điểm mở/in phiếu.',
+            'Đọc lần lượt các cột Sản phẩm / quy cách, SL đóng, ĐVT và Vị trí. Cột Vị trí lấy trực tiếp từ cột Vị trí trên DS Sản phẩm.',
+            'Di chuyển tới đúng vị trí, lấy đủ số lượng và đánh dấu checkbox căn giữa tại cột Kiểm / ghi chú.',
+            'Người soạn hàng, người đóng gói và người kiểm tra ký xác nhận nếu quy trình cửa hàng yêu cầu.',
+        ],
+        'checks': [
+            'Sản phẩm chưa khai báo vị trí và dòng dịch vụ hiển thị “—”; cần cập nhật DS Sản phẩm nếu đây là hàng vật lý phải lấy trong kho.',
+            'Biến thể sử dụng vị trí của sản phẩm gốc trên DS Sản phẩm.',
+            'Giờ đóng lấy thời gian mới nhất có dữ liệu trong phiếu đóng gói của đơn; in lại khi chưa lưu thời gian đóng gói sẽ dùng thời điểm mở/in mới.',
+            'Phiếu đóng hàng không hiển thị đơn giá hoặc thành tiền, tránh lộ thông tin không cần thiết cho nhân viên kho.',
         ],
     },
     {
@@ -634,6 +664,7 @@ DETAILED_OPERATION_GUIDES = [
             'Vào Báo cáo → BC Tài chính. Chọn Từ ngày, Đến ngày và Cửa hàng cần xem; nếu không chọn cửa hàng, báo cáo cộng toàn bộ cửa hàng mà tài khoản được phép quản lý.',
             'Đọc 5 thẻ tổng quan theo thứ tự: Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ. Thẻ Tổng chi ghi rõ “phiếu chi + hàng nhập” để phân biệt với riêng Tổng phiếu chi.',
             'Bấm thẻ Công nợ đơn hàng để mở bảng chi tiết trong tab mới. Bảng giữ nguyên khoảng ngày và cửa hàng đang chọn, đồng thời cho phép tìm theo mã đơn, mã/tên hoặc SĐT khách hàng.',
+            'Bảng chi tiết mặc định sắp xếp Còn nợ từ cao xuống thấp trên toàn bộ kết quả trước khi phân trang, giúp ưu tiên xử lý các đơn nợ lớn.',
             'Khoảng ngày được tính bao gồm cả hai ngày đầu và cuối. Phiếu thu lọc theo Ngày thu, phiếu chi theo Ngày chi và phiếu nhập theo Ngày nhập; không lọc theo ngày tạo chứng từ hoặc ngày đặt hàng.',
             'Tổng thu = tổng Số tiền của tất cả phiếu thu ở trạng thái Hoàn thành, có Ngày thu trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',
             'Tổng phiếu chi = tổng Số tiền của tất cả phiếu chi ở trạng thái Hoàn thành, có Ngày chi trong khoảng đã chọn và thuộc phạm vi cửa hàng đang xem.',

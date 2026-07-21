@@ -1,7 +1,7 @@
 import json
 import calendar
 from io import BytesIO
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import openpyxl
 from django.contrib.auth.models import User
@@ -13,10 +13,10 @@ from customers.models import Customer, CustomerAddress
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
 from orders.models import (
-    Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem,
+    Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem, Packaging,
     OrderReturnItem, Quotation, WarrantyCertificate,
 )
-from products.models import ComboItem, Product, ProductStock, ProductVariant, Warehouse
+from products.models import ComboItem, Product, ProductLocation, ProductStock, ProductVariant, Warehouse
 from system_management.models import Brand, BusinessConfig, PrintTemplate, Store, UserProfile
 
 
@@ -174,9 +174,18 @@ class OrderRiskFlowTests(TestCase):
         self.assertNotContains(response, 'Nguyễn Văn Người Lập')
 
     def test_packing_a5_print_uses_packing_labels_without_prices(self):
+        location = ProductLocation.objects.create(name='Kệ A1')
         self.product.unit = 'Thùng'
-        self.product.save(update_fields=['unit'])
+        self.product.location = location
+        self.product.save(update_fields=['unit', 'location'])
         order = self._create_order(code='DH-PACKING-A5')
+        Packaging.objects.create(
+            code='DG-PACKING-A5',
+            order=order,
+            status=2,
+            packed_by=self.user,
+            packed_at=datetime(2026, 7, 21, 10, 3),
+        )
         OrderItem.objects.create(
             order=order,
             product=self.product,
@@ -196,10 +205,13 @@ class OrderRiskFlowTests(TestCase):
             'PHIẾU ĐÓNG HÀNG',
             'size: A5 portrait',
             'Kho lấy hàng',
+            'Giờ đóng: 10:03 21/07/2026',
             'Thông tin giao hàng',
             'Mã hàng',
             'Sản phẩm / quy cách',
             'SL đóng',
+            'Vị trí',
+            'Kệ A1',
             'Kiểm / ghi chú',
             'Người soạn hàng',
             'Người đóng gói',
@@ -209,6 +221,11 @@ class OrderRiskFlowTests(TestCase):
             'Thùng',
         ):
             self.assertContains(response, expected)
+        content = response.content.decode()
+        self.assertLess(content.index('SL đóng'), content.index('ĐVT'))
+        self.assertLess(content.index('ĐVT'), content.index('Vị trí'))
+        self.assertLess(content.index('Vị trí'), content.index('Kiểm / ghi chú'))
+        self.assertContains(response, '<td class="text-center"><span class="pk-check-box"></span></td>', html=True)
         self.assertContains(response, '2')
         for unexpected in ('Đơn giá', 'Thành tiền', 'PHIẾU XUẤT KHO', 'Thủ kho'):
             self.assertNotContains(response, unexpected)
@@ -500,7 +517,8 @@ class OrderRiskFlowTests(TestCase):
         response = self.client.get(reverse('api_next_order_code'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['code'], 'DH-017')
+        self.assertEqual(response.json()['code'], 'DH017')
+        self.assertEqual(Order.all_objects.get(id=order.id).code, 'DH-016')
 
     def test_order_list_always_labels_legacy_guest_customers(self):
         blank_customer = Customer.objects.create(
@@ -564,7 +582,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
-        self.assertEqual(payload['order_code'], 'DH-017')
+        self.assertEqual(payload['order_code'], 'DH017')
+        self.assertEqual(Order.all_objects.get(id=order.id).code, 'DH-016')
 
     def test_products_select_exposes_product_retail_price_as_default_price(self):
         self.product.selling_price = 12000000
@@ -1101,6 +1120,18 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'renderOrderProductSpecification')
         self.assertContains(response, 'data-specification')
         self.assertContains(response, 'specification: product.specification ||')
+
+    def test_order_form_product_code_opens_product_editor_in_new_tab(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="order-product-edit-link"')
+        self.assertContains(response, 'target="_blank" rel="noopener"')
+        self.assertContains(response, '/product-tbl/?edit_product_id=')
+        self.assertContains(response, 'function buildOrderProductEditUrl(productId)')
+        self.assertContains(response, 'updateOrderRowProductEditLink($row)')
 
     def test_order_item_sequence_stays_fixed_when_quantity_is_edited_and_order_reopened(self):
         second_product = Product.objects.create(

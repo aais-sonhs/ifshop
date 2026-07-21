@@ -2638,9 +2638,10 @@ def api_get_products_for_select(request):
 
 def _auto_next_order_code():
     """Internal helper: sinh mã đơn hàng tiếp theo, tránh trùng cả soft-delete.
+    Đọc cả mã cũ DH-001 và mã mới DH001, nhưng chỉ sinh mã mới không có dấu gạch ngang.
     Luôn tăng tiến, không bao giờ tái sử dụng mã đã hủy/xóa (giống Sapo).
     """
-    prefix = 'DH-'
+    prefix = 'DH'
     max_num = 0
     for code in Order.all_objects.filter(code__istartswith='DH').values_list('code', flat=True):
         match = re.match(r'^DH-?(\d+)$', (code or '').strip(), re.IGNORECASE)
@@ -2702,7 +2703,7 @@ def _auto_next_customer_code():
 
 @login_required(login_url="/login/")
 def api_next_order_code(request):
-    """Sinh mã đơn hàng tiếp theo: DH-001, DH-002, ... (luôn tăng tiến, không tái sử dụng)"""
+    """Sinh mã đơn hàng tiếp theo: DH001, DH002, ... (luôn tăng tiến, không tái sử dụng)."""
     code = _auto_next_order_code()
     return JsonResponse({'code': code})
 
@@ -5877,6 +5878,7 @@ def api_print_order(request):
     source = request.GET.get('source', 'order')  # 'order' or 'quotation'
     requested_brand_id = request.GET.get('brand_id')
     warranty_items_payload = request.GET.get('warranty_items')
+    packing_closed_at = timezone.now() if print_type == 'packing' else None
 
     TEMPLATES = {
         'k80': 'orders/print/receipt_k80.html',
@@ -5899,7 +5901,9 @@ def api_print_order(request):
                 raise Quotation.DoesNotExist
         except Quotation.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy báo giá'})
-        items = quotation.items.select_related('product').prefetch_related('product__combo_items__product').all()
+        items = quotation.items.select_related('product', 'product__location').prefetch_related(
+            'product__combo_items__product',
+        ).all()
 
         # Wrap quotation as an order-like object for template compatibility
         class QuotationWrapper:
@@ -5951,7 +5955,9 @@ def api_print_order(request):
                 raise Order.DoesNotExist
         except Order.DoesNotExist:
             return render(request, template, {'error': 'Không tìm thấy đơn hàng'})
-        items = order.items.select_related('product').prefetch_related('product__combo_items__product').all()
+        items = order.items.select_related('product', 'product__location').prefetch_related(
+            'product__combo_items__product',
+        ).all()
         remaining = max(0, float(order.final_amount) - float(order.paid_amount))
         valid_until = None
         brand = _get_brand_for_print(request, order, brand_id=requested_brand_id)
@@ -5959,6 +5965,13 @@ def api_print_order(request):
             order.issuing_brand = brand
             order.save(update_fields=['issuing_brand'])
         print_record = order
+        if print_type == 'packing':
+            latest_packaging = Packaging.objects.filter(
+                order=order,
+                packed_at__isnull=False,
+            ).order_by('-packed_at', '-id').first()
+            if latest_packaging:
+                packing_closed_at = latest_packaging.packed_at
 
     template_type = print_type if print_type in dict(PrintTemplate.TEMPLATE_TYPE_CHOICES) else 'a4'
     template_brand = _get_template_brand_for_print(request, record=print_record)
@@ -5994,5 +6007,6 @@ def api_print_order(request):
         'printer_brand_id': template_brand.id if template_brand else '',
         'available_print_brands': list(_get_print_brand_selection_queryset(request, record=print_record)),
         'warranty_items_payload': warranty_items_payload or '',
+        'packing_closed_at': packing_closed_at,
     }
     return render(request, template, context)

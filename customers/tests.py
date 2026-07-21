@@ -327,8 +327,10 @@ class CustomerScopeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-sort-key="total_purchased"')
         self.assertContains(response, 'data-sort-key="total_debt"')
-        self.assertContains(response, 'class="sort-icon" aria-hidden="true">↕</span>', count=2)
-        self.assertContains(response, "direction === 'asc' ? '▲' : (direction === 'desc' ? '▼' : '↕')")
+        self.assertContains(response, 'class="sort-arrow sort-arrow-up"', count=2)
+        self.assertContains(response, 'class="sort-arrow sort-arrow-down"', count=2)
+        self.assertContains(response, "$button.removeClass('sort-asc sort-desc')")
+        self.assertNotContains(response, "$button.find('.sort-icon').text(")
         self.assertContains(response, 'function sortCustomers(list)')
         self.assertContains(response, 'function toggleCustomerSort(sortKey)')
 

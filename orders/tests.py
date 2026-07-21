@@ -255,6 +255,17 @@ class OrderRiskFlowTests(TestCase):
             content.index('loadData();', content.index('applyOrderListQueryFilters(pageParams);')),
         )
 
+    def test_order_page_ignores_loss_warning_for_fully_returned_order(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var ORDER_FULLY_RETURNED = false;')
+        self.assertContains(response, 'function setCurrentOrderReturnState(order, items)')
+        self.assertContains(response, 'if(!ORDER_FULLY_RETURNED && costPrice>0 && effectivePrice<costPrice)')
+        self.assertContains(response, 'var amountOnlyComplete = !hasReturnItems && soldAmount > 0')
+        self.assertContains(response, 'setCurrentOrderReturnState(o, res.items);')
+        self.assertContains(response, 'resetCurrentOrderReturnState();')
+
     def test_k80_print_uses_four_product_quantity_price_and_total_columns(self):
         self.product.unit = 'Bộ 12c'
         self.product.save(update_fields=['unit'])

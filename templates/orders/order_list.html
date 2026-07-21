@@ -1857,6 +1857,8 @@ var ORDER_TOTAL_RECALC_OPTIONS = {};
 var ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
+// Đơn đã hoàn đủ hàng vật lý không còn là giao dịch bán thực tế để cảnh báo.
+var ORDER_FULLY_RETURNED = false;
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var CAN_VIEW_ORDER_COSTS = {{ can_view_sales_report|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
@@ -4719,6 +4721,7 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
+        resetCurrentOrderReturnState();
         fetchProductsForOrderForm(null);
         $('#edit_id').val('');$('#inp_note').val('');clearCustomer();setOrderWarehouseValue(getStoredOrderWarehouseId());
         _timelineReadonly = false;
@@ -5885,6 +5888,47 @@ function getOrderRowCostPrice($row){
     return Number(product.cost_price||product.import_price||0);
 }
 
+function setCurrentOrderReturnState(order, items){
+    var soldByProduct = {};
+    var soldAmount = 0;
+    var returnedByProduct = {};
+    var returnedAmount = 0;
+    var hasReturnItems = false;
+    (Array.isArray(items) ? items : []).forEach(function(item){
+        if(item && (item.is_service_line || !item.product_id)) return;
+        var productId = item && item.product_id ? String(item.product_id) : '';
+        var quantity = Number(item && item.quantity || 0);
+        if(!productId || !isFinite(quantity) || quantity <= 0) return;
+        soldByProduct[productId] = (soldByProduct[productId] || 0) + quantity;
+        var lineAmount = Number(item && item.total_price || 0);
+        if(!isFinite(lineAmount) || lineAmount < 0){
+            lineAmount = quantity * (Number(item && item.unit_price || 0) || 0);
+        }
+        soldAmount += lineAmount;
+    });
+    (order && Array.isArray(order.returns) ? order.returns : []).forEach(function(orderReturn){
+        if(Number(orderReturn && orderReturn.status) !== 2) return;
+        returnedAmount += Number(orderReturn && orderReturn.return_amount || 0) || 0;
+        (orderReturn && Array.isArray(orderReturn.return_items) ? orderReturn.return_items : []).forEach(function(item){
+            var productId = item && item.product_id ? String(item.product_id) : '';
+            var quantity = Number(item && item.quantity || 0);
+            if(!productId || !isFinite(quantity) || quantity <= 0) return;
+            hasReturnItems = true;
+            returnedByProduct[productId] = (returnedByProduct[productId] || 0) + quantity;
+        });
+    });
+    var soldProductIds = Object.keys(soldByProduct);
+    var quantityComplete = soldProductIds.length > 0 && soldProductIds.every(function(productId){
+        return (returnedByProduct[productId] || 0) >= soldByProduct[productId] - 1e-9;
+    });
+    var amountOnlyComplete = !hasReturnItems && soldAmount > 0 && returnedAmount >= soldAmount - 1e-9;
+    ORDER_FULLY_RETURNED = quantityComplete || amountOnlyComplete;
+}
+
+function resetCurrentOrderReturnState(){
+    ORDER_FULLY_RETURNED = false;
+}
+
 function getOrderRowProductLabel($row){
     var $select=$row.find('.sel_product');
     var product=getOrderProductById($select.val());
@@ -5984,7 +6028,7 @@ function calcTotal(options){
         var lineDiscount=getOrderLineDiscountData($row);
         var costPrice=getOrderRowCostPrice($row);
         var effectivePrice=(qty>0?lineDiscount.lineTotal/qty:0)*(1-orderDiscountRatio);
-        if(costPrice>0 && effectivePrice<costPrice){
+        if(!ORDER_FULLY_RETURNED && costPrice>0 && effectivePrice<costPrice){
             var warning={
                 label:getOrderRowProductLabel($row),
                 effective_price:Math.round(effectivePrice),
@@ -6562,6 +6606,7 @@ function rejectOrder(id, code){
 	function openQuotationDocument(id, copyMode){
 	    $.get('/api/quotations/detail/?id=' + id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
+        resetCurrentOrderReturnState();
         var q = res.quotation;
         $('#edit_id').val(copyMode ? '' : q.id);
         if(q.customer_id){
@@ -6844,6 +6889,7 @@ function rejectOrder(id, code){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
         var o=res.order;
+        setCurrentOrderReturnState(o, res.items);
         // Kiểm tra khóa
         if(o.status === 4 || o.status === 5 || o.status === 6){
             viewItem(id); return;
@@ -6911,6 +6957,7 @@ function viewItem(id){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
         var o=res.order;
+        setCurrentOrderReturnState(o, res.items);
         $('#edit_id').val(o.id);$('#inp_code').val(o.code);
         if(o.customer_id){
             var cust2 = allCustomers.find(function(c){ return c.id == o.customer_id; });
@@ -7302,6 +7349,9 @@ $('#btn_confirm_quick_return,#btn_confirm_quick_return_print').on('click', funct
                 $('#modal_order_return_quick').modal('hide');
                 loadData();
                 loadOrderHistory(orderId);
+                if($('#modal_form').hasClass('show') && String($('#edit_id').val()) === String(orderId)){
+                    viewItem(orderId);
+                }
                 toastr ? toastr.success(r.message) : alert(r.message);
                 if(printAfterSave && r.return_id){
                     window.open('/api/order-returns/print/?id=' + encodeURIComponent(r.return_id) + '&type=a4', '_blank');
@@ -7379,6 +7429,7 @@ function copyOrder(id){
         if(res.status !== 'ok'){ alert(res.message); return; }
         var o = res.order;
         // Reset form để tạo một đơn mới độc lập với thanh toán/lịch sử đơn gốc.
+        resetCurrentOrderReturnState();
         $('#edit_id').val('');
         // Set customer for copy
         if(o.customer_id){

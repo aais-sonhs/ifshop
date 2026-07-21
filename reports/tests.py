@@ -866,6 +866,111 @@ class SalesReportTests(TestCase):
         self.assertEqual(len(payload['return_orders']), 1)
         self.assertEqual(payload['return_orders'][0]['order_code'], order.code)
 
+    def test_api_report_sales_does_not_warn_for_fully_returned_loss_order(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-FULL-RETURN-LOSS',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=100,
+            final_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=130,
+            total_price=100,
+        )
+        order_return = OrderReturn.objects.create(
+            code='TH-RP-FULL-RETURN-LOSS',
+            order=order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            total_refund=100,
+            return_date=today,
+            created_by=self.user,
+        )
+        OrderReturnItem.objects.create(
+            order_return=order_return,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['order_details'] if item['code'] == order.code)
+        self.assertFalse(row['is_loss'])
+        self.assertEqual(row['loss_products'], [])
+        self.assertEqual(payload['summary']['loss_count'], 0)
+
+        loss_response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'profit_filter': 'loss',
+        })
+        self.assertEqual(loss_response.status_code, 200)
+        loss_payload = loss_response.json()
+        self.assertEqual(loss_payload['summary']['loss_count'], 0)
+        self.assertNotIn(order.code, [item['code'] for item in loss_payload['order_details']])
+
+    def test_api_report_sales_uses_value_only_return_for_legacy_full_return(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-LEGACY-FULL-RETURN',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=100,
+            final_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=130,
+            total_price=100,
+        )
+        OrderReturn.objects.create(
+            code='TH-RP-LEGACY-FULL-RETURN',
+            order=order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            return_amount=100,
+            total_refund=100,
+            return_date=today,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['order_details'] if item['code'] == order.code)
+        self.assertFalse(row['is_loss'])
+        self.assertEqual(row['loss_products'], [])
+
     def test_api_report_sales_keeps_orphan_return_with_scope_fallback(self):
         today = date.today()
         OrderReturn.objects.create(

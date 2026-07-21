@@ -118,6 +118,87 @@ def _get_sales_report_return_customer_kind_q(kind):
     )
 
 
+def _get_fully_returned_sales_order_ids(order_ids):
+    """Return orders whose sellable product quantities were fully returned.
+
+    A completed return makes the original sale no longer relevant for the
+    loss-warning card. Prefer quantities because the refund price may differ
+    from the original sale price, with a value-only fallback for legacy
+    returns that do not have return item rows.
+    """
+    order_ids = list(order_ids or [])
+    if not order_ids:
+        return set()
+
+    sold_by_order = defaultdict(dict)
+    sold_amount_by_order = defaultdict(Decimal)
+    sold_rows = (
+        OrderItem.objects
+        .filter(
+            order_id__in=order_ids,
+            product_id__isnull=False,
+            product__is_service=False,
+        )
+        .values('order_id', 'product_id')
+        .annotate(quantity=Sum('quantity'), amount=Sum('total_price'))
+    )
+    for row in sold_rows:
+        sold_by_order[row['order_id']][row['product_id']] = Decimal(str(row['quantity'] or 0))
+        sold_amount_by_order[row['order_id']] += Decimal(str(row['amount'] or 0))
+
+    returned_by_order = defaultdict(lambda: defaultdict(Decimal))
+    returned_rows = (
+        OrderReturnItem.objects
+        .filter(
+            order_return__order_id__in=order_ids,
+            order_return__status=2,
+            order_return__is_deleted=False,
+        )
+        .values('order_return__order_id', 'product_id')
+        .annotate(quantity=Sum('quantity'))
+    )
+    for row in returned_rows:
+        returned_by_order[row['order_return__order_id']][row['product_id']] = Decimal(
+            str(row['quantity'] or 0)
+        )
+
+    # Phiếu hoàn cũ có thể chỉ lưu tổng "giá trị hàng trả" mà không có dòng
+    # sản phẩm. Khi tổng giá trị đó hoàn đủ tiền hàng, vẫn phải coi đơn là đã
+    # hoàn toàn để không phát cảnh báo bán lỗ cho dữ liệu lịch sử.
+    completed_return_amounts = {
+        row['order_id']: Decimal(str(row['amount'] or 0))
+        for row in OrderReturn.objects.filter(
+            order_id__in=order_ids,
+            status=2,
+            is_deleted=False,
+        ).values('order_id').annotate(amount=Sum('return_amount'))
+    }
+    completed_return_item_counts = {
+        row['order_id']: row['item_count']
+        for row in OrderReturn.objects.filter(
+            order_id__in=order_ids,
+            status=2,
+            is_deleted=False,
+        ).values('order_id').annotate(item_count=Count('items'))
+    }
+
+    fully_returned = set()
+    for order_id, sold_products in sold_by_order.items():
+        returned_products = returned_by_order.get(order_id, {})
+        quantity_complete = sold_products and all(
+            returned_products.get(product_id, Decimal('0')) >= quantity
+            for product_id, quantity in sold_products.items()
+        )
+        amount_only_complete = (
+            completed_return_item_counts.get(order_id, 0) == 0
+            and sold_amount_by_order.get(order_id, Decimal('0')) > 0
+            and completed_return_amounts.get(order_id, Decimal('0')) >= sold_amount_by_order[order_id]
+        )
+        if quantity_complete or amount_only_complete:
+            fully_returned.add(order_id)
+    return fully_returned
+
+
 def _classify_sales_report_customer_kind(customer):
     if not customer:
         return 'retail', 'Khách lẻ'
@@ -464,6 +545,9 @@ def _build_sales_report_payload(request, include_filter_options=True):
         order_items_qs = order_items_qs.filter(product_id=filters['product_id'])
 
     order_items = list(order_items_qs)
+    fully_returned_order_ids = _get_fully_returned_sales_order_ids(
+        [order.id for order in orders_list]
+    )
     adjusted_item_rows = []
     for item in order_items:
         base_total = float(item.order.total_amount or 0)
@@ -557,6 +641,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         profit = revenue - cost
         loss_products = loss_items_by_order.get(order.id, [])
         customer_kind, customer_kind_label = _classify_sales_report_customer_kind(order.customer)
+        loss_products_for_order = [] if order.id in fully_returned_order_ids else loss_products
         order_rows.append({
             'id': order.id,
             'code': order.code,
@@ -580,10 +665,13 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'debt': revenue - paid,
             'cost': cost,
             'profit': profit,
-            'is_loss': profit < 0,
-            'loss_products': loss_products,
+            # A fully returned sale is no longer a realized loss.  Keep the
+            # original order values for audit/report totals, but suppress the
+            # loss warning and its loss-product details.
+            'is_loss': profit < 0 and order.id not in fully_returned_order_ids,
+            'loss_products': loss_products_for_order,
             'loss_product_names': ', '.join(
-                row['product_name'] for row in loss_products
+                row['product_name'] for row in loss_products_for_order
             ),
             'status': order.status,
             'status_display': order.get_status_display(),
@@ -592,7 +680,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
         })
 
     if filters['profit_filter'] == 'loss':
-        order_rows = [row for row in order_rows if row['profit'] < 0]
+        order_rows = [row for row in order_rows if row['is_loss']]
     elif filters['profit_filter'] == 'profit':
         order_rows = [row for row in order_rows if row['profit'] >= 0]
     order_rows = [row for row in order_rows if _matches_metric_filters(row)]

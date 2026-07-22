@@ -53,7 +53,7 @@ def process_stock_alert(config_id, *, now=None, force=False):
             'status': config.last_status,
             'sent': result['sent'],
             'row_count': result['row_count'],
-            'recipient_count': result['recipient_count'],
+            'recipient_count': result.get('sent_recipient_count', result['recipient_count']),
         }
     except Exception as exc:
         logger.exception('Gửi cảnh báo tồn kho thất bại cho stock_alert_id=%s', config_id)

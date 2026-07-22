@@ -36,6 +36,20 @@ def parse_recipient_emails(raw_value):
 
 
 def get_stock_alert_recipients(config):
+    scoped_recipients = list(
+        config.email_recipient_scopes.select_related('user').all()
+    )
+    if scoped_recipients:
+        raw_emails = []
+        for recipient in scoped_recipients:
+            if recipient.user_id:
+                if not recipient.user.is_active:
+                    continue
+                raw_emails.append(recipient.user.email)
+            else:
+                raw_emails.append(recipient.email)
+        return _normalize_recipient_emails(raw_emails)
+
     recipient_emails = list(
         config.recipient_users.filter(is_active=True)
         .exclude(email='')
@@ -47,18 +61,35 @@ def get_stock_alert_recipients(config):
             'Email không hợp lệ: ' + ', '.join(invalid)
         )
 
+    return _normalize_recipient_emails(recipient_emails + extra_emails)
+
+
+def _normalize_recipient_emails(raw_emails):
     result = []
     seen = set()
-    for raw_email in recipient_emails + extra_emails:
+    invalid = []
+    for raw_email in raw_emails:
         email = str(raw_email or '').strip().lower()
-        if email and email not in seen:
-            seen.add(email)
-            result.append(email)
+        if not email or email in seen:
+            continue
+        try:
+            validate_email(email)
+        except ValidationError:
+            invalid.append(str(raw_email or '').strip())
+            continue
+        seen.add(email)
+        result.append(email)
+    if invalid:
+        raise StockAlertConfigurationError(
+            'Email không hợp lệ: ' + ', '.join(invalid)
+        )
     return result
 
 
-def get_stock_alert_category_ids(config):
-    selected_ids = set(config.categories.values_list('id', flat=True))
+def get_stock_alert_category_ids(config, selected_ids=None):
+    if selected_ids is None:
+        selected_ids = config.categories.values_list('id', flat=True)
+    selected_ids = set(selected_ids)
     if not selected_ids or not config.include_child_categories:
         return selected_ids
 
@@ -77,6 +108,42 @@ def get_stock_alert_category_ids(config):
     return scoped_ids
 
 
+def get_stock_alert_recipient_scopes(config):
+    """Trả về phạm vi danh mục gộp theo email; hỗ trợ dữ liệu cấu hình cũ."""
+    recipients = list(
+        config.email_recipient_scopes.select_related('user')
+        .prefetch_related('categories')
+        .order_by('id')
+    )
+    if not recipients:
+        legacy_category_ids = set(config.categories.values_list('id', flat=True))
+        return [
+            {'email': email, 'category_ids': set(legacy_category_ids)}
+            for email in get_stock_alert_recipients(config)
+        ]
+
+    scopes_by_email = {}
+    for recipient in recipients:
+        if recipient.user_id:
+            if not recipient.user.is_active:
+                continue
+            raw_email = recipient.user.email
+        else:
+            raw_email = recipient.email
+        normalized = _normalize_recipient_emails([raw_email])
+        if not normalized:
+            continue
+        email = normalized[0]
+        scope = scopes_by_email.setdefault(email, {
+            'email': email,
+            'category_ids': set(),
+        })
+        scope['category_ids'].update(
+            category.id for category in recipient.categories.all()
+        )
+    return list(scopes_by_email.values())
+
+
 def _quantity_text(value):
     number = Decimal(str(value or 0))
     if number == number.to_integral_value():
@@ -84,9 +151,9 @@ def _quantity_text(value):
     return f'{number:,.2f}'.replace(',', '_').replace('.', ',').replace('_', '.')
 
 
-def collect_low_stock_rows(config):
+def collect_low_stock_rows(config, category_ids=None):
     """Lấy tồn thấp theo từng kho trong đúng thương hiệu và danh mục cấu hình."""
-    category_ids = get_stock_alert_category_ids(config)
+    category_ids = get_stock_alert_category_ids(config, category_ids)
     if not config.brand_id or not category_ids:
         return []
 
@@ -125,6 +192,7 @@ def collect_low_stock_rows(config):
         store_name = stock.warehouse.store.name if stock.warehouse.store_id else ''
         warehouse_label = f'{store_name} / {stock.warehouse.name}' if store_name else stock.warehouse.name
         rows.append({
+            'category_id': stock.product.category_id,
             'store_name': store_name,
             'warehouse_name': stock.warehouse.name,
             'warehouse_label': warehouse_label,
@@ -152,68 +220,102 @@ def _ensure_email_backend_is_configured():
 
 
 def send_stock_alert_email(config, *, is_test=False, now=None):
-    """Gửi một email tổng hợp; bản chạy lịch không gửi nếu không có tồn thấp."""
+    """Gửi email riêng cho từng người nhận theo phạm vi danh mục của họ."""
     now = now or timezone.now()
-    recipients = get_stock_alert_recipients(config)
-    if not recipients:
+    recipient_scopes = get_stock_alert_recipient_scopes(config)
+    if not recipient_scopes:
         raise StockAlertConfigurationError('Chưa có người nhận email hợp lệ.')
-    if not config.categories.exists():
-        raise StockAlertConfigurationError('Chưa chọn danh mục sản phẩm cần thông báo.')
 
-    rows = collect_low_stock_rows(config)
+    expanded_scopes = []
+    for scope in recipient_scopes:
+        if not scope['category_ids']:
+            raise StockAlertConfigurationError(
+                f"Email {scope['email']} chưa được chọn danh mục sản phẩm."
+            )
+        expanded_scopes.append({
+            'email': scope['email'],
+            'category_ids': get_stock_alert_category_ids(config, scope['category_ids']),
+        })
+
+    all_category_ids = set().union(*[
+        scope['category_ids'] for scope in expanded_scopes
+    ])
+    rows = collect_low_stock_rows(config, all_category_ids)
     if not rows and not is_test:
         return {
             'sent': False,
             'row_count': 0,
-            'recipient_count': len(recipients),
-            'recipients': recipients,
+            'sent_row_count': 0,
+            'recipient_count': len(recipient_scopes),
+            'sent_recipient_count': 0,
+            'recipients': [],
         }
 
     _ensure_email_backend_is_configured()
     brand_name = config.brand.name if config.brand_id else 'IFShop'
     subject_prefix = '[THỬ] ' if is_test else ''
     subject = f'{subject_prefix}[IFShop] Cảnh báo tồn kho thấp - {brand_name} - {now:%d/%m/%Y}'
-    context = {
-        'brand_name': brand_name,
-        'generated_at': now,
-        'rows': rows,
-        'row_count': len(rows),
-        'is_test': is_test,
-    }
-    html_body = render_to_string('reports/email/low_stock_alert.html', context)
-
-    if rows:
-        text_lines = [
-            f'CẢNH BÁO TỒN KHO THẤP - {brand_name}',
-            f'Thời gian: {now:%d/%m/%Y %H:%M}',
-            '',
-        ]
-        for row in rows:
-            text_lines.append(
-                f"{row['warehouse_label']} | {row['product_code']} - {row['product_name']} | "
-                f"Tồn {row['current_stock_text']} | Tối thiểu {row['minimum_stock_text']} | "
-                f"Cần bổ sung {row['shortage_text']}"
-            )
-    else:
-        text_lines = [
-            f'EMAIL THỬ CẢNH BÁO TỒN KHO - {brand_name}',
-            'Hiện không có sản phẩm nào dưới tồn kho tối thiểu trong các danh mục đã chọn.',
-        ]
-
-    message = EmailMultiAlternatives(
-        subject=subject,
-        body='\n'.join(text_lines),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or getattr(settings, 'EMAIL_HOST_USER', None),
-        to=recipients,
+    from_email = (
+        getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+        or getattr(settings, 'EMAIL_HOST_USER', None)
     )
-    message.attach_alternative(html_body, 'text/html')
-    sent_count = message.send(fail_silently=False)
-    if sent_count != 1:
-        raise RuntimeError('Máy chủ email không xác nhận đã gửi thư.')
+    sent_recipients = []
+    sent_row_count = 0
+
+    for scope in expanded_scopes:
+        scoped_rows = [
+            row for row in rows if row['category_id'] in scope['category_ids']
+        ]
+        if not scoped_rows and not is_test:
+            continue
+
+        context = {
+            'brand_name': brand_name,
+            'generated_at': now,
+            'rows': scoped_rows,
+            'row_count': len(scoped_rows),
+            'is_test': is_test,
+        }
+        html_body = render_to_string('reports/email/low_stock_alert.html', context)
+
+        if scoped_rows:
+            text_lines = [
+                f'CẢNH BÁO TỒN KHO THẤP - {brand_name}',
+                f'Thời gian: {now:%d/%m/%Y %H:%M}',
+                '',
+            ]
+            for row in scoped_rows:
+                text_lines.append(
+                    f"{row['warehouse_label']} | {row['product_code']} - {row['product_name']} | "
+                    f"Tồn {row['current_stock_text']} | Tối thiểu {row['minimum_stock_text']} | "
+                    f"Cần bổ sung {row['shortage_text']}"
+                )
+        else:
+            text_lines = [
+                f'EMAIL THỬ CẢNH BÁO TỒN KHO - {brand_name}',
+                'Hiện không có sản phẩm nào dưới tồn kho tối thiểu trong các danh mục đã chọn.',
+            ]
+
+        message = EmailMultiAlternatives(
+            subject=subject,
+            body='\n'.join(text_lines),
+            from_email=from_email,
+            to=[scope['email']],
+        )
+        message.attach_alternative(html_body, 'text/html')
+        sent_count = message.send(fail_silently=False)
+        if sent_count != 1:
+            raise RuntimeError(
+                f"Máy chủ email không xác nhận đã gửi thư tới {scope['email']}."
+            )
+        sent_recipients.append(scope['email'])
+        sent_row_count += len(scoped_rows)
 
     return {
-        'sent': True,
+        'sent': bool(sent_recipients),
         'row_count': len(rows),
-        'recipient_count': len(recipients),
-        'recipients': recipients,
+        'sent_row_count': sent_row_count,
+        'recipient_count': len(recipient_scopes),
+        'sent_recipient_count': len(sent_recipients),
+        'recipients': sent_recipients,
     }

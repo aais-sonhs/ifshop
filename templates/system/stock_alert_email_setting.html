@@ -10,8 +10,8 @@
                 <div class="alert alert-light border d-flex align-items-start">
                     <i class="fas fa-clock text-warning mt-1 mr-3"></i>
                     <div>
-                        Hệ thống kiểm tra tồn kho theo từng kho vào giờ đã chọn và gửi <strong>một email tổng hợp</strong>.
-                        Chỉ sản phẩm thuộc các danh mục được chọn và có tồn hiện tại thấp hơn tồn tối thiểu mới xuất hiện trong email.
+                        Hệ thống kiểm tra tồn kho theo từng kho vào giờ đã chọn và gửi <strong>email riêng cho từng người nhận</strong>.
+                        Mỗi email chỉ thấy sản phẩm tồn thấp thuộc các danh mục đã gán cho chính email đó.
                     </div>
                 </div>
 
@@ -48,30 +48,37 @@
                 <div class="row">
                     <div class="col-lg-6">
                         <div class="card card-outline card-info h-100">
-                            <div class="card-header py-2"><strong><i class="fas fa-user-check mr-1"></i>Người nhận</strong></div>
+                            <div class="card-header py-2"><strong><i class="fas fa-user-check mr-1"></i>Tài khoản / email nhận</strong></div>
                             <div class="card-body">
-                                <label>Chọn tài khoản trong hệ thống</label>
-                                <div class="border rounded" style="max-height:260px;overflow-y:auto;">
+                                <small class="text-muted d-block mb-2">Bấm vào từng tài khoản rồi chọn danh mục ở khung bên phải.</small>
+                                <div class="border rounded" id="stock_alert_recipient_list" style="max-height:300px;overflow-y:auto;">
                                     {% for person in staff_options %}
-                                    <label class="d-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-user-row {% if not person.email %}text-muted{% endif %}">
+                                    <div class="d-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-recipient-row {% if not person.email %}text-muted disabled{% endif %}"
+                                         {% if person.email %}data-recipient-key="{{ person.key }}"{% endif %}>
                                         <input type="checkbox" class="mt-1 mr-2 stock-alert-recipient-user" value="{{ person.id }}" {% if person.selected %}checked{% endif %} {% if not person.email %}disabled{% endif %}>
-                                        <span>
+                                        <span class="flex-grow-1">
                                             <strong>{{ person.name }}</strong>
                                             {% if person.username != person.name %}<small class="text-muted">({{ person.username }})</small>{% endif %}
                                             <small class="d-block {% if person.email %}text-primary{% else %}text-danger{% endif %}">
                                                 {{ person.email|default:"Chưa có email trong tài khoản" }}
                                             </small>
                                         </span>
-                                    </label>
+                                        {% if person.email %}<span class="badge badge-light stock-alert-category-badge">{{ person.category_ids|length }}</span>{% endif %}
+                                    </div>
                                     {% empty %}
                                     <div class="text-muted text-center p-3">Chưa có tài khoản nào trong thương hiệu.</div>
                                     {% endfor %}
+                                    <div id="stock_alert_extra_recipient_rows"></div>
                                 </div>
 
                                 <div class="mt-3">
-                                    <label for="stock_alert_extra_emails">Email bổ sung</label>
-                                    <textarea class="form-control" rows="3" id="stock_alert_extra_emails" placeholder="vidu@congty.vn, kho@congty.vn">{{ stock_alert.email_recipients }}</textarea>
-                                    <small class="text-muted">Dùng dấu phẩy, dấu chấm phẩy hoặc xuống dòng để phân cách.</small>
+                                    <label for="stock_alert_extra_email">Thêm email không có tài khoản</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="email" class="form-control" id="stock_alert_extra_email" placeholder="kho@congty.vn">
+                                        <div class="input-group-append">
+                                            <button type="button" class="btn btn-outline-info" id="btn_add_stock_alert_email"><i class="fas fa-plus mr-1"></i>Thêm</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="small text-info mt-2" id="recipient_selection_count"></div>
                             </div>
@@ -80,7 +87,9 @@
 
                     <div class="col-lg-6 mt-3 mt-lg-0">
                         <div class="card card-outline card-success h-100">
-                            <div class="card-header py-2"><strong><i class="fas fa-layer-group mr-1"></i>Danh mục sản phẩm cần thông báo</strong></div>
+                            <div class="card-header py-2">
+                                <strong><i class="fas fa-layer-group mr-1"></i>Danh mục cho: <span id="active_recipient_name">Chưa chọn tài khoản</span></strong>
+                            </div>
                             <div class="card-body">
                                 <div class="input-group input-group-sm mb-2">
                                     <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
@@ -93,7 +102,7 @@
                                 <div class="border rounded" id="stock_alert_category_list" style="max-height:315px;overflow-y:auto;">
                                     {% for category in category_options %}
                                     <label class="d-flex align-items-center px-3 py-2 mb-0 border-bottom stock-alert-category-row" data-search="{{ category.name|lower }}">
-                                        <input type="checkbox" class="mr-2 stock-alert-category" value="{{ category.id }}" {% if category.selected %}checked{% endif %}>
+                                        <input type="checkbox" class="mr-2 stock-alert-category" value="{{ category.id }}">
                                         <span style="padding-left:{{ category.depth }}rem;">
                                             {% if category.depth %}<i class="fas fa-level-up-alt fa-rotate-90 text-muted mr-1"></i>{% endif %}{{ category.name }}
                                         </span>
@@ -134,30 +143,122 @@
         </div>
     </div>
 </div>
+{{ recipient_assignments|json_script:"stock-alert-recipient-data" }}
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.stock-alert-recipient-row { cursor:pointer; transition:background-color .15s,border-color .15s; }
+.stock-alert-recipient-row:hover { background:#f4f8ff; }
+.stock-alert-recipient-row.active { background:#e8f0fe; box-shadow:inset 3px 0 #4361ee; }
+.stock-alert-recipient-row.disabled { cursor:not-allowed; }
+</style>
 <script>
 (function(){
+    var recipientList = JSON.parse($('#stock-alert-recipient-data').text() || '[]');
+    var recipientsByKey = {};
+    var activeRecipientKey = null;
+
+    recipientList.forEach(function(recipient){
+        recipient.category_ids = (recipient.category_ids || []).map(Number);
+        recipientsByKey[recipient.key] = recipient;
+    });
+
     function selectedValues(selector){
         return $(selector + ':checked').map(function(){ return Number(this.value); }).get();
     }
 
+    function activeRecipient(){
+        return activeRecipientKey ? recipientsByKey[activeRecipientKey] : null;
+    }
+
+    function recipientRow(key){
+        return $('.stock-alert-recipient-row').filter(function(){
+            return String($(this).data('recipient-key') || '') === key;
+        }).first();
+    }
+
+    function updateRecipientBadge(key){
+        var recipient = recipientsByKey[key];
+        if(!recipient) return;
+        recipientRow(key).find('.stock-alert-category-badge').text(recipient.category_ids.length);
+    }
+
+    function setRecipientSelected(recipient, selected){
+        recipient.selected = !!selected;
+        recipientRow(recipient.key).find('input[type="checkbox"]').prop('checked', recipient.selected);
+    }
+
+    function syncCategoriesFromActiveRecipient(){
+        var recipient = activeRecipient();
+        var selectedIds = recipient ? recipient.category_ids.map(String) : [];
+        $('.stock-alert-category').each(function(){
+            $(this).prop('checked', selectedIds.indexOf(String(this.value)) !== -1);
+        }).prop('disabled', !recipient);
+        $('#btn_select_visible_categories,#btn_clear_categories').prop('disabled', !recipient);
+        $('#active_recipient_name').text(recipient ? recipient.label : 'Chưa chọn tài khoản');
+        updateCounts();
+    }
+
+    function activateRecipient(key){
+        if(!recipientsByKey[key]) return;
+        activeRecipientKey = key;
+        $('.stock-alert-recipient-row').removeClass('active');
+        recipientRow(key).addClass('active');
+        syncCategoriesFromActiveRecipient();
+    }
+
+    function renderExtraRecipient(recipient){
+        var $row = $('<div>', {
+            'class': 'd-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-recipient-row',
+            'data-recipient-key': recipient.key
+        });
+        $('<input>', {
+            type: 'checkbox',
+            'class': 'mt-1 mr-2 stock-alert-recipient-extra',
+            checked: !!recipient.selected
+        }).appendTo($row);
+        $('<span>', {'class':'flex-grow-1'}).append(
+            $('<strong>').text(recipient.email),
+            $('<small>', {'class':'d-block text-muted'}).text('Email bổ sung')
+        ).appendTo($row);
+        $('<span>', {'class':'badge badge-light stock-alert-category-badge mr-2'}).text(recipient.category_ids.length).appendTo($row);
+        $('<button>', {
+            type: 'button',
+            'class': 'btn btn-xs btn-outline-danger stock-alert-remove-extra-email',
+            title: 'Xóa email'
+        }).html('<i class="fas fa-times"></i>').appendTo($row);
+        $('#stock_alert_extra_recipient_rows').append($row);
+    }
+
     function updateCounts(){
-        var userCount = selectedValues('.stock-alert-recipient-user').length;
-        var extraCount = ($('#stock_alert_extra_emails').val() || '').split(/[,;\s]+/).filter(Boolean).length;
-        $('#recipient_selection_count').text('Đã chọn ' + (userCount + extraCount) + ' người nhận/email.');
-        $('#category_selection_count').text('Đã chọn ' + selectedValues('.stock-alert-category').length + ' danh mục.');
+        var selectedRecipients = Object.keys(recipientsByKey).filter(function(key){
+            return recipientsByKey[key].selected;
+        }).length;
+        var recipient = activeRecipient();
+        $('#recipient_selection_count').text('Đã chọn ' + selectedRecipients + ' người nhận/email.');
+        $('#category_selection_count').text(
+            recipient ? 'Đã chọn ' + recipient.category_ids.length + ' danh mục cho email này.' : 'Hãy chọn một tài khoản/email bên trái.'
+        );
     }
 
     function payload(){
+        var assignments = Object.keys(recipientsByKey).map(function(key){
+            return recipientsByKey[key];
+        }).filter(function(recipient){
+            return recipient.selected;
+        }).map(function(recipient){
+            return {
+                user_id: recipient.kind === 'user' ? recipient.user_id : null,
+                email: recipient.kind === 'email' ? recipient.email : '',
+                category_ids: recipient.category_ids
+            };
+        });
         return {
             is_active: $('#stock_alert_active').prop('checked'),
             send_time: $('#stock_alert_send_time').val() || '21:00',
             include_child_categories: $('#stock_alert_include_children').prop('checked'),
-            recipient_user_ids: selectedValues('.stock-alert-recipient-user'),
-            email_recipients: $('#stock_alert_extra_emails').val() || '',
-            category_ids: selectedValues('.stock-alert-category')
+            recipient_assignments: assignments
         };
     }
 
@@ -184,14 +285,89 @@
         });
     });
     $('#btn_select_visible_categories').on('click', function(){
+        if(!activeRecipient()) return;
         $('.stock-alert-category-row:visible .stock-alert-category').prop('checked', true);
-        updateCounts();
+        $('.stock-alert-category').first().trigger('change');
     });
     $('#btn_clear_categories').on('click', function(){
+        if(!activeRecipient()) return;
         $('.stock-alert-category').prop('checked', false);
+        $('.stock-alert-category').first().trigger('change');
+    });
+
+    $(document).on('click', '.stock-alert-recipient-row', function(event){
+        if($(event.target).closest('.stock-alert-remove-extra-email').length) return;
+        activateRecipient(String($(this).data('recipient-key') || ''));
+    });
+    $(document).on('change', '.stock-alert-recipient-user,.stock-alert-recipient-extra', function(){
+        var key = String($(this).closest('.stock-alert-recipient-row').data('recipient-key') || '');
+        var recipient = recipientsByKey[key];
+        if(!recipient) return;
+        setRecipientSelected(recipient, $(this).prop('checked'));
+        activateRecipient(key);
+    });
+    $('.stock-alert-category').on('change', function(){
+        var recipient = activeRecipient();
+        if(!recipient) return;
+        recipient.category_ids = selectedValues('.stock-alert-category');
+        if(recipient.category_ids.length) setRecipientSelected(recipient, true);
+        updateRecipientBadge(recipient.key);
         updateCounts();
     });
-    $('.stock-alert-recipient-user,.stock-alert-category,#stock_alert_extra_emails').on('change input', updateCounts);
+
+    function addExtraEmail(){
+        var $input = $('#stock_alert_extra_email');
+        var email = ($input.val() || '').trim().toLowerCase();
+        if(!email || !$input[0].checkValidity()){
+            alert('Vui lòng nhập một địa chỉ email hợp lệ.');
+            return;
+        }
+        var duplicateKey = Object.keys(recipientsByKey).find(function(key){
+            return String(recipientsByKey[key].email || '').toLowerCase() === email;
+        });
+        if(duplicateKey){
+            activateRecipient(duplicateKey);
+            alert('Email này đã có trong danh sách.');
+            return;
+        }
+        var recipient = {
+            key: 'email:' + email,
+            kind: 'email',
+            user_id: null,
+            email: email,
+            label: email,
+            selected: true,
+            category_ids: []
+        };
+        recipientsByKey[recipient.key] = recipient;
+        renderExtraRecipient(recipient);
+        $input.val('');
+        activateRecipient(recipient.key);
+    }
+    $('#btn_add_stock_alert_email').on('click', addExtraEmail);
+    $('#stock_alert_extra_email').on('keydown', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            addExtraEmail();
+        }
+    });
+    $(document).on('click', '.stock-alert-remove-extra-email', function(event){
+        event.preventDefault();
+        event.stopPropagation();
+        var $row = $(this).closest('.stock-alert-recipient-row');
+        var key = String($row.data('recipient-key') || '');
+        delete recipientsByKey[key];
+        $row.remove();
+        if(activeRecipientKey === key){
+            activeRecipientKey = null;
+            var nextKey = Object.keys(recipientsByKey).find(function(candidate){
+                return recipientsByKey[candidate].email;
+            });
+            if(nextKey) activateRecipient(nextKey);
+            else syncCategoriesFromActiveRecipient();
+        }
+        updateCounts();
+    });
 
     $('#btn_save_stock_alert').on('click', function(){
         var $button = $(this).prop('disabled', true);
@@ -212,7 +388,11 @@
         }).fail(function(xhr){ alert(apiError(xhr)); }).always(function(){ $button.prop('disabled', false); });
     });
 
-    updateCounts();
+    recipientList.filter(function(recipient){ return recipient.kind === 'email'; }).forEach(renderExtraRecipient);
+    var initialKey = recipientList.find(function(recipient){ return recipient.selected && recipient.email; });
+    if(!initialKey) initialKey = recipientList.find(function(recipient){ return recipient.email; });
+    if(initialKey) activateRecipient(initialKey.key);
+    else syncCategoriesFromActiveRecipient();
 })();
 </script>
 {% endblock %}

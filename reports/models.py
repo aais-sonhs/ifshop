@@ -59,3 +59,50 @@ class StockAlert(models.Model):
     def __str__(self):
         brand_name = self.brand.name if self.brand_id else 'Chưa gán thương hiệu'
         return f"{brand_name} - {'Đang bật' if self.is_active else 'Đang tắt'}"
+
+
+class StockAlertEmailRecipient(models.Model):
+    """Phạm vi danh mục riêng của từng địa chỉ nhận cảnh báo tồn kho."""
+    stock_alert = models.ForeignKey(
+        StockAlert,
+        on_delete=models.CASCADE,
+        related_name='email_recipient_scopes',
+        verbose_name='Cấu hình cảnh báo',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='stock_alert_email_scopes',
+        verbose_name='Tài khoản hệ thống',
+    )
+    email = models.EmailField(verbose_name='Email nhận cảnh báo')
+    categories = models.ManyToManyField(
+        'products.ProductCategory',
+        blank=True,
+        related_name='stock_alert_email_recipient_scopes',
+        verbose_name='Danh mục được nhận',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'stock_alert_email_recipients'
+        verbose_name = 'Người nhận email cảnh báo tồn kho'
+        verbose_name_plural = 'Người nhận email cảnh báo tồn kho'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['stock_alert', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='uniq_stock_alert_recipient_user',
+            ),
+            models.UniqueConstraint(
+                fields=['stock_alert', 'email'],
+                condition=models.Q(user__isnull=True),
+                name='uniq_stock_alert_recipient_extra_email',
+            ),
+        ]
+
+    def __str__(self):
+        return self.email

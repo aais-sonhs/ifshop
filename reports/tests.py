@@ -21,7 +21,7 @@ from products.models import (
     Warehouse,
 )
 from system_management.models import Brand, Store, UserProfile
-from reports.models import StockAlert
+from reports.models import StockAlert, StockAlertEmailRecipient
 from reports.management.commands.send_low_stock_alerts import process_stock_alert
 
 
@@ -1995,6 +1995,8 @@ class StockAlertEmailSettingTests(TestCase):
         self.assertContains(response, 'Cảnh báo tồn kho qua email')
         self.assertContains(response, 'id="stock_alert_send_time"')
         self.assertContains(response, 'id="stock_alert_category_list"')
+        self.assertContains(response, 'id="stock_alert_recipient_list"')
+        self.assertContains(response, 'id="active_recipient_name"')
         self.assertContains(response, '21:00')
 
     def test_regular_staff_cannot_manage_setting(self):
@@ -2015,9 +2017,16 @@ class StockAlertEmailSettingTests(TestCase):
                 'is_active': True,
                 'send_time': '21:00',
                 'include_child_categories': True,
-                'recipient_user_ids': [self.staff.id],
-                'email_recipients': 'external@example.com',
-                'category_ids': [self.parent_category.id],
+                'recipient_assignments': [
+                    {
+                        'user_id': self.staff.id,
+                        'category_ids': [self.parent_category.id],
+                    },
+                    {
+                        'email': 'external@example.com',
+                        'category_ids': [self.parent_category.id],
+                    },
+                ],
             },
             content_type='application/json',
         )
@@ -2025,6 +2034,7 @@ class StockAlertEmailSettingTests(TestCase):
         config = StockAlert.objects.get(brand=self.brand)
         self.assertEqual(list(config.categories.values_list('id', flat=True)), [self.parent_category.id])
         self.assertEqual(list(config.recipient_users.values_list('id', flat=True)), [self.staff.id])
+        self.assertEqual(config.email_recipient_scopes.count(), 2)
 
         with override_settings(
             EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
@@ -2033,10 +2043,66 @@ class StockAlertEmailSettingTests(TestCase):
             response = self.client.post(reverse('api_test_stock_alert_email'))
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(set(mail.outbox[0].to), {'warehouse@example.com', 'external@example.com'})
-        self.assertIn('Cà phê sắp hết', mail.outbox[0].body)
-        self.assertNotIn('Sản phẩm ngoài danh mục', mail.outbox[0].body)
+        self.assertEqual(len(mail.outbox), 2)
+        messages_by_email = {message.to[0]: message for message in mail.outbox}
+        self.assertEqual(set(messages_by_email), {'warehouse@example.com', 'external@example.com'})
+        for message in messages_by_email.values():
+            self.assertIn('Cà phê sắp hết', message.body)
+            self.assertNotIn('Sản phẩm ngoài danh mục', message.body)
+
+    def test_each_recipient_only_receives_their_assigned_categories(self):
+        response = self.client.post(
+            reverse('api_save_stock_alert_email_setting'),
+            data={
+                'is_active': True,
+                'send_time': '21:00',
+                'include_child_categories': True,
+                'recipient_assignments': [
+                    {
+                        'user_id': self.staff.id,
+                        'category_ids': [self.parent_category.id],
+                    },
+                    {
+                        'user_id': self.owner.id,
+                        'category_ids': [self.other_category.id],
+                    },
+                ],
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        config = StockAlert.objects.get(brand=self.brand)
+        staff_scope = StockAlertEmailRecipient.objects.get(
+            stock_alert=config,
+            user=self.staff,
+        )
+        owner_scope = StockAlertEmailRecipient.objects.get(
+            stock_alert=config,
+            user=self.owner,
+        )
+        self.assertEqual(
+            set(staff_scope.categories.values_list('id', flat=True)),
+            {self.parent_category.id},
+        )
+        self.assertEqual(
+            set(owner_scope.categories.values_list('id', flat=True)),
+            {self.other_category.id},
+        )
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            response = self.client.post(reverse('api_test_stock_alert_email'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(mail.outbox), 2)
+        messages_by_email = {message.to[0]: message for message in mail.outbox}
+        self.assertIn('Cà phê sắp hết', messages_by_email['warehouse@example.com'].body)
+        self.assertNotIn('Sản phẩm ngoài danh mục', messages_by_email['warehouse@example.com'].body)
+        self.assertIn('Sản phẩm ngoài danh mục', messages_by_email['owner@example.com'].body)
+        self.assertNotIn('Cà phê sắp hết', messages_by_email['owner@example.com'].body)
 
     def test_scheduled_processing_sends_only_once_per_day(self):
         config = StockAlert.objects.create(

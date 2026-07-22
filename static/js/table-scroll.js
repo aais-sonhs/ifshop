@@ -66,6 +66,15 @@
             node.classList.contains('modal-backdrop');
     }
 
+    function isModalOpen() {
+        return document.body.classList.contains('modal-open') ||
+            Boolean(document.querySelector('.modal.show'));
+    }
+
+    function isInsideModal(node) {
+        return isElement(node) && Boolean(node.closest('.modal'));
+    }
+
     function scrollAxis(container, property, delta, max) {
         if (!delta || max <= 0) {
             return false;
@@ -198,6 +207,13 @@
     }
 
     function fitTableHeight() {
+        // A modal is an overlay and must not alter the layout of the table
+        // underneath it. Opening a form often updates rows/selects inside the
+        // modal, which also wakes the global MutationObserver below.
+        if (isModalOpen()) {
+            return;
+        }
+
         document.querySelectorAll('.content ' + TABLE_SCROLL_SELECTOR).forEach(function (el) {
             // Skip tables inside modals
             if (el.closest('.modal')) return;
@@ -251,7 +267,13 @@
 
     // Recalculate on scroll (throttled via rAF)
     var scrollTicking = false;
-    window.addEventListener('scroll', function () {
+    window.addEventListener('scroll', function (event) {
+        // This listener uses capture so it also receives scroll events from
+        // nested elements. Scrolling a dialog is unrelated to the page table.
+        if (isInsideModal(event.target)) {
+            return;
+        }
+
         if (!scrollTicking) {
             scrollTicking = true;
             requestAnimationFrame(function () {
@@ -272,7 +294,24 @@
 
     // Watch for DOM mutations (DataTables adding pagination etc)
     var observerTimer = null;
-    var observer = new MutationObserver(function () {
+    var observer = new MutationObserver(function (mutations) {
+        var affectsPageLayout = mutations.some(function (mutation) {
+            if (isInsideModal(mutation.target)) {
+                return false;
+            }
+
+            var changedNodes = Array.prototype.slice.call(mutation.addedNodes)
+                .concat(Array.prototype.slice.call(mutation.removedNodes));
+
+            return changedNodes.length === 0 || changedNodes.some(function (node) {
+                return !isOverlayElement(node);
+            });
+        });
+
+        if (!affectsPageLayout) {
+            return;
+        }
+
         clearTimeout(observerTimer);
         observerTimer = setTimeout(fitTableHeight, 100);
     });
@@ -285,6 +324,15 @@
     }
 
     startObserver();
+
+    // If the page table was legitimately updated while a modal was open
+    // (for example after saving), calculate its height once the overlay has
+    // fully closed. Until then its current height is deliberately preserved.
+    if (typeof jQuery !== 'undefined') {
+        jQuery(document).on('hidden.bs.modal.tableScroll', function () {
+            setTimeout(fitTableHeight, 0);
+        });
+    }
 
     // Auto-hide DataTables pagination when there is only 1 page
     if (typeof jQuery !== 'undefined' && jQuery.fn.dataTable) {

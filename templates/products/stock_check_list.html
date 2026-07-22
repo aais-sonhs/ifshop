@@ -254,7 +254,7 @@ $(document).ready(function(){
             addItemRow({
                 product_id: productId,
                 variant_id: variantId
-            });
+            }, {prepend: true});
         }
         $(this).val(null).trigger('change.select2');
     });
@@ -754,7 +754,8 @@ function updateRowSystemQuantity(row){
     updateRowDifference(row);
 }
 
-function addItemRow(data){
+function addItemRow(data, options){
+    options = options || {};
     itemRowIndex++;
     var productOptions = '<option value="">-- Chọn sản phẩm --</option>';
     var selectedProduct = data ? getStockCheckProductById(data.product_id) : null;
@@ -791,12 +792,17 @@ function addItemRow(data){
         '<td><input type="text" class="form-control form-control-sm item-note" value="' + escapeStockCheckHtml(itemNote) + '"></td>' +
         '<td class="text-center"><button type="button" class="btn btn-xs btn-danger btn-remove-item"><i class="fas fa-times"></i></button></td>' +
         '</tr>';
-    $('#items_body').append(html);
+    var newRow = $(html);
+    if(options.prepend){
+        $('#items_body').prepend(newRow);
+    } else {
+        $('#items_body').append(newRow);
+    }
+    reindexRows();
 
     // Init Select2 for the new row
-    var lastRow = $('#items_body tr:last');
-    lastRow.find('.item-actual-qty').data('manual', isExistingItem);
-    lastRow.find('.select2-item').select2({
+    newRow.find('.item-actual-qty').data('manual', isExistingItem);
+    newRow.find('.select2-item').select2({
         dropdownParent: $('#modal_form'),
         width: '100%',
         theme: 'bootstrap4',

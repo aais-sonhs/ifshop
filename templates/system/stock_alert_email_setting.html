@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-xl-10 offset-xl-1">
+        <div class="card card-outline card-warning">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-envelope-open-text mr-2"></i>Cảnh báo tồn kho qua email</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-light border d-flex align-items-start">
+                    <i class="fas fa-clock text-warning mt-1 mr-3"></i>
+                    <div>
+                        Hệ thống kiểm tra tồn kho theo từng kho vào giờ đã chọn và gửi <strong>một email tổng hợp</strong>.
+                        Chỉ sản phẩm thuộc các danh mục được chọn và có tồn hiện tại thấp hơn tồn tối thiểu mới xuất hiện trong email.
+                    </div>
+                </div>
+
+                {% if not smtp_ready %}
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Máy chủ chưa có tài khoản gửi email. Cần cấu hình <code>EMAIL_HOST_USER</code> và <code>EMAIL_HOST_PASSWORD</code> trước khi gửi thử hoặc bật lịch gửi.
+                </div>
+                {% endif %}
+
+                <div class="card card-outline card-primary">
+                    <div class="card-header py-2"><strong><i class="fas fa-sliders-h mr-1"></i>Lịch gửi</strong></div>
+                    <div class="card-body">
+                        <div class="row align-items-end">
+                            <div class="col-md-5 mb-3 mb-md-0">
+                                <div class="custom-control custom-switch">
+                                    <input type="checkbox" class="custom-control-input" id="stock_alert_active" {% if stock_alert.is_active %}checked{% endif %}>
+                                    <label class="custom-control-label font-weight-bold" for="stock_alert_active">Bật gửi cảnh báo hằng ngày</label>
+                                </div>
+                                <small class="text-muted">Có thể lưu cấu hình ở trạng thái tắt rồi gửi thử trước.</small>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="stock_alert_send_time">Giờ gửi</label>
+                                <input type="time" class="form-control" id="stock_alert_send_time" value="{{ stock_alert.send_time|time:'H:i'|default:'21:00' }}">
+                            </div>
+                            <div class="col-md-4 mt-3 mt-md-0">
+                                <small class="text-muted d-block"><i class="fas fa-map-marker-alt mr-1"></i>Múi giờ: Asia/Ho_Chi_Minh</small>
+                                <small class="text-muted d-block">Nếu không có sản phẩm tồn thấp, hệ thống không gửi email.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-6">
+                        <div class="card card-outline card-info h-100">
+                            <div class="card-header py-2"><strong><i class="fas fa-user-check mr-1"></i>Người nhận</strong></div>
+                            <div class="card-body">
+                                <label>Chọn tài khoản trong hệ thống</label>
+                                <div class="border rounded" style="max-height:260px;overflow-y:auto;">
+                                    {% for person in staff_options %}
+                                    <label class="d-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-user-row {% if not person.email %}text-muted{% endif %}">
+                                        <input type="checkbox" class="mt-1 mr-2 stock-alert-recipient-user" value="{{ person.id }}" {% if person.selected %}checked{% endif %} {% if not person.email %}disabled{% endif %}>
+                                        <span>
+                                            <strong>{{ person.name }}</strong>
+                                            {% if person.username != person.name %}<small class="text-muted">({{ person.username }})</small>{% endif %}
+                                            <small class="d-block {% if person.email %}text-primary{% else %}text-danger{% endif %}">
+                                                {{ person.email|default:"Chưa có email trong tài khoản" }}
+                                            </small>
+                                        </span>
+                                    </label>
+                                    {% empty %}
+                                    <div class="text-muted text-center p-3">Chưa có tài khoản nào trong thương hiệu.</div>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="mt-3">
+                                    <label for="stock_alert_extra_emails">Email bổ sung</label>
+                                    <textarea class="form-control" rows="3" id="stock_alert_extra_emails" placeholder="vidu@congty.vn, kho@congty.vn">{{ stock_alert.email_recipients }}</textarea>
+                                    <small class="text-muted">Dùng dấu phẩy, dấu chấm phẩy hoặc xuống dòng để phân cách.</small>
+                                </div>
+                                <div class="small text-info mt-2" id="recipient_selection_count"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 mt-3 mt-lg-0">
+                        <div class="card card-outline card-success h-100">
+                            <div class="card-header py-2"><strong><i class="fas fa-layer-group mr-1"></i>Danh mục sản phẩm cần thông báo</strong></div>
+                            <div class="card-body">
+                                <div class="input-group input-group-sm mb-2">
+                                    <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                                    <input type="text" class="form-control" id="stock_alert_category_search" placeholder="Tìm danh mục...">
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-primary" id="btn_select_visible_categories">Chọn đang hiện</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="btn_clear_categories">Bỏ chọn</button>
+                                    </div>
+                                </div>
+                                <div class="border rounded" id="stock_alert_category_list" style="max-height:315px;overflow-y:auto;">
+                                    {% for category in category_options %}
+                                    <label class="d-flex align-items-center px-3 py-2 mb-0 border-bottom stock-alert-category-row" data-search="{{ category.name|lower }}">
+                                        <input type="checkbox" class="mr-2 stock-alert-category" value="{{ category.id }}" {% if category.selected %}checked{% endif %}>
+                                        <span style="padding-left:{{ category.depth }}rem;">
+                                            {% if category.depth %}<i class="fas fa-level-up-alt fa-rotate-90 text-muted mr-1"></i>{% endif %}{{ category.name }}
+                                        </span>
+                                    </label>
+                                    {% empty %}
+                                    <div class="text-muted text-center p-3">Chưa có danh mục sản phẩm.</div>
+                                    {% endfor %}
+                                </div>
+                                <div class="custom-control custom-checkbox mt-3">
+                                    <input type="checkbox" class="custom-control-input" id="stock_alert_include_children" {% if stock_alert.include_child_categories %}checked{% endif %}>
+                                    <label class="custom-control-label" for="stock_alert_include_children">Tự động bao gồm toàn bộ danh mục con</label>
+                                </div>
+                                <div class="small text-info mt-2" id="category_selection_count"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-secondary mt-3">
+                    <div class="card-header py-2"><strong><i class="fas fa-history mr-1"></i>Trạng thái gửi</strong></div>
+                    <div class="card-body py-2">
+                        <div class="row small">
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần chạy lịch gần nhất:</span> <strong>{{ stock_alert.last_run_at|date:"d/m/Y H:i"|default:"Chưa chạy" }}</strong></div>
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần gửi thành công:</span> <strong>{{ stock_alert.last_sent|date:"d/m/Y H:i"|default:"Chưa gửi" }}</strong></div>
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần gửi thử:</span> <strong>{{ stock_alert.last_test_sent|date:"d/m/Y H:i"|default:"Chưa gửi thử" }}</strong></div>
+                        </div>
+                        {% if stock_alert.last_error %}
+                        <div class="alert alert-danger py-2 mt-2 mb-0"><i class="fas fa-times-circle mr-1"></i>{{ stock_alert.last_error }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-center flex-wrap mt-4" style="gap:10px;">
+                    <button type="button" class="btn btn-primary btn-lg" id="btn_save_stock_alert"><i class="fas fa-save mr-2"></i>Lưu cài đặt</button>
+                    <button type="button" class="btn btn-outline-info btn-lg" id="btn_test_stock_alert"><i class="fas fa-paper-plane mr-2"></i>Lưu và gửi thử</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+    function selectedValues(selector){
+        return $(selector + ':checked').map(function(){ return Number(this.value); }).get();
+    }
+
+    function updateCounts(){
+        var userCount = selectedValues('.stock-alert-recipient-user').length;
+        var extraCount = ($('#stock_alert_extra_emails').val() || '').split(/[,;\s]+/).filter(Boolean).length;
+        $('#recipient_selection_count').text('Đã chọn ' + (userCount + extraCount) + ' người nhận/email.');
+        $('#category_selection_count').text('Đã chọn ' + selectedValues('.stock-alert-category').length + ' danh mục.');
+    }
+
+    function payload(){
+        return {
+            is_active: $('#stock_alert_active').prop('checked'),
+            send_time: $('#stock_alert_send_time').val() || '21:00',
+            include_child_categories: $('#stock_alert_include_children').prop('checked'),
+            recipient_user_ids: selectedValues('.stock-alert-recipient-user'),
+            email_recipients: $('#stock_alert_extra_emails').val() || '',
+            category_ids: selectedValues('.stock-alert-category')
+        };
+    }
+
+    function apiError(xhr){
+        return (xhr.responseJSON && xhr.responseJSON.message) || 'Không thể thực hiện yêu cầu. Vui lòng thử lại.';
+    }
+
+    function saveConfig(showMessage){
+        return $.ajax({
+            url: '{% url "api_save_stock_alert_email_setting" %}',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            data: JSON.stringify(payload())
+        }).done(function(res){
+            if(showMessage) alert(res.message);
+        });
+    }
+
+    $('#stock_alert_category_search').on('input', function(){
+        var keyword = ($(this).val() || '').trim().toLocaleLowerCase('vi');
+        $('.stock-alert-category-row').each(function(){
+            $(this).toggle(!keyword || String($(this).data('search') || '').indexOf(keyword) !== -1);
+        });
+    });
+    $('#btn_select_visible_categories').on('click', function(){
+        $('.stock-alert-category-row:visible .stock-alert-category').prop('checked', true);
+        updateCounts();
+    });
+    $('#btn_clear_categories').on('click', function(){
+        $('.stock-alert-category').prop('checked', false);
+        updateCounts();
+    });
+    $('.stock-alert-recipient-user,.stock-alert-category,#stock_alert_extra_emails').on('change input', updateCounts);
+
+    $('#btn_save_stock_alert').on('click', function(){
+        var $button = $(this).prop('disabled', true);
+        saveConfig(true).fail(function(xhr){ alert(apiError(xhr)); }).always(function(){ $button.prop('disabled', false); });
+    });
+
+    $('#btn_test_stock_alert').on('click', function(){
+        var $button = $(this).prop('disabled', true);
+        saveConfig(false).done(function(){
+            $.ajax({
+                url: '{% url "api_test_stock_alert_email" %}',
+                type: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            }).done(function(res){
+                alert(res.message);
+                location.reload();
+            }).fail(function(xhr){ alert(apiError(xhr)); });
+        }).fail(function(xhr){ alert(apiError(xhr)); }).always(function(){ $button.prop('disabled', false); });
+    });
+
+    updateCounts();
+})();
+</script>
+{% endblock %}

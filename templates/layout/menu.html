@@ -743,8 +743,8 @@ $(document).ready(function(){
                         </li>
                     </ul>
                 </li>
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}menu-open{% endif %}" data-menu-key="settings">
-                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}menu-open{% endif %}" data-menu-key="settings">
+                    <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -759,6 +759,12 @@ $(document).ready(function(){
                             <a href="{% url 'setting_order' %}" class="nav-link {% if active_tab == 'setting_order' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Cài đặt đơn hàng</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'stock_alert_email_setting' %}" class="nav-link {% if active_tab == 'stock_alert_email_setting' %}active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Cảnh báo tồn kho</p>
                             </a>
                         </li>
                         <li class="nav-item">

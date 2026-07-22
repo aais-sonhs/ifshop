@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('setting/stock-alert-email/', views.stock_alert_email_setting, name='stock_alert_email_setting'),
+    path('api/stock-alert-email/save/', views.api_save_stock_alert_email_setting, name='api_save_stock_alert_email_setting'),
+    path('api/stock-alert-email/test/', views.api_test_stock_alert_email, name='api_test_stock_alert_email'),
     path('report-sales/', views.report_sales, name='report_sales'),
     path('api/report-sales/', views.api_report_sales, name='api_report_sales'),
     path('report-purchases/', views.report_purchases, name='report_purchases'),

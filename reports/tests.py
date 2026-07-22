@@ -1,8 +1,10 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core import mail
+from django.core.management import call_command
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from openpyxl import load_workbook
 
@@ -19,6 +21,8 @@ from products.models import (
     Warehouse,
 )
 from system_management.models import Brand, Store, UserProfile
+from reports.models import StockAlert
+from reports.management.commands.send_low_stock_alerts import process_stock_alert
 
 
 class SalesReportTests(TestCase):
@@ -802,6 +806,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, "orderDate>to")
         self.assertContains(response, "$('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails)")
         self.assertContains(response, "$('#order_detail_tbl tbody').empty()")
+
 
     def test_api_report_sales_all_active_scope_includes_non_cancelled_orders(self):
         today = date.today()
@@ -1939,3 +1944,120 @@ class SalesReportTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
         self.assertIn('Minh Tran', payload['salespersons'])
+
+
+class StockAlertEmailSettingTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(
+            username='stock_alert_owner',
+            email='owner@example.com',
+            password='pass123',
+        )
+        cls.brand = Brand.objects.create(name='Brand Stock Alert', owner=cls.owner)
+        cls.store = Store.objects.create(brand=cls.brand, name='Kho hàng cảnh báo', code='SAS')
+        UserProfile.objects.create(user=cls.owner, store=cls.store)
+        cls.staff = User.objects.create_user(
+            username='stock_alert_staff',
+            email='warehouse@example.com',
+            password='pass123',
+        )
+        UserProfile.objects.create(user=cls.staff, store=cls.store, position='Quản lý cửa hàng')
+        cls.warehouse = Warehouse.objects.create(store=cls.store, code='KHO-SAS', name='Kho chính')
+        cls.parent_category = ProductCategory.objects.create(name='Đồ uống')
+        cls.child_category = ProductCategory.objects.create(name='Cà phê', parent=cls.parent_category)
+        cls.other_category = ProductCategory.objects.create(name='Văn phòng phẩm')
+        cls.low_product = Product.objects.create(
+            store=cls.store,
+            code='SP-LOW-001',
+            name='Cà phê sắp hết',
+            category=cls.child_category,
+            min_stock=5,
+            created_by=cls.owner,
+        )
+        cls.other_product = Product.objects.create(
+            store=cls.store,
+            code='SP-OTHER-001',
+            name='Sản phẩm ngoài danh mục',
+            category=cls.other_category,
+            min_stock=5,
+            created_by=cls.owner,
+        )
+        ProductStock.objects.create(product=cls.low_product, warehouse=cls.warehouse, quantity=2)
+        ProductStock.objects.create(product=cls.other_product, warehouse=cls.warehouse, quantity=1)
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def test_setting_page_is_available_to_brand_owner(self):
+        response = self.client.get(reverse('stock_alert_email_setting'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cảnh báo tồn kho qua email')
+        self.assertContains(response, 'id="stock_alert_send_time"')
+        self.assertContains(response, 'id="stock_alert_category_list"')
+        self.assertContains(response, '21:00')
+
+    def test_regular_staff_cannot_manage_setting(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('stock_alert_email_setting'))
+        self.assertEqual(response.status_code, 302)
+        response = self.client.post(
+            reverse('api_save_stock_alert_email_setting'),
+            data='{}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_save_and_test_email_include_selected_category_children_only(self):
+        response = self.client.post(
+            reverse('api_save_stock_alert_email_setting'),
+            data={
+                'is_active': True,
+                'send_time': '21:00',
+                'include_child_categories': True,
+                'recipient_user_ids': [self.staff.id],
+                'email_recipients': 'external@example.com',
+                'category_ids': [self.parent_category.id],
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        config = StockAlert.objects.get(brand=self.brand)
+        self.assertEqual(list(config.categories.values_list('id', flat=True)), [self.parent_category.id])
+        self.assertEqual(list(config.recipient_users.values_list('id', flat=True)), [self.staff.id])
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            response = self.client.post(reverse('api_test_stock_alert_email'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(set(mail.outbox[0].to), {'warehouse@example.com', 'external@example.com'})
+        self.assertIn('Cà phê sắp hết', mail.outbox[0].body)
+        self.assertNotIn('Sản phẩm ngoài danh mục', mail.outbox[0].body)
+
+    def test_scheduled_processing_sends_only_once_per_day(self):
+        config = StockAlert.objects.create(
+            brand=self.brand,
+            is_active=True,
+            alert_on_min=True,
+            send_time=time(21, 0),
+        )
+        config.recipient_users.add(self.staff)
+        config.categories.add(self.parent_category)
+        run_at = datetime.combine(date.today(), time(21, 0))
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            first = process_stock_alert(config.id, now=run_at)
+            second = process_stock_alert(config.id, now=run_at)
+
+        self.assertEqual(first['status'], 'sent')
+        self.assertEqual(second['status'], 'skipped')
+        self.assertEqual(len(mail.outbox), 1)
+        config.refresh_from_db()
+        self.assertEqual(config.last_status, 'sent')

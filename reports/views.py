@@ -1,23 +1,38 @@
+import json
 import logging
 import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from functools import wraps
+from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, Sum, Count, Q, F
-from django.utils.dateparse import parse_date
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from core.store_utils import (
     filter_by_store,
     brand_owner_required,
     report_permission_required,
     can_view_sales_report,
+    get_company_brand_for_user,
     get_managed_store_ids,
+    is_brand_owner,
+)
+from products.models import ProductCategory
+from .models import StockAlert
+from .stock_alerts import (
+    StockAlertConfigurationError,
+    get_stock_alert_recipients,
+    parse_recipient_emails,
+    send_stock_alert_email,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +49,243 @@ WHOLESALE_GROUP_KEYWORDS = (
     'sỉ', 'si', 'buôn', 'buon', 'bán buôn', 'ban buon',
     'đại lý', 'dai ly', 'wholesale',
 )
+
+
+def _stock_alert_brand_for_user(user):
+    return get_company_brand_for_user(user)
+
+
+def _stock_alert_users_for_brand(brand):
+    if not brand:
+        return User.objects.none()
+    return (
+        User.objects.filter(
+            Q(id=brand.owner_id) | Q(profile__store__brand_id=brand.id),
+            is_active=True,
+        )
+        .distinct()
+        .order_by('first_name', 'last_name', 'username')
+    )
+
+
+def _stock_alert_category_options(selected_ids=None):
+    selected_ids = set(selected_ids or [])
+    rows = list(
+        ProductCategory.objects.filter(is_active=True)
+        .values('id', 'name', 'parent_id')
+        .order_by('name', 'id')
+    )
+    children = defaultdict(list)
+    known_ids = {row['id'] for row in rows}
+    for row in rows:
+        parent_id = row['parent_id'] if row['parent_id'] in known_ids else None
+        children[parent_id].append(row)
+
+    options = []
+    visited = set()
+
+    def append_branch(parent_id, depth):
+        for row in children.get(parent_id, []):
+            if row['id'] in visited:
+                continue
+            visited.add(row['id'])
+            options.append({
+                'id': row['id'],
+                'name': row['name'],
+                'depth': depth,
+                'selected': row['id'] in selected_ids,
+            })
+            append_branch(row['id'], depth + 1)
+
+    append_branch(None, 0)
+    # Dữ liệu cũ có thể có vòng hoặc cha lỗi; vẫn cho phép chọn các dòng còn lại.
+    for row in rows:
+        if row['id'] not in visited:
+            options.append({
+                'id': row['id'],
+                'name': row['name'],
+                'depth': 0,
+                'selected': row['id'] in selected_ids,
+            })
+    return options
+
+
+def _stock_alert_for_brand(brand):
+    config, _ = StockAlert.objects.get_or_create(
+        brand=brand,
+        defaults={
+            'email_recipients': '',
+            'alert_on_min': True,
+            'alert_on_max': False,
+            'is_active': False,
+        },
+    )
+    return config
+
+
+def _stock_alert_forbidden_json():
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Chỉ chủ thương hiệu mới được cấu hình cảnh báo tồn kho qua email.',
+    }, status=403)
+
+
+@login_required(login_url='/login/')
+def stock_alert_email_setting(request):
+    if not is_brand_owner(request.user):
+        messages.error(request, 'Chỉ chủ thương hiệu mới được cấu hình cảnh báo tồn kho qua email.')
+        return redirect('/dashboard/')
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        messages.error(request, 'Không tìm thấy thương hiệu để lưu cấu hình.')
+        return redirect('/dashboard/')
+
+    config = _stock_alert_for_brand(brand)
+    selected_user_ids = set(config.recipient_users.values_list('id', flat=True))
+    staff_options = []
+    for user in _stock_alert_users_for_brand(brand):
+        display_name = user.get_full_name().strip() or user.username
+        staff_options.append({
+            'id': user.id,
+            'name': display_name,
+            'username': user.username,
+            'email': user.email or '',
+            'selected': user.id in selected_user_ids,
+        })
+
+    context = {
+        'active_tab': 'stock_alert_email_setting',
+        'stock_alert': config,
+        'staff_options': staff_options,
+        'category_options': _stock_alert_category_options(
+            config.categories.values_list('id', flat=True)
+        ),
+        'smtp_ready': not (
+            str(getattr(settings, 'EMAIL_BACKEND', '') or '').endswith('smtp.EmailBackend')
+            and not getattr(settings, 'EMAIL_HOST_USER', '')
+        ),
+    }
+    return render(request, 'system/stock_alert_email_setting.html', context)
+
+
+def _parse_id_set(values):
+    result = set()
+    for value in values or []:
+        try:
+            result.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+@login_required(login_url='/login/')
+def api_save_stock_alert_email_setting(request):
+    if not is_brand_owner(request.user):
+        return _stock_alert_forbidden_json()
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Phương thức không hợp lệ.'}, status=405)
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu.'}, status=400)
+
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Dữ liệu gửi lên không hợp lệ.'}, status=400)
+
+    send_time = parse_time(str(data.get('send_time') or '21:00'))
+    if not send_time:
+        return JsonResponse({'status': 'error', 'message': 'Giờ gửi không hợp lệ.'}, status=400)
+
+    extra_emails = str(data.get('email_recipients') or '').strip()
+    _, invalid_emails = parse_recipient_emails(extra_emails)
+    if invalid_emails:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Email không hợp lệ: ' + ', '.join(invalid_emails),
+        }, status=400)
+
+    requested_user_ids = _parse_id_set(data.get('recipient_user_ids'))
+    allowed_users = _stock_alert_users_for_brand(brand).exclude(email='')
+    selected_users = allowed_users.filter(id__in=requested_user_ids)
+    if selected_users.count() != len(requested_user_ids):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Có người nhận không thuộc thương hiệu hoặc chưa có email.',
+        }, status=400)
+
+    requested_category_ids = _parse_id_set(data.get('category_ids'))
+    selected_categories = ProductCategory.objects.filter(
+        id__in=requested_category_ids,
+        is_active=True,
+    )
+    if selected_categories.count() != len(requested_category_ids):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Có danh mục không hợp lệ hoặc đã ngừng hoạt động.',
+        }, status=400)
+
+    is_active = bool(data.get('is_active', False))
+    if is_active and not requested_category_ids:
+        return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một danh mục.'}, status=400)
+    if is_active and not requested_user_ids and not parse_recipient_emails(extra_emails)[0]:
+        return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một người nhận.'}, status=400)
+
+    with transaction.atomic():
+        config = _stock_alert_for_brand(brand)
+        config.email_recipients = extra_emails
+        config.include_child_categories = bool(data.get('include_child_categories', True))
+        config.send_time = send_time
+        config.alert_on_min = True
+        config.alert_on_max = False
+        config.is_active = is_active
+        config.save()
+        config.recipient_users.set(selected_users)
+        config.categories.set(selected_categories)
+
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'Đã lưu cấu hình cảnh báo tồn kho qua email.',
+        'recipient_count': len(get_stock_alert_recipients(config)),
+        'category_count': config.categories.count(),
+    })
+
+
+@login_required(login_url='/login/')
+def api_test_stock_alert_email(request):
+    if not is_brand_owner(request.user):
+        return _stock_alert_forbidden_json()
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Phương thức không hợp lệ.'}, status=405)
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu.'}, status=400)
+    config = _stock_alert_for_brand(brand)
+    try:
+        result = send_stock_alert_email(config, is_test=True)
+        config.last_test_sent = timezone.now()
+        config.last_error = ''
+        config.save(update_fields=['last_test_sent', 'last_error', 'updated_at'])
+        return JsonResponse({
+            'status': 'ok',
+            'message': (
+                f"Đã gửi email thử tới {result['recipient_count']} người nhận, "
+                f"gồm {result['row_count']} sản phẩm tồn thấp."
+            ),
+        })
+    except StockAlertConfigurationError as exc:
+        logger.warning('Cấu hình email cảnh báo tồn kho chưa hợp lệ cho brand_id=%s: %s', brand.id, exc)
+        config.last_error = str(exc)
+        config.save(update_fields=['last_error', 'updated_at'])
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
+    except Exception as exc:
+        logger.exception('Không thể gửi thử email cảnh báo tồn kho cho brand_id=%s', brand.id)
+        config.last_error = str(exc)
+        config.save(update_fields=['last_error', 'updated_at'])
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
 
 
 def _parse_sales_report_number(value):

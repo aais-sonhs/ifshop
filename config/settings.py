@@ -13,6 +13,29 @@ mimetypes.add_type("text/javascript", ".js", True)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 
+
+def _load_app_yml():
+    """Đọc các khóa cấu hình phẳng trong app.yml mà không cần thêm PyYAML."""
+    values = {}
+    config_path = os.path.join(BASE_DIR, 'app.yml')
+    if not os.path.exists(config_path):
+        return values
+    with open(config_path, encoding='utf-8') as config_file:
+        for raw_line in config_file:
+            line = raw_line.strip()
+            if not line or line.startswith('#') or ':' not in line:
+                continue
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+            values[key] = value
+    return values
+
+
+APP_YML = _load_app_yml()
+
 # Ensure log directories exist
 os.makedirs(os.path.join(LOG_DIR, 'app'), exist_ok=True)
 os.makedirs(os.path.join(LOG_DIR, 'server'), exist_ok=True)
@@ -113,6 +136,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'system_management.middleware.ActiveUserMiddleware',
     'core.middleware.SuperadminAccessMiddleware',
+    'system_management.middleware.SystemDeleteLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "allauth.account.middleware.AccountMiddleware",
@@ -307,9 +331,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Email configuration (cho cảnh báo giá, cảnh báo tồn kho)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = ''  # Cấu hình email
-EMAIL_HOST_PASSWORD = ''  # Cấu hình password
+EMAIL_BACKEND = APP_YML.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = APP_YML.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(APP_YML.get('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = str(APP_YML.get('EMAIL_USE_TLS', 'true')).strip().lower() in {'1', 'true', 'yes', 'on'}
+EMAIL_HOST_USER = APP_YML.get('EMAIL_HOST_USER', '')  # Tài khoản gửi email
+EMAIL_HOST_PASSWORD = APP_YML.get('EMAIL_HOST_PASSWORD', '')  # Mật khẩu hoặc app password
+DEFAULT_FROM_EMAIL = APP_YML.get('DEFAULT_FROM_EMAIL', '') or EMAIL_HOST_USER or 'IFShop <no-reply@ifshop.local>'

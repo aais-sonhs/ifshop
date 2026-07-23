@@ -1118,6 +1118,31 @@ class OrderRiskFlowTests(TestCase):
                 self.assertContains(response, 'Địa chỉ giao:')
                 self.assertContains(response, self.customer.address)
 
+    def test_a4_prints_label_discount_as_percent_or_amount(self):
+        order = self._create_order(code='DH-PRINT-DISCOUNT-HEADER')
+        quotation = self._create_quotation(code='BG-PRINT-DISCOUNT-HEADER', status=1)
+
+        for document, print_type, source in (
+            (order, 'a4', 'order'),
+            (quotation, 'quotation_a4', 'quotation'),
+        ):
+            with self.subTest(print_type=print_type):
+                response = self.client.get(
+                    reverse('api_print_order'),
+                    {'id': document.id, 'type': print_type, 'source': source},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'CK (% / Tiền)')
+                self.assertNotContains(response, '>CK%</th>')
+                self.assertContains(response, '<th style="width:6%" class="text-center">ĐVT</th>', html=True)
+                self.assertContains(response, '<th style="width:4%" class="text-right">SL</th>', html=True)
+                self.assertContains(
+                    response,
+                    '<th style="width:14%;white-space:nowrap;" class="text-center">CK (% / Tiền)</th>',
+                    html=True,
+                )
+
     def test_quotation_validity_setting_hides_field_list_column_and_print_block(self):
         quotation = self._create_quotation(code='BG-HIDE-VALIDITY', status=1)
         quotation.valid_until = date.today() + timedelta(days=30)

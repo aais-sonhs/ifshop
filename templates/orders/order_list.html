@@ -475,15 +475,14 @@
                             <table class="table table-sm mb-0" id="items_tbl">
                                 <thead class="bg-light"><tr>
 	                                    <th style="width:4%" class="text-center">STT</th>
-	                                    <th style="width:5%" class="text-center">Ảnh</th>
-	                                    <th style="width:18%">Sản phẩm</th>
-                                    <th style="width:6%">ĐVT</th>
-                                    <th style="width:15%" class="stock-info-col">Tồn theo kho</th>
-                                    <th style="width:9%">Số lượng</th>
-                                    <th style="width:13%">Đơn giá</th>
-                                    <th style="width:12%">CK (% hoặc tiền)</th>
-                                    <th style="width:13%">Thành tiền</th>
-                                    <th style="width:5%"></th>
+	                                    <th style="width:8%" class="text-center order-image-column">Ảnh</th>
+	                                    <th style="width:42%" class="order-product-column">Sản phẩm</th>
+                                    <th style="width:4%" class="order-unit-column">ĐVT</th>
+                                    <th style="width:13%" class="stock-info-col">Tồn theo kho</th>
+                                    <th style="width:5%" class="order-quantity-column">SL</th>
+                                    <th style="width:8%" class="order-unit-price-column">Đơn giá</th>
+                                    <th style="width:8%" class="order-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)</th>
+                                    <th style="width:8%" class="order-line-total-column">Thành tiền</th>
                                 </tr></thead>
                                 <tbody></tbody>
                             </table>
@@ -493,11 +492,10 @@
                             <colgroup>
                                 <col span="8">
                                 <col class="order-summary-value-column">
-                                <col class="order-summary-action-column">
                             </colgroup>
                             <tfoot>
-                                <tr class="font-weight-bold order-total-quantity-row"><td colspan="5" class="text-right order-total-label" data-stock-colspan="5" data-compact-colspan="4">Tổng số lượng sản phẩm:</td><td class="text-center" id="lbl_total_quantity">0</td><td colspan="4"></td></tr>
-                                <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td><td></td></tr>
+                                <tr class="font-weight-bold order-total-quantity-row"><td colspan="5" class="text-right order-total-label" data-stock-colspan="5" data-compact-colspan="4">Tổng số lượng sản phẩm:</td><td class="text-center" id="lbl_total_quantity">0</td><td colspan="3"></td></tr>
+                                <tr class="bg-light font-weight-bold"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Tổng cộng:</td><td class="text-right" id="lbl_total">0</td></tr>
                                 <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chiết khấu (% hoặc tiền):</td><td class="order-discount-value-cell">
                                     <div class="input-group input-group-sm order-discount-input-group">
                                         <select class="custom-select" id="inp_discount_mode">
@@ -509,12 +507,12 @@
                                         <div class="input-group-append" id="discount_percent_suffix" style="display:none;"><span class="input-group-text">%</span></div>
                                     </div>
                                     <small class="text-primary d-block text-right mt-1" id="lbl_discount_conversion"></small>
-                                </td><td></td></tr>
-                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td><td></td></tr>
-                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chi phí khác:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_other_fee" value="0"></td><td></td></tr>
-                                <tr class="font-weight-bold order-final-total-row"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td><td></td></tr>
-                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
-	                                <tr id="cost_warning_row" style="display:none;"><td colspan="10" class="text-center order-wide-message" data-stock-colspan="10" data-compact-colspan="9"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Đây chỉ là cảnh báo; hàng tặng giá 0 vẫn được lưu đơn.</div></td></tr>
+                                </td></tr>
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Phí vận chuyển:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_shipping_fee" value="0"></td></tr>
+                                <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chi phí khác:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_other_fee" value="0"></td></tr>
+                                <tr class="font-weight-bold order-final-total-row"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td></tr>
+                                <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
+	                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Đây chỉ là cảnh báo; hàng tặng giá 0 vẫn được lưu đơn.</div></td></tr>
                             </tfoot>
                             </table>
                         </div>
@@ -882,7 +880,7 @@
 </div>
 
 	<div class="modal fade" id="modal_order_quick_view" tabindex="-1">
-	    <div class="modal-dialog modal-xl modal-dialog-centered">
+	    <div class="modal-dialog modal-xl modal-dialog-centered order-quick-view-dialog">
 	        <div class="modal-content">
 	            <div class="modal-header bg-light py-2">
 	                <h5 class="modal-title">Xem nhanh đơn hàng</h5>
@@ -1130,7 +1128,8 @@
     font-size: 12px;
 }
 @media (min-width: 992px) {
-    #modal_form .order-form-dialog {
+    #modal_form .order-form-dialog,
+    #modal_order_quick_view .order-quick-view-dialog {
         width: calc(100vw - 24px);
         max-width: 1600px;
         margin: 12px auto;
@@ -1160,6 +1159,11 @@
     background: #f8f9fa;
     box-shadow: inset 0 -1px 0 #dee2e6;
 }
+#items_tbl .order-item-img,
+#items_tbl .order-item-img-placeholder {
+    width: 56px;
+    height: 56px;
+}
 #order_items_summary {
     overflow-x: auto;
     background: #fff;
@@ -1170,9 +1174,6 @@
 }
 #order_items_totals_tbl .order-summary-value-column {
     width: 340px;
-}
-#order_items_totals_tbl .order-summary-action-column {
-    width: 44px;
 }
 #order_items_totals_tbl .order-discount-value-cell {
     min-width: 340px;
@@ -1283,7 +1284,7 @@
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
-    min-width: 118px;
+    min-width: 0;
     width: 100%;
 }
 #items_tbl .order-line-discount-group .inp_disc_mode {
@@ -1491,8 +1492,20 @@
 /* Product name wrap fix — ensures long names display fully */
 	#items_tbl .order-item-product-cell {
 	    max-width: 0;
+	    position: relative;
+	    padding-right: 40px;
 	    white-space: normal;
 	    word-break: break-word;
+	}
+	#items_tbl .order-item-remove-button {
+	    position: absolute;
+	    top: 6px;
+	    right: 6px;
+	    z-index: 4;
+	    width: 26px;
+	    height: 26px;
+	    padding: 0;
+	    border-radius: 50%;
 	}
 	.order-item-img,
 	.quick-view-product-img {
@@ -1565,6 +1578,30 @@
 	    font-size: 12px;
 	    line-height: 1.35;
 	    white-space: pre-line;
+	    word-break: break-word;
+	}
+	#quick_view_items_tbl {
+	    min-width: 1120px;
+	    table-layout: fixed;
+	}
+	/*
+	 * Xem nhanh không có cột STT và Tồn theo kho. Các tỷ lệ bên dưới là
+	 * tỷ lệ của bảng chi tiết được chuẩn hóa trên 7 cột còn lại.
+	 */
+	#quick_view_items_tbl .quick-view-image-column { width: 9.64%; }
+	#quick_view_items_tbl .quick-view-product-column { width: 50.6%; }
+	#quick_view_items_tbl .quick-view-unit-column { width: 4.82%; }
+	#quick_view_items_tbl .quick-view-quantity-column { width: 6.02%; }
+	#quick_view_items_tbl .quick-view-price-column,
+	#quick_view_items_tbl .quick-view-discount-column,
+	#quick_view_items_tbl .quick-view-total-column { width: 9.64%; }
+	#quick_view_items_tbl .quick-view-product-img,
+	#quick_view_items_tbl .quick-view-product-placeholder {
+	    width: 56px;
+	    height: 56px;
+	}
+	#quick_view_items_tbl .quick-view-product-name {
+	    white-space: normal;
 	    word-break: break-word;
 	}
 	.quick-view-return-card {
@@ -3253,7 +3290,7 @@ function fetchProductsForOrderForm(orderId, callback){
 function renderOrderItemsLoading(message){
     $('#items_tbl tbody').html(
         '<tr class="order-items-loading-row">' +
-            '<td colspan="10" class="text-center text-muted py-4">' +
+            '<td colspan="9" class="text-center text-muted py-4">' +
                 '<i class="fas fa-spinner fa-spin mr-2"></i>' + escapeHtml(message || 'Đang tải sản phẩm...') +
             '</td>' +
         '</tr>'
@@ -5744,14 +5781,13 @@ function addItemRow(item, options){
 	        var htmlService = '<tr class="service-line-row" data-service-line="1">' +
 	            '<td class="text-center order-item-sequence"></td>' +
 	            '<td class="text-center lbl_img"><span class="order-item-img-placeholder"><i class="fas fa-clipboard-list"></i></span></td>' +
-            '<td class="order-item-product-cell"><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống">' + renderOrderItemNoteEditor(productNote) + '</td>' +
+            '<td class="order-item-product-cell"><input type="text" class="form-control form-control-sm inp_service_name" value="'+escapeAttr(serviceName)+'" placeholder="Tên dịch vụ / thẻ trống">' + renderOrderItemNoteEditor(productNote) + '<button type="button" class="btn btn-xs btn-danger btn_remove_item order-item-remove-button" title="Xóa dòng" aria-label="Xóa dòng"><i class="fas fa-times"></i></button></td>' +
             '<td><input type="text" class="form-control form-control-sm text-center inp_service_unit" value="'+escapeAttr(unit || 'Lần')+'"></td>' +
             '<td class="lbl_stock stock-info-col align-middle text-center"><span class="badge badge-light border">Không tồn</span></td>' +
             '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>' +
             '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>' +
             '<td>'+discountEditorHtml+'</td>' +
             '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>' +
-            '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td>' +
             '</tr>';
         $('#items_tbl tbody').append(htmlService);
         var $serviceRow = $('#items_tbl tbody tr:last');
@@ -5778,14 +5814,13 @@ function addItemRow(item, options){
     }
     var stockHtml = useLazySelect ? '<span class="text-muted small">...</span>' : '-';
 
-    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-product-meta-line">'+renderOrderProductEditLink(item && item.product_id, productCode)+renderOrderProductSpecification(productSpecification)+'</div>'+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div></td>'+
+    var html='<tr><td class="text-center order-item-sequence"></td><td class="text-center lbl_img">'+imgHtml+'</td><td class="order-item-product-cell"><select class="form-control form-control-sm sel_product"'+selectAttrs+'>'+opts+'</select><div class="order-product-meta-line">'+renderOrderProductEditLink(item && item.product_id, productCode)+renderOrderProductSpecification(productSpecification)+'</div>'+renderOrderItemNoteEditor(productNote)+'<div class="order-combo-components"></div><button type="button" class="btn btn-xs btn-danger btn_remove_item order-item-remove-button" title="Xóa dòng" aria-label="Xóa dòng"><i class="fas fa-times"></i></button></td>'+
         '<td class="lbl_unit text-center">'+unit+'</td>'+
         '<td class="lbl_stock stock-info-col align-middle">'+stockHtml+'</td>'+
         '<td><input type="number" class="form-control form-control-sm inp_qty" value="'+qty+'" min="1" step="1"></td>'+
         '<td><input type="text" class="form-control form-control-sm inp_price text-right money-format" value="'+fmt(price)+'"></td>'+
         '<td>'+discountEditorHtml+'</td>'+
-        '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td>'+
-        '<td><button type="button" class="btn btn-xs btn-danger btn_remove_item"><i class="fas fa-times"></i></button></td></tr>';
+        '<td class="text-right lbl_line_total">'+fmt(lineTotal)+'đ</td></tr>';
     var $tbody = $('#items_tbl tbody');
     $tbody.append(html);
     var $row = $tbody.children('tr').last();
@@ -6893,8 +6928,8 @@ function rejectOrder(id, code){
 	            '</div>' +
 	            '<div class="quick-view-section-title"><strong><i class="fas fa-shopping-bag mr-1"></i>Sản phẩm đơn gốc</strong><span class="badge badge-light border">' + (res.items || []).length + ' dòng</span></div>' +
 	            '<div class="table-responsive" style="max-height:300px;overflow-y:auto;">' +
-	            '<table class="table table-sm table-bordered mb-0">' +
-	            '<thead class="bg-light"><tr><th class="text-center" style="width:56px;">Ảnh</th><th>Sản phẩm</th><th class="text-center">ĐVT</th><th class="text-right">SL</th><th class="text-right">Đơn giá</th><th class="text-right">CK (% hoặc tiền)</th><th class="text-right">Thành tiền</th></tr></thead>' +
+	            '<table class="table table-sm table-bordered mb-0" id="quick_view_items_tbl">' +
+	            '<thead class="bg-light"><tr><th class="text-center quick-view-image-column">Ảnh</th><th class="quick-view-product-column">Sản phẩm</th><th class="text-center quick-view-unit-column">ĐVT</th><th class="text-right quick-view-quantity-column">SL</th><th class="text-right quick-view-price-column">Đơn giá</th><th class="text-right quick-view-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)</th><th class="text-right quick-view-total-column">Thành tiền</th></tr></thead>' +
 	            '<tbody>' + itemsHtml + '</tbody></table></div>' + returnHistoryHtml;
 	        $('#order_quick_view_body').html(html);
 	    });

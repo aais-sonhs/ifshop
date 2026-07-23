@@ -905,6 +905,12 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'Mã đơn, tên khách hàng, SĐT, ghi chú, tag...')
         self.assertContains(response, 'Tạo đơn mới giống đơn này')
         self.assertContains(response, 'id="btn_quick_view_copy"')
+        self.assertContains(response, 'modal-dialog modal-xl modal-dialog-centered order-quick-view-dialog')
+        self.assertContains(response, '#modal_order_quick_view .order-quick-view-dialog')
+        self.assertContains(response, 'id="quick_view_items_tbl"')
+        self.assertContains(response, '#quick_view_items_tbl .quick-view-product-column { width: 50.6%; }')
+        self.assertContains(response, '#quick_view_items_tbl .quick-view-total-column { width: 9.64%; }')
+        self.assertContains(response, 'quick-view-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)')
         self.assertContains(response, 'class="quick-view-product-code-link"')
         self.assertContains(response, 'target="_blank" rel="noopener"')
         self.assertContains(response, 'renderQuickViewProductSpecification(it.specification)')
@@ -1158,6 +1164,56 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'var persistedSequence = parseInt(item && item.sequence, 10) || 0;')
         self.assertNotContains(response, "$(row).attr('data-item-sequence', index + 1);")
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
+
+    def test_order_form_prioritizes_width_for_long_product_names(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '<th style="width:42%" class="order-product-column">Sản phẩm</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:8%" class="text-center order-image-column">Ảnh</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:4%" class="order-unit-column">ĐVT</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:5%" class="order-quantity-column">SL</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:8%" class="order-unit-price-column">Đơn giá</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:8%" class="order-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:8%" class="order-line-total-column">Thành tiền</th>',
+            html=True,
+        )
+        self.assertContains(response, '#items_tbl .order-line-discount-group')
+        self.assertContains(response, 'min-width: 0;')
+        self.assertContains(response, '#items_tbl .order-item-img')
+        self.assertContains(response, 'width: 56px;')
+        self.assertNotContains(response, '<th style="width:5%"></th>', html=True)
+        self.assertContains(response, 'order-item-remove-button')
+        self.assertContains(response, 'padding-right: 40px;')
+        self.assertContains(response, '<td colspan="9" class="text-center text-muted py-4">')
 
     def test_order_form_exposes_product_specification_line(self):
         self.client.force_login(self.owner)

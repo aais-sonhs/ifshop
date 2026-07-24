@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.db import transaction
-from django.db.models import DecimalField, ExpressionWrapper, Sum, Count, Q, F
+from django.db.models import DecimalField, ExpressionWrapper, Sum, Count, Max, Q, F
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
@@ -464,6 +464,174 @@ def _inventory_valuation_unit_cost(product):
         return import_price, 'import_price'
 
     return Decimal('0'), 'none'
+
+
+def _build_slow_moving_inventory_payload(request, filters):
+    """Cảnh báo hàng còn tồn theo lần bán thực tế gần nhất trên toàn lịch sử."""
+    from products.models import Product, ProductStock
+
+    managed_store_ids = get_managed_store_ids(request.user)
+    selected_store_id = _parse_filter_int(filters.get('store_id'))
+    if selected_store_id is not None:
+        if selected_store_id not in managed_store_ids:
+            return [], {
+                'total_products': 0,
+                'never_sold_count': 0,
+                'over_30_count': 0,
+                'over_60_count': 0,
+                'over_90_count': 0,
+                'over_90_stock_value': 0,
+            }
+        scoped_store_ids = [selected_store_id]
+    else:
+        scoped_store_ids = managed_store_ids
+
+    products_qs = Product.objects.filter(
+        store_id__in=scoped_store_ids,
+        is_active=True,
+        is_service=False,
+    ).select_related('category', 'category__parent', 'supplier')
+    if filters.get('category_id'):
+        products_qs = products_qs.filter(
+            _get_product_category_scope_q(filters['category_id'], '')
+        )
+    if filters.get('product_type_id'):
+        products_qs = products_qs.filter(
+            _get_product_category_direct_q(filters['product_type_id'], '')
+        )
+    if filters.get('product_id'):
+        products_qs = products_qs.filter(id=filters['product_id'])
+
+    products = list(products_qs.order_by('name', 'id'))
+    product_ids = [product.id for product in products]
+    if not product_ids:
+        return [], {
+            'total_products': 0,
+            'never_sold_count': 0,
+            'over_30_count': 0,
+            'over_60_count': 0,
+            'over_90_count': 0,
+            'over_90_stock_value': 0,
+        }
+
+    stock_by_product = {
+        row['product_id']: Decimal(str(row['total_stock'] or 0))
+        for row in ProductStock.objects.filter(
+            product_id__in=product_ids,
+            warehouse__store_id__in=scoped_store_ids,
+            warehouse__is_deleted=False,
+        ).values('product_id').annotate(total_stock=Sum('quantity'))
+    }
+    stocked_product_ids = [
+        product_id
+        for product_id, quantity in stock_by_product.items()
+        if quantity > 0
+    ]
+    if not stocked_product_ids:
+        return [], {
+            'total_products': 0,
+            'never_sold_count': 0,
+            'over_30_count': 0,
+            'over_60_count': 0,
+            'over_90_count': 0,
+            'over_90_stock_value': 0,
+        }
+
+    today = datetime.now().date()
+    last_sale_by_product = {
+        row['product_id']: row['last_sale_date']
+        for row in OrderItem.objects.filter(
+            product_id__in=stocked_product_ids,
+            quantity__gt=0,
+            order__store_id__in=scoped_store_ids,
+            order__status__in=[4, 5],
+            order__is_deleted=False,
+            order__order_date__lte=today,
+        ).values('product_id').annotate(last_sale_date=Max('order__order_date'))
+    }
+
+    rows = []
+    stocked_product_id_set = set(stocked_product_ids)
+    for product in products:
+        if product.id not in stocked_product_id_set:
+            continue
+
+        last_sale_date = last_sale_by_product.get(product.id)
+        never_sold = last_sale_date is None
+        days_without_sale = (
+            max((today - last_sale_date).days, 0)
+            if last_sale_date else None
+        )
+
+        if never_sold:
+            warning_level = 'critical'
+            warning_label = 'Chưa từng bán'
+            suggested_action = 'Kiểm tra giá/hiển thị và ưu tiên kích cầu'
+        elif days_without_sale >= 90:
+            warning_level = 'critical'
+            warning_label = 'Rất chậm'
+            suggested_action = 'Ưu tiên xả hàng, combo hoặc giảm giá'
+        elif days_without_sale >= 60:
+            warning_level = 'slow'
+            warning_label = 'Chậm'
+            suggested_action = 'Lập chương trình khuyến mãi'
+        elif days_without_sale >= 30:
+            warning_level = 'watch'
+            warning_label = 'Theo dõi'
+            suggested_action = 'Tăng trưng bày và kích cầu'
+        else:
+            warning_level = 'normal'
+            warning_label = 'Bình thường'
+            suggested_action = 'Duy trì bán hàng'
+
+        category_name = ''
+        if product.category:
+            category_name = product.category.name
+            if product.category.parent:
+                category_name = f'{product.category.parent.name} / {category_name}'
+        total_stock = stock_by_product[product.id]
+        valuation_price, valuation_source = _inventory_valuation_unit_cost(product)
+        stock_value = total_stock * valuation_price
+        rows.append({
+            'product_id': product.id,
+            'product_code': product.code,
+            'product_name': product.name,
+            'category': category_name or 'Chưa phân loại',
+            'supplier': product.supplier.name if product.supplier else 'Chưa có NCC',
+            'last_sale_date': last_sale_date.isoformat() if last_sale_date else '',
+            'last_sale_date_display': last_sale_date.strftime('%d/%m/%Y') if last_sale_date else '',
+            'days_without_sale': days_without_sale,
+            'never_sold': never_sold,
+            'stock': float(total_stock),
+            'valuation_price': float(valuation_price),
+            'valuation_source': valuation_source,
+            'stock_value': float(stock_value),
+            'warning_level': warning_level,
+            'warning_label': warning_label,
+            'suggested_action': suggested_action,
+        })
+
+    # Chưa từng bán là một cảnh báo riêng; các mặt hàng còn lại ưu tiên theo số ngày.
+    rows.sort(key=lambda row: (
+        0 if row['never_sold'] else 1,
+        -(row['days_without_sale'] or 0),
+        -row['stock_value'],
+        row['product_name'].casefold(),
+    ))
+
+    def is_over(row, days):
+        return not row['never_sold'] and row['days_without_sale'] >= days
+
+    over_90_rows = [row for row in rows if is_over(row, 90)]
+    summary = {
+        'total_products': len(rows),
+        'never_sold_count': sum(1 for row in rows if row['never_sold']),
+        'over_30_count': sum(1 for row in rows if is_over(row, 30)),
+        'over_60_count': sum(1 for row in rows if is_over(row, 60)),
+        'over_90_count': len(over_90_rows),
+        'over_90_stock_value': sum(row['stock_value'] for row in over_90_rows),
+    }
+    return rows, summary
 
 
 def _report_lookup(prefix, suffix):
@@ -1818,6 +1986,10 @@ def _build_sales_report_payload(request, include_filter_options=True):
     total_net_cost = total_cost - return_cost_total
     total_gross_profit = total_net_revenue - total_net_cost
     gross_margin = round(total_gross_profit / total_net_revenue * 100, 1) if total_net_revenue > 0 else 0
+    slow_moving_products, slow_moving_summary = _build_slow_moving_inventory_payload(
+        request,
+        filters,
+    )
 
     payload = {
         'has_multiple_stores': has_multiple,
@@ -1873,6 +2045,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'return_cost': return_cost_total,
             'return_rate': round(returns_total / total_revenue * 100, 1) if total_revenue > 0 else 0,
         },
+        'slow_moving_products': slow_moving_products,
+        'slow_moving_summary': slow_moving_summary,
         'filters_applied': filters,
     }
 
@@ -2896,6 +3070,8 @@ def export_sales_excel(request):
     customer_kind_breakdown = payload.get('customer_kind_breakdown', [])
     group_breakdown = payload.get('group_breakdown', [])
     order_details = payload.get('order_details', [])
+    slow_moving_products = payload.get('slow_moving_products', [])
+    slow_moving_summary = payload.get('slow_moving_summary', {})
     time_group_label = payload.get('time_group_label', 'Ngày')
 
     # Styles
@@ -3362,6 +3538,79 @@ def export_sales_excel(request):
 
     for i, w in enumerate([6, 12, 12, 25, 18, 15, 36, 18, 18, 18, 18, 18, 10, 15, 18], 1):
         ws5.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # ===== Sheet: Cảnh báo hàng chậm =====
+    ws_slow = wb.create_sheet('Cảnh báo hàng chậm')
+    ws_slow.merge_cells('A1:J1')
+    ws_slow['A1'] = 'CẢNH BÁO HÀNG CHẬM'
+    ws_slow['A1'].font = header_font
+    ws_slow['A1'].fill = header_fill
+    ws_slow['A1'].alignment = Alignment(horizontal='center')
+    ws_slow.merge_cells('A2:J2')
+    ws_slow['A2'] = (
+        'Ngày chưa bán tính từ lần bán gần nhất của đơn đã xuất kho/hoàn thành; '
+        'hàng chưa từng bán được hiển thị riêng và không quy đổi thành số ngày.'
+    )
+    ws_slow['A2'].font = Font(italic=True, size=10)
+    ws_slow.merge_cells('A3:J3')
+    ws_slow['A3'] = (
+        f"Chưa từng bán: {slow_moving_summary.get('never_sold_count', 0)} | "
+        f"Từ 30 ngày: {slow_moving_summary.get('over_30_count', 0)} | "
+        f"Từ 60 ngày: {slow_moving_summary.get('over_60_count', 0)} | "
+        f"Từ 90 ngày: {slow_moving_summary.get('over_90_count', 0)} | "
+        f"Giá trị tồn từ 90 ngày: {slow_moving_summary.get('over_90_stock_value', 0):,.0f}đ"
+    )
+    ws_slow['A3'].font = Font(bold=True, size=10)
+
+    slow_headers = [
+        'STT', 'Mã sản phẩm', 'Tên sản phẩm', 'Danh mục', 'Nhà cung cấp',
+        'Lần bán gần nhất', 'Ngày chưa bán', 'Tồn hiện tại', 'Giá trị tồn',
+        'Mức cảnh báo',
+    ]
+    for col, heading in enumerate(slow_headers, 1):
+        cell = ws_slow.cell(row=4, column=col, value=heading)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = thin
+        cell.alignment = Alignment(horizontal='center')
+
+    alert_rows = [
+        row
+        for row in slow_moving_products
+        if row.get('never_sold') or float(row.get('days_without_sale') or 0) >= 30
+    ]
+    for idx, alert_row in enumerate(alert_rows, 1):
+        last_sale = alert_row.get('last_sale_date_display') or 'Chưa từng bán'
+        if alert_row.get('never_sold'):
+            last_sale = 'Chưa từng bán (tính ngày từ ngày tạo)'
+        values = [
+            idx,
+            alert_row.get('product_code') or '',
+            alert_row.get('product_name') or '',
+            alert_row.get('category') or '',
+            alert_row.get('supplier') or '',
+            last_sale,
+            float(alert_row.get('days_without_sale') or 0),
+            float(alert_row.get('stock') or 0),
+            float(alert_row.get('stock_value') or 0),
+            (
+                f"{alert_row.get('warning_label') or ''}: "
+                f"{alert_row.get('suggested_action') or ''}"
+            ),
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws_slow.cell(row=idx + 4, column=col, value=val)
+            cell.border = thin
+            if col == 9:
+                cell.number_format = money_fmt
+            if alert_row.get('warning_level') == 'critical':
+                cell.fill = loss_fill
+            elif alert_row.get('warning_level') in ('slow', 'watch'):
+                cell.fill = total_fill
+
+    ws_slow.freeze_panes = 'A5'
+    for i, width in enumerate([6, 18, 36, 28, 26, 28, 16, 16, 20, 48], 1):
+        ws_slow.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

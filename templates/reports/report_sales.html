@@ -82,6 +82,7 @@
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_orders"><i class="fas fa-file-invoice-dollar mr-1"></i>Theo đơn</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_returns"><i class="fas fa-undo mr-1"></i>Trả hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_profit"><i class="fas fa-coins mr-1"></i>Lợi nhuận gộp</a></li>
+            <li class="nav-item"><a class="nav-link font-weight-bold text-warning" data-toggle="tab" href="#tab_slow_moving"><i class="fas fa-hourglass-half mr-1"></i>Hàng bán chậm</a></li>
         </ul>
 
         <div class="tab-content">
@@ -359,6 +360,58 @@
                 </div>
                 <div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Lợi nhuận gộp theo danh mục</h6></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-bordered table-sm mb-0" id="profit_category_tbl"><thead class="bg-light"><tr><th>Danh mục</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th></tr></thead><tbody></tbody></table></div></div></div>
             </div>
+
+            <!-- CẢNH BÁO HÀNG CHẬM -->
+            <div class="tab-pane fade" id="tab_slow_moving">
+                <div class="alert alert-light border slow-moving-explanation">
+                    <i class="fas fa-info-circle text-info mr-1"></i>
+                    <strong>Ngày chưa bán</strong> = hôm nay − ngày bán gần nhất của đơn đã xuất kho/hoàn thành.
+                    Hàng chưa từng bán được hiển thị riêng và không quy đổi theo ngày tạo. Dữ liệu dùng toàn bộ lịch sử bán hàng,
+                    không bị giới hạn bởi khoảng ngày báo cáo và chỉ hiển thị sản phẩm đang còn tồn.
+                </div>
+                <div class="row mb-3">
+                    <div class="col-lg-3 col-6"><div class="small-box bg-secondary"><div class="inner"><h4 id="sm_never_sold">0</h4><p>Chưa từng bán</p></div><div class="icon"><i class="fas fa-box-open"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-info"><div class="inner"><h4 id="sm_over_30">0</h4><p>Chậm từ 30 ngày</p></div><div class="icon"><i class="fas fa-clock"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-danger"><div class="inner"><h4 id="sm_over_90">0</h4><p>Rất chậm từ 90 ngày</p></div><div class="icon"><i class="fas fa-exclamation-triangle"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-warning"><div class="inner"><h4 id="sm_over_90_value">0</h4><p>Giá trị tồn cần ưu tiên</p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
+                </div>
+                <div class="card card-outline card-warning">
+                    <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap slow-moving-toolbar">
+                        <h6 class="card-title mb-0"><i class="fas fa-hourglass-half mr-1"></i>Danh sách hàng chậm <small class="text-muted ml-1" id="sm_visible_count"></small></h6>
+                        <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
+                            <select class="form-control form-control-sm" id="slow_moving_threshold" aria-label="Mốc cảnh báo hàng chậm">
+                                <option value="all">Tất cả hàng còn tồn</option>
+                                <option value="30" selected>Chậm từ 30 ngày</option>
+                                <option value="60">Chậm từ 60 ngày</option>
+                                <option value="90">Chậm từ 90 ngày</option>
+                                <option value="never">Chưa từng bán</option>
+                            </select>
+                            <input type="search" class="form-control form-control-sm" id="slow_moving_search" placeholder="Tìm mã, tên, danh mục, NCC..." aria-label="Tìm trong danh sách hàng chậm">
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive slow-moving-table-wrap">
+                            <table class="table table-bordered table-sm table-hover mb-0" id="slow_moving_tbl">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th>STT</th>
+                                        <th>Sản phẩm</th>
+                                        <th>Danh mục</th>
+                                        <th>NCC</th>
+                                        <th class="text-center">Lần bán gần nhất</th>
+                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="days_without_sale">Ngày chưa bán <i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock">Tồn hiện tại <i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th class="text-right">Giá tính tồn</th>
+                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock_value">Giá trị tồn <i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th>Mức cảnh báo</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -380,6 +433,18 @@
 .order-detail-collapse-icon{transition:transform .2s ease;}
 .order-detail-collapse-toggle.collapsed .order-detail-collapse-icon{transform:rotate(-90deg);}
 .overview-ranking-scroll th,.overview-ranking-scroll td{white-space:nowrap;}
+.slow-moving-explanation{line-height:1.55;}
+.slow-moving-toolbar .form-control{width:auto;}
+.slow-moving-toolbar #slow_moving_threshold{min-width:190px;}
+.slow-moving-toolbar #slow_moving_search{min-width:260px;}
+.slow-moving-table-wrap{max-height:600px;overflow:auto;}
+.slow-moving-table-wrap table{min-width:1420px;}
+.slow-moving-table-wrap thead th{position:sticky;top:0;z-index:2;white-space:nowrap;}
+.slow-moving-sort{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;white-space:nowrap;cursor:pointer;}
+.slow-moving-sort:focus{outline:1px dotted #6c757d;outline-offset:2px;}
+.slow-moving-sort i{width:11px;margin-left:3px;color:#6c757d;}
+.slow-moving-row-critical{background:#fff5f5;}
+.slow-moving-row-slow{background:#fffaf0;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>
@@ -418,6 +483,7 @@ function renderLossProducts(order){
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
 function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
 var _filtersLoaded=false, _charts={}, _overviewProductRows=[], _overviewCustomerRows=[], _orderDetailRows=[];
+var _slowMovingRows=[], _slowMovingSummary={}, _slowMovingSort={key:'',direction:''};
 var _supplierBreakdownRows=[], _supplierBreakdownSummary={};
 var COLORS=['#36A2EB','#FF6384','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#7BC8A4','#E7646A','#8B5CF6','#10B981','#F59E0B','#3B82F6','#EF4444','#6366F1'];
 
@@ -626,6 +692,17 @@ $(document).ready(function(){
     $('#filter_order_scope').val('realized');
     setOrderDetailCurrentMonth();
     $('#top_products_limit,#top_customers_limit').on('change', renderOverviewRankings);
+    $('#slow_moving_threshold').on('change', renderSlowMovingRows);
+    $('#slow_moving_search').on('input', renderSlowMovingRows);
+    $('.slow-moving-sort').on('click', function(){
+        var key=String($(this).data('sort')||'');
+        if(_slowMovingSort.key===key){
+            _slowMovingSort.direction=_slowMovingSort.direction==='asc'?'desc':'asc';
+        }else{
+            _slowMovingSort={key:key,direction:'asc'};
+        }
+        renderSlowMovingRows();
+    });
     $('#supplier_sales_filter').on('change', function(){applySupplierFilter($(this).val(),false);});
     $('#btn_clear_supplier_filter').on('click', function(){applySupplierFilter('',false);});
     $('#order_detail_from_date,#order_detail_to_date').on('change', refreshOrderDetails);
@@ -714,6 +791,8 @@ function loadReport(){
         renderReturnTab(res.return_summary||{}, res.return_orders||[], res.return_products||[]);
         // Tab 7: Profit
         renderProfitTab(s, timeline, res.category_breakdown||[]);
+        // Cảnh báo hàng chậm
+        renderSlowMovingTab(res.slow_moving_products||[], res.slow_moving_summary||{});
     });
 }
 
@@ -1185,6 +1264,94 @@ function renderProfitTab(summary, daily, catBreakdown){
     // Table
     var h='';(filteredCategories||[]).forEach(function(c){var margin=c.revenue>0?((c.profit/c.revenue)*100).toFixed(1)+'%':'0%';var cls=c.profit>=0?'text-success':'text-danger';h+='<tr><td>'+escapeHtml(c.name||'')+'</td><td class="text-right">'+fmt(c.qty)+'</td><td class="text-right">'+fmtD(c.revenue)+'</td><td class="text-right">'+fmtD(c.cost)+'</td><td class="text-right '+cls+'"><strong>'+fmtD(c.profit)+'</strong></td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
     if(!h)h='<tr><td colspan="6" class="text-center text-muted">Không có dữ liệu</td></tr>';$('#profit_category_tbl tbody').html(h);
+}
+
+function renderSlowMovingTab(rows, summary){
+    _slowMovingRows=rows||[];
+    _slowMovingSummary=summary||{};
+    $('#sm_never_sold').text(fmt(_slowMovingSummary.never_sold_count||0));
+    $('#sm_over_30').text(fmt(_slowMovingSummary.over_30_count||0));
+    $('#sm_over_90').text(fmt(_slowMovingSummary.over_90_count||0));
+    $('#sm_over_90_value').text(fmtD(_slowMovingSummary.over_90_stock_value||0));
+    renderSlowMovingRows();
+}
+
+function renderSlowMovingRows(){
+    var threshold=$('#slow_moving_threshold').val()||'30';
+    var keyword=String($('#slow_moving_search').val()||'').trim().toLocaleLowerCase('vi-VN');
+    var rows=(_slowMovingRows||[]).filter(function(row){
+        var matchesThreshold=true;
+        if(threshold==='never'){
+            matchesThreshold=Boolean(row.never_sold);
+        }else if(threshold!=='all'){
+            matchesThreshold=!row.never_sold&&Number(row.days_without_sale||0)>=Number(threshold);
+        }
+        if(!matchesThreshold) return false;
+        if(!keyword) return true;
+        var searchable=[
+            row.product_code,
+            row.product_name,
+            row.category,
+            row.supplier,
+            row.warning_label,
+            row.suggested_action
+        ].join(' ').toLocaleLowerCase('vi-VN');
+        return searchable.indexOf(keyword)!==-1;
+    });
+    if(_slowMovingSort.key){
+        var sortKey=_slowMovingSort.key;
+        var direction=_slowMovingSort.direction==='desc'?-1:1;
+        rows.sort(function(left,right){
+            var leftEmpty=left[sortKey]===null||left[sortKey]===undefined||left[sortKey]==='';
+            var rightEmpty=right[sortKey]===null||right[sortKey]===undefined||right[sortKey]==='';
+            if(leftEmpty!==rightEmpty) return leftEmpty?1:-1;
+            var leftValue=Number(left[sortKey]||0);
+            var rightValue=Number(right[sortKey]||0);
+            if(leftValue!==rightValue) return (leftValue-rightValue)*direction;
+            return String(left.product_name||'').localeCompare(String(right.product_name||''),'vi');
+        });
+    }
+    $('.slow-moving-sort').each(function(){
+        var active=String($(this).data('sort')||'')===_slowMovingSort.key;
+        var $icon=$(this).find('i').removeClass('fa-sort fa-sort-up fa-sort-down');
+        $icon.addClass(active?(_slowMovingSort.direction==='asc'?'fa-sort-up':'fa-sort-down'):'fa-sort');
+        $(this).attr('aria-label', $(this).text().trim()+(active?(_slowMovingSort.direction==='asc'?' đang tăng dần':' đang giảm dần'):', chưa sắp xếp'));
+    });
+
+    var html='';
+    rows.forEach(function(row,index){
+        var badgeClass='badge-success';
+        if(row.warning_level==='critical') badgeClass='badge-danger';
+        else if(row.warning_level==='slow') badgeClass='badge-warning';
+        else if(row.warning_level==='watch') badgeClass='badge-info';
+        var rowClass=row.warning_level==='critical'?'slow-moving-row-critical':(row.warning_level==='slow'?'slow-moving-row-slow':'');
+        var lastSaleHtml=row.never_sold
+            ? '<span class="badge badge-secondary">Chưa từng bán</span>'
+            : '<strong>'+escapeHtml(row.last_sale_date_display||'')+'</strong>';
+        var daysHtml=row.never_sold
+            ? '<span class="text-muted">—</span><small class="d-block text-muted">Không có lần bán</small>'
+            : '<strong>'+fmt(row.days_without_sale||0)+' ngày</strong>';
+        var priceSource=row.valuation_source==='cost_price'
+            ? 'Giá vốn'
+            : (row.valuation_source==='import_price'?'Giá nhập':'Chưa có giá');
+        html+='<tr class="'+rowClass+'">'
+            +'<td>'+(index+1)+'</td>'
+            +'<td><strong>'+escapeHtml(row.product_code||'')+'</strong><small class="d-block text-muted">'+escapeHtml(row.product_name||'')+'</small></td>'
+            +'<td>'+escapeHtml(row.category||'')+'</td>'
+            +'<td>'+escapeHtml(row.supplier||'')+'</td>'
+            +'<td class="text-center">'+lastSaleHtml+'</td>'
+            +'<td class="text-right">'+daysHtml+'</td>'
+            +'<td class="text-right font-weight-bold">'+fmt(row.stock||0)+'</td>'
+            +'<td class="text-right">'+fmtD(row.valuation_price||0)+'<small class="d-block text-muted">'+priceSource+'</small></td>'
+            +'<td class="text-right font-weight-bold">'+fmtD(row.stock_value||0)+'</td>'
+            +'<td><span class="badge '+badgeClass+'">'+escapeHtml(row.warning_label||'')+'</span><small class="d-block mt-1">'+escapeHtml(row.suggested_action||'')+'</small></td>'
+            +'</tr>';
+    });
+    if(!html){
+        html='<tr><td colspan="10" class="text-center text-muted py-4">Không có sản phẩm phù hợp với mốc cảnh báo</td></tr>';
+    }
+    $('#slow_moving_tbl tbody').html(html);
+    $('#sm_visible_count').text('('+fmt(rows.length)+' / '+fmt((_slowMovingSummary||{}).total_products||0)+' sản phẩm còn tồn)');
 }
 
 function viewStore(sid){$('#filter_store_id').val(sid);loadReport();}

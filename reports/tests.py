@@ -735,6 +735,128 @@ class SalesReportTests(TestCase):
         )
         self.assertEqual(payload['filters_applied']['order_scope'], 'realized')
 
+    def test_sales_report_slow_moving_inventory_uses_latest_realized_sale_across_history(self):
+        today = date.today()
+        slow_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-SLOW-65',
+            name='Sản phẩm chậm 65 ngày',
+            cost_price=1000,
+            created_by=self.user,
+        )
+        recent_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-RECENT-10',
+            name='Sản phẩm mới bán',
+            cost_price=1500,
+            created_by=self.user,
+        )
+        never_sold_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-NEVER-SOLD',
+            name='Sản phẩm chưa từng bán',
+            import_price=2000,
+            created_by=self.user,
+        )
+        new_never_sold_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-NEW-NEVER-SOLD',
+            name='Sản phẩm mới tạo chưa bán',
+            cost_price=500,
+            created_by=self.user,
+        )
+        zero_stock_product = Product.objects.create(
+            store=self.store,
+            code='SP-RP-SLOW-ZERO',
+            name='Sản phẩm chậm nhưng hết tồn',
+            cost_price=3000,
+            created_by=self.user,
+        )
+        ProductStock.objects.create(product=slow_product, warehouse=self.warehouse, quantity=5)
+        ProductStock.objects.create(product=recent_product, warehouse=self.warehouse, quantity=2)
+        ProductStock.objects.create(product=never_sold_product, warehouse=self.warehouse, quantity=3)
+        ProductStock.objects.create(product=new_never_sold_product, warehouse=self.warehouse, quantity=1)
+        ProductStock.objects.create(product=zero_stock_product, warehouse=self.warehouse, quantity=0)
+
+        for code, product, days_ago, status in (
+            ('DH-RP-SLOW-REALIZED', slow_product, 65, 5),
+            ('DH-RP-SLOW-CANCELLED', slow_product, 1, 6),
+            ('DH-RP-RECENT-REALIZED', recent_product, 10, 4),
+            ('DH-RP-ZERO-REALIZED', zero_stock_product, 100, 5),
+        ):
+            order = Order.objects.create(
+                code=code,
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=status,
+                total_amount=100,
+                final_amount=100,
+                order_date=today - timedelta(days=days_ago),
+                created_by=self.user,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=1,
+                unit_price=100,
+                total_price=100,
+            )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            # Khoảng ngày báo cáo không chứa các đơn cũ nhưng cảnh báo vẫn phải
+            # dùng toàn bộ lịch sử bán hàng.
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        rows = {row['product_code']: row for row in payload['slow_moving_products']}
+        self.assertEqual(set(rows), {
+            slow_product.code,
+            recent_product.code,
+            never_sold_product.code,
+            new_never_sold_product.code,
+        })
+        self.assertEqual(rows[slow_product.code]['last_sale_date'], (today - timedelta(days=65)).isoformat())
+        self.assertEqual(rows[slow_product.code]['days_without_sale'], 65)
+        self.assertEqual(rows[slow_product.code]['warning_level'], 'slow')
+        self.assertEqual(rows[recent_product.code]['days_without_sale'], 10)
+        self.assertEqual(rows[recent_product.code]['warning_level'], 'normal')
+        self.assertTrue(rows[never_sold_product.code]['never_sold'])
+        self.assertIsNone(rows[never_sold_product.code]['days_without_sale'])
+        self.assertEqual(rows[never_sold_product.code]['valuation_source'], 'import_price')
+        self.assertEqual(rows[never_sold_product.code]['stock_value'], 6000.0)
+        self.assertTrue(rows[new_never_sold_product.code]['never_sold'])
+        self.assertIsNone(rows[new_never_sold_product.code]['days_without_sale'])
+        self.assertEqual(rows[new_never_sold_product.code]['warning_level'], 'critical')
+        self.assertNotIn(zero_stock_product.code, rows)
+        self.assertEqual(payload['slow_moving_summary']['total_products'], 4)
+        self.assertEqual(payload['slow_moving_summary']['never_sold_count'], 2)
+        self.assertEqual(payload['slow_moving_summary']['over_30_count'], 1)
+        self.assertEqual(payload['slow_moving_summary']['over_60_count'], 1)
+        self.assertEqual(payload['slow_moving_summary']['over_90_count'], 0)
+        self.assertEqual(payload['slow_moving_summary']['over_90_stock_value'], 0)
+
+        export_response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        self.assertIn('Cảnh báo hàng chậm', workbook.sheetnames)
+        slow_sheet = workbook['Cảnh báo hàng chậm']
+        exported_codes = {
+            slow_sheet.cell(row=row, column=2).value
+            for row in range(5, slow_sheet.max_row + 1)
+        }
+        self.assertEqual(exported_codes, {
+            slow_product.code,
+            never_sold_product.code,
+            new_never_sold_product.code,
+        })
+
     def test_sales_report_daily_date_opens_filtered_order_list_in_new_tab(self):
         response = self.client.get(reverse('report_sales'))
 
@@ -814,6 +936,22 @@ class SalesReportTests(TestCase):
         self.assertContains(response, "orderDate>to")
         self.assertContains(response, "$('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails)")
         self.assertContains(response, "$('#order_detail_tbl tbody').empty()")
+        self.assertContains(response, 'href="#tab_slow_moving"')
+        self.assertContains(response, 'Hàng bán chậm')
+        self.assertContains(response, 'id="slow_moving_threshold"')
+        self.assertContains(response, '<option value="30" selected>Chậm từ 30 ngày</option>', html=True)
+        self.assertContains(response, 'id="slow_moving_search"')
+        self.assertContains(response, 'id="slow_moving_tbl"')
+        self.assertContains(response, 'data-sort="days_without_sale"')
+        self.assertContains(response, 'data-sort="stock"')
+        self.assertContains(response, 'data-sort="stock_value"')
+        self.assertContains(response, "_slowMovingSort.direction==='asc'?'desc':'asc'")
+        self.assertContains(response, 'Ngày chưa bán')
+        self.assertContains(response, 'Hàng chưa từng bán được hiển thị riêng và không quy đổi theo ngày tạo')
+        self.assertContains(response, 'không bị giới hạn bởi khoảng ngày báo cáo')
+        self.assertContains(response, 'renderSlowMovingTab(res.slow_moving_products||[], res.slow_moving_summary||{})')
+        self.assertContains(response, 'function renderSlowMovingRows()')
+        self.assertLess(html.index('href="#tab_profit"'), html.index('href="#tab_slow_moving"'))
 
 
     def test_api_report_sales_all_active_scope_includes_non_cancelled_orders(self):

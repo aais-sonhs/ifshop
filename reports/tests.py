@@ -946,6 +946,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'data-sort="stock"')
         self.assertContains(response, 'data-sort="stock_value"')
         self.assertContains(response, "_slowMovingSort.direction==='asc'?'desc':'asc'")
+        self.assertNotContains(response, '<th>Mức cảnh báo</th>')
         self.assertContains(response, 'Ngày chưa bán')
         self.assertContains(response, 'Hàng chưa từng bán được hiển thị riêng và không quy đổi theo ngày tạo')
         self.assertContains(response, 'không bị giới hạn bởi khoảng ngày báo cáo')

@@ -403,7 +403,6 @@
                                         <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock">Tồn hiện tại <i class="fas fa-sort" aria-hidden="true"></i></button></th>
                                         <th class="text-right">Giá tính tồn</th>
                                         <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock_value">Giá trị tồn <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                        <th>Mức cảnh báo</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
@@ -438,7 +437,7 @@
 .slow-moving-toolbar #slow_moving_threshold{min-width:190px;}
 .slow-moving-toolbar #slow_moving_search{min-width:260px;}
 .slow-moving-table-wrap{max-height:600px;overflow:auto;}
-.slow-moving-table-wrap table{min-width:1420px;}
+.slow-moving-table-wrap table{min-width:1180px;}
 .slow-moving-table-wrap thead th{position:sticky;top:0;z-index:2;white-space:nowrap;}
 .slow-moving-sort{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;white-space:nowrap;cursor:pointer;}
 .slow-moving-sort:focus{outline:1px dotted #6c757d;outline-offset:2px;}
@@ -1292,9 +1291,7 @@ function renderSlowMovingRows(){
             row.product_code,
             row.product_name,
             row.category,
-            row.supplier,
-            row.warning_label,
-            row.suggested_action
+            row.supplier
         ].join(' ').toLocaleLowerCase('vi-VN');
         return searchable.indexOf(keyword)!==-1;
     });
@@ -1320,10 +1317,6 @@ function renderSlowMovingRows(){
 
     var html='';
     rows.forEach(function(row,index){
-        var badgeClass='badge-success';
-        if(row.warning_level==='critical') badgeClass='badge-danger';
-        else if(row.warning_level==='slow') badgeClass='badge-warning';
-        else if(row.warning_level==='watch') badgeClass='badge-info';
         var rowClass=row.warning_level==='critical'?'slow-moving-row-critical':(row.warning_level==='slow'?'slow-moving-row-slow':'');
         var lastSaleHtml=row.never_sold
             ? '<span class="badge badge-secondary">Chưa từng bán</span>'
@@ -1344,11 +1337,10 @@ function renderSlowMovingRows(){
             +'<td class="text-right font-weight-bold">'+fmt(row.stock||0)+'</td>'
             +'<td class="text-right">'+fmtD(row.valuation_price||0)+'<small class="d-block text-muted">'+priceSource+'</small></td>'
             +'<td class="text-right font-weight-bold">'+fmtD(row.stock_value||0)+'</td>'
-            +'<td><span class="badge '+badgeClass+'">'+escapeHtml(row.warning_label||'')+'</span><small class="d-block mt-1">'+escapeHtml(row.suggested_action||'')+'</small></td>'
             +'</tr>';
     });
     if(!html){
-        html='<tr><td colspan="10" class="text-center text-muted py-4">Không có sản phẩm phù hợp với mốc cảnh báo</td></tr>';
+        html='<tr><td colspan="9" class="text-center text-muted py-4">Không có sản phẩm phù hợp với mốc cảnh báo</td></tr>';
     }
     $('#slow_moving_tbl tbody').html(html);
     $('#sm_visible_count').text('('+fmt(rows.length)+' / '+fmt((_slowMovingSummary||{}).total_products||0)+' sản phẩm còn tồn)');

@@ -3541,18 +3541,18 @@ def export_sales_excel(request):
 
     # ===== Sheet: Cảnh báo hàng chậm =====
     ws_slow = wb.create_sheet('Cảnh báo hàng chậm')
-    ws_slow.merge_cells('A1:J1')
+    ws_slow.merge_cells('A1:I1')
     ws_slow['A1'] = 'CẢNH BÁO HÀNG CHẬM'
     ws_slow['A1'].font = header_font
     ws_slow['A1'].fill = header_fill
     ws_slow['A1'].alignment = Alignment(horizontal='center')
-    ws_slow.merge_cells('A2:J2')
+    ws_slow.merge_cells('A2:I2')
     ws_slow['A2'] = (
         'Ngày chưa bán tính từ lần bán gần nhất của đơn đã xuất kho/hoàn thành; '
         'hàng chưa từng bán được hiển thị riêng và không quy đổi thành số ngày.'
     )
     ws_slow['A2'].font = Font(italic=True, size=10)
-    ws_slow.merge_cells('A3:J3')
+    ws_slow.merge_cells('A3:I3')
     ws_slow['A3'] = (
         f"Chưa từng bán: {slow_moving_summary.get('never_sold_count', 0)} | "
         f"Từ 30 ngày: {slow_moving_summary.get('over_30_count', 0)} | "
@@ -3565,7 +3565,6 @@ def export_sales_excel(request):
     slow_headers = [
         'STT', 'Mã sản phẩm', 'Tên sản phẩm', 'Danh mục', 'Nhà cung cấp',
         'Lần bán gần nhất', 'Ngày chưa bán', 'Tồn hiện tại', 'Giá trị tồn',
-        'Mức cảnh báo',
     ]
     for col, heading in enumerate(slow_headers, 1):
         cell = ws_slow.cell(row=4, column=col, value=heading)
@@ -3593,10 +3592,6 @@ def export_sales_excel(request):
             float(alert_row.get('days_without_sale') or 0),
             float(alert_row.get('stock') or 0),
             float(alert_row.get('stock_value') or 0),
-            (
-                f"{alert_row.get('warning_label') or ''}: "
-                f"{alert_row.get('suggested_action') or ''}"
-            ),
         ]
         for col, val in enumerate(values, 1):
             cell = ws_slow.cell(row=idx + 4, column=col, value=val)
@@ -3609,7 +3604,7 @@ def export_sales_excel(request):
                 cell.fill = total_fill
 
     ws_slow.freeze_panes = 'A5'
-    for i, width in enumerate([6, 18, 36, 28, 26, 28, 16, 16, 20, 48], 1):
+    for i, width in enumerate([6, 18, 36, 28, 26, 28, 16, 16, 20], 1):
         ws_slow.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
     response = HttpResponse(

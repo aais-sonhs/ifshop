@@ -16,6 +16,7 @@
 .ex-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 .ex-meta .block { background: #efebe9; border-radius: 6px; padding: 10px 14px; }
 .ex-meta .label { font-weight: 600; color: #5d4037; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+.ex-meta .exported-at { margin-top: 4px; color: #444; font-size: 12px; font-weight: 600; }
 .ex-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .ex-table th { background: #5d4037; color: #fff; padding: 8px 10px; font-size: 12px; text-align: left; }
 .ex-table td { border-bottom: 1px solid #e0e0e0; padding: 8px 10px; font-size: 12px; }
@@ -28,6 +29,7 @@
 .ex-table .combo-components { margin-top:4px; color:#555; font-size:11px; line-height:1.35; }
 .ex-table .combo-component { padding-left:8px; }
 .ex-total { text-align: right; font-size: 14px; font-weight: 700; margin: 8px 0; color: #5d4037; }
+.ex-package-count { margin-top: 4px; }
 .ex-footer { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
 .ex-footer .sig-block { width: 180px; }
 .ex-footer .sig-label { font-weight: 600; font-size: 12px; margin-bottom: 60px; }
@@ -58,6 +60,7 @@
         <div class="block">
             <div class="label">Kho xuất</div>
             <div><strong>{{ order.warehouse.name|default:"—" }}</strong></div>
+            <div class="exported-at">Giờ xuất kho: ....................</div>
         </div>
         <div class="block">
             <div class="label">Người nhận</div>
@@ -109,7 +112,10 @@
         </tbody>
     </table>
 
-    <div class="ex-total">Tổng: {{ items|length }} sản phẩm</div>
+    <div class="ex-total">
+        <div>Tổng: {{ items|length }} sản phẩm</div>
+        <div class="ex-package-count">Số kiện: ....................</div>
+    </div>
 
     {% if print_template.show_order_note and order.note %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Ghi chú:</strong> {{ order.note }}</div>{% endif %}
     {% if print_template.show_terms and print_template.terms %}<div style="background:#efebe9;border-radius:6px;padding:10px 14px;font-size:12px;margin:8px 0;"><strong>Nội dung:</strong> {{ print_template.terms|linebreaksbr }}</div>{% endif %}

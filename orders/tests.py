@@ -171,7 +171,12 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Người lập phiếu')
         self.assertContains(response, '(Ký và ghi rõ họ tên)')
+        self.assertContains(response, 'Giờ xuất kho: ....................')
+        self.assertContains(response, 'Số kiện: ....................')
         self.assertNotContains(response, 'Nguyễn Văn Người Lập')
+        content = response.content.decode()
+        self.assertLess(content.index('Kho xuất'), content.index('Giờ xuất kho: ....................'))
+        self.assertLess(content.index('Tổng: 0 sản phẩm'), content.index('Số kiện: ....................'))
 
     def test_packing_a5_print_uses_packing_labels_without_prices(self):
         location = ProductLocation.objects.create(name='Kệ A1')

@@ -5,10 +5,42 @@
         <h3 class="card-title"><i class="fas fa-cogs mr-2"></i>Danh mục hệ thống</h3>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-3">
+            <div class="col-lg-7 col-md-7">
+                <div class="form-group mb-0">
+                    <label for="system_category_filter_search">Tìm trong danh mục hệ thống</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="system_category_filter_search" placeholder="Tên, mã, mô tả, trạng thái">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-3">
+                <div class="form-group mb-0">
+                    <label for="system_category_filter_scope">Nhóm danh mục</label>
+                    <select class="form-control form-control-sm" id="system_category_filter_scope">
+                        <option value="">Tất cả nhóm</option>
+                        <option value="finance">Nghiệp vụ thu chi</option>
+                        <option value="cashbook">Quỹ</option>
+                        <option value="product_category">Danh mục sản phẩm</option>
+                        <option value="product_type">Loại sản phẩm</option>
+                        <option value="warehouse">Kho</option>
+                        <option value="location">Vị trí sản phẩm</option>
+                        {% if biz and biz.mod_spa %}
+                        <option value="spa">Nhóm dịch vụ Spa</option>
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_system_category_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+            </div>
+        </div>
+        <div id="system_category_filter_summary" class="small text-muted mb-2"></div>
         <div class="row">
             <!-- Danh mục nghiệp vụ thu chi -->
             <div class="col-md-6">
-                <div class="card card-outline card-primary">
+                <div class="card card-outline card-primary system-category-section" data-system-category-scope="finance">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục nghiệp vụ thu chi</h5>
                         <div class="card-tools">
@@ -25,7 +57,7 @@
             </div>
             <!-- Danh mục quỹ -->
             <div class="col-md-6">
-                <div class="card card-outline card-success">
+                <div class="card card-outline card-success system-category-section" data-system-category-scope="cashbook">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục quỹ</h5>
                         <div class="card-tools">
@@ -44,7 +76,7 @@
         <div class="row mt-3">
             <!-- Danh mục sản phẩm -->
             <div class="col-md-6">
-                <div class="card card-outline card-warning">
+                <div class="card card-outline card-warning system-category-section" data-system-category-scope="product_category">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục sản phẩm</h5>
                         <div class="card-tools">
@@ -60,7 +92,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card card-outline card-secondary mt-3">
+                <div class="card card-outline card-secondary mt-3 system-category-section" data-system-category-scope="product_type">
                     <div class="card-header">
                         <h5 class="card-title">Loại sản phẩm</h5>
                         <div class="card-tools">
@@ -79,7 +111,7 @@
             </div>
             <!-- Danh mục kho và vị trí sản phẩm -->
             <div class="col-md-6">
-                <div class="card card-outline card-info">
+                <div class="card card-outline card-info system-category-section" data-system-category-scope="warehouse">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục kho</h5>
                         <div class="card-tools">
@@ -93,7 +125,7 @@
                         </table>
                     </div>
                 </div>
-                <div class="card card-outline card-teal mt-3">
+                <div class="card card-outline card-teal mt-3 system-category-section" data-system-category-scope="location">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục vị trí sản phẩm</h5>
                         <div class="card-tools">
@@ -113,7 +145,7 @@
         <div class="row mt-3">
             <!-- Nhóm dịch vụ Spa -->
             <div class="col-md-6">
-                <div class="card card-outline card-purple">
+                <div class="card card-outline card-purple system-category-section" data-system-category-scope="spa">
                     <div class="card-header">
                         <h5 class="card-title">Nhóm dịch vụ Spa</h5>
                         <div class="card-tools">
@@ -273,6 +305,7 @@ function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function escapeCategoryHtml(value){ return $('<div>').text(value==null?'':String(value)).html(); }
 var SYSTEM_PRODUCT_CATEGORIES = [];
 var PRODUCT_CATEGORY_REQUIRES_PARENT = false;
+var SYSTEM_CATEGORY_FILTER_TIMER = null;
 
 $(document).ready(function(){
     loadFinanceCats();
@@ -281,6 +314,17 @@ $(document).ready(function(){
     loadWarehouseCats();
     loadLocationCats();
     loadSpaCats();
+    $('#system_category_filter_search').on('input', function(){
+        clearTimeout(SYSTEM_CATEGORY_FILTER_TIMER);
+        SYSTEM_CATEGORY_FILTER_TIMER = setTimeout(applySystemCategoryFilters, 200);
+    });
+    $('#system_category_filter_scope').change(applySystemCategoryFilters);
+    $('#btn_clear_system_category_filters').click(function(){
+        clearTimeout(SYSTEM_CATEGORY_FILTER_TIMER);
+        $('#system_category_filter_search').val('');
+        $('#system_category_filter_scope').val('').trigger('change.select2');
+        applySystemCategoryFilters();
+    });
 
     // ===== DANH MỤC THU CHI =====
     $('#btn_add_finance_cat').click(function(){
@@ -397,6 +441,65 @@ $(document).ready(function(){
     });
 });
 
+function normalizeSystemCategoryFilter(value){
+    return String(value == null ? '' : value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+}
+
+function applySystemCategoryFilters(){
+    var terms = normalizeSystemCategoryFilter($('#system_category_filter_search').val()).split(/\s+/).filter(Boolean);
+    var scope = $('#system_category_filter_scope').val() || '';
+    var totalRows = 0;
+    var visibleRows = 0;
+
+    $('.system-category-section').each(function(){
+        var $section = $(this);
+        var sectionMatches = !scope || $section.attr('data-system-category-scope') === scope;
+        $section.toggle(sectionMatches);
+        if(!sectionMatches) return;
+
+        $section.find('table').each(function(){
+            var $table = $(this);
+            var $tbody = $table.find('tbody');
+            $tbody.find('.system-category-filter-empty').remove();
+            var matchedInTable = 0;
+            var dataRowsInTable = 0;
+            $tbody.children('tr').each(function(){
+                var $row = $(this);
+                var isPlaceholder = $row.children('td[colspan]').length > 0 &&
+                    /chua co|khong co/i.test(normalizeSystemCategoryFilter($row.text()));
+                if(isPlaceholder){
+                    $row.toggle(!terms.length);
+                    return;
+                }
+                dataRowsInTable++;
+                totalRows++;
+                var searchable = normalizeSystemCategoryFilter($row.children('td').not(':last-child').text());
+                var matches = !terms.some(function(term){ return searchable.indexOf(term) < 0; });
+                $row.toggle(matches);
+                if(matches){
+                    matchedInTable++;
+                    visibleRows++;
+                }
+            });
+            if(terms.length && !matchedInTable){
+                var colspan = $table.find('thead th').length || 1;
+                $tbody.append('<tr class="system-category-filter-empty"><td colspan="'+colspan+'" class="text-center text-muted">Không có mục phù hợp</td></tr>');
+            }
+        });
+    });
+
+    $('#system_category_filter_summary').text(
+        visibleRows === totalRows
+            ? 'Có ' + totalRows + ' mục danh mục'
+            : 'Hiển thị ' + visibleRows + ' / ' + totalRows + ' mục danh mục'
+    );
+}
+
 // ===== LOAD DATA =====
 function loadFinanceCats(){
     $.get('/api/finance-categories/', function(res){
@@ -407,6 +510,7 @@ function loadFinanceCats(){
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editFC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\','+d.type+',\''+( d.description||'').replace(/'/g,"\\'")+ '\')">Sửa</button></div></td></tr>';
         });
         $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 
@@ -418,6 +522,7 @@ function loadCashbooks(){
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editCB('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#cashbook_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 
@@ -453,6 +558,7 @@ function loadProductCats(){
                 '<button class="btn btn-xs btn-info" onclick="editPC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\','+d.parent_id+')">Sửa</button></div></td></tr>';
         });
         $('#product_type_tbl tbody').html(typeHtml || '<tr><td colspan="5" class="text-center text-muted">Chưa có loại sản phẩm</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 
@@ -472,6 +578,7 @@ function loadWarehouseCats(){
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editWH('+d.id+',\''+d.code.replace(/'/g,"\\'")+'\',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.address||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#warehouse_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 
@@ -514,6 +621,7 @@ function loadLocationCats(){
                 '<button class="btn btn-xs btn-danger" onclick="deleteLoc('+d.id+',\''+d.name.replace(/'/g,"\\\'")+'\')">Xóa</button></div></td></tr>';
         });
         $('#location_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 
@@ -539,6 +647,7 @@ function loadSpaCats(){
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editSC('+d.id+',\''+d.name.replace(/'/g,"\\\'")+'\',' + '\''+(d.description||'').replace(/'/g,"\\\'")+'\')">Sửa</button></div></td></tr>';
         });
         $('#spa_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        applySystemCategoryFilters();
     });
 }
 

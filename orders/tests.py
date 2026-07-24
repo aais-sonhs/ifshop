@@ -1181,6 +1181,8 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'id="order_items_scroll"')
         self.assertContains(response, 'id="order_items_summary"')
         self.assertContains(response, 'modal-dialog-scrollable order-form-dialog')
+        self.assertContains(response, '#modal_form .order-form-dialog {')
+        self.assertContains(response, 'max-width: 1840px;')
         self.assertContains(response, 'max-width: 1600px;')
         self.assertContains(response, 'overscroll-behavior: contain;')
         self.assertContains(response, 'getOrderItemRowsInSequenceOrder().forEach(function(row)')
@@ -1203,17 +1205,22 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            '<th style="width:8%" class="text-center order-image-column">Ảnh</th>',
+            '<th style="width:7%" class="text-center order-image-column">Ảnh</th>',
             html=True,
         )
         self.assertContains(
             response,
-            '<th style="width:4%" class="order-unit-column">ĐVT</th>',
+            '<th style="width:3%" class="order-unit-column">ĐVT</th>',
             html=True,
         )
         self.assertContains(
             response,
-            '<th style="width:5%" class="order-quantity-column">SL</th>',
+            '<th style="width:16%" class="stock-info-col">Tồn theo kho</th>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<th style="width:4%" class="order-quantity-column">SL</th>',
             html=True,
         )
         self.assertContains(
@@ -1235,10 +1242,32 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'min-width: 0;')
         self.assertContains(response, '#items_tbl .order-item-img')
         self.assertContains(response, 'width: 56px;')
+        self.assertContains(response, '#items_tbl .stock-breakdown-row > span:last-child')
+        self.assertContains(response, 'overflow-wrap: anywhere;')
         self.assertNotContains(response, '<th style="width:5%"></th>', html=True)
         self.assertContains(response, 'order-item-remove-button')
         self.assertContains(response, 'padding-right: 40px;')
         self.assertContains(response, '<td colspan="9" class="text-center text-muted py-4">')
+
+    def test_order_save_button_recovers_from_stale_or_timed_out_requests(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var ORDER_SAVE_TIMEOUT_MS = 45000;')
+        self.assertContains(response, 'function resetOrderSaveButtonState(isQuotation)')
+        self.assertContains(response, 'resetOrderSaveButtonState(false);', count=3)
+        self.assertContains(response, 'resetOrderSaveButtonState(true);')
+        self.assertContains(response, 'timeout:ORDER_SAVE_TIMEOUT_MS,', count=2)
+        self.assertContains(response, 'showOrderSaveRequestError(xhr, textStatus, false);')
+        self.assertContains(response, 'showOrderSaveRequestError(xhr, textStatus, true);')
+        self.assertContains(response, "if(!$('#btn_save').data('submitting'))")
+        self.assertContains(response, 'hide.bs.modal.orderSaveGuard')
+        self.assertContains(
+            response,
+            'Đơn hàng đang được lưu. Vui lòng chờ hoàn tất trước khi đóng cửa sổ.',
+        )
 
     def test_order_form_exposes_product_specification_line(self):
         self.client.force_login(self.owner)

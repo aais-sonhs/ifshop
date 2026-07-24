@@ -8,6 +8,42 @@
         </div>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-2">
+            <div class="col-lg-5 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="user_filter_search">Tìm người dùng</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="user_filter_search" placeholder="Username, họ tên, email, vai trò">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-3">
+                <div class="form-group mb-2">
+                    <label for="user_filter_unit">{% if request.user.is_superuser %}Thương hiệu{% else %}Cửa hàng{% endif %}</label>
+                    <select class="form-control form-control-sm" id="user_filter_unit">
+                        <option value="">Tất cả</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-3">
+                <div class="form-group mb-2">
+                    <label for="user_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="user_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="active">Hoạt động</option>
+                        <option value="inactive">Đã khóa</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-12">
+                <div class="d-flex justify-content-lg-end mb-2" style="gap:6px;">
+                    <button type="button" class="btn btn-sm btn-primary" id="btn_filter_users"><i class="fas fa-filter mr-1"></i>Lọc</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_user_filters" title="Xóa lọc"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+        </div>
+        <div id="user_filter_summary" class="small text-muted mb-2"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead>
@@ -134,9 +170,27 @@ var allUsers = [];
 var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
 var allStores = [];
 var allRoleGroups = [];
+var userFilterTimer = null;
 
 $(document).ready(function(){
     loadData();
+    $('#btn_filter_users').click(renderTable);
+    $('#user_filter_search').on('input', function(){
+        clearTimeout(userFilterTimer);
+        userFilterTimer = setTimeout(renderTable, 250);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(userFilterTimer);
+        renderTable();
+    });
+    $('#user_filter_unit, #user_filter_status').change(renderTable);
+    $('#btn_clear_user_filters').click(function(){
+        clearTimeout(userFilterTimer);
+        $('#user_filter_search').val('');
+        $('#user_filter_unit, #user_filter_status').val('').trigger('change.select2');
+        renderTable();
+    });
 
     // Thêm user
     $('#btn_add_user').click(function(){
@@ -218,6 +272,7 @@ function loadData(){
         });
         $('#inp_role_group_ids').html(rgOpts);
 
+        populateUserFilterOptions();
         renderTable();
     });
 }
@@ -226,12 +281,70 @@ function escapeHtml(value){
     return $('<div>').text(value == null ? '' : String(value)).html();
 }
 
-function renderTable(){
-    var h = '';
-    if(!allUsers.length){
-        h = '<tr><td colspan="'+(isSuperAdmin?7:8)+'" class="text-center text-muted py-4">Chưa có người dùng nào</td></tr>';
+function normalizeUserFilterText(value){
+    return String(value == null ? '' : value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+}
+
+function populateUserFilterOptions(){
+    var selected = $('#user_filter_unit').val() || '';
+    var options = '<option value="">Tất cả</option>';
+    if(isSuperAdmin){
+        var brands = [];
+        allUsers.forEach(function(user){
+            if(user.brand_name && brands.indexOf(user.brand_name) < 0) brands.push(user.brand_name);
+        });
+        brands.sort(function(a, b){ return a.localeCompare(b, 'vi'); });
+        brands.forEach(function(name){
+            options += '<option value="'+escapeHtml(name)+'">'+escapeHtml(name)+'</option>';
+        });
+        options += '<option value="__unassigned__">Chưa có thương hiệu</option>';
+    }else{
+        allStores.forEach(function(store){
+            options += '<option value="'+store.id+'">'+escapeHtml(store.name)+'</option>';
+        });
+        options += '<option value="__unassigned__">Chưa gán cửa hàng</option>';
     }
-    allUsers.forEach(function(u, i){
+    $('#user_filter_unit').html(options).val(selected).trigger('change.select2');
+}
+
+function filteredUsers(){
+    var terms = normalizeUserFilterText($('#user_filter_search').val()).split(/\s+/).filter(Boolean);
+    var unit = $('#user_filter_unit').val() || '';
+    var status = $('#user_filter_status').val() || '';
+    return allUsers.filter(function(user){
+        var searchable = normalizeUserFilterText([
+            user.username, user.full_name, user.email, user.groups, user.position,
+            user.store_name, user.brand_name
+        ].join(' '));
+        if(terms.some(function(term){ return searchable.indexOf(term) < 0; })) return false;
+        if(unit){
+            if(unit === '__unassigned__'){
+                if(isSuperAdmin ? !!user.brand_name : !!user.store_id) return false;
+            }else if(isSuperAdmin){
+                if(user.brand_name !== unit) return false;
+            }else if(String(user.store_id || '') !== String(unit)){
+                return false;
+            }
+        }
+        if(status === 'active' && !user.is_active) return false;
+        if(status === 'inactive' && user.is_active) return false;
+        return true;
+    });
+}
+
+function renderTable(){
+    var visibleUsers = filteredUsers();
+    var h = '';
+    if(!visibleUsers.length){
+        h = '<tr><td colspan="'+(isSuperAdmin?7:8)+'" class="text-center text-muted py-4">'+
+            (allUsers.length ? 'Không có người dùng phù hợp' : 'Chưa có người dùng nào')+'</td></tr>';
+    }
+    visibleUsers.forEach(function(u, i){
         var statusBadge = u.is_active ? '<span class="badge badge-success">HĐ</span>' : '<span class="badge badge-secondary">Khóa</span>';
         var roleBadge = '';
         if(u.is_superuser) roleBadge = '<span class="badge badge-danger">Admin</span> ';
@@ -263,6 +376,11 @@ function renderTable(){
         h += '</tr>';
     });
     $('#user_tbody').html(h);
+    $('#user_filter_summary').text(
+        visibleUsers.length === allUsers.length
+            ? 'Có ' + allUsers.length + ' người dùng'
+            : 'Hiển thị ' + visibleUsers.length + ' / ' + allUsers.length + ' người dùng'
+    );
 }
 
 function editUser(u){

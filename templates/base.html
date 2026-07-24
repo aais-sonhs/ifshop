@@ -17,7 +17,216 @@
     </div>
     <!-- ./wrapper -->
     <link rel="stylesheet" href="{% static 'plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css' %}?{% now 'U' %}">
+    <style>
+    .global-close-confirm {
+        position: fixed;
+        inset: 0;
+        z-index: 20000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(15, 23, 42, 0.58);
+    }
+    .global-close-confirm[hidden] {
+        display: none !important;
+    }
+    .global-close-confirm__dialog {
+        width: 100%;
+        max-width: 440px;
+        overflow: hidden;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.3);
+        animation: globalCloseConfirmIn 0.16s ease-out;
+    }
+    .global-close-confirm__body {
+        display: flex;
+        gap: 14px;
+        padding: 24px 24px 18px;
+    }
+    .global-close-confirm__icon {
+        display: flex;
+        flex: 0 0 44px;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        color: #b45309;
+        background: #fef3c7;
+        font-size: 20px;
+    }
+    .global-close-confirm__title {
+        margin: 0 0 6px;
+        color: #111827;
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    .global-close-confirm__message {
+        margin: 0;
+        color: #374151;
+        line-height: 1.5;
+    }
+    .global-close-confirm__hint {
+        display: block;
+        margin-top: 4px;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+    .global-close-confirm__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 14px 24px;
+        border-top: 1px solid #e5e7eb;
+        background: #f9fafb;
+    }
+    @keyframes globalCloseConfirmIn {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @media (max-width: 575.98px) {
+        .global-close-confirm__body {
+            padding: 20px 18px 16px;
+        }
+        .global-close-confirm__actions {
+            flex-direction: column-reverse;
+            padding: 12px 18px 18px;
+        }
+        .global-close-confirm__actions .btn {
+            width: 100%;
+        }
+    }
+    </style>
+
+    <div class="global-close-confirm" id="global_close_confirm" hidden>
+        <div class="global-close-confirm__dialog"
+             role="alertdialog"
+             aria-modal="true"
+             aria-labelledby="global_close_confirm_title"
+             aria-describedby="global_close_confirm_message">
+            <div class="global-close-confirm__body">
+                <div class="global-close-confirm__icon" aria-hidden="true">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <h5 class="global-close-confirm__title" id="global_close_confirm_title">Xác nhận đóng</h5>
+                    <p class="global-close-confirm__message" id="global_close_confirm_message">
+                        Bạn có chắc muốn đóng cửa sổ này không?
+                        <span class="global-close-confirm__hint">Các thay đổi chưa lưu có thể bị mất.</span>
+                    </p>
+                </div>
+            </div>
+            <div class="global-close-confirm__actions">
+                <button type="button" class="btn btn-outline-secondary" id="global_close_confirm_cancel">
+                    Tiếp tục chỉnh sửa
+                </button>
+                <button type="button" class="btn btn-danger" id="global_close_confirm_accept">
+                    Đồng ý đóng
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+    // Xác nhận nút X cho mọi modal; modal quan trọng có thể bảo vệ thêm mọi nút đóng.
+    (function(){
+        var confirmBox = document.getElementById('global_close_confirm');
+        var messageEl = document.getElementById('global_close_confirm_message');
+        var cancelButton = document.getElementById('global_close_confirm_cancel');
+        var acceptButton = document.getElementById('global_close_confirm_accept');
+        var pendingModal = null;
+        var closeTrigger = null;
+
+        function modalTitle(modal){
+            var title = modal.querySelector('.modal-title');
+            return title ? title.textContent.replace(/\s+/g, ' ').trim() : '';
+        }
+
+        function showCloseConfirm(modal, trigger){
+            var title = modalTitle(modal);
+            pendingModal = modal;
+            closeTrigger = trigger;
+            messageEl.firstChild.nodeValue = title
+                ? 'Bạn có chắc muốn đóng "' + title + '" không? '
+                : 'Bạn có chắc muốn đóng cửa sổ này không? ';
+            confirmBox.hidden = false;
+            window.setTimeout(function(){ cancelButton.focus(); }, 0);
+        }
+
+        function hideCloseConfirm(restoreFocus){
+            confirmBox.hidden = true;
+            if(restoreFocus && closeTrigger && document.documentElement.contains(closeTrigger)){
+                closeTrigger.focus();
+            }
+            pendingModal = null;
+            closeTrigger = null;
+        }
+
+        document.addEventListener('click', function(event){
+            var trigger = event.target.closest(
+                '.modal .modal-header .close[data-dismiss="modal"], ' +
+                '.modal .modal-header .close[data-bs-dismiss="modal"], ' +
+                '.modal[data-confirm-close="true"] [data-dismiss="modal"], ' +
+                '.modal[data-confirm-close="true"] [data-bs-dismiss="modal"]'
+            );
+            if(!trigger) return;
+
+            var modal = trigger.closest('.modal');
+            if(!modal) return;
+
+            // Chặn Bootstrap xử lý click cho đến khi người dùng xác nhận.
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            showCloseConfirm(modal, trigger);
+        }, true);
+
+        cancelButton.addEventListener('click', function(){
+            hideCloseConfirm(true);
+        });
+
+        acceptButton.addEventListener('click', function(){
+            var modal = pendingModal;
+            hideCloseConfirm(false);
+            if(modal && window.jQuery && window.jQuery.fn.modal){
+                window.jQuery(modal).modal('hide');
+            }
+        });
+
+        document.addEventListener('keydown', function(event){
+            if(confirmBox.hidden) return;
+
+            if(event.key === 'Escape'){
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                hideCloseConfirm(true);
+                return;
+            }
+
+            if(event.key === 'Tab'){
+                var first = cancelButton;
+                var last = acceptButton;
+                if(event.shiftKey && document.activeElement === first){
+                    event.preventDefault();
+                    last.focus();
+                }else if(!event.shiftKey && document.activeElement === last){
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        }, true);
+
+        // Giữ focus trong popup, không để cơ chế focus của modal phía sau giành lại.
+        document.addEventListener('focusin', function(event){
+            if(confirmBox.hidden) return;
+            if(!confirmBox.contains(event.target)){
+                cancelButton.focus();
+            }
+            event.stopImmediatePropagation();
+        }, true);
+    })();
+
     function getSelect2Placeholder($select){
         var explicit = $select.data('placeholder') || $select.attr('placeholder');
         if(explicit) return explicit;

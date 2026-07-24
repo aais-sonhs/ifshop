@@ -22,6 +22,8 @@ from products.models import (
     ProductLocation,
     ProductStock,
     ProductVariant,
+    PurchaseOrder,
+    PurchaseOrderItem,
     StockCheck,
     StockCheckItem,
     StockTransfer,
@@ -2426,6 +2428,176 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['meta']['end_index'], 11)
         self.assertFalse(payload['meta']['has_next'])
         self.assertEqual([item['code'] for item in payload['data']], ['P-PAGE-00'])
+
+    def test_goods_receipt_list_filters_before_pagination(self):
+        other_supplier = Supplier.objects.create(
+            code='SUP-FILTER-OTHER',
+            name='Nhà cung cấp không khớp',
+            created_by=self.user,
+        )
+        target_date = date.today() - timedelta(days=2)
+        matching = GoodsReceipt.objects.create(
+            code='P-FILTER-MATCH',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            receipt_date=target_date,
+            status=0,
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=matching,
+            product=self.product,
+            quantity=1,
+            unit_price=10,
+            total_price=10,
+        )
+        GoodsReceipt.objects.create(
+            code='P-FILTER-OTHER',
+            supplier=other_supplier,
+            warehouse=self.warehouse_b,
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_goods_receipts'), {
+            'q': 'FILTER-MATCH',
+            'supplier_id': self.supplier.id,
+            'warehouse_id': self.warehouse_a.id,
+            'status': '0',
+            'date_from': target_date.isoformat(),
+            'date_to': target_date.isoformat(),
+            'page': 1,
+            'page_size': 10,
+        })
+
+        payload = response.json()
+        self.assertEqual([row['id'] for row in payload['data']], [matching.id])
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 2)
+
+    def test_purchase_order_list_filters_supplier_status_date_and_product(self):
+        target_product = Product.objects.create(
+            store=self.store,
+            code='SP-PO-FILTER',
+            name='Linh kiện cần tìm',
+            created_by=self.user,
+        )
+        other_supplier = Supplier.objects.create(
+            code='SUP-PO-OTHER',
+            name='Nhà cung cấp PO khác',
+            created_by=self.user,
+        )
+        target_date = date.today() - timedelta(days=3)
+        matching = PurchaseOrder.objects.create(
+            code='PO-FILTER-MATCH',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            order_date=target_date,
+            status=1,
+            total_amount=100,
+            created_by=self.user,
+        )
+        PurchaseOrderItem.objects.create(
+            purchase_order=matching,
+            product=target_product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        PurchaseOrder.objects.create(
+            code='PO-FILTER-OTHER',
+            supplier=other_supplier,
+            warehouse=self.warehouse_b,
+            order_date=date.today(),
+            status=4,
+            total_amount=50,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_purchase_orders'), {
+            'q': 'Linh kiện cần tìm',
+            'supplier_id': self.supplier.id,
+            'warehouse_id': self.warehouse_a.id,
+            'status': '1',
+            'date_from': target_date.isoformat(),
+            'date_to': target_date.isoformat(),
+        })
+
+        payload = response.json()
+        self.assertEqual([row['id'] for row in payload['data']], [matching.id])
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 2)
+
+    def test_purchase_return_list_filters_receipt_supplier_status_and_date(self):
+        other_supplier = Supplier.objects.create(
+            code='SUP-RETURN-OTHER',
+            name='Nhà cung cấp trả khác',
+            created_by=self.user,
+        )
+        matching_receipt, matching_item = self._create_completed_goods_receipt(
+            code='P-RETURN-FILTER-SOURCE',
+        )
+        other_receipt, other_item = self._create_completed_goods_receipt(
+            code='P-RETURN-FILTER-OTHER-SOURCE',
+            warehouse=self.warehouse_b,
+            supplier=other_supplier,
+        )
+        target_date = date.today() - timedelta(days=1)
+        matching = PurchaseReturn.objects.create(
+            code='PTN-FILTER-MATCH',
+            goods_receipt=matching_receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            return_date=target_date,
+            status=0,
+            reason='Trả đúng phiếu cần tìm',
+            total_amount=100,
+            created_by=self.user,
+        )
+        PurchaseReturnItem.objects.create(
+            purchase_return=matching,
+            goods_receipt_item=matching_item,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        other = PurchaseReturn.objects.create(
+            code='PTN-FILTER-OTHER',
+            goods_receipt=other_receipt,
+            supplier=other_supplier,
+            warehouse=self.warehouse_b,
+            return_date=date.today(),
+            status=1,
+            reason='Không khớp',
+            total_amount=100,
+            created_by=self.user,
+        )
+        PurchaseReturnItem.objects.create(
+            purchase_return=other,
+            goods_receipt_item=other_item,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+
+        response = self.client.get(reverse('api_get_purchase_returns'), {
+            'q': matching_receipt.code,
+            'supplier_id': self.supplier.id,
+            'warehouse_id': self.warehouse_a.id,
+            'status': '0',
+            'date_from': target_date.isoformat(),
+            'date_to': target_date.isoformat(),
+        })
+
+        payload = response.json()
+        self.assertEqual([row['id'] for row in payload['data']], [matching.id])
+        self.assertEqual(payload['data'][0]['supplier_id'], self.supplier.id)
+        self.assertEqual(payload['data'][0]['warehouse_id'], self.warehouse_a.id)
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 2)
 
     def test_delete_completed_stock_transfer_reverts_stock(self):
         transfer = StockTransfer.objects.create(

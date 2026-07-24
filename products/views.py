@@ -1195,6 +1195,7 @@ def goods_receipt_tbl(request):
 @login_required(login_url="/login/")
 @brand_owner_required
 def purchase_return_tbl(request):
+    store_ids = get_managed_store_ids(request.user)
     receipts = filter_by_store(
         GoodsReceipt.objects.filter(status=1).select_related('supplier', 'warehouse'),
         request,
@@ -1203,6 +1204,11 @@ def purchase_return_tbl(request):
     context = {
         'active_tab': 'purchase_return_tbl',
         'receipts': list(receipts.values('id', 'code', 'supplier__name', 'warehouse__name', 'receipt_date')),
+        'suppliers': list(Supplier.objects.filter(is_active=True).values('id', 'name')),
+        'warehouses': list(Warehouse.objects.filter(
+            is_active=True,
+            store_id__in=store_ids,
+        ).values('id', 'name')),
     }
     return render(request, "products/purchase_return_list.html", context)
 
@@ -2162,6 +2168,47 @@ def api_save_category(request):
 
 # ============ API: GOODS RECEIPT ============
 
+def _parse_list_filter_date(raw_value):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError:
+        return None
+
+
+def _apply_goods_receipt_list_filters(queryset, request):
+    search = (request.GET.get('q') or '').strip()
+    supplier_id = _to_optional_positive_int(request.GET.get('supplier_id'))
+    warehouse_id = _to_optional_positive_int(request.GET.get('warehouse_id'))
+    status = (request.GET.get('status') or '').strip()
+    date_from = _parse_list_filter_date(request.GET.get('date_from'))
+    date_to = _parse_list_filter_date(request.GET.get('date_to'))
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search)
+            | Q(purchase_order__code__icontains=search)
+            | Q(supplier__name__icontains=search)
+            | Q(warehouse__name__icontains=search)
+            | Q(note__icontains=search)
+            | Q(items__product__code__icontains=search)
+            | Q(items__product__name__icontains=search)
+        ).distinct()
+    if supplier_id:
+        queryset = queryset.filter(supplier_id=supplier_id)
+    if warehouse_id:
+        queryset = queryset.filter(warehouse_id=warehouse_id)
+    if status in {'0', '1', '2'}:
+        queryset = queryset.filter(status=int(status))
+    if date_from:
+        queryset = queryset.filter(receipt_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(receipt_date__lte=date_to)
+    return queryset
+
+
 def _serialize_goods_receipt_list(receipts):
     data = []
     for r in receipts:
@@ -2218,8 +2265,10 @@ def api_get_goods_receipts(request):
         .order_by('-receipt_date', '-created_at', '-id')
     )
     receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    total_all_count = receipts.count()
     if receipt_id:
         receipts = receipts.filter(id=receipt_id)
+    receipts = _apply_goods_receipt_list_filters(receipts, request)
     paginator = Paginator(receipts, page_size)
     page_obj = paginator.get_page(page)
     page_receipts = (
@@ -2240,7 +2289,7 @@ def api_get_goods_receipts(request):
             'page_count': len(data),
             'total_pages': paginator.num_pages,
             'total_filtered_count': paginator.count,
-            'total_all_count': paginator.count,
+            'total_all_count': total_all_count,
             'has_previous': page_obj.has_previous(),
             'has_next': page_obj.has_next(),
             'start_index': page_obj.start_index() if paginator.count else 0,
@@ -2436,7 +2485,9 @@ def _serialize_purchase_return(purchase_return):
         'goods_receipt_id': purchase_return.goods_receipt_id,
         'goods_receipt_code': purchase_return.goods_receipt.code if purchase_return.goods_receipt else '',
         'supplier': purchase_return.supplier.name if purchase_return.supplier else '',
+        'supplier_id': purchase_return.supplier_id,
         'warehouse': purchase_return.warehouse.name if purchase_return.warehouse else '',
+        'warehouse_id': purchase_return.warehouse_id,
         'return_date': purchase_return.return_date.strftime('%Y-%m-%d') if purchase_return.return_date else '',
         'status': purchase_return.status,
         'status_display': purchase_return.get_status_display(),
@@ -2459,6 +2510,38 @@ def _serialize_purchase_return(purchase_return):
     }
 
 
+def _apply_purchase_return_list_filters(queryset, request):
+    search = (request.GET.get('q') or '').strip()
+    supplier_id = _to_optional_positive_int(request.GET.get('supplier_id'))
+    warehouse_id = _to_optional_positive_int(request.GET.get('warehouse_id'))
+    status = (request.GET.get('status') or '').strip()
+    date_from = _parse_list_filter_date(request.GET.get('date_from'))
+    date_to = _parse_list_filter_date(request.GET.get('date_to'))
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search)
+            | Q(goods_receipt__code__icontains=search)
+            | Q(supplier__name__icontains=search)
+            | Q(warehouse__name__icontains=search)
+            | Q(reason__icontains=search)
+            | Q(note__icontains=search)
+            | Q(items__product__code__icontains=search)
+            | Q(items__product__name__icontains=search)
+        ).distinct()
+    if supplier_id:
+        queryset = queryset.filter(supplier_id=supplier_id)
+    if warehouse_id:
+        queryset = queryset.filter(warehouse_id=warehouse_id)
+    if status in {'0', '1', '2'}:
+        queryset = queryset.filter(status=int(status))
+    if date_from:
+        queryset = queryset.filter(return_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(return_date__lte=date_to)
+    return queryset
+
+
 @login_required(login_url="/login/")
 def api_get_purchase_returns(request):
     returns = filter_by_store(
@@ -2468,7 +2551,16 @@ def api_get_purchase_returns(request):
         request,
         field_name='warehouse__store',
     ).order_by('-return_date', '-created_at', '-id')
-    return JsonResponse({'data': [_serialize_purchase_return(row) for row in returns]})
+    total_all_count = returns.count()
+    returns = _apply_purchase_return_list_filters(returns, request)
+    data = [_serialize_purchase_return(row) for row in returns]
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'total_filtered_count': len(data),
+            'total_all_count': total_all_count,
+        },
+    })
 
 
 @login_required(login_url="/login/")
@@ -3095,6 +3187,36 @@ def api_delete_stock_check(request):
 # ============ API: PURCHASE ORDER ============
 
 
+def _apply_purchase_order_list_filters(queryset, request):
+    search = (request.GET.get('q') or '').strip()
+    supplier_id = _to_optional_positive_int(request.GET.get('supplier_id'))
+    warehouse_id = _to_optional_positive_int(request.GET.get('warehouse_id'))
+    status = (request.GET.get('status') or '').strip()
+    date_from = _parse_list_filter_date(request.GET.get('date_from'))
+    date_to = _parse_list_filter_date(request.GET.get('date_to'))
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search)
+            | Q(supplier__name__icontains=search)
+            | Q(warehouse__name__icontains=search)
+            | Q(note__icontains=search)
+            | Q(items__product__code__icontains=search)
+            | Q(items__product__name__icontains=search)
+        ).distinct()
+    if supplier_id:
+        queryset = queryset.filter(supplier_id=supplier_id)
+    if warehouse_id:
+        queryset = queryset.filter(warehouse_id=warehouse_id)
+    if status in {'0', '1', '2', '3', '4'}:
+        queryset = queryset.filter(status=int(status))
+    if date_from:
+        queryset = queryset.filter(order_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(order_date__lte=date_to)
+    return queryset
+
+
 @login_required(login_url="/login/")
 def api_get_purchase_orders(request):
     orders = (
@@ -3104,6 +3226,8 @@ def api_get_purchase_orders(request):
         .order_by('-order_date', '-id')
     )
     orders = filter_by_store(orders, request, field_name='warehouse__store')
+    total_all_count = orders.count()
+    orders = _apply_purchase_order_list_filters(orders, request)
     data = []
     for o in orders:
         items = [{
@@ -3131,7 +3255,13 @@ def api_get_purchase_orders(request):
             'note': o.note or '',
             'items': items,
         })
-    return JsonResponse({'data': data})
+    return JsonResponse({
+        'data': data,
+        'meta': {
+            'total_filtered_count': len(data),
+            'total_all_count': total_all_count,
+        },
+    })
 
 
 @login_required(login_url="/login/")
@@ -4248,6 +4378,9 @@ def export_goods_receipts_excel(request):
 
     receipts = GoodsReceipt.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
     receipts = filter_by_store(receipts, request, field_name='warehouse__store')
+    receipts = _apply_goods_receipt_list_filters(receipts, request).order_by(
+        '-receipt_date', '-created_at', '-id'
+    )
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
@@ -4390,6 +4523,9 @@ def export_purchase_orders_excel(request):
 
     orders = PurchaseOrder.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
     orders = filter_by_store(orders, request, field_name='warehouse__store')
+    orders = _apply_purchase_order_list_filters(orders, request).order_by(
+        '-order_date', '-id'
+    )
 
     columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},

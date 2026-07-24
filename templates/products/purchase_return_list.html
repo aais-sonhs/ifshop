@@ -11,6 +11,63 @@
         <div class="alert alert-light border py-2">
             Dùng khi nhà cung cấp giao nhầm, hàng lỗi/kém chất lượng hoặc cần trả lại một phần hàng đã nhập.
         </div>
+        <div class="row align-items-end mb-2">
+            <div class="col-xl-3 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="purchase_return_search">Tìm phiếu trả</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="purchase_return_search" placeholder="Mã trả, phiếu nhập, NCC, sản phẩm">
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="purchase_return_filter_supplier">Nhà cung cấp</label>
+                    <select class="form-control form-control-sm" id="purchase_return_filter_supplier">
+                        <option value="">Tất cả nhà cung cấp</option>
+                        {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="purchase_return_filter_warehouse">Kho trả</label>
+                    <select class="form-control form-control-sm" id="purchase_return_filter_warehouse">
+                        <option value="">Tất cả kho</option>
+                        {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="purchase_return_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="purchase_return_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="0">Nháp</option>
+                        <option value="1">Hoàn thành</option>
+                        <option value="2">Hủy</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-4">
+                <div class="form-group mb-2">
+                    <label>Ngày trả</label>
+                    <div class="d-flex align-items-center" style="gap:6px;">
+                        <input type="date" class="form-control form-control-sm" id="purchase_return_date_from" aria-label="Từ ngày">
+                        <span class="text-muted">–</span>
+                        <input type="date" class="form-control form-control-sm" id="purchase_return_date_to" aria-label="Đến ngày">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="purchase_return_filter_summary" class="small text-muted"></div>
+            <div style="display:flex;gap:6px;">
+                <button type="button" class="btn btn-sm btn-primary" id="btn_filter_purchase_returns"><i class="fas fa-filter mr-1"></i>Lọc</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_purchase_return_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped table-sm" id="data_tbl">
                 <thead><tr><th>STT</th><th>Mã phiếu trả</th><th>Phiếu nhập gốc</th><th>Nhà cung cấp</th><th>Kho</th><th>Ngày trả</th><th>SL trả</th><th>Tiền trả</th><th>Trạng thái</th><th>Lý do</th><th>Thao tác</th></tr></thead>
@@ -59,6 +116,8 @@
 <script>
 var PURCHASE_RETURNS = [];
 var CURRENT_RETURN = null;
+var PURCHASE_RETURN_FILTER_TIMER = null;
+var PURCHASE_RETURN_LIST_XHR = null;
 function esc(value){ return $('<div>').text(value == null ? '' : String(value)).html(); }
 function num(value){ return Number(value || 0); }
 function qty(value){ return num(value).toLocaleString('vi-VN', {maximumFractionDigits:2}); }
@@ -68,6 +127,23 @@ function localDate(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getM
 $(function(){
     $('.select2').select2({theme:'bootstrap4', width:'100%', dropdownParent:$('#modal_form')});
     loadData();
+    $('#btn_filter_purchase_returns').click(applyPurchaseReturnFilters);
+    $('#purchase_return_search').on('input', function(){
+        clearTimeout(PURCHASE_RETURN_FILTER_TIMER);
+        PURCHASE_RETURN_FILTER_TIMER = setTimeout(applyPurchaseReturnFilters, 350);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(PURCHASE_RETURN_FILTER_TIMER);
+        applyPurchaseReturnFilters();
+    });
+    $('#purchase_return_filter_supplier, #purchase_return_filter_warehouse, #purchase_return_filter_status, #purchase_return_date_from, #purchase_return_date_to').change(applyPurchaseReturnFilters);
+    $('#btn_clear_purchase_return_filters').click(function(){
+        clearTimeout(PURCHASE_RETURN_FILTER_TIMER);
+        $('#purchase_return_search, #purchase_return_date_from, #purchase_return_date_to').val('');
+        $('#purchase_return_filter_supplier, #purchase_return_filter_warehouse, #purchase_return_filter_status').val('').trigger('change.select2');
+        applyPurchaseReturnFilters();
+    });
     $('#btn_add').click(function(){
         CURRENT_RETURN = null;
         $('#edit_id,#inp_code,#inp_reason,#inp_note').val('');
@@ -92,15 +168,49 @@ $(function(){
     }
 });
 
+function getPurchaseReturnFilters(){
+    return {
+        q: ($('#purchase_return_search').val() || '').trim(),
+        supplier_id: $('#purchase_return_filter_supplier').val() || '',
+        warehouse_id: $('#purchase_return_filter_warehouse').val() || '',
+        status: $('#purchase_return_filter_status').val() || '',
+        date_from: $('#purchase_return_date_from').val() || '',
+        date_to: $('#purchase_return_date_to').val() || ''
+    };
+}
+
+function applyPurchaseReturnFilters(){
+    loadData();
+}
+
 function loadData(){
-    $.get('/api/purchase-returns/', function(res){
+    if(PURCHASE_RETURN_LIST_XHR) PURCHASE_RETURN_LIST_XHR.abort();
+    $('#data_tbl tbody').html('<tr><td colspan="11" class="text-center text-muted">Đang tải...</td></tr>');
+    var request = $.get('/api/purchase-returns/', getPurchaseReturnFilters());
+    PURCHASE_RETURN_LIST_XHR = request;
+    request.done(function(res){
         PURCHASE_RETURNS = res.data || [];
         var html='';
         PURCHASE_RETURNS.forEach(function(row,index){
             var badge = row.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' : (row.status===2 ? '<span class="badge badge-danger">Hủy</span>' : '<span class="badge badge-warning">Nháp</span>');
             html += '<tr><td>'+(index+1)+'</td><td>'+esc(row.code)+'</td><td>'+esc(row.goods_receipt_code)+'</td><td>'+esc(row.supplier)+'</td><td>'+esc(row.warehouse)+'</td><td>'+esc(row.return_date)+'</td><td class="text-right">'+qty(row.total_quantity)+'</td><td class="text-right">'+money(row.total_amount)+'đ</td><td>'+badge+'</td><td>'+esc(row.reason)+'</td><td class="text-center"><button class="btn btn-xs btn-info" onclick="editReturn('+row.id+')">Sửa</button> <button class="btn btn-xs btn-outline-danger" onclick="deleteReturn('+row.id+')">Xóa</button></td></tr>';
         });
-        $('#data_tbl tbody').html(html || '<tr><td colspan="11" class="text-center text-muted">Chưa có phiếu trả hàng nhập</td></tr>');
+        var meta = res.meta || {};
+        var totalFiltered = Number(meta.total_filtered_count || 0);
+        var totalAll = Number(meta.total_all_count || totalFiltered);
+        $('#purchase_return_filter_summary').removeClass('text-danger').text(
+            totalFiltered === totalAll
+                ? 'Có ' + totalAll + ' phiếu trả'
+                : 'Tìm thấy ' + totalFiltered + ' / ' + totalAll + ' phiếu trả'
+        );
+        var emptyMessage = totalAll ? 'Không có phiếu trả phù hợp.' : 'Chưa có phiếu trả hàng nhập';
+        $('#data_tbl tbody').html(html || '<tr><td colspan="11" class="text-center text-muted">' + emptyMessage + '</td></tr>');
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
+        $('#data_tbl tbody').html('<tr><td colspan="11" class="text-center text-danger">Không tải được danh sách phiếu trả.</td></tr>');
+        $('#purchase_return_filter_summary').text('Không tải được dữ liệu.').addClass('text-danger');
+    }).always(function(){
+        if(PURCHASE_RETURN_LIST_XHR === request) PURCHASE_RETURN_LIST_XHR = null;
     });
 }
 

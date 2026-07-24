@@ -16,6 +16,52 @@
         <div class="alert alert-info py-2">
             <small><i class="fas fa-info-circle mr-1"></i> Phương thức thanh toán được sử dụng trong đơn hàng, phiếu thu, phiếu chi để phân loại luồng tiền. Mỗi phương thức có thể gắn với một <b>tài khoản nhận tiền mặc định</b>. Bạn có thể gõ trực tiếp cột <b>Thứ tự</b>; hệ thống sẽ tự lưu sau khi dừng nhập, hoặc nhập nhiều dòng rồi bấm <b>Lưu thứ tự</b> một lần.</small>
         </div>
+        <div class="row align-items-end mb-2">
+            <div class="col-lg-4 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="payment_method_filter_search">Tìm phương thức</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="payment_method_filter_search" placeholder="Mã, tên, mô tả">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-3">
+                <div class="form-group mb-2">
+                    <label for="payment_method_filter_type">Loại chuẩn</label>
+                    <select class="form-control form-control-sm" id="payment_method_filter_type">
+                        <option value="">Tất cả loại</option>
+                        <option value="1">Tiền mặt</option>
+                        <option value="2">Chuyển khoản</option>
+                        <option value="3">Khác</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-3">
+                <div class="form-group mb-2">
+                    <label for="payment_method_filter_cashbook">Tài khoản mặc định</label>
+                    <select class="form-control form-control-sm" id="payment_method_filter_cashbook">
+                        <option value="">Tất cả tài khoản</option>
+                        <option value="__none__">Chưa gán tài khoản</option>
+                        {% for c in cashbooks %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="payment_method_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="payment_method_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="active">Hoạt động</option>
+                        <option value="inactive">Đã tắt</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-1 col-md-6">
+                <button type="button" class="btn btn-sm btn-outline-secondary mb-2" id="btn_clear_payment_method_filters" title="Xóa lọc"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div id="payment_method_filter_summary" class="small text-muted mb-2"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr>
@@ -115,6 +161,13 @@ var sortOrderSaveInProgress = false;
 $(document).ready(function(){
     loadData();
     $('#inp_default_cash_book_id').select2({width:'100%', theme:'bootstrap4', dropdownParent: $('#modal_form')});
+    $('#payment_method_filter_search').on('input', applyPaymentMethodFilters);
+    $('#payment_method_filter_type, #payment_method_filter_cashbook, #payment_method_filter_status').change(applyPaymentMethodFilters);
+    $('#btn_clear_payment_method_filters').click(function(){
+        $('#payment_method_filter_search').val('');
+        $('#payment_method_filter_type, #payment_method_filter_cashbook, #payment_method_filter_status').val('').trigger('change.select2');
+        applyPaymentMethodFilters();
+    });
 
     $('#btn_save_order').click(function(){ saveSortOrders(false); });
     $(document).on('input change', '.pm-sort-order', function(){
@@ -161,7 +214,8 @@ function loadData(preserveSortOrderEdits){
             var statusBadge = d.is_active
                 ? '<span class="badge badge-success">Hoạt động</span>'
                 : '<span class="badge badge-secondary">Tắt</span>';
-            h += '<tr><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.name+'</td>' +
+            var filterText = [d.code, d.name, d.description, d.legacy_type_display, d.default_cash_book].join(' ');
+            h += '<tr data-payment-method-row="true" data-filter-text="'+escapePaymentMethodHtml(filterText)+'" data-legacy-type="'+d.legacy_type+'" data-cashbook-id="'+(d.default_cash_book_id || '')+'" data-active="'+(d.is_active ? '1' : '0')+'"><td>'+(i+1)+'</td><td><strong>'+d.code+'</strong></td><td>'+d.name+'</td>' +
                 '<td>'+d.legacy_type_display+'</td>' +
                 '<td>'+(d.default_cash_book || '<span class="text-muted">—</span>')+'</td>' +
                 '<td><input type="number" min="0" step="1" class="form-control form-control-sm pm-sort-order" data-id="'+d.id+'" value="'+displaySortOrder+'" aria-label="Thứ tự"></td>' +
@@ -179,8 +233,52 @@ function loadData(preserveSortOrderEdits){
             }
         });
         $('#data_tbl tbody').html(h || '<tr><td colspan="8" class="text-center text-muted">Chưa có phương thức thanh toán nào. Nhấn "Thêm phương thức" để bắt đầu.</td></tr>');
+        applyPaymentMethodFilters();
         updateSortOrderButton();
     });
+}
+
+function escapePaymentMethodHtml(value){
+    return $('<div>').text(value == null ? '' : String(value)).html();
+}
+
+function normalizePaymentMethodFilter(value){
+    return String(value == null ? '' : value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+}
+
+function applyPaymentMethodFilters(){
+    var terms = normalizePaymentMethodFilter($('#payment_method_filter_search').val()).split(/\s+/).filter(Boolean);
+    var type = $('#payment_method_filter_type').val() || '';
+    var cashbook = $('#payment_method_filter_cashbook').val() || '';
+    var status = $('#payment_method_filter_status').val() || '';
+    var $rows = $('#data_tbl tbody tr[data-payment-method-row]');
+    var visibleCount = 0;
+    $('#data_tbl tbody .payment-method-filter-empty').remove();
+    $rows.each(function(){
+        var $row = $(this);
+        var searchable = normalizePaymentMethodFilter($row.attr('data-filter-text'));
+        var matches = !terms.some(function(term){ return searchable.indexOf(term) < 0; });
+        if(matches && type) matches = String($row.attr('data-legacy-type')) === type;
+        if(matches && cashbook === '__none__') matches = !String($row.attr('data-cashbook-id') || '');
+        else if(matches && cashbook) matches = String($row.attr('data-cashbook-id') || '') === cashbook;
+        if(matches && status === 'active') matches = String($row.attr('data-active')) === '1';
+        if(matches && status === 'inactive') matches = String($row.attr('data-active')) === '0';
+        $row.toggle(matches);
+        if(matches) visibleCount++;
+    });
+    if($rows.length && !visibleCount){
+        $('#data_tbl tbody').append('<tr class="payment-method-filter-empty"><td colspan="8" class="text-center text-muted">Không có phương thức phù hợp</td></tr>');
+    }
+    $('#payment_method_filter_summary').text(
+        visibleCount === $rows.length
+            ? 'Có ' + $rows.length + ' phương thức'
+            : 'Hiển thị ' + visibleCount + ' / ' + $rows.length + ' phương thức'
+    );
 }
 
 function normalizeSortOrder(value){

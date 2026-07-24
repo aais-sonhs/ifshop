@@ -112,7 +112,8 @@
 </div>
 
 <!-- MODAL ĐƠN HÀNG -->
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1"
+     data-confirm-close="true" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable order-form-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -475,11 +476,11 @@
                             <table class="table table-sm mb-0" id="items_tbl">
                                 <thead class="bg-light"><tr>
 	                                    <th style="width:4%" class="text-center">STT</th>
-	                                    <th style="width:8%" class="text-center order-image-column">Ảnh</th>
+	                                    <th style="width:7%" class="text-center order-image-column">Ảnh</th>
 	                                    <th style="width:42%" class="order-product-column">Sản phẩm</th>
-                                    <th style="width:4%" class="order-unit-column">ĐVT</th>
-                                    <th style="width:13%" class="stock-info-col">Tồn theo kho</th>
-                                    <th style="width:5%" class="order-quantity-column">SL</th>
+                                    <th style="width:3%" class="order-unit-column">ĐVT</th>
+                                    <th style="width:16%" class="stock-info-col">Tồn theo kho</th>
+                                    <th style="width:4%" class="order-quantity-column">SL</th>
                                     <th style="width:8%" class="order-unit-price-column">Đơn giá</th>
                                     <th style="width:8%" class="order-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)</th>
                                     <th style="width:8%" class="order-line-total-column">Thành tiền</th>
@@ -1128,7 +1129,11 @@
     font-size: 12px;
 }
 @media (min-width: 992px) {
-    #modal_form .order-form-dialog,
+    #modal_form .order-form-dialog {
+        width: calc(100vw - 24px);
+        max-width: 1840px;
+        margin: 12px auto;
+    }
     #modal_order_quick_view .order-quick-view-dialog {
         width: calc(100vw - 24px);
         max-width: 1600px;
@@ -1733,12 +1738,14 @@
 #items_tbl .lbl_stock {
     white-space: normal;
     word-break: break-word;
+    overflow-wrap: anywhere;
     line-height: 1.35;
     text-align: left !important;
-    min-width: 240px;
+    min-width: 0;
 }
 #items_tbl .stock-breakdown {
-    min-width: 220px;
+    width: 100%;
+    min-width: 0;
 }
 #items_tbl .stock-summary {
     font-size: 12px;
@@ -1750,9 +1757,15 @@
 }
 #items_tbl .stock-breakdown-row {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 8px;
     font-size: 11px;
+}
+#items_tbl .stock-breakdown-row > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
 }
 #items_tbl .stock-breakdown-row.is-selected {
     background: #eef7ff;
@@ -1892,6 +1905,9 @@ var ORDER_ROW_VISUAL_REFRESH_HANDLE = null;
 var ORDER_TOTAL_RECALC_HANDLE = null;
 var ORDER_TOTAL_RECALC_OPTIONS = {};
 var ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
+var ORDER_SAVE_XHR = null;
+var ORDER_SAVE_TIMEOUT_MS = 45000;
+var ORDER_SAVE_ALLOW_MODAL_HIDE = false;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
 // Đơn đã hoàn đủ hàng vật lý không còn là giao dịch bán thực tế để cảnh báo.
@@ -3199,11 +3215,50 @@ function loadPrintBrandOptions(source, id){
 }
 
 function setOrderSaveLoading($btn, isLoading, isQuotation){
-    $btn.data('submitting', isLoading).prop('disabled', isLoading);
+    $btn
+        .data('submitting', isLoading)
+        .prop('disabled', isLoading)
+        .attr('aria-busy', isLoading ? 'true' : 'false');
     if(isLoading){
         $btn.html('<span class="spinner-border spinner-border-sm mr-1"></span>Đang lưu...');
     } else {
         $btn.html('<i class="fas fa-save"></i> ' + (isQuotation ? 'Lưu báo giá' : 'Lưu đơn hàng'));
+    }
+}
+
+function isOrderSaveRequestPending(){
+    return !!(ORDER_SAVE_XHR && ORDER_SAVE_XHR.readyState !== 4);
+}
+
+function resetOrderSaveButtonState(isQuotation){
+    if(isOrderSaveRequestPending()) return false;
+    ORDER_SAVE_XHR = null;
+    setOrderSaveLoading($('#btn_save'), false, !!isQuotation);
+    return true;
+}
+
+function showOrderSaveRequestError(xhr, textStatus, isQuotation){
+    if(textStatus === 'abort') return;
+    var documentLabel = isQuotation ? 'báo giá' : 'đơn hàng';
+    var serverMessage = xhr && xhr.responseJSON && xhr.responseJSON.message;
+    var message = serverMessage || (
+        textStatus === 'timeout'
+            ? 'Lưu ' + documentLabel + ' quá thời gian chờ. Vui lòng kiểm tra mạng rồi thử lại.'
+            : 'Không thể lưu ' + documentLabel + ' do kết nối bị gián đoạn. Vui lòng thử lại.'
+    );
+    if(typeof toastr !== 'undefined'){
+        toastr.error(message);
+    } else {
+        alert(message);
+    }
+}
+
+function hideOrderFormAfterSuccessfulSave(){
+    ORDER_SAVE_ALLOW_MODAL_HIDE = true;
+    try {
+        $('#modal_form').modal('hide');
+    } finally {
+        ORDER_SAVE_ALLOW_MODAL_HIDE = false;
     }
 }
 
@@ -3233,7 +3288,9 @@ function syncDocumentTypeUI(){
     $('#payment_section').toggle(!isQuotation);
     $('#lbl_order_date').html((isQuotation ? 'Ngày báo giá' : 'Ngày đặt') + ' <span class="text-danger">*</span>');
     $('#lbl_code_label').html((isQuotation ? 'Mã báo giá' : 'Mã đơn hàng') + ' <span class="text-danger">*</span>');
-    $('#btn_save').html('<i class="fas fa-save"></i> ' + (isQuotation ? 'Lưu báo giá' : 'Lưu đơn hàng'));
+    if(!$('#btn_save').data('submitting')){
+        $('#btn_save').html('<i class="fas fa-save"></i> ' + (isQuotation ? 'Lưu báo giá' : 'Lưu đơn hàng'));
+    }
     if(isQuotation){
         $('#status_timeline_container, #payment_history_section').hide();
         $('#payment_lines_container').hide();
@@ -4685,6 +4742,16 @@ $(document).ready(function(){
     $('#modal_form').on('shown.bs.modal.orderItemsViewport', function(){
         scheduleOrderItemsViewportRefresh();
     });
+    $('#modal_form').on('hide.bs.modal.orderSaveGuard', function(event){
+        if(ORDER_SAVE_ALLOW_MODAL_HIDE || !isOrderSaveRequestPending()) return;
+        event.preventDefault();
+        var message = 'Đơn hàng đang được lưu. Vui lòng chờ hoàn tất trước khi đóng cửa sổ.';
+        if(typeof toastr !== 'undefined'){
+            toastr.info(message);
+        } else {
+            alert(message);
+        }
+    });
     var orderItemsViewport = document.getElementById('order_items_scroll');
     if(orderItemsViewport){
         var orderItemsSummary = document.getElementById('order_items_summary');
@@ -4776,6 +4843,7 @@ $(document).ready(function(){
         $('#items_tbl tbody').html('');setOrderItemSortDirection('asc');calcTotal({syncDuplicates: true});
         // Bật lại chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+        resetOrderSaveButtonState(false);
         $('#btn_save').show();
         $('#btn_save_note').hide();
         $('#btn_print_current').hide();
@@ -5269,11 +5337,12 @@ $(document).ready(function(){
             };
             if($('#inp_salesperson').length) quotationData.salesperson = $('#inp_salesperson').val();
             setOrderSaveLoading($saveBtn, true, true);
-            $.ajax({url:'/api/quotations/save/',type:'POST',contentType:'application/json',
+            ORDER_SAVE_XHR = $.ajax({url:'/api/quotations/save/',type:'POST',contentType:'application/json',
+                timeout:ORDER_SAVE_TIMEOUT_MS,
                 headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(quotationData),
                 success:function(r){
                     if(r.status==='ok'){
-                        $('#modal_form').modal('hide');
+                        hideOrderFormAfterSuccessfulSave();
                         if(r.message && r.message.indexOf('Cảnh báo') >= 0){
                             if(typeof toastr !== 'undefined') toastr.warning(r.message); else alert(r.message);
                         } else if(typeof toastr !== 'undefined') {
@@ -5284,7 +5353,13 @@ $(document).ready(function(){
                         alert(r.message);
                     }
                 },
-                complete:function(){ setOrderSaveLoading($saveBtn, false, true); }
+                error:function(xhr, textStatus){
+                    showOrderSaveRequestError(xhr, textStatus, true);
+                },
+                complete:function(){
+                    ORDER_SAVE_XHR = null;
+                    setOrderSaveLoading($saveBtn, false, true);
+                }
             });
             return;
         }
@@ -5331,7 +5406,8 @@ $(document).ready(function(){
         if($('#inp_bonus_amount').length) data.bonus_amount = getMoneyValue('#inp_bonus_amount');
 
         setOrderSaveLoading($saveBtn, true, false);
-        $.ajax({url:'/api/orders/save/',type:'POST',contentType:'application/json',
+        ORDER_SAVE_XHR = $.ajax({url:'/api/orders/save/',type:'POST',contentType:'application/json',
+            timeout:ORDER_SAVE_TIMEOUT_MS,
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){
                 if(r.status==='ok'){
@@ -5351,7 +5427,7 @@ $(document).ready(function(){
                             });
                         }
                     }
-                    $('#modal_form').modal('hide');
+                    hideOrderFormAfterSuccessfulSave();
                     resetOrderPage();
                     loadData();
                     var statusLabel = r.order_status_display || STATUS_LABELS[r.order_status] || '';
@@ -5381,7 +5457,11 @@ $(document).ready(function(){
                     alert(r.message);
                 }
             },
+            error:function(xhr, textStatus){
+                showOrderSaveRequestError(xhr, textStatus, false);
+            },
             complete:function(){
+                ORDER_SAVE_XHR = null;
                 setOrderSaveLoading($saveBtn, false, false);
                 window._skipPrintAfterOrderSave = false;
             }
@@ -6690,6 +6770,7 @@ function rejectOrder(id, code){
         $('#inp_note').val(copyMode ? ('Sao chép từ ' + q.code + (q.note ? '\n' + q.note : '')) : (q.note || ''));
         if($('#inp_salesperson').length) $('#inp_salesperson').val(q.salesperson || '').trigger('change');
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+        resetOrderSaveButtonState(true);
         $('#btn_save').show();
         $('#btn_save_note').hide();
         $('#btn_print_current').toggle(!copyMode);
@@ -6993,6 +7074,7 @@ function rejectOrder(id, code){
         $('#items_tbl tbody').html('');
         // Bật chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+        resetOrderSaveButtonState(false);
         $('#btn_save').show();
         $('#btn_save_note').hide();
         $('#btn_print_current').show();
@@ -7546,6 +7628,7 @@ function copyOrder(id){
         configurePaymentDate(true);
         // Bật chỉnh sửa
         $('#modal_form .form-control, #modal_form select, #modal_form input').prop('disabled', false);
+        resetOrderSaveButtonState(false);
         $('#btn_save, #btn_add_item').show();
         $('#btn_save_note').hide();
         $('#btn_print_current').hide();

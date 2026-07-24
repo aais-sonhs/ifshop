@@ -4,11 +4,70 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-clipboard-list mr-2"></i>Đặt hàng nhập</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/purchase-orders/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_purchase_orders" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo đơn đặt hàng</button>
         </div>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-2">
+            <div class="col-xl-3 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="purchase_order_search">Tìm đơn đặt hàng</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="purchase_order_search" placeholder="Mã đơn, NCC, kho, sản phẩm">
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="purchase_order_filter_supplier">Nhà cung cấp</label>
+                    <select class="form-control form-control-sm" id="purchase_order_filter_supplier">
+                        <option value="">Tất cả nhà cung cấp</option>
+                        {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="purchase_order_filter_warehouse">Kho nhập</label>
+                    <select class="form-control form-control-sm" id="purchase_order_filter_warehouse">
+                        <option value="">Tất cả kho</option>
+                        {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="purchase_order_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="purchase_order_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="0">Nháp</option>
+                        <option value="1">Đã gửi</option>
+                        <option value="2">Đã nhận hàng</option>
+                        <option value="3">Hoàn thành</option>
+                        <option value="4">Hủy</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-4">
+                <div class="form-group mb-2">
+                    <label>Ngày đặt</label>
+                    <div class="d-flex align-items-center" style="gap:6px;">
+                        <input type="date" class="form-control form-control-sm" id="purchase_order_date_from" aria-label="Từ ngày">
+                        <span class="text-muted">–</span>
+                        <input type="date" class="form-control form-control-sm" id="purchase_order_date_to" aria-label="Đến ngày">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="purchase_order_filter_summary" class="small text-muted"></div>
+            <div style="display:flex;gap:6px;">
+                <button type="button" class="btn btn-sm btn-primary" id="btn_filter_purchase_orders"><i class="fas fa-filter mr-1"></i>Lọc</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_purchase_order_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
                 <thead><tr><th>STT</th><th>Mã ĐĐH</th><th>NCC</th><th>Kho nhập</th><th>Ngày đặt</th><th>Ngày dự kiến</th><th>Số SP</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
@@ -127,6 +186,8 @@ var PURCHASE_ORDER_PRODUCTS_CALLBACKS = [];
 var PURCHASE_ORDER_PRODUCT_CHOICES = [];
 var PURCHASE_ORDER_PRODUCT_RESULT_PAGE_SIZE = 20;
 var PURCHASE_ORDER_MODAL_SESSION = 0;
+var PURCHASE_ORDER_FILTER_TIMER = null;
+var PURCHASE_ORDER_LIST_XHR = null;
 
 var itemRowIndex = 0;
 
@@ -134,6 +195,27 @@ $(document).ready(function(){
     // Load products with variants
     ensurePurchaseOrderProductsLoaded();
     loadData();
+
+    $('#btn_filter_purchase_orders').click(applyPurchaseOrderFilters);
+    $('#purchase_order_search').on('input', function(){
+        clearTimeout(PURCHASE_ORDER_FILTER_TIMER);
+        PURCHASE_ORDER_FILTER_TIMER = setTimeout(applyPurchaseOrderFilters, 350);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(PURCHASE_ORDER_FILTER_TIMER);
+        applyPurchaseOrderFilters();
+    });
+    $('#purchase_order_filter_supplier, #purchase_order_filter_warehouse, #purchase_order_filter_status, #purchase_order_date_from, #purchase_order_date_to').change(applyPurchaseOrderFilters);
+    $('#btn_clear_purchase_order_filters').click(function(){
+        clearTimeout(PURCHASE_ORDER_FILTER_TIMER);
+        $('#purchase_order_search, #purchase_order_date_from, #purchase_order_date_to').val('');
+        $('#purchase_order_filter_supplier, #purchase_order_filter_warehouse, #purchase_order_filter_status').val('').trigger('change.select2');
+        applyPurchaseOrderFilters();
+    });
+    $('#btn_export_purchase_orders').click(function(){
+        window.location.href = '/api/purchase-orders/export-excel/?' + $.param(getPurchaseOrderFilters());
+    });
 
     $('#btn_add').click(function(){
         var modalSession = ++PURCHASE_ORDER_MODAL_SESSION;
@@ -746,8 +828,27 @@ function fmtDt(dateStr, createdAt){
     return d;
 }
 
+function getPurchaseOrderFilters(){
+    return {
+        q: ($('#purchase_order_search').val() || '').trim(),
+        supplier_id: $('#purchase_order_filter_supplier').val() || '',
+        warehouse_id: $('#purchase_order_filter_warehouse').val() || '',
+        status: $('#purchase_order_filter_status').val() || '',
+        date_from: $('#purchase_order_date_from').val() || '',
+        date_to: $('#purchase_order_date_to').val() || ''
+    };
+}
+
+function applyPurchaseOrderFilters(){
+    loadData();
+}
+
 function loadData(){
-    $.get('/api/purchase-orders/', function(res){
+    if(PURCHASE_ORDER_LIST_XHR) PURCHASE_ORDER_LIST_XHR.abort();
+    $('#data_tbl tbody').html('<tr><td colspan="10" class="text-center text-muted">Đang tải...</td></tr>');
+    var request = $.get('/api/purchase-orders/', getPurchaseOrderFilters());
+    PURCHASE_ORDER_LIST_XHR = request;
+    request.done(function(res){
         var h = '';
         res.data.forEach(function(d, i){
             var statusBadge = '';
@@ -764,7 +865,22 @@ function loadData(){
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="10" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        var meta = res.meta || {};
+        var totalFiltered = Number(meta.total_filtered_count || 0);
+        var totalAll = Number(meta.total_all_count || totalFiltered);
+        $('#purchase_order_filter_summary').removeClass('text-danger').text(
+            totalFiltered === totalAll
+                ? 'Có ' + totalAll + ' đơn đặt hàng'
+                : 'Tìm thấy ' + totalFiltered + ' / ' + totalAll + ' đơn đặt hàng'
+        );
+        var emptyMessage = totalAll ? 'Không có đơn đặt hàng phù hợp.' : 'Chưa có dữ liệu';
+        $('#data_tbl tbody').html(h || '<tr><td colspan="10" class="text-center text-muted">' + emptyMessage + '</td></tr>');
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
+        $('#data_tbl tbody').html('<tr><td colspan="10" class="text-center text-danger">Không tải được danh sách đơn đặt hàng.</td></tr>');
+        $('#purchase_order_filter_summary').text('Không tải được dữ liệu.').addClass('text-danger');
+    }).always(function(){
+        if(PURCHASE_ORDER_LIST_XHR === request) PURCHASE_ORDER_LIST_XHR = null;
     });
 }
 

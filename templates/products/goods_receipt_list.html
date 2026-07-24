@@ -4,11 +4,65 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-truck-loading mr-2"></i>Nhập hàng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-outline-success" onclick="window.location.href='/api/goods-receipts/export-excel/'" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_goods_receipts" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu nhập</button>
         </div>
     </div>
     <div class="card-body">
+        <div class="row align-items-end mb-2">
+            <div class="col-xl-3 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="goods_receipt_search">Tìm phiếu nhập</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="goods_receipt_search" placeholder="Mã phiếu, NCC, kho, sản phẩm">
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="goods_receipt_filter_supplier">Nhà cung cấp</label>
+                    <select class="form-control form-control-sm" id="goods_receipt_filter_supplier">
+                        <option value="">Tất cả nhà cung cấp</option>
+                        {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="goods_receipt_filter_warehouse">Kho nhập</label>
+                    <select class="form-control form-control-sm" id="goods_receipt_filter_warehouse">
+                        <option value="">Tất cả kho</option>
+                        {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="goods_receipt_filter_status">Trạng thái</label>
+                    <select class="form-control form-control-sm" id="goods_receipt_filter_status">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="0">Nháp</option>
+                        <option value="1">Hoàn thành</option>
+                        <option value="2">Hủy</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-4">
+                <div class="form-group mb-2">
+                    <label>Ngày nhập</label>
+                    <div class="d-flex align-items-center" style="gap:6px;">
+                        <input type="date" class="form-control form-control-sm" id="goods_receipt_date_from" aria-label="Từ ngày">
+                        <span class="text-muted">–</span>
+                        <input type="date" class="form-control form-control-sm" id="goods_receipt_date_to" aria-label="Đến ngày">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-end mb-2" style="gap:6px;">
+            <button type="button" class="btn btn-sm btn-primary" id="btn_filter_goods_receipts"><i class="fas fa-filter mr-1"></i>Lọc</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_goods_receipt_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
+        </div>
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
             <div id="goods_receipt_pagination_summary" class="text-muted small"></div>
             <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
@@ -196,12 +250,35 @@ var GOODS_RECEIPT_PAGE_STATE = {
     })(),
     meta: null
 };
+var GOODS_RECEIPT_FILTER_TIMER = null;
+var GOODS_RECEIPT_LIST_XHR = null;
 
 $(document).ready(function(){
     // Load products with variants
     $('#goods_receipt_page_size').val(String(GOODS_RECEIPT_PAGE_STATE.page_size));
     ensureProductsLoaded();
     loadData();
+
+    $('#btn_filter_goods_receipts').click(applyGoodsReceiptFilters);
+    $('#goods_receipt_search').on('input', function(){
+        clearTimeout(GOODS_RECEIPT_FILTER_TIMER);
+        GOODS_RECEIPT_FILTER_TIMER = setTimeout(applyGoodsReceiptFilters, 350);
+    }).on('keydown', function(event){
+        if(event.key !== 'Enter') return;
+        event.preventDefault();
+        clearTimeout(GOODS_RECEIPT_FILTER_TIMER);
+        applyGoodsReceiptFilters();
+    });
+    $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status, #goods_receipt_date_from, #goods_receipt_date_to').change(applyGoodsReceiptFilters);
+    $('#btn_clear_goods_receipt_filters').click(function(){
+        clearTimeout(GOODS_RECEIPT_FILTER_TIMER);
+        $('#goods_receipt_search, #goods_receipt_date_from, #goods_receipt_date_to').val('');
+        $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status').val('').trigger('change.select2');
+        applyGoodsReceiptFilters();
+    });
+    $('#btn_export_goods_receipts').click(function(){
+        window.location.href = '/api/goods-receipts/export-excel/?' + $.param(getGoodsReceiptFilters());
+    });
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');
@@ -903,6 +980,22 @@ function resetGoodsReceiptPage(){
     GOODS_RECEIPT_PAGE_STATE.page = 1;
 }
 
+function getGoodsReceiptFilters(){
+    return {
+        q: ($('#goods_receipt_search').val() || '').trim(),
+        supplier_id: $('#goods_receipt_filter_supplier').val() || '',
+        warehouse_id: $('#goods_receipt_filter_warehouse').val() || '',
+        status: $('#goods_receipt_filter_status').val() || '',
+        date_from: $('#goods_receipt_date_from').val() || '',
+        date_to: $('#goods_receipt_date_to').val() || ''
+    };
+}
+
+function applyGoodsReceiptFilters(){
+    resetGoodsReceiptPage();
+    loadData();
+}
+
 function renderGoodsReceiptPagination(meta){
     meta = meta || {};
     var totalFiltered = Number(meta.total_filtered_count || 0);
@@ -913,7 +1006,11 @@ function renderGoodsReceiptPagination(meta){
     var endIndex = Number(meta.end_index || 0);
 
     if(totalFiltered === 0){
-        $('#goods_receipt_pagination_summary').html('<span class="text-muted small">Chưa có phiếu nhập.</span>');
+        $('#goods_receipt_pagination_summary').html(
+            '<span class="text-muted small">' +
+            (totalAll ? 'Không có phiếu nhập phù hợp.' : 'Chưa có phiếu nhập.') +
+            '</span>'
+        );
         $('#goods_receipt_pagination').html('');
         return;
     }
@@ -953,11 +1050,16 @@ function renderGoodsReceiptPagination(meta){
 }
 
 function loadData(){
-    $.get('/api/goods-receipts/', {
+    if(GOODS_RECEIPT_LIST_XHR) GOODS_RECEIPT_LIST_XHR.abort();
+    $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-muted">Đang tải...</td></tr>');
+    var params = $.extend({}, getGoodsReceiptFilters(), {
         receipt_id: GOODS_RECEIPT_OPEN_ID,
         page: GOODS_RECEIPT_PAGE_STATE.page || 1,
         page_size: GOODS_RECEIPT_PAGE_STATE.page_size || 50
-    }, function(res){
+    });
+    var request = $.get('/api/goods-receipts/', params);
+    GOODS_RECEIPT_LIST_XHR = request;
+    request.done(function(res){
         GOODS_RECEIPT_PAGE_STATE.meta = res.meta || {};
         GOODS_RECEIPT_PAGE_STATE.page = Number((res.meta && res.meta.page) || GOODS_RECEIPT_PAGE_STATE.page || 1);
         GOODS_RECEIPT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || GOODS_RECEIPT_PAGE_STATE.page_size || 50);
@@ -978,16 +1080,22 @@ function loadData(){
                 (d.status === 1 ? '<button class="btn btn-xs btn-outline-warning" onclick="createPurchaseReturn('+d.id+')">Trả hàng</button> ' : '')+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        var emptyMessage = Number((res.meta && res.meta.total_all_count) || 0)
+            ? 'Không có phiếu nhập phù hợp.'
+            : 'Chưa có dữ liệu';
+        $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">' + emptyMessage + '</td></tr>');
         renderGoodsReceiptPagination(res.meta || {});
         if(!GOODS_RECEIPT_OPENED && GOODS_RECEIPT_OPEN_ID && res.data.length === 1){
             GOODS_RECEIPT_OPENED = true;
             editItem(res.data[0]);
         }
-    }).fail(function(){
+    }).fail(function(xhr, status){
+        if(status === 'abort') return;
         $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-danger">Không tải được danh sách phiếu nhập.</td></tr>');
         $('#goods_receipt_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#goods_receipt_pagination').html('');
+    }).always(function(){
+        if(GOODS_RECEIPT_LIST_XHR === request) GOODS_RECEIPT_LIST_XHR = null;
     });
 }
 

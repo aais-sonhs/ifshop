@@ -14,6 +14,37 @@
             <i class="fas fa-info-circle mr-1"></i>
             Danh sách này chỉ dùng để đổi logo, tên và thông tin đơn vị hiển thị trên phiếu in. Thứ tự ưu tiên quyết định vị trí nhãn hàng trong các danh sách chọn khi in; số nhỏ đứng trước.
         </div>
+        <div class="row align-items-end mb-2">
+            <div class="col-lg-6 col-md-6">
+                <div class="form-group mb-2">
+                    <label for="print_brand_filter_search">Tìm nhãn hàng</label>
+                    <div class="input-group input-group-sm">
+                        <div class="input-group-prepend"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
+                        <input type="search" class="form-control" id="print_brand_filter_search" placeholder="Tên, MST, điện thoại, email, địa chỉ">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-3">
+                <div class="form-group mb-2">
+                    <label for="print_brand_filter_logo">Logo</label>
+                    <select class="form-control form-control-sm" id="print_brand_filter_logo">
+                        <option value="">Tất cả</option>
+                        <option value="yes">Đã có logo</option>
+                        <option value="no">Chưa có logo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-2 col-md-2">
+                <div class="form-group mb-2">
+                    <label for="print_brand_filter_priority">Ưu tiên tối đa</label>
+                    <input type="number" class="form-control form-control-sm" id="print_brand_filter_priority" min="0" max="9999" placeholder="Tất cả">
+                </div>
+            </div>
+            <div class="col-lg-1 col-md-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary mb-2" id="btn_clear_print_brand_filters" title="Xóa lọc"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div id="print_brand_filter_summary" class="small text-muted mb-2"></div>
         <div class="table-responsive">
             <table class="table table-bordered table-striped table-sm" id="print_brand_tbl">
                 <thead>
@@ -117,6 +148,15 @@ function escapeHtml(value){
     return $('<div>').text(value == null ? '' : String(value)).html();
 }
 
+function normalizePrintBrandFilter(value){
+    return String(value == null ? '' : value)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+}
+
 function setPrintBrandLogoPreview(url){
     var hasLogo = !!url;
     $('#print_brand_logo_preview').attr('src', url || '').toggle(hasLogo);
@@ -143,7 +183,22 @@ function previewPrintBrandLogo(input){
 
 function renderPrintBrands(){
     var html = '';
-    printBrandRows.forEach(function(item, index){
+    var terms = normalizePrintBrandFilter($('#print_brand_filter_search').val()).split(/\s+/).filter(Boolean);
+    var logoFilter = $('#print_brand_filter_logo').val() || '';
+    var maxPriorityRaw = ($('#print_brand_filter_priority').val() || '').trim();
+    var maxPriority = maxPriorityRaw === '' ? null : Number(maxPriorityRaw);
+    var visibleRows = printBrandRows.filter(function(item){
+        var searchable = normalizePrintBrandFilter([
+            item.name, item.tax_code, item.phone, item.email, item.website,
+            item.address, item.description
+        ].join(' '));
+        if(terms.some(function(term){ return searchable.indexOf(term) < 0; })) return false;
+        if(logoFilter === 'yes' && !item.logo) return false;
+        if(logoFilter === 'no' && item.logo) return false;
+        if(maxPriority !== null && Number(item.print_priority || 0) > maxPriority) return false;
+        return true;
+    });
+    visibleRows.forEach(function(item, index){
         var contacts = [item.phone, item.email, item.website].filter(Boolean).map(escapeHtml).join('<br>');
         var logoHtml = item.logo
             ? '<img src="' + escapeHtml(item.logo) + '" alt="Logo nhãn hàng" style="width:56px;height:56px;object-fit:contain;border-radius:8px;border:1px solid #dee2e6;background:#fff;padding:4px;">'
@@ -163,7 +218,14 @@ function renderPrintBrands(){
         '</tr>';
     });
     $('#print_brand_tbl tbody').html(
-        html || '<tr><td colspan="8" class="text-center text-muted">Chưa có nhãn hàng nào. Bấm "Thêm nhãn hàng" để bắt đầu.</td></tr>'
+        html || '<tr><td colspan="8" class="text-center text-muted">' +
+            (printBrandRows.length ? 'Không có nhãn hàng phù hợp.' : 'Chưa có nhãn hàng nào. Bấm "Thêm nhãn hàng" để bắt đầu.') +
+            '</td></tr>'
+    );
+    $('#print_brand_filter_summary').text(
+        visibleRows.length === printBrandRows.length
+            ? 'Có ' + printBrandRows.length + ' nhãn hàng'
+            : 'Hiển thị ' + visibleRows.length + ' / ' + printBrandRows.length + ' nhãn hàng'
     );
 }
 
@@ -217,6 +279,12 @@ function deletePrintBrand(id){
 
 $(document).ready(function(){
     loadPrintBrands();
+    $('#print_brand_filter_search, #print_brand_filter_priority').on('input', renderPrintBrands);
+    $('#print_brand_filter_logo').change(renderPrintBrands);
+    $('#btn_clear_print_brand_filters').click(function(){
+        $('#print_brand_filter_search, #print_brand_filter_logo, #print_brand_filter_priority').val('');
+        renderPrintBrands();
+    });
 
     $('#btn_add_print_brand').click(function(){
         resetPrintBrandForm();

@@ -103,7 +103,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="payment_method">PT thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:140px;">Thao tác</th></tr></thead>
+                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="payment_method">PT thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:190px;">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -1122,6 +1122,26 @@
     font-weight: 500;
     white-space: nowrap;
     line-height: 1.6;
+}
+#data_tbl .btn-action-group.order-action-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    min-width: 180px;
+}
+#data_tbl .order-action-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+}
+#data_tbl .order-action-row > .btn,
+#data_tbl .order-action-row > .btn-group,
+#data_tbl .order-action-row > .btn-group > .btn {
+    width: 100%;
+    margin: 0;
 }
 #order_item_sort {
     width: 150px;
@@ -6452,13 +6472,18 @@ function loadData(){
                 customerHtml += '<br><small class="text-info">' + d.tags + '</small>';
             }
 	            var safeCode = d.code.replace(/'/g, '');
-	            var actions = '<div class="btn-action-group">' +
-	                '<button class="btn btn-xs btn-light" onclick="quickViewOrder('+d.id+')">Xem nhanh</button>' +
-	                '<button class="btn btn-xs btn-outline-success" onclick="copyOrder('+d.id+')" title="Tạo đơn mới giống đơn này"><i class="fas fa-copy mr-1"></i>Sao chép</button>';
+	            var actions = '<div class="btn-action-group order-action-stack">' +
+	                '<div class="order-action-row order-action-row-primary">' +
+	                    '<button class="btn btn-xs btn-light" onclick="quickViewOrder('+d.id+')">Xem nhanh</button>' +
+	                    '<button class="btn btn-xs btn-outline-success" onclick="copyOrder('+d.id+')" title="Tạo đơn mới giống đơn này"><i class="fas fa-copy mr-1"></i>Sao chép</button>' +
+	                '</div>' +
+	                '<div class="order-action-row order-action-row-secondary">';
 	            if(d.status === 4){
 	                actions += '<button class="btn btn-xs btn-light" onclick="viewItem('+d.id+')">Xem</button>';
 	            } else if(d.status === 5){
 	                actions += '<button class="btn btn-xs btn-light" onclick="createReturn('+d.id+')">Hoàn hàng</button>';
+	            } else if(d.status === 6){
+	                actions += '<button class="btn btn-xs btn-light" onclick="viewItem('+d.id+')">Xem</button>';
 	            } else if(d.status !== 6){
 	                actions += '<button class="btn btn-xs btn-light" onclick="editItem('+d.id+')">Sửa</button>';
 	            }
@@ -6478,7 +6503,7 @@ function loadData(){
 	                    '<button class="dropdown-item" type="button" onclick="approveOrder('+d.id+',\''+safeCode+'\')">Duyệt</button>' +
 	                    '<button class="dropdown-item" type="button" onclick="rejectOrder('+d.id+',\''+safeCode+'\')">Từ chối</button>';
 	            }
-	            actions += '</div></div></div>';
+	            actions += '</div></div></div></div>';
             var rowStyle = d.status === 6 ? ' style="background:#fce4ec;"' : (d.status === 5 ? ' style="background:#f1f8e9;"' : '');
             // Highlight cho đơn chờ duyệt
             if(d.approval_status === 1) rowStyle = ' style="background:#fff8e1;"';

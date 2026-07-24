@@ -53,13 +53,25 @@
     </div>
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
-            <div class="input-group input-group-sm" style="width:100%;max-width:360px;">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <div class="d-flex align-items-center flex-wrap" style="flex:1 1 650px;gap:8px;">
+                <div class="input-group input-group-sm" style="flex:1 1 280px;max-width:360px;">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    </div>
+                    <label for="inventory_search" class="sr-only">Tìm sản phẩm</label>
+                    <input type="search" id="inventory_search" class="form-control"
+                           placeholder="Tìm tên hoặc mã sản phẩm..." autocomplete="off">
                 </div>
-                <label for="inventory_search" class="sr-only">Tìm sản phẩm</label>
-                <input type="search" id="inventory_search" class="form-control"
-                       placeholder="Tìm theo tên hoặc mã sản phẩm..." autocomplete="off">
+                <label for="inventory_category_filter" class="sr-only">Lọc danh mục</label>
+                <select id="inventory_category_filter" class="form-control form-control-sm" style="width:auto;min-width:190px;">
+                    <option value="">-- Tất cả danh mục --</option>
+                    {% for category in categories %}<option value="{{ category.id }}">{{ category.name }}</option>{% endfor %}
+                </select>
+                <label for="inventory_supplier_filter" class="sr-only">Lọc nhà cung cấp</label>
+                <select id="inventory_supplier_filter" class="form-control form-control-sm" style="width:auto;min-width:210px;">
+                    <option value="">-- Tất cả nhà cung cấp --</option>
+                    {% for supplier in suppliers %}<option value="{{ supplier.id }}">{{ supplier.name }}</option>{% endfor %}
+                </select>
             </div>
             <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
                 <div id="inventory_pagination_summary" class="text-muted small mr-2"></div>
@@ -79,8 +91,9 @@
                         <th class="text-center" style="width:50px;">STT</th>
                         <th class="text-center" style="width:56px;">Ảnh</th>
                         <th>Sản phẩm</th>
-                        <th class="text-right" style="width:130px;">Tồn tối thiểu</th>
-                        <th class="text-right" style="width:130px;">Tồn tối đa</th>
+                        <th style="min-width:150px;">Danh mục</th>
+                        <th style="min-width:170px;">NCC</th>
+                        <th style="width:165px;min-width:165px;white-space:nowrap;">Tồn tối (thiểu / đa)</th>
                         <th class="text-right th-sortable" style="width:130px;">
                             Có thể bán
                             <span class="sort-btn" data-target="inventory_sellable_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
@@ -104,7 +117,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan="8" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">Đang tải dữ liệu tồn kho...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -263,6 +276,10 @@ $(document).ready(function() {
         renderInventoryTable();
     });
     $('#inventory_search').on('input', function() {
+        INVENTORY_PAGE_STATE.page = 1;
+        renderInventoryTable();
+    });
+    $('#inventory_category_filter, #inventory_supplier_filter').change(function() {
         INVENTORY_PAGE_STATE.page = 1;
         renderInventoryTable();
     });
@@ -492,7 +509,7 @@ function loadInventoryData() {
         WAREHOUSE_INVENTORY_DATA = [];
         WAREHOUSE_INVENTORY_MAP = {};
         $('#warehouse_inventory_tbl tbody').html(
-            '<tr><td colspan="8" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
+            '<tr><td colspan="9" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
         );
     });
 }
@@ -501,6 +518,8 @@ function renderInventoryTable() {
     var sellableSort = $('#inventory_sellable_sort').val() || '';
     var stockSort = $('#inventory_stock_sort').val() || '';
     var searchTerms = normalizeInventorySearch($('#inventory_search').val()).split(/\s+/).filter(Boolean);
+    var categoryFilter = String($('#inventory_category_filter').val() || '');
+    var supplierFilter = String($('#inventory_supplier_filter').val() || '');
     var rows = WAREHOUSE_INVENTORY_DATA.slice();
 
     if (searchTerms.length) {
@@ -509,6 +528,18 @@ function renderInventoryTable() {
             return searchTerms.every(function(term) {
                 return searchableText.indexOf(term) !== -1;
             });
+        });
+    }
+
+    if (categoryFilter) {
+        rows = rows.filter(function(item) {
+            return String(item.category_id || '') === categoryFilter;
+        });
+    }
+
+    if (supplierFilter) {
+        rows = rows.filter(function(item) {
+            return String(item.supplier_id || '') === supplierFilter;
         });
     }
 
@@ -558,8 +589,12 @@ function renderInventoryTable() {
             '<td class="text-center align-middle">' + imageHtml + '</td>' +
             '<td class="align-middle"><strong>' + escapeHtml(item.name) + '</strong><br>' +
                 '<small>' + productCodeHtml + ' <i class="fas fa-edit ml-1 text-primary"></i></small></td>' +
-            '<td class="text-right align-middle">' + formatQuantity(item.min_stock) + '</td>' +
-            '<td class="text-right align-middle">' + formatQuantity(item.max_stock) + '</td>' +
+            '<td class="align-middle">' + escapeHtml(item.category || '—') + '</td>' +
+            '<td class="align-middle">' + escapeHtml(item.supplier || '—') + '</td>' +
+            '<td class="align-middle">' +
+                '<div><span class="text-muted">Tồn tối thiểu:</span> <strong>' + formatQuantity(item.min_stock) + '</strong></div>' +
+                '<div><span class="text-muted">Tồn tối đa:</span> <strong>' + formatQuantity(item.max_stock) + '</strong></div>' +
+            '</td>' +
             '<td class="text-right align-middle font-weight-bold">' + formatQuantity(item.sellable_stock) + '</td>' +
             '<td class="text-right align-middle">' + formatQuantity(item.total_stock) + '</td>' +
             '<td class="text-center align-middle"><button type="button" class="btn btn-xs ' +
@@ -568,12 +603,12 @@ function renderInventoryTable() {
             '</tr>';
     });
     if (!html) {
-        if (searchTerms.length) {
-            html = '<tr><td colspan="8" class="text-center text-muted">Không tìm thấy sản phẩm phù hợp</td></tr>';
+        if (searchTerms.length || categoryFilter || supplierFilter) {
+            html = '<tr><td colspan="9" class="text-center text-muted">Không tìm thấy sản phẩm phù hợp</td></tr>';
         } else {
             html = stockSort === 'negative'
-                ? '<tr><td colspan="8" class="text-center text-muted">Không có sản phẩm tồn kho âm</td></tr>'
-                : '<tr><td colspan="8" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
+                ? '<tr><td colspan="9" class="text-center text-muted">Không có sản phẩm tồn kho âm</td></tr>'
+                : '<tr><td colspan="9" class="text-center text-muted">Chưa có sản phẩm</td></tr>';
         }
     }
     $('#warehouse_inventory_tbl tbody').html(html);

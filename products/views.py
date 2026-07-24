@@ -1162,7 +1162,21 @@ def product_tbl(request):
 @login_required(login_url="/login/")
 @brand_owner_required
 def warehouse_tbl(request):
-    context = {'active_tab': 'warehouse_tbl'}
+    context = {
+        'active_tab': 'warehouse_tbl',
+        'categories': list(
+            ProductCategory.objects
+            .filter(is_active=True, parent__isnull=True)
+            .values('id', 'name')
+            .order_by('name', 'id')
+        ),
+        'suppliers': list(
+            Supplier.objects
+            .filter(is_active=True)
+            .values('id', 'name')
+            .order_by('name', 'id')
+        ),
+    }
     return render(request, "products/warehouse_list.html", context)
 
 
@@ -1619,7 +1633,9 @@ def api_get_warehouse_inventory(request):
 
     products = list(
         filter_by_store(
-            Product.objects.filter(is_active=True, is_service=False).prefetch_related(
+            Product.objects.filter(is_active=True, is_service=False)
+            .select_related('category', 'category__parent', 'supplier')
+            .prefetch_related(
                 Prefetch(
                     'combo_items',
                     queryset=ComboItem.objects.select_related('product'),
@@ -1708,6 +1724,8 @@ def api_get_warehouse_inventory(request):
 
     data = []
     for product in products:
+        category = product.category
+        root_category = category.parent if category and category.parent_id else category
         product_warehouses = warehouses_by_store.get(product.store_id, [])
         stock_by_warehouse = []
         if product.is_combo:
@@ -1773,6 +1791,10 @@ def api_get_warehouse_inventory(request):
             'id': product.id,
             'code': product.code,
             'name': product.name,
+            'category_id': root_category.id if root_category else None,
+            'category': root_category.name if root_category else '',
+            'supplier_id': product.supplier_id,
+            'supplier': product.supplier.name if product.supplier else '',
             'image_url': product.image.url if product.image else '',
             'is_combo': product.is_combo,
             'min_stock': product.min_stock,

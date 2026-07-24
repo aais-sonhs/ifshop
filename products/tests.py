@@ -469,6 +469,7 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['total_stock'], -2.0)
 
     def test_warehouse_page_keeps_warehouse_list_and_adds_inventory_table(self):
+        category = ProductCategory.objects.create(name='Danh mục tồn kho')
         response = self.client.get(reverse('warehouse_tbl'))
 
         self.assertEqual(response.status_code, 200)
@@ -477,13 +478,24 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'id="warehouse_tbl"')
         self.assertContains(response, 'id="warehouse_inventory_tbl"')
         self.assertContains(response, 'id="inventory_search"')
-        self.assertContains(response, 'Tìm theo tên hoặc mã sản phẩm...')
+        self.assertContains(response, 'Tìm tên hoặc mã sản phẩm...')
+        self.assertContains(response, 'id="inventory_category_filter"')
+        self.assertContains(response, 'id="inventory_supplier_filter"')
+        self.assertContains(response, category.name)
+        self.assertContains(response, self.supplier.name)
         self.assertContains(response, 'function normalizeInventorySearch(value)')
         self.assertContains(response, "(item.name || '') + ' ' + (item.code || '')")
         self.assertContains(response, 'Không tìm thấy sản phẩm phù hợp')
         self.assertContains(response, '<th>Sản phẩm</th>', html=True)
-        self.assertContains(response, '>Tồn tối thiểu</th>')
-        self.assertContains(response, '>Tồn tối đa</th>')
+        self.assertContains(response, '<th style="min-width:150px;">Danh mục</th>', html=True)
+        self.assertContains(response, '<th style="min-width:170px;">NCC</th>', html=True)
+        self.assertContains(response, "String(item.category_id || '') === categoryFilter")
+        self.assertContains(response, "String(item.supplier_id || '') === supplierFilter")
+        self.assertContains(response, "escapeHtml(item.category || '—')")
+        self.assertContains(response, "escapeHtml(item.supplier || '—')")
+        self.assertContains(response, '<th style="width:165px;min-width:165px;white-space:nowrap;">Tồn tối (thiểu / đa)</th>', html=True)
+        self.assertContains(response, 'Tồn tối thiểu:</span>')
+        self.assertContains(response, 'Tồn tối đa:</span>')
         self.assertContains(response, 'formatQuantity(item.min_stock)')
         self.assertContains(response, 'formatQuantity(item.max_stock)')
         self.assertContains(response, 'data-target="inventory_sellable_sort"')
@@ -513,9 +525,12 @@ class ProductInventoryFlowTests(TestCase):
     def test_warehouse_inventory_returns_actual_and_sellable_stock_in_user_scope(self):
         from orders.models import Order, OrderItem
 
+        category = ProductCategory.objects.create(name='Danh mục tồn API')
+        self.product.category = category
+        self.product.supplier = self.supplier
         self.product.min_stock = 3
         self.product.max_stock = 20
-        self.product.save(update_fields=['min_stock', 'max_stock'])
+        self.product.save(update_fields=['category', 'supplier', 'min_stock', 'max_stock'])
         ProductStock.objects.create(
             product=self.product,
             warehouse=self.warehouse_a,
@@ -570,6 +585,10 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(rows[self.product.id]['sellable_stock'], 9.0)
         self.assertEqual(rows[self.product.id]['min_stock'], 3)
         self.assertEqual(rows[self.product.id]['max_stock'], 20)
+        self.assertEqual(rows[self.product.id]['category_id'], category.id)
+        self.assertEqual(rows[self.product.id]['category'], category.name)
+        self.assertEqual(rows[self.product.id]['supplier_id'], self.supplier.id)
+        self.assertEqual(rows[self.product.id]['supplier'], self.supplier.name)
         stock_by_warehouse = {
             row['warehouse_id']: row['quantity']
             for row in rows[self.product.id]['stock_by_warehouse']

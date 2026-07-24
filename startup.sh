@@ -3,7 +3,7 @@
 sleep 15
 
 # Di chuyển đến thư mục dự án Django
-cd /home/ifshop/Documents/ifshop || exit 1
+cd /home/aais/Documents/ifshop || exit 1
 
 # Đợi các dịch vụ khác khởi động nếu cần
 echo "Đang chờ PostgreSQL..."

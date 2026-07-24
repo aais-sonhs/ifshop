@@ -1280,6 +1280,24 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'data-specification')
         self.assertContains(response, 'specification: product.specification ||')
 
+    def test_order_product_pulldowns_display_product_specification(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function renderOrderProductChoiceSpecification(specification, extraClass)')
+        self.assertContains(
+            response,
+            "renderOrderProductChoiceSpecification(productSpecification, 'order-product-option-specification')",
+        )
+        self.assertContains(
+            response,
+            "renderOrderProductChoiceSpecification(p.specification, 'quick-search-specification')",
+        )
+        self.assertContains(response, 'order-product-choice-specification-label')
+        self.assertContains(response, 'Quy cách:</span>')
+
     def test_order_form_product_code_opens_product_editor_in_new_tab(self):
         self.client.force_login(self.owner)
 

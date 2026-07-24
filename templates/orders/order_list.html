@@ -1280,6 +1280,23 @@
 .order-item-product-specification-label {
     font-weight: 600;
 }
+.order-product-choice-specification {
+    color: #495057;
+    font-size: 12px;
+    line-height: 1.3;
+    margin-top: 2px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.order-product-choice-specification-label {
+    font-weight: 600;
+}
+#quick_search_results .quick-search-specification {
+    color: #495057;
+}
+.order-product-option .order-product-option-specification {
+    color: #495057;
+}
 #items_tbl .order-item-sequence {
     color: #6c757d;
     font-weight: 600;
@@ -2358,6 +2375,9 @@ function formatOrderProductOption(option){
     var importPrice = Number($option.data('import') || 0);
     var costPrice = Number($option.data('cost') || 0);
     var product = getOrderProductById(option.id);
+    var productSpecification = product && Object.prototype.hasOwnProperty.call(product, 'specification')
+        ? product.specification
+        : ($option.attr('data-specification') || '');
     var costHtml = CAN_VIEW_ORDER_COSTS
         ? ' · <span class="text-muted">Nhập: ' + fmt(importPrice) + 'đ</span>' +
           ' · <span class="text-primary">Vốn: ' + fmt(costPrice) + 'đ</span>'
@@ -2365,6 +2385,7 @@ function formatOrderProductOption(option){
     return $(
         '<div class="order-product-option">' +
             '<div>' + escapeHtml(option.text || '') + '</div>' +
+            renderOrderProductChoiceSpecification(productSpecification, 'order-product-option-specification') +
             '<div class="small">' +
                 '<span class="text-success font-weight-bold">Bán: ' + fmt(retail) + 'đ</span>' + costHtml +
             '</div>' +
@@ -2449,6 +2470,15 @@ function renderOrderProductNote(note, extraClass){
 
 function normalizeOrderProductSpecification(specification){
     return String(specification == null ? '' : specification).trim();
+}
+
+function renderOrderProductChoiceSpecification(specification, extraClass){
+    var normalizedSpecification = normalizeOrderProductSpecification(specification);
+    if(!normalizedSpecification) return '';
+    return '<div class="order-product-choice-specification ' + (extraClass || '') + '">' +
+        '<span class="order-product-choice-specification-label">Quy cách:</span> ' +
+        escapeHtml(normalizedSpecification) +
+    '</div>';
 }
 
 function renderOrderProductSpecification(specification){
@@ -5069,6 +5099,7 @@ $(document).ready(function(){
                 imgHtml +
                 '<div class="flex-grow-1">' +
                 '<div class="quick-search-title"><strong>' + p.code + '</strong> — ' + p.name + alertBadgesHtml + '</div>' +
+                renderOrderProductChoiceSpecification(p.specification, 'quick-search-specification') +
                 renderOrderProductNote(p.note, 'order-item-product-note') +
                 '<div class="small mt-1">' + priceHtml + ' · <span class="text-muted">' + p.unit + '</span></div>' +
                 comboHtml +

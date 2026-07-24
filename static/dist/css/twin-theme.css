@@ -1259,10 +1259,10 @@ body.login-page {
 
 /* ---------- Wide inventory entry dialogs ---------- */
 @media (min-width: 992px) {
-    #modal_form .inventory-entry-dialog {
-        width: calc(100vw - 24px);
-        max-width: 1840px;
-        margin: 12px auto;
+    #modal_form > .modal-dialog.inventory-entry-dialog {
+        width: calc(100vw - 24px) !important;
+        max-width: 1840px !important;
+        margin: 12px auto !important;
     }
 }
 

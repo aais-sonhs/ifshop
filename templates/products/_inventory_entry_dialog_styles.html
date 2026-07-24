@@ -1,0 +1,45 @@
+<style>
+@media (min-width: 992px) {
+    #modal_form > .modal-dialog.inventory-entry-dialog {
+        width: calc(100vw - 24px) !important;
+        max-width: 1840px !important;
+        margin: 12px auto !important;
+    }
+}
+
+#modal_form .inventory-items-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+#modal_form .inventory-items-table .inventory-product-cell {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#modal_form .inventory-items-table .inventory-product-cell .select2-container {
+    width: 100% !important;
+    max-width: 100%;
+}
+
+#modal_form .inventory-items-table .inventory-product-cell .select2-selection--single {
+    height: auto !important;
+    min-height: 31px;
+}
+
+#modal_form .inventory-items-table .inventory-product-cell .select2-selection__rendered {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    line-height: 1.25 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#modal_form .inventory-items-table .inventory-product-cell .select2-selection__arrow {
+    top: 50%;
+    transform: translateY(-50%);
+}
+</style>

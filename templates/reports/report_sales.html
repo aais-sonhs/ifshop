@@ -160,16 +160,16 @@
                                     <option value="10" selected>10 sản phẩm</option><option value="20">20 sản phẩm</option><option value="30">30 sản phẩm</option><option value="50">50 sản phẩm</option><option value="100">100 sản phẩm</option><option value="200">200 sản phẩm</option>
                                 </select>
                             </div>
-                            <div class="card-body p-0 table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-sm mb-0" id="top_products_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>#</th><th>Sản phẩm</th><th>SL</th><th>Doanh thu</th><th>LN</th></tr></thead><tbody></tbody></table></div>
+                            <div class="card-body p-0 table-responsive overview-ranking-scroll" style="max-height:480px;overflow-y:auto;"><table class="table table-sm mb-0" id="top_products_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>#</th><th>Sản phẩm</th><th>SL</th><th>Doanh thu</th><th>LN</th></tr></thead><tbody></tbody></table></div>
                         </div>
                         <div class="card card-outline card-primary">
                             <div class="card-header py-2 d-flex align-items-center justify-content-between">
                                 <h6 class="mb-0"><i class="fas fa-users mr-1"></i>Top khách hàng</h6>
                                 <select class="form-control form-control-sm" id="top_customers_limit" style="width:135px;" aria-label="Số khách hàng hiển thị">
-                                    <option value="5" selected>5 khách hàng</option><option value="10">10 khách hàng</option><option value="20">20 khách hàng</option><option value="30">30 khách hàng</option><option value="50">50 khách hàng</option><option value="100">100 khách hàng</option><option value="200">200 khách hàng</option>
+                                    <option value="5">5 khách hàng</option><option value="10" selected>10 khách hàng</option><option value="20">20 khách hàng</option><option value="30">30 khách hàng</option><option value="50">50 khách hàng</option><option value="100">100 khách hàng</option><option value="200">200 khách hàng</option>
                                 </select>
                             </div>
-                            <div class="card-body p-0 table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-sm mb-0" id="top_customers_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>#</th><th>Khách hàng</th><th>ĐH</th><th>Doanh thu</th></tr></thead><tbody></tbody></table></div>
+                            <div class="card-body p-0 table-responsive overview-ranking-scroll" style="max-height:440px;overflow-y:auto;"><table class="table table-sm mb-0" id="top_customers_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>#</th><th>Khách hàng</th><th>ĐH</th><th>Doanh thu</th></tr></thead><tbody></tbody></table></div>
                         </div>
                     </div>
                 </div>
@@ -379,6 +379,7 @@
 .supplier-sales-collapse-toggle.collapsed .supplier-sales-collapse-icon{transform:rotate(-90deg);}
 .order-detail-collapse-icon{transition:transform .2s ease;}
 .order-detail-collapse-toggle.collapsed .order-detail-collapse-icon{transform:rotate(-90deg);}
+.overview-ranking-scroll th,.overview-ranking-scroll td{white-space:nowrap;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>
@@ -765,7 +766,7 @@ function renderTopProducts(tp){var h='';(tp||[]).forEach(function(p,i){var c=p.p
 function renderTopCustomers(tc){var h='';(tc||[]).forEach(function(c,i){h+='<tr><td>'+(i+1)+'</td><td>'+escapeHtml(c.name||'')+'</td><td class="text-center">'+c.orders+'</td><td class="text-right">'+fmtD(c.amount)+'</td></tr>';});if(!h)h='<tr><td colspan="4" class="text-center text-muted">Chưa có</td></tr>';$('#top_customers_tbl tbody').html(h);}
 function renderOverviewRankings(){
     var productLimit=parseInt($('#top_products_limit').val()||'10',10)||10;
-    var customerLimit=parseInt($('#top_customers_limit').val()||'5',10)||5;
+    var customerLimit=parseInt($('#top_customers_limit').val()||'10',10)||10;
     renderTopProducts((_overviewProductRows||[]).slice(0,productLimit));
     renderTopCustomers((_overviewCustomerRows||[]).slice(0,customerLimit));
 }

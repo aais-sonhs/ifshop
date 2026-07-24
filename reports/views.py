@@ -1696,7 +1696,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     customer_breakdown = sorted(customer_map.values(), key=lambda row: (-row['amount'], -row['orders'], row['name']))
     customer_breakdown = [row for row in customer_breakdown if _matches_metric_filters(row)][:200]
-    top_customers = customer_breakdown[:5]
+    top_customers = customer_breakdown[:10]
     group_breakdown = sorted(group_map.values(), key=lambda row: (-row['amount'], row['name']))
     group_breakdown = [row for row in group_breakdown if _matches_metric_filters(row)]
     customer_kind_breakdown = sorted(customer_kind_map.values(), key=lambda row: (-row['amount'], row['name']))

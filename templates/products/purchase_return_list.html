@@ -78,7 +78,7 @@
 </div>
 
 <div class="modal fade" id="modal_form" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable inventory-entry-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="modal_title">Tạo phiếu trả hàng nhập</h5>
@@ -95,8 +95,8 @@
                 </div>
                 <div class="alert alert-info py-2" id="receipt_summary" style="display:none;"></div>
                 <div class="table-responsive">
-                    <table class="table table-bordered table-sm" id="items_tbl">
-                        <thead class="bg-light"><tr><th>Sản phẩm</th><th class="text-right">Đã nhập</th><th class="text-right">Đã trả khác</th><th class="text-right">Còn được trả</th><th style="width:130px;">SL trả</th><th style="width:150px;">Đơn giá trả</th><th class="text-right">Thành tiền</th><th style="width:180px;">Ghi chú</th></tr></thead>
+                    <table class="table table-bordered table-sm inventory-items-table" id="items_tbl">
+                        <thead class="bg-light"><tr><th class="inventory-product-cell" style="width:34%">Sản phẩm</th><th class="text-right" style="width:8%">Đã nhập</th><th class="text-right" style="width:8%">Đã trả khác</th><th class="text-right" style="width:8%">Còn được trả</th><th style="width:10%">SL trả</th><th style="width:11%">Đơn giá trả</th><th class="text-right" style="width:10%">Thành tiền</th><th style="width:11%">Ghi chú</th></tr></thead>
                         <tbody><tr><td colspan="8" class="text-center text-muted">Chọn phiếu nhập để tải sản phẩm</td></tr></tbody>
                         <tfoot><tr class="font-weight-bold"><td colspan="6" class="text-right">Tổng tiền trả:</td><td class="text-right" id="return_total">0đ</td><td></td></tr></tfoot>
                     </table>
@@ -234,7 +234,7 @@ function loadReceiptItems(done){
         (res.items||[]).forEach(function(item){
             var old=existing[item.goods_receipt_item_id]||{};
             var label=(item.product_code ? item.product_code+' - ' : '')+item.product_name+(item.variant_name?' ['+item.variant_name+']':'');
-            html+='<tr data-item-id="'+item.goods_receipt_item_id+'" data-max="'+item.returnable_quantity+'"><td>'+esc(label)+'</td><td class="text-right">'+qty(item.received_quantity)+'</td><td class="text-right">'+qty(item.returned_quantity)+'</td><td class="text-right font-weight-bold">'+qty(item.returnable_quantity)+'</td><td><input type="number" min="0" max="'+item.returnable_quantity+'" step="0.01" class="form-control form-control-sm return-qty" value="'+(old.quantity||0)+'"></td><td><input type="number" min="0" step="1" class="form-control form-control-sm return-price text-right" value="'+(old.unit_price!==undefined?old.unit_price:item.unit_price)+'"></td><td class="text-right return-line-total">0đ</td><td><input type="text" class="form-control form-control-sm return-item-note" value="'+esc(old.note||'')+'"></td></tr>';
+            html+='<tr data-item-id="'+item.goods_receipt_item_id+'" data-max="'+item.returnable_quantity+'"><td class="inventory-product-cell">'+esc(label)+'</td><td class="text-right">'+qty(item.received_quantity)+'</td><td class="text-right">'+qty(item.returned_quantity)+'</td><td class="text-right font-weight-bold">'+qty(item.returnable_quantity)+'</td><td><input type="number" min="0" max="'+item.returnable_quantity+'" step="0.01" class="form-control form-control-sm return-qty" value="'+(old.quantity||0)+'"></td><td><input type="number" min="0" step="1" class="form-control form-control-sm return-price text-right" value="'+(old.unit_price!==undefined?old.unit_price:item.unit_price)+'"></td><td class="text-right return-line-total">0đ</td><td><input type="text" class="form-control form-control-sm return-item-note" value="'+esc(old.note||'')+'"></td></tr>';
         });
         $('#items_tbl tbody').html(html || '<tr><td colspan="8" class="text-center text-muted">Phiếu nhập không còn hàng có thể trả</td></tr>');
         calcTotal(); if(done) done();

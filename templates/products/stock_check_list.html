@@ -88,7 +88,7 @@
 </div>
 
 <div class="modal fade" id="modal_form" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable inventory-entry-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="modal_title">Tạo phiếu kiểm</h5>
@@ -118,17 +118,17 @@
                     <h6 class="mb-0"><i class="fas fa-boxes mr-1"></i>Chi tiết kiểm kê</h6>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-bordered table-sm" id="items_tbl">
+                    <table class="table table-bordered table-sm inventory-items-table" id="items_tbl">
                         <thead class="bg-light">
                             <tr>
-                                <th style="width:5%">#</th>
-                                <th style="width:30%">Sản phẩm</th>
-                                <th style="width:8%">ĐVT</th>
-                                <th style="width:13%">Tồn hệ thống</th>
-                                <th style="width:13%">Tồn thực tế</th>
-                                <th style="width:13%">Chênh lệch</th>
-                                <th style="width:13%">Ghi chú</th>
-                                <th style="width:5%"></th>
+                                <th style="width:4%">#</th>
+                                <th class="inventory-product-cell" style="width:42%">Sản phẩm</th>
+                                <th style="width:6%">ĐVT</th>
+                                <th style="width:12%">Tồn hệ thống</th>
+                                <th style="width:10%">Tồn thực tế</th>
+                                <th style="width:10%">Chênh lệch</th>
+                                <th style="width:12%">Ghi chú</th>
+                                <th style="width:4%"></th>
                             </tr>
                         </thead>
                         <tbody id="items_body"></tbody>
@@ -784,7 +784,7 @@ function addItemRow(data, options){
 
     var html = '<tr>' +
         '<td class="text-center item-index">' + itemRowIndex + '</td>' +
-        '<td><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
+        '<td class="inventory-product-cell"><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
         '<td class="text-center item-unit">' + escapeStockCheckHtml(selectedProduct ? selectedProduct.unit : '') + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-sys-qty" value="' + sysQty + '" readonly style="background:#f0f0f0;"></td>' +
         '<td><input type="number" class="form-control form-control-sm item-actual-qty" value="' + actualQty + '" step="0.01"></td>' +

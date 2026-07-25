@@ -17,6 +17,7 @@ from .models import (
 )
 from .retail_docs import (
     RETAIL_DAILY_CHECKLIST,
+    RETAIL_FAQS,
     RETAIL_FORMULA_GROUPS,
     RETAIL_GUIDE_META,
     RETAIL_OPERATION_GUIDES,
@@ -459,6 +460,7 @@ def product_guide(request):
         'report_examples': RETAIL_REPORT_EXAMPLES,
         'daily_checklist': RETAIL_DAILY_CHECKLIST,
         'troubleshooting': RETAIL_TROUBLESHOOTING,
+        'faqs': RETAIL_FAQS,
     }
 
     return render(request, "system/product_guide_public.html", context)

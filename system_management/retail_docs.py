@@ -798,3 +798,34 @@ RETAIL_TROUBLESHOOTING = [
         'check': 'Vào Cài đặt → Phương thức TT để gắn quỹ, rồi kiểm tra lại phiếu trả.',
     },
 ]
+
+
+RETAIL_FAQS = [
+    {
+        'question': '1) Đơn hàng đã Hoàn thành thì trong kho đã xuất hay chưa xuất?',
+        'short_answer': 'Đã xuất kho và tồn kho đã được trừ trước đó.',
+        'answer': [
+            (
+                'Theo quy trình chuẩn, đơn phải đi qua trạng thái Đã xuất kho trước khi chuyển sang Hoàn thành. '
+                'Hệ thống trừ tồn ngay tại bước Đã xuất kho.'
+            ),
+            (
+                'Khi đơn chuyển từ Đã xuất kho sang Hoàn thành, hệ thống chỉ đổi trạng thái nghiệp vụ và không trừ kho lần thứ hai.'
+            ),
+            (
+                'Sản phẩm hàng hóa bị trừ khỏi kho xuất ghi trên đơn. Sản phẩm dịch vụ không trừ kho; '
+                'nếu bán combo, hệ thống trừ tồn các sản phẩm thành phần.'
+            ),
+        ],
+        'checks': [
+            'Mở đơn và kiểm tra trạng thái Hoàn thành cùng Kho xuất đã chọn.',
+            'Vào DS Sản phẩm → Lịch sử kho của sản phẩm để tìm dòng Xuất kho có mã chứng từ là mã đơn hàng.',
+            'Đối chiếu số lượng xuất với số lượng sản phẩm trên đơn.',
+        ],
+        'exception': (
+            'Nếu đơn đã Hoàn thành nhưng không có lịch sử xuất kho hoặc tồn chưa giảm, đây là dữ liệu bất thường '
+            'do dữ liệu cũ, sửa trực tiếp cơ sở dữ liệu hoặc sự cố khi xử lý. Không tự trừ kho thêm vì có thể trừ hai lần; '
+            'hãy báo quản lý hoặc bộ phận hỗ trợ để đối chiếu và đồng bộ.'
+        ),
+    },
+]

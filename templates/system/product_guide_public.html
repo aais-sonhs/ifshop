@@ -784,6 +784,25 @@
             color: var(--ink);
         }
 
+        .faq-answer {
+            background: var(--green-soft);
+            border: 1px solid #bbebc8;
+            border-radius: 9px;
+            color: #14532d;
+            font-weight: 800;
+            margin-bottom: 16px;
+            padding: 13px 15px;
+        }
+
+        .faq-exception {
+            background: var(--red-soft);
+            border: 1px solid #fecaca;
+            border-radius: 9px;
+            color: #7f1d1d;
+            margin-top: 16px;
+            padding: 13px 15px;
+        }
+
         .empty-search {
             background: var(--amber-soft);
             border: 1px solid #f2d79c;
@@ -979,6 +998,7 @@
             <a href="#sales-report-guide"><i class="fas fa-chart-bar"></i> Đọc BC Bán hàng</a>
             <a href="#closing"><i class="fas fa-clipboard-check"></i> Chốt ngày</a>
             <a href="#troubleshooting"><i class="fas fa-tools"></i> Số liệu chưa khớp</a>
+            <a href="#faq"><i class="fas fa-question-circle"></i> Câu hỏi thường gặp</a>
         </div>
     </aside>
 
@@ -1261,6 +1281,44 @@
                 </div>
             </section>
 
+            <section class="section searchable" id="faq">
+                <div class="section-head">
+                    <span class="eyebrow"><i class="fas fa-question-circle"></i> FAQ</span>
+                    <h2>Câu hỏi thường gặp</h2>
+                    <p>Các câu hỏi thực tế sẽ được bổ sung dần. Mỗi câu trả lời nêu kết luận trước, sau đó giải thích quy trình và cách tự kiểm tra.</p>
+                </div>
+                <div class="section-body">
+                    {% for item in faqs %}
+                    <details class="guide faq-item searchable" open>
+                        <summary>
+                            <span class="guide-icon"><i class="fas fa-question"></i></span>
+                            <span class="guide-summary-title">{{ item.question }}</span>
+                        </summary>
+                        <div class="guide-content">
+                            <div class="faq-answer">
+                                <i class="fas fa-check-circle"></i>
+                                Trả lời ngắn: {{ item.short_answer }}
+                            </div>
+                            {% for paragraph in item.answer %}
+                            <p>{{ paragraph }}</p>
+                            {% endfor %}
+                            <div class="guide-checks" style="margin-top:16px;">
+                                <h4><i class="fas fa-search"></i> Cách tự kiểm tra</h4>
+                                <ul class="check-list">
+                                    {% for check in item.checks %}
+                                    <li>{{ check }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="faq-exception">
+                                <strong>Nếu dữ liệu không đúng quy trình:</strong> {{ item.exception }}
+                            </div>
+                        </div>
+                    </details>
+                    {% endfor %}
+                </div>
+            </section>
+
             <footer class="footer">
                 Tài liệu bán lẻ Digimart · Cập nhật {{ guide_meta.revision_date }} ·
                 Khi công thức trên báo cáo thay đổi, cần cập nhật tài liệu và kiểm thử cùng lúc.
@@ -1303,7 +1361,7 @@
             searchInput.addEventListener('input', function () {
                 var term = normalize(searchInput.value);
                 var topBlocks = Array.prototype.slice.call(document.querySelectorAll(
-                    '.setup-card, #operations > .section-body > details, .formula-group, .scope-item, .report-table, .example, .time-card, .problem'
+                    '.setup-card, #operations > .section-body > details, .formula-group, .scope-item, .report-table, .example, .time-card, .problem, .faq-item'
                 ));
                 var matches = 0;
 

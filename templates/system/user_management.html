@@ -1,5 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+#data_tbl .user-action-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    min-width: 126px;
+    max-width: 150px;
+    margin: 0 auto;
+}
+#data_tbl .user-action-primary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+#data_tbl .user-action-stack .btn {
+    width: 100%;
+    margin: 0 !important;
+    white-space: nowrap;
+}
+</style>
 <div class="card">
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-users-cog mr-2"></i>Quản lý người dùng</h3>
@@ -59,7 +80,7 @@
                         <th>Nhóm vai trò</th>
                         {% endif %}
                         <th style="width:90px;" class="text-center">Trạng thái</th>
-                        <th style="width:130px;" class="text-center">Thao tác</th>
+                        <th style="width:150px;" class="text-center">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody id="user_tbody"></tbody>
@@ -366,9 +387,13 @@ function renderTable(){
         h += '<td class="text-center">'+statusBadge+'</td>';
         h += '<td class="text-center">';
         if(!u.is_superuser){
-            h += '<div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'>Sửa</button>';
+            h += '<div class="user-action-stack">';
+            h += '<div class="user-action-primary">';
+            h += '<button class="btn btn-xs btn-info" onclick=\'editUser('+JSON.stringify(u).replace(/'/g,"\\'")+')\'>Sửa</button>';
+            h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteUser('+u.id+')">Xóa</button>';
+            h += '</div>';
             h += '<button class="btn btn-xs btn-warning" onclick=\'resetPw('+u.id+','+JSON.stringify(u.username)+')\'>Mật khẩu</button>';
-            h += '<button class="btn btn-xs btn-outline-danger" onclick="deleteUser('+u.id+')">Xóa</button></div>';
+            h += '</div>';
         } else {
             h += '<span class="text-muted"><small>Admin</small></span>';
         }

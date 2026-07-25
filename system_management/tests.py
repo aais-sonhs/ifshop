@@ -758,6 +758,16 @@ class SystemManagementScopeTests(TestCase):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 200, msg=route_name)
 
+        user_management_response = self.client.get(reverse('user_management_tbl'))
+        user_management_html = user_management_response.content.decode()
+        self.assertIn('class="user-action-stack"', user_management_html)
+        self.assertIn('class="user-action-primary"', user_management_html)
+        self.assertIn('grid-template-columns: repeat(2, minmax(0, 1fr))', user_management_html)
+        self.assertLess(
+            user_management_html.index("deleteUser('+u.id+')"),
+            user_management_html.index("resetPw('+u.id+"),
+        )
+
         api_response = self.client.get(reverse('api_get_role_groups'))
         self.assertEqual(api_response.status_code, 200)
         self.assertEqual(api_response.json()['data'], [])

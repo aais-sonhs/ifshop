@@ -244,6 +244,21 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'data-print-type="packing"')
         self.assertContains(response, 'Phiếu đóng hàng A5')
 
+    def test_print_config_modal_closes_without_global_confirmation(self):
+        for url_name in ('order_tbl', 'quotation_tbl'):
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(url_name))
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(
+                    response,
+                    'id="modal_print_config" tabindex="-1" data-confirm-close="false"',
+                )
+                self.assertContains(
+                    response,
+                    "if(modal.getAttribute('data-confirm-close') === 'false') return;",
+                )
+
     def test_order_page_applies_date_filters_from_query_string_before_loading(self):
         response = self.client.get(reverse('order_tbl'), {
             'from_date': '2026-07-21',

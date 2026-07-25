@@ -130,7 +130,7 @@
     </div>
 
     <script>
-    // Xác nhận nút X cho mọi modal; modal quan trọng có thể bảo vệ thêm mọi nút đóng.
+    // Xác nhận nút X cho mọi modal; modal có thể chủ động bỏ qua bằng data-confirm-close="false".
     (function(){
         var confirmBox = document.getElementById('global_close_confirm');
         var messageEl = document.getElementById('global_close_confirm_message');
@@ -175,6 +175,7 @@
 
             var modal = trigger.closest('.modal');
             if(!modal) return;
+            if(modal.getAttribute('data-confirm-close') === 'false') return;
 
             // Chặn Bootstrap xử lý click cho đến khi người dùng xác nhận.
             event.preventDefault();

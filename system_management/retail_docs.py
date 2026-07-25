@@ -175,7 +175,7 @@ RETAIL_OPERATION_GUIDES = [
         ],
         'checks': [
             'Báo giá, Đơn hàng, Đang xử lý và Đang đóng gói chưa phải doanh thu đã thực hiện khi dùng phạm vi báo cáo mặc định.',
-            'Đã xuất kho và Hoàn thành là trạng thái xử lý hàng; không đồng nghĩa đã thanh toán đủ.',
+            'Đã xuất kho nghĩa là hàng đã rời kho; đơn chỉ Hoàn thành sau khi đã thanh toán đủ và được duyệt nếu có yêu cầu duyệt.',
             'Ngày đặt hàng là ngày BC Bán hàng dùng để ghi nhận doanh thu.',
             'Nếu đơn cần duyệt, phải đủ điều kiện duyệt trước khi xuất kho.',
         ],
@@ -195,7 +195,7 @@ RETAIL_OPERATION_GUIDES = [
             'Cuối ngày, lọc đơn còn nợ và xác nhận người chịu trách nhiệm nhắc thu.',
         ],
         'checks': [
-            'Đơn còn nợ vẫn có doanh thu và lợi nhuận nếu đã xuất kho hoặc hoàn thành.',
+            'Đơn còn nợ vẫn có doanh thu và lợi nhuận nếu đã ở trạng thái Đã xuất kho.',
             'Tiền khách trả thêm làm tăng Đã thu và giảm Công nợ, không làm tăng Doanh thu lần thứ hai.',
             'Không tạo hai phiếu thu cho cùng một lần chuyển tiền.',
             'Thu dư phải được kiểm tra; không dùng khoản thu dư của đơn này để tự bù nợ đơn khác.',
@@ -699,10 +699,10 @@ RETAIL_REPORT_EXAMPLES = [
         'explain': 'Doanh thu và tiền thu bằng nhau vì khách đã trả đủ.',
     },
     {
-        'title': 'Đơn hoàn thành nhưng còn nợ',
+        'title': 'Đơn đã xuất kho nhưng còn nợ',
         'input': 'Doanh thu 1.000.000đ; giá vốn 700.000đ; đã thu 400.000đ.',
         'output': 'Công nợ 600.000đ; lợi nhuận theo đơn vẫn 300.000đ.',
-        'explain': 'Trạng thái hoàn thành không có nghĩa đã trả đủ. Lợi nhuận không chờ thu hết nợ.',
+        'explain': 'Đơn Đã xuất kho được ghi nhận doanh thu và lợi nhuận; đơn giữ trạng thái này cho đến khi thu đủ tiền.',
     },
     {
         'title': 'Đơn có chiết khấu và phí',
@@ -758,9 +758,9 @@ RETAIL_TROUBLESHOOTING = [
         'check': 'Mở tab Theo đơn, so sánh Doanh thu, Đã thu và Công nợ; sau đó đối chiếu phiếu thu.',
     },
     {
-        'problem': 'Đơn hoàn thành vẫn có công nợ',
-        'cause': 'Hoàn thành là trạng thái xử lý đơn, không phải trạng thái thanh toán.',
-        'check': 'Kiểm tra số Đã thu và lịch sử thanh toán của đơn.',
+        'problem': 'Đơn đã xuất kho vẫn có công nợ',
+        'cause': 'Hàng đã rời kho nhưng khách chưa thanh toán đủ.',
+        'check': 'Kiểm tra Tổng thanh toán, Đã thu và lịch sử phiếu thu; thu đủ tiền để đơn chuyển Hoàn thành.',
     },
     {
         'problem': 'Lợi nhuận quá cao hoặc quá thấp',
@@ -826,6 +826,73 @@ RETAIL_FAQS = [
             'Nếu đơn đã Hoàn thành nhưng không có lịch sử xuất kho hoặc tồn chưa giảm, đây là dữ liệu bất thường '
             'do dữ liệu cũ, sửa trực tiếp cơ sở dữ liệu hoặc sự cố khi xử lý. Không tự trừ kho thêm vì có thể trừ hai lần; '
             'hãy báo quản lý hoặc bộ phận hỗ trợ để đối chiếu và đồng bộ.'
+        ),
+    },
+    {
+        'question': '2) Đơn hàng đang ở trạng thái Đã xuất kho, để đơn Hoàn thành cần thêm bước nào?',
+        'short_answer': 'Cần thu đủ tiền và duyệt đơn nếu đơn có yêu cầu người duyệt.',
+        'answer': [
+            (
+                'Đơn Đã xuất kho được chuyển sang Hoàn thành khi đồng thời thỏa hai điều kiện: '
+                'trạng thái thanh toán là Đã thanh toán và đơn đã được duyệt nếu có chỉ định người duyệt.'
+            ),
+            (
+                'Điều kiện thanh toán đủ được xác định theo công thức: Tổng các phiếu thu Hoàn thành '
+                'của đơn ≥ Tổng thanh toán của đơn. Phiếu thu Nháp hoặc đã Hủy không được tính.'
+            ),
+            (
+                'Với đơn còn nợ, mở đơn và dùng chức năng Thu tiền để ghi nhận phần khách trả thêm. '
+                'Khi thu đủ và đủ điều kiện duyệt, hệ thống tự chuyển đơn sang Hoàn thành. '
+                'Nếu đơn đã đủ điều kiện nhưng chưa tự chuyển, mở đơn và chọn bước Hoàn thành.'
+            ),
+            (
+                'Bước Hoàn thành chỉ chốt quy trình đơn hàng; hệ thống không trừ tồn kho lần thứ hai.'
+            ),
+        ],
+        'checks': [
+            'So sánh Tổng thanh toán với Đã thu và số Còn phải thu trên đơn.',
+            'Mở lịch sử thanh toán, kiểm tra các phiếu thu đúng đơn và đang ở trạng thái Hoàn thành.',
+            'Nếu đơn có người duyệt, kiểm tra trạng thái duyệt phải là Đã duyệt.',
+            'Sau khi thu đủ hoặc duyệt đơn, tải lại đơn để kiểm tra trạng thái Hoàn thành.',
+        ],
+        'exception': (
+            'Nếu đã thu đủ và đã duyệt nhưng đơn vẫn ở Đã xuất kho, không tạo thêm phiếu thu. '
+            'Hãy kiểm tra phiếu thu có bị ghi nhầm sang đơn khác, đang ở trạng thái Nháp/Hủy hoặc đã bị xóa; '
+            'sau đó báo quản lý hay bộ phận hỗ trợ nếu số liệu vẫn không đồng bộ.'
+        ),
+    },
+    {
+        'question': '3) Đơn hàng chỉ đang ở trạng thái Đã xuất kho có được tính doanh thu không?',
+        'short_answer': 'Có. Báo cáo bán hàng mặc định tính doanh thu của cả đơn Đã xuất kho và Hoàn thành.',
+        'answer': [
+            (
+                'Phạm vi mặc định của Báo cáo bán hàng là Đã xuất kho + Hoàn thành. Vì vậy, đơn Đã xuất kho '
+                'được xem là giao dịch bán đã thực hiện và được đưa vào doanh thu nếu thỏa khoảng ngày, cửa hàng '
+                'và các bộ lọc đang chọn.'
+            ),
+            (
+                'Doanh thu đơn = max(Tiền hàng − Chiết khấu chung + Phí vận chuyển + Chi phí khác, 0). '
+                'Doanh thu được ghi theo Ngày đặt hàng, không theo ngày xuất kho hoặc ngày khách thanh toán.'
+            ),
+            (
+                'Khách chưa trả đủ vẫn ghi nhận toàn bộ doanh thu của đơn. Số đã trả được ghi vào Đã thu; '
+                'phần còn lại được ghi vào Công nợ theo công thức: Công nợ = Doanh thu − Đã thu.'
+            ),
+            (
+                'Đơn Đã xuất kho cũng được tính giá vốn và lợi nhuận gộp. Khi khách trả thêm sau đó, '
+                'khoản thu chỉ làm tăng Đã thu và giảm Công nợ, không làm tăng doanh thu lần thứ hai.'
+            ),
+        ],
+        'checks': [
+            'Trong BC Bán hàng, chọn Phạm vi đơn là Đã xuất kho + Hoàn thành.',
+            'Chọn khoảng ngày có chứa Ngày đặt hàng của đơn và đúng cửa hàng.',
+            'Mở tab Theo đơn hàng, tìm mã đơn rồi đối chiếu Doanh thu, Đã thu và Công nợ.',
+            'Nếu có trả hàng, kiểm tra thêm Trả hàng và Doanh thu thuần vì tiền hoàn làm giảm doanh thu thuần.',
+        ],
+        'exception': (
+            'Không dùng Tổng thu trên BC Tài chính để kết luận đơn có doanh thu hay chưa. '
+            'BC Bán hàng ghi nhận giá trị bán; BC Tài chính ghi nhận dòng tiền thực thu, nên hai số có thể khác nhau '
+            'khi khách còn nợ hoặc thanh toán vào ngày khác.'
         ),
     },
 ]

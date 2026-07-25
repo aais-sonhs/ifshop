@@ -15,23 +15,17 @@ from .models import (
     UserProfile, RoleGroup, ModulePermission, ServicePrice, PrinterSetting, PrintTemplate,
     PrintTemplateHistory, BusinessConfig, Brand, Store, SystemLog,
 )
-from .product_docs import (
-    COMMON_DAILY_FLOW,
-    COMMON_MODULES,
-    COMMON_SETUP_STEPS,
-    COMMON_WORKFLOW_SECTIONS,
-    DETAILED_OPERATION_GUIDES,
-    DEMO_ACCOUNT,
-    DOCUMENT_NAV,
-    DOCUMENT_REVISION,
-    DOCUMENT_UPDATES,
-    FIELD_DEEP_DIVES,
-    IMPLEMENTATION_CHECKLIST,
-    PAYMENT_METHOD_DEFAULT_GUIDE,
-    ROLE_GUIDES,
-    TROUBLESHOOTING_GUIDES,
-    get_product_document,
-    normalize_document_key,
+from .retail_docs import (
+    RETAIL_DAILY_CHECKLIST,
+    RETAIL_FORMULA_GROUPS,
+    RETAIL_GUIDE_META,
+    RETAIL_OPERATION_GUIDES,
+    RETAIL_REPORT_EXAMPLES,
+    RETAIL_ROLE_START,
+    RETAIL_SALES_REPORT_SCOPE,
+    RETAIL_SALES_REPORT_TABLES,
+    RETAIL_SETUP_STEPS,
+    RETAIL_TROUBLESHOOTING,
 )
 from core.store_utils import (
     can_manage_users,
@@ -453,40 +447,18 @@ def _apply_print_template_data(template, data):
 
 
 def product_guide(request):
-    selected_key = normalize_document_key(request.GET.get('field', ''))
-
-    if not selected_key:
-        try:
-            brand = _get_request_brand(request)
-            selected_key = normalize_document_key(BusinessConfig.get_config(brand=brand).business_type)
-        except Exception:
-            selected_key = 'custom'
-
-    selected_key, document = get_product_document(selected_key)
-    doc_nav = []
-    for item in DOCUMENT_NAV:
-        nav_item = item.copy()
-        nav_item['active'] = item['key'] == selected_key
-        doc_nav.append(nav_item)
-
     context = {
         'active_tab': 'product_guide',
-        'selected_doc_key': selected_key,
-        'document': document,
-        'doc_nav': doc_nav,
-        'demo_account': DEMO_ACCOUNT,
-        'document_revision': DOCUMENT_REVISION,
-        'document_updates': DOCUMENT_UPDATES,
-        'common_modules': COMMON_MODULES,
-        'setup_steps': COMMON_SETUP_STEPS,
-        'payment_method_default_guide': PAYMENT_METHOD_DEFAULT_GUIDE,
-        'daily_flow': COMMON_DAILY_FLOW,
-        'workflow_sections': COMMON_WORKFLOW_SECTIONS,
-        'role_guides': ROLE_GUIDES,
-        'detailed_operation_guides': DETAILED_OPERATION_GUIDES,
-        'implementation_checklist': IMPLEMENTATION_CHECKLIST,
-        'troubleshooting_guides': TROUBLESHOOTING_GUIDES,
-        'field_deep_dive': FIELD_DEEP_DIVES.get(selected_key),
+        'guide_meta': RETAIL_GUIDE_META,
+        'role_start': RETAIL_ROLE_START,
+        'setup_steps': RETAIL_SETUP_STEPS,
+        'operation_guides': RETAIL_OPERATION_GUIDES,
+        'formula_groups': RETAIL_FORMULA_GROUPS,
+        'sales_report_scope': RETAIL_SALES_REPORT_SCOPE,
+        'sales_report_tables': RETAIL_SALES_REPORT_TABLES,
+        'report_examples': RETAIL_REPORT_EXAMPLES,
+        'daily_checklist': RETAIL_DAILY_CHECKLIST,
+        'troubleshooting': RETAIL_TROUBLESHOOTING,
     }
 
     return render(request, "system/product_guide_public.html", context)

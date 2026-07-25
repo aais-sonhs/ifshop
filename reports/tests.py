@@ -862,6 +862,8 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
+        self.assertContains(response, f'{reverse("product_guide")}#sales-report-guide')
+        self.assertContains(response, '<i class="fas fa-book-open"></i> Hướng dẫn', html=True)
         self.assertContains(response, 'id="supplier_sales_section"')
         self.assertContains(response, 'Báo cáo bán hàng theo nhà cung cấp')
         self.assertContains(response, 'id="supplierSalesCollapse"')

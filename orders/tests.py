@@ -2,6 +2,7 @@ import json
 import calendar
 from io import BytesIO
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 import openpyxl
 from django.contrib.auth.models import User
@@ -643,6 +644,41 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(payload['order_code'], 'DH017')
         self.assertEqual(Order.all_objects.get(id=order.id).code, 'DH-016')
 
+    def test_save_order_returns_http_500_and_safe_message_for_server_error(self):
+        request_data = {
+            'code': 'DH-SERVER-ERROR',
+            'customer_id': self.customer.id,
+            'warehouse_id': self.warehouse.id,
+            'order_date': date.today().isoformat(),
+            'discount_amount': 0,
+            'shipping_fee': 0,
+            'status': 0,
+            'note': '',
+            'tags': '',
+            'pay_mode': 'none',
+            'payment_amount': 0,
+            'payment_lines': [],
+            'items': [],
+        }
+
+        with self.assertLogs('orders.views', level='ERROR'):
+            with patch(
+                'orders.views._resolve_sales_record_store',
+                side_effect=RuntimeError('database connection detail'),
+            ):
+                response = self.client.post(
+                    reverse('api_save_order'),
+                    data=json.dumps(request_data),
+                    content_type='application/json',
+                )
+
+        self.assertEqual(response.status_code, 500, msg=response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload['status'], 'error')
+        self.assertIn('Máy chủ gặp lỗi khi lưu đơn hàng', payload['message'])
+        self.assertNotIn('database connection detail', payload['message'])
+        self.assertFalse(Order.objects.filter(code=request_data['code']).exists())
+
     def test_products_select_exposes_product_retail_price_as_default_price(self):
         self.product.selling_price = 12000000
         self.product.save(update_fields=['selling_price'])
@@ -1217,7 +1253,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertNotContains(response, "$(row).attr('data-item-sequence', index + 1);")
         self.assertNotContains(response, 'addItemRow(item, {prepend: true')
 
-    def test_order_form_prioritizes_width_for_long_product_names(self):
+    def test_order_form_balances_product_and_quantity_column_widths(self):
         self.client.force_login(self.owner)
 
         response = self.client.get(reverse('order_tbl'))
@@ -1225,7 +1261,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            '<th style="width:42%" class="order-product-column">Sản phẩm</th>',
+            '<th style="width:40%" class="order-product-column">Sản phẩm</th>',
             html=True,
         )
         self.assertContains(
@@ -1245,7 +1281,7 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            '<th style="width:4%" class="order-quantity-column">SL</th>',
+            '<th style="width:6%" class="order-quantity-column">SL</th>',
             html=True,
         )
         self.assertContains(
@@ -1281,10 +1317,18 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'var ORDER_SAVE_TIMEOUT_MS = 45000;')
+        self.assertContains(response, 'var ORDER_SAVE_RECOVERY_DELAY_MS = ORDER_SAVE_TIMEOUT_MS + 2000;')
         self.assertContains(response, 'function resetOrderSaveButtonState(isQuotation)')
+        self.assertContains(response, 'function startOrderSaveRecoveryTimer($btn, isQuotation)')
+        self.assertContains(response, 'function finishOrderSaveRequest($btn, isQuotation)')
+        self.assertContains(response, "staleRequest.abort('timeout');")
+        self.assertContains(response, "ORDER_SAVE_XHR.abort('offline');")
+        self.assertContains(response, 'window.navigator.onLine === false')
+        self.assertContains(response, 'httpStatus >= 500')
+        self.assertContains(response, 'Dữ liệu đang nhập vẫn được giữ trên màn hình.')
         self.assertContains(response, 'resetOrderSaveButtonState(false);', count=3)
         self.assertContains(response, 'resetOrderSaveButtonState(true);')
-        self.assertContains(response, 'timeout:ORDER_SAVE_TIMEOUT_MS,', count=2)
+        self.assertContains(response, 'timeout:ORDER_SAVE_TIMEOUT_MS,', count=3)
         self.assertContains(response, 'showOrderSaveRequestError(xhr, textStatus, false);')
         self.assertContains(response, 'showOrderSaveRequestError(xhr, textStatus, true);')
         self.assertContains(response, "if(!$('#btn_save').data('submitting'))")
@@ -1292,6 +1336,26 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(
             response,
             'Đơn hàng đang được lưu. Vui lòng chờ hoàn tất trước khi đóng cửa sổ.',
+        )
+
+    def test_order_page_allows_collecting_payment_from_readonly_exported_order(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'var canCollectReadonly = hasOrder && [4,5].indexOf(status) >= 0 && remaining > 0;',
+        )
+        self.assertContains(
+            response,
+            "$('#btn_order_collect_payment').toggle(canCollectReadonly).prop('disabled', false);",
+        )
+        self.assertContains(response, 'vẫn có thể thu số tiền còn thiếu.')
+        self.assertContains(
+            response,
+            'Không thể thu tiền do mất kết nối hoặc lỗi máy chủ.',
         )
 
     def test_order_form_exposes_product_specification_line(self):
@@ -2890,6 +2954,47 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertTrue(any('còn phải thu 60' in summary for summary in history_summaries))
         self.assertTrue(any('đã thanh toán đủ' in summary for summary in history_summaries))
+
+    def test_collect_remaining_payment_completes_exported_partial_order(self):
+        order = self._create_order(code='DH-COLLECT-EXPORTED-001', status=4)
+        Receipt.objects.create(
+            code='PT-DH-COLLECT-EXPORTED-001',
+            store=self.store,
+            customer=self.customer,
+            order=order,
+            amount=40,
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        update_order_payment_status(order)
+
+        response = self.client.post(
+            reverse('api_collect_order_payment'),
+            data=json.dumps({
+                'order_id': order.id,
+                'payment_lines': [{
+                    'amount': 60,
+                    'payment_method': 1,
+                    'payment_method_option_id': self.payment_method.id,
+                    'cash_book_id': self.cashbook.id,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['paid_amount'], 100.0)
+        self.assertEqual(payload['remaining_amount'], 0.0)
+        self.assertEqual(payload['payment_status'], 2)
+        self.assertEqual(payload['order_status'], 5)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 5)
+        self.assertEqual(order.payment_status, 2)
+        self.assertEqual(float(order.paid_amount), 100.0)
 
     def test_export_order_stock_is_independent_from_payment(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)

@@ -3727,8 +3727,15 @@ def api_save_order(request):
             'shipping_point_created': shipping_point_created,
             'shipping_point': shipping_point,
         })
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception:
+        logger.exception('Không thể lưu đơn hàng')
+        return JsonResponse({
+            'status': 'error',
+            'message': (
+                'Máy chủ gặp lỗi khi lưu đơn hàng. Dữ liệu chưa được lưu; '
+                'thông tin đang nhập vẫn được giữ trên màn hình. Vui lòng thử lại.'
+            ),
+        }, status=500)
 
 
 @login_required(login_url="/login/")

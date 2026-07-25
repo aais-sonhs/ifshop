@@ -477,10 +477,10 @@
                                 <thead class="bg-light"><tr>
 	                                    <th style="width:4%" class="text-center">STT</th>
 	                                    <th style="width:7%" class="text-center order-image-column">Ảnh</th>
-	                                    <th style="width:42%" class="order-product-column">Sản phẩm</th>
+	                                    <th style="width:40%" class="order-product-column">Sản phẩm</th>
                                     <th style="width:3%" class="order-unit-column">ĐVT</th>
                                     <th style="width:16%" class="stock-info-col">Tồn theo kho</th>
-                                    <th style="width:4%" class="order-quantity-column">SL</th>
+                                    <th style="width:6%" class="order-quantity-column">SL</th>
                                     <th style="width:8%" class="order-unit-price-column">Đơn giá</th>
                                     <th style="width:8%" class="order-discount-column" title="Chiết khấu theo % hoặc số tiền">CK (% / tiền)</th>
                                     <th style="width:8%" class="order-line-total-column">Thành tiền</th>
@@ -1944,6 +1944,8 @@ var ORDER_TOTAL_RECALC_OPTIONS = {};
 var ORDER_ITEMS_VIEWPORT_REFRESH_HANDLE = null;
 var ORDER_SAVE_XHR = null;
 var ORDER_SAVE_TIMEOUT_MS = 45000;
+var ORDER_SAVE_RECOVERY_DELAY_MS = ORDER_SAVE_TIMEOUT_MS + 2000;
+var ORDER_SAVE_RECOVERY_TIMER = null;
 var ORDER_SAVE_ALLOW_MODAL_HIDE = false;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
@@ -3276,14 +3278,55 @@ function setOrderSaveLoading($btn, isLoading, isQuotation){
     }
 }
 
+function notifyOrderSaveError(message){
+    if(typeof toastr !== 'undefined'){
+        toastr.error(message);
+    } else {
+        alert(message);
+    }
+}
+
 function isOrderSaveRequestPending(){
     return !!(ORDER_SAVE_XHR && ORDER_SAVE_XHR.readyState !== 4);
 }
 
+function clearOrderSaveRecoveryTimer(){
+    if(ORDER_SAVE_RECOVERY_TIMER){
+        window.clearTimeout(ORDER_SAVE_RECOVERY_TIMER);
+        ORDER_SAVE_RECOVERY_TIMER = null;
+    }
+}
+
+function finishOrderSaveRequest($btn, isQuotation){
+    clearOrderSaveRecoveryTimer();
+    ORDER_SAVE_XHR = null;
+    setOrderSaveLoading($btn, false, !!isQuotation);
+}
+
+function startOrderSaveRecoveryTimer($btn, isQuotation){
+    clearOrderSaveRecoveryTimer();
+    ORDER_SAVE_RECOVERY_TIMER = window.setTimeout(function(){
+        if(!$btn.data('submitting')) return;
+
+        var staleRequest = ORDER_SAVE_XHR;
+        if(staleRequest && staleRequest.readyState !== 4){
+            staleRequest.abort('timeout');
+        }
+
+        // Phòng trường hợp callback success/error phát sinh lỗi JavaScript trước complete.
+        if($btn.data('submitting')){
+            finishOrderSaveRequest($btn, isQuotation);
+            notifyOrderSaveError(
+                'Yêu cầu lưu đã kết thúc nhưng giao diện không nhận được phản hồi hợp lệ. ' +
+                'Dữ liệu đang nhập vẫn được giữ; vui lòng kiểm tra danh sách trước khi lưu lại.'
+            );
+        }
+    }, ORDER_SAVE_RECOVERY_DELAY_MS);
+}
+
 function resetOrderSaveButtonState(isQuotation){
     if(isOrderSaveRequestPending()) return false;
-    ORDER_SAVE_XHR = null;
-    setOrderSaveLoading($('#btn_save'), false, !!isQuotation);
+    finishOrderSaveRequest($('#btn_save'), isQuotation);
     return true;
 }
 
@@ -3291,17 +3334,50 @@ function showOrderSaveRequestError(xhr, textStatus, isQuotation){
     if(textStatus === 'abort') return;
     var documentLabel = isQuotation ? 'báo giá' : 'đơn hàng';
     var serverMessage = xhr && xhr.responseJSON && xhr.responseJSON.message;
-    var message = serverMessage || (
-        textStatus === 'timeout'
-            ? 'Lưu ' + documentLabel + ' quá thời gian chờ. Vui lòng kiểm tra mạng rồi thử lại.'
-            : 'Không thể lưu ' + documentLabel + ' do kết nối bị gián đoạn. Vui lòng thử lại.'
-    );
-    if(typeof toastr !== 'undefined'){
-        toastr.error(message);
+    var httpStatus = xhr ? Number(xhr.status || 0) : 0;
+    var message = serverMessage;
+
+    if(!message && (textStatus === 'timeout' || textStatus === 'offline')){
+        message = 'Không nhận được phản hồi khi lưu ' + documentLabel + '. Có thể mạng đã bị gián đoạn hoặc máy chủ phản hồi quá chậm.';
+    } else if(!message && httpStatus >= 500){
+        message = 'Máy chủ gặp lỗi khi lưu ' + documentLabel + '. Vui lòng thử lại.';
+    } else if(!message && httpStatus === 0){
+        message = 'Mất kết nối khi lưu ' + documentLabel + '. Vui lòng kiểm tra mạng.';
     } else {
-        alert(message);
+        message = message || 'Không thể lưu ' + documentLabel + '. Vui lòng thử lại.';
     }
+
+    if(textStatus === 'timeout' || textStatus === 'offline' || httpStatus === 0){
+        message += ' Chưa thể xác nhận chứng từ đã được lưu hay chưa; dữ liệu đang nhập vẫn được giữ. Hãy kiểm tra danh sách trước khi lưu lại.';
+    } else if(message.indexOf('thông tin đang nhập vẫn được giữ') < 0){
+        message += ' Dữ liệu đang nhập vẫn được giữ trên màn hình.';
+    }
+    notifyOrderSaveError(message);
 }
+
+function beginOrderSaveRequest($btn, isQuotation){
+    if(window.navigator && window.navigator.onLine === false){
+        showOrderSaveRequestError({status: 0}, 'offline', isQuotation);
+        return false;
+    }
+    setOrderSaveLoading($btn, true, isQuotation);
+    startOrderSaveRecoveryTimer($btn, isQuotation);
+    return true;
+}
+
+function handleOrderSaveSetupError($btn, isQuotation){
+    finishOrderSaveRequest($btn, isQuotation);
+    notifyOrderSaveError(
+        'Không thể bắt đầu gửi yêu cầu lưu ' + (isQuotation ? 'báo giá' : 'đơn hàng') + '. ' +
+        'Dữ liệu đang nhập vẫn được giữ trên màn hình. Vui lòng thử lại.'
+    );
+}
+
+window.addEventListener('offline', function(){
+    if(!isOrderSaveRequestPending()) return;
+    // Hủy chờ ở phía trình duyệt để báo lỗi và mở lại nút Lưu ngay khi mất mạng.
+    ORDER_SAVE_XHR.abort('offline');
+});
 
 function hideOrderFormAfterSuccessfulSave(){
     ORDER_SAVE_ALLOW_MODAL_HIDE = true;
@@ -4049,16 +4125,19 @@ function clearPaymentLines(){
 }
 
 function syncOrderWorkflowButtons(){
-    if(_orderFormReadonly){
-        $('.order-workflow-btn').hide();
-        $('#btn_skip_payment_now').hide();
-        return;
-    }
     var orderId = $('#edit_id').val();
     var status = parseInt($('#inp_status').val(), 10) || 0;
     var isQuotation = getDocumentType && getDocumentType() === 'quotation';
     var hasOrder = Boolean(orderId) && !isQuotation;
     var remaining = getRemainingForNewPayment();
+    if(_orderFormReadonly){
+        var canCollectReadonly = hasOrder && [4,5].indexOf(status) >= 0 && remaining > 0;
+        $('.order-workflow-btn').hide();
+        $('#btn_order_collect_payment').toggle(canCollectReadonly).prop('disabled', false);
+        $('#btn_toggle_payment').prop('disabled', !canCollectReadonly);
+        $('#btn_skip_payment_now').hide();
+        return;
+    }
     $('#btn_order_collect_payment').toggle(hasOrder && status !== 6 && remaining > 0);
     $('#btn_order_export_stock').toggle(hasOrder && [0,1,2,3].indexOf(status) >= 0);
     $('#btn_order_return').toggle(hasOrder && [4,5].indexOf(status) >= 0);
@@ -4116,6 +4195,7 @@ function collectCurrentOrderPayment(){
         url:'/api/orders/collect-payment/',
         type:'POST',
         contentType:'application/json',
+        timeout:ORDER_SAVE_TIMEOUT_MS,
         headers:{'X-CSRFToken':'{{csrf_token}}'},
         data:JSON.stringify({order_id: orderId, payment_lines: lines, receipt_date: $('#inp_payment_date').val()}),
         success:function(r){
@@ -4123,10 +4203,20 @@ function collectCurrentOrderPayment(){
                 var remainingAfterCollect = getWorkflowRemainingAmount(r);
                 applyOrderWorkflowResult(r);
                 prepareNextPaymentEntry(remainingAfterCollect);
-                toastr ? toastr.success(r.message) : alert(r.message);
+                if(typeof toastr !== 'undefined') toastr.success(r.message);
+                else alert(r.message);
             } else {
                 alert(r.message);
             }
+        },
+        error:function(xhr, textStatus){
+            var message = xhr && xhr.responseJSON && xhr.responseJSON.message;
+            if(!message){
+                message = textStatus === 'timeout'
+                    ? 'Thu tiền quá thời gian chờ. Vui lòng kiểm tra mạng và lịch sử thanh toán trước khi thử lại.'
+                    : 'Không thể thu tiền do mất kết nối hoặc lỗi máy chủ. Vui lòng kiểm tra lịch sử thanh toán trước khi thử lại.';
+            }
+            notifyOrderSaveError(message);
         },
         complete:function(){
             $buttons.prop('disabled', false);
@@ -5387,31 +5477,34 @@ $(document).ready(function(){
                 items: items
             };
             if($('#inp_salesperson').length) quotationData.salesperson = $('#inp_salesperson').val();
-            setOrderSaveLoading($saveBtn, true, true);
-            ORDER_SAVE_XHR = $.ajax({url:'/api/quotations/save/',type:'POST',contentType:'application/json',
-                timeout:ORDER_SAVE_TIMEOUT_MS,
-                headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(quotationData),
-                success:function(r){
-                    if(r.status==='ok'){
-                        hideOrderFormAfterSuccessfulSave();
-                        if(r.message && r.message.indexOf('Cảnh báo') >= 0){
-                            if(typeof toastr !== 'undefined') toastr.warning(r.message); else alert(r.message);
-                        } else if(typeof toastr !== 'undefined') {
-                            toastr.success('Đã lưu báo giá. Có thể xem lại tại danh sách báo giá.');
+            if(!beginOrderSaveRequest($saveBtn, true)) return;
+            try {
+                ORDER_SAVE_XHR = $.ajax({url:'/api/quotations/save/',type:'POST',contentType:'application/json',
+                    timeout:ORDER_SAVE_TIMEOUT_MS,
+                    headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(quotationData),
+                    success:function(r){
+                        if(r.status==='ok'){
+                            hideOrderFormAfterSuccessfulSave();
+                            if(r.message && r.message.indexOf('Cảnh báo') >= 0){
+                                if(typeof toastr !== 'undefined') toastr.warning(r.message); else alert(r.message);
+                            } else if(typeof toastr !== 'undefined') {
+                                toastr.success('Đã lưu báo giá. Có thể xem lại tại danh sách báo giá.');
+                            }
+                            openPrintConfig('quotation', r.order_id, r.order_code || code);
+                        } else {
+                            alert(r.message);
                         }
-                        openPrintConfig('quotation', r.order_id, r.order_code || code);
-                    } else {
-                        alert(r.message);
+                    },
+                    error:function(xhr, textStatus){
+                        showOrderSaveRequestError(xhr, textStatus, true);
+                    },
+                    complete:function(){
+                        finishOrderSaveRequest($saveBtn, true);
                     }
-                },
-                error:function(xhr, textStatus){
-                    showOrderSaveRequestError(xhr, textStatus, true);
-                },
-                complete:function(){
-                    ORDER_SAVE_XHR = null;
-                    setOrderSaveLoading($saveBtn, false, true);
-                }
-            });
+                });
+            } catch(error) {
+                handleOrderSaveSetupError($saveBtn, true);
+            }
             return;
         }
 
@@ -5456,67 +5549,72 @@ $(document).ready(function(){
         if($('#inp_approver_id').length) data.approver_id = $('#inp_approver_id').val() || null;
         if($('#inp_bonus_amount').length) data.bonus_amount = getMoneyValue('#inp_bonus_amount');
 
-        setOrderSaveLoading($saveBtn, true, false);
-        ORDER_SAVE_XHR = $.ajax({url:'/api/orders/save/',type:'POST',contentType:'application/json',
-            timeout:ORDER_SAVE_TIMEOUT_MS,
-            headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
-            success:function(r){
-                if(r.status==='ok'){
-                    if(r.shipping_point_created && r.shipping_point && data.customer_id){
-                        var savedCustomer = allCustomers.find(function(customer){
-                            return String(customer.id) === String(data.customer_id);
-                        });
-                        if(savedCustomer){
-                            savedCustomer.delivery_addresses = savedCustomer.delivery_addresses || [];
-                            var savedPointKey = shippingPointKey(r.shipping_point.address, r.shipping_point.phone);
-                            var pointExists = savedCustomer.delivery_addresses.some(function(point){
-                                return shippingPointKey(point.address, point.phone) === savedPointKey;
+        if(!beginOrderSaveRequest($saveBtn, false)) return;
+        try {
+            ORDER_SAVE_XHR = $.ajax({url:'/api/orders/save/',type:'POST',contentType:'application/json',
+                timeout:ORDER_SAVE_TIMEOUT_MS,
+                headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
+                success:function(r){
+                    if(r.status==='ok'){
+                        if(r.shipping_point_created && r.shipping_point && data.customer_id){
+                            var savedCustomer = allCustomers.find(function(customer){
+                                return String(customer.id) === String(data.customer_id);
                             });
-                            if(!pointExists) savedCustomer.delivery_addresses.push(r.shipping_point);
-                            savedCustomer.historical_addresses = (savedCustomer.historical_addresses || []).filter(function(point){
-                                return shippingPointKey(point.address, point.phone) !== savedPointKey;
-                            });
+                            if(savedCustomer){
+                                savedCustomer.delivery_addresses = savedCustomer.delivery_addresses || [];
+                                var savedPointKey = shippingPointKey(r.shipping_point.address, r.shipping_point.phone);
+                                var pointExists = savedCustomer.delivery_addresses.some(function(point){
+                                    return shippingPointKey(point.address, point.phone) === savedPointKey;
+                                });
+                                if(!pointExists) savedCustomer.delivery_addresses.push(r.shipping_point);
+                                savedCustomer.historical_addresses = (savedCustomer.historical_addresses || []).filter(function(point){
+                                    return shippingPointKey(point.address, point.phone) !== savedPointKey;
+                                });
+                            }
                         }
-                    }
-                    hideOrderFormAfterSuccessfulSave();
-                    resetOrderPage();
-                    loadData();
-                    var statusLabel = r.order_status_display || STATUS_LABELS[r.order_status] || '';
-                    var savedMessage = 'Đã lưu đơn hàng' + (statusLabel ? ' — trạng thái: ' + statusLabel : '');
-                    if(r.shipping_point_created){
-                        savedMessage += '. Đã thêm địa chỉ và SĐT nhận mới vào hồ sơ khách.';
-                    }
-                    if(parseInt(r.order_status, 10) !== parseInt(data.status, 10)){
-                        savedMessage += '. Hệ thống đã tự đồng bộ theo thanh toán/xuất kho.';
-                    }
-                    if(r.stock_export_deferred){
-                        savedMessage += '. ' + (r.stock_export_warning || 'Đơn chưa xuất kho do tồn kho không đủ.');
-                        if(typeof toastr !== 'undefined') toastr.warning(savedMessage);
+                        hideOrderFormAfterSuccessfulSave();
+                        resetOrderPage();
+                        loadData();
+                        var statusLabel = r.order_status_display || STATUS_LABELS[r.order_status] || '';
+                        var savedMessage = 'Đã lưu đơn hàng' + (statusLabel ? ' — trạng thái: ' + statusLabel : '');
+                        if(r.shipping_point_created){
+                            savedMessage += '. Đã thêm địa chỉ và SĐT nhận mới vào hồ sơ khách.';
+                        }
+                        if(parseInt(r.order_status, 10) !== parseInt(data.status, 10)){
+                            savedMessage += '. Hệ thống đã tự đồng bộ theo thanh toán/xuất kho.';
+                        }
+                        if(r.stock_export_deferred){
+                            savedMessage += '. ' + (r.stock_export_warning || 'Đơn chưa xuất kho do tồn kho không đủ.');
+                            if(typeof toastr !== 'undefined') toastr.warning(savedMessage);
+                            else alert(savedMessage);
+                        } else if(typeof toastr !== 'undefined') toastr.success(savedMessage);
                         else alert(savedMessage);
-                    } else if(typeof toastr !== 'undefined') toastr.success(savedMessage);
-                    else alert(savedMessage);
-                    if(r.message && r.message.indexOf('Cảnh báo') >= 0){
-                        toastr ? toastr.warning(r.message) : alert(r.message);
-                    }
-                    // Show print configuration modal
-                    if(window._skipPrintAfterOrderSave){
-                        window._skipPrintAfterOrderSave = false;
+                        if(r.message && r.message.indexOf('Cảnh báo') >= 0){
+                            if(typeof toastr !== 'undefined') toastr.warning(r.message);
+                            else alert(r.message);
+                        }
+                        // Show print configuration modal
+                        if(window._skipPrintAfterOrderSave){
+                            window._skipPrintAfterOrderSave = false;
+                        } else {
+                            openPrintConfig('order', r.order_id, r.order_code || code);
+                        }
                     } else {
-                        openPrintConfig('order', r.order_id, r.order_code || code);
+                        alert(r.message);
                     }
-                } else {
-                    alert(r.message);
+                },
+                error:function(xhr, textStatus){
+                    showOrderSaveRequestError(xhr, textStatus, false);
+                },
+                complete:function(){
+                    finishOrderSaveRequest($saveBtn, false);
+                    window._skipPrintAfterOrderSave = false;
                 }
-            },
-            error:function(xhr, textStatus){
-                showOrderSaveRequestError(xhr, textStatus, false);
-            },
-            complete:function(){
-                ORDER_SAVE_XHR = null;
-                setOrderSaveLoading($saveBtn, false, false);
-                window._skipPrintAfterOrderSave = false;
-            }
-        });
+            });
+        } catch(error) {
+            window._skipPrintAfterOrderSave = false;
+            handleOrderSaveSetupError($saveBtn, false);
+        }
     });
 });
 
@@ -7183,7 +7281,7 @@ function viewItem(id){
 	        $('#btn_save').hide();
 	        $('#btn_print_current').show();
 	        $('#btn_toggle_payment').prop('disabled', true);
-        $('.order-workflow-btn').hide();
+        syncOrderWorkflowButtons();
         $('#quick_search_product').closest('.bg-light').hide();
         $('.btn_remove_item').hide();
         $('#document_type_section').hide();
@@ -7196,10 +7294,13 @@ function viewItem(id){
 	        // Thêm cảnh báo
 	        $('#lock_warning,#order_return_summary_box').remove();
 	        var statusText = o.status === 4 ? 'Đã xuất kho' : (o.status === 5 ? 'Hoàn thành' : (o.status === 6 ? 'Hủy' : (STATUS_LABELS[o.status] || 'Khóa')));
+	        var remainingToCollect = Math.max((parseFloat(o.final_amount) || 0) - (parseFloat(o.paid_amount) || 0), 0);
 	        var lockText = o.status === 4
-	            ? 'Đơn đã xuất kho nên sản phẩm, giá bán, số lượng, chiết khấu và thông tin đơn hàng đều bị khóa.'
+	            ? 'Đơn đã xuất kho nên sản phẩm, giá bán, số lượng, chiết khấu và thông tin đơn hàng đều bị khóa; vẫn có thể thu số tiền còn thiếu.'
 	            : (o.status === 5
-	            ? 'Đơn đã hoàn thành nên chỉ cho phép sửa ghi chú. Sản phẩm, giá, thanh toán và tồn kho vẫn được khóa.'
+	            ? (remainingToCollect > 0
+	                ? 'Đơn đang thiếu tiền nên vẫn có thể thu thêm; ngoài ghi chú, các thông tin sản phẩm, giá và tồn kho vẫn bị khóa.'
+	                : 'Đơn đã hoàn thành nên chỉ cho phép sửa ghi chú. Sản phẩm, giá, thanh toán và tồn kho vẫn được khóa.')
 	            : (o.status === 6 ? 'Đơn đã hủy nên không thể chỉnh sửa.' : 'Đơn đang được mở ở chế độ chỉ đọc.'));
 	        var warning = '<div id="lock_warning" class="alert alert-warning mb-2 py-2">' +
 	            '<i class="fas fa-lock mr-1"></i> <strong>ĐƠN HÀNG ĐÃ ' + statusText.toUpperCase() + '</strong> — ' +
@@ -7242,7 +7343,7 @@ function viewItem(id){
                     $('#inp_note').prop('disabled', false);
                 }
                 $('.btn_remove_item').hide();
-                $('.order-workflow-btn').hide();
+                syncOrderWorkflowButtons();
             }
         });
 	        $('#modal_title').html(o.status === 5 ? 'Xem đơn hàng / sửa ghi chú' : '<i class="fas fa-lock mr-1"></i> Xem đơn hàng (Chỉ đọc)');

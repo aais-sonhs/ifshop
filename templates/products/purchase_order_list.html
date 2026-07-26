@@ -116,7 +116,7 @@
                         <thead class="bg-light">
                             <tr>
                                 <th style="width:4%">#</th>
-                                <th class="inventory-product-cell" style="width:50%">Sản phẩm</th>
+                                <th class="inventory-product-cell" style="width:50%">Sản phẩm / Quy cách</th>
                                 <th style="width:6%">ĐVT</th>
                                 <th style="width:11%">Số lượng</th>
                                 <th style="width:11%">Đơn giá</th>
@@ -316,6 +316,7 @@ $(document).ready(function(){
         var product = getPurchaseOrderProductById(selectedChoice.productId);
         if(product){
             row.find('.item-unit').text(product.unit);
+            row.find('.item-product-specification-value').text(getPurchaseOrderProductSpecification(product));
             var variant = getPurchaseOrderProductVariant(product, selectedChoice.variantId);
             var cost = (variant && variant.cost_price) || product.cost_price || product.import_price || 0;
             row.find('.item-unit-price').val(fmtMoneyInput(cost));
@@ -408,6 +409,11 @@ function getPurchaseOrderProductVariant(product, variantId){
     }) || null;
 }
 
+function getPurchaseOrderProductSpecification(product){
+    var specification = String(product && product.specification ? product.specification : '').trim();
+    return specification || '—';
+}
+
 function getPurchaseOrderProductOptionInfo(data){
     if(!data || !data.id) return null;
     var $option = data.element ? $(data.element) : null;
@@ -469,6 +475,8 @@ function formatPurchaseOrderProductOption(data){
     return $(
         '<div class="purchase-order-product-option py-1">' +
             '<div><strong class="text-dark">' + escapeHtml(product.code || '') + '</strong> — ' + escapeHtml(product.name || '') + variantLabel + '</div>' +
+            '<div class="purchase-order-product-specification small text-muted"><span class="font-weight-bold">Quy cách:</span> ' +
+                escapeHtml(getPurchaseOrderProductSpecification(product)) + '</div>' +
             renderPurchaseOrderStockHtml(product) +
         '</div>'
     );
@@ -500,7 +508,8 @@ function addItemRow(data){
             unit = selectedProduct.unit || '';
             var selectedVariantId = selectedVariant ? selectedVariant.id : null;
             var selectedLabel = (selectedProduct.code || '') + ' - ' + (selectedProduct.name || '') +
-                (selectedVariant ? ' [' + (selectedVariant.size_name || selectedVariant.sku || '') + ']' : '');
+                (selectedVariant ? ' [' + (selectedVariant.size_name || selectedVariant.sku || '') + ']' : '') +
+                ' · Quy cách: ' + getPurchaseOrderProductSpecification(selectedProduct);
             productOptions += '<option value="' + buildPurchaseOrderProductChoiceId(selectedProduct.id, selectedVariantId) +
                 '" data-product-id="' + selectedProduct.id + '" data-variant-id="' + (selectedVariantId || '') +
                 '" selected>' + escapeHtml(selectedLabel) + '</option>';
@@ -512,7 +521,13 @@ function addItemRow(data){
 
     var html = '<tr>' +
         '<td class="text-center item-index">' + itemRowIndex + '</td>' +
-        '<td class="inventory-product-cell"><select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select></td>' +
+        '<td class="inventory-product-cell">' +
+            '<select class="form-control form-control-sm item-product-select select2-item">' + productOptions + '</select>' +
+            '<small class="item-product-specification d-block mt-1 text-muted"><span class="font-weight-bold">Quy cách:</span> ' +
+                '<span class="item-product-specification-value">' +
+                    escapeHtml(getPurchaseOrderProductSpecification(selectedProduct)) +
+                '</span></small>' +
+        '</td>' +
         '<td class="text-center item-unit">' + unit + '</td>' +
         '<td><input type="number" class="form-control form-control-sm item-qty" value="' + qty + '" min="0.01" step="1"></td>' +
         '<td><input type="text" inputmode="numeric" autocomplete="off" class="form-control form-control-sm item-unit-price text-right" value="' + fmtMoneyInput(unitPrice) + '"></td>' +
@@ -685,7 +700,8 @@ function buildPurchaseOrderProductChoices(){
     PRODUCTS.forEach(function(product){
         if(product.variants && product.variants.length){
             product.variants.forEach(function(variant){
-                var label = (product.code || '') + ' - ' + (product.name || '') + ' [' + (variant.size_name || variant.sku || '') + ']';
+                var label = (product.code || '') + ' - ' + (product.name || '') + ' [' + (variant.size_name || variant.sku || '') +
+                    '] · Quy cách: ' + getPurchaseOrderProductSpecification(product);
                 choices.push({
                     id: buildPurchaseOrderProductChoiceId(product.id, variant.id),
                     product_id: product.id,
@@ -704,7 +720,8 @@ function buildPurchaseOrderProductChoices(){
                 product_id: product.id,
                 variant_id: null,
                 cost: Number(product.cost_price || product.import_price || 0),
-                text: (product.code || '') + ' - ' + (product.name || ''),
+                text: (product.code || '') + ' - ' + (product.name || '') +
+                    ' · Quy cách: ' + getPurchaseOrderProductSpecification(product),
                 search_text: normalizePurchaseOrderProductSearch([
                     product.code || '', product.name || '', product.barcode || '', product.specification || ''
                 ].join(' '))

@@ -1080,6 +1080,8 @@ class ProductInventoryFlowTests(TestCase):
         self.assertNotContains(product_response, 'Điều chỉnh giá vốn')
 
     def test_goods_receipt_product_picker_shows_code_name_and_stock_metrics(self):
+        self.product.specification = 'Thùng 24 chai x 330 ml'
+        self.product.save(update_fields=['specification'])
         ProductStock.objects.create(
             product=self.product,
             warehouse=self.warehouse_a,
@@ -1096,6 +1098,11 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(page_response, "dropdownCssClass: 'goods-receipt-product-dropdown'")
         self.assertContains(page_response, 'background: #e3f2fd !important;')
         self.assertContains(page_response, 'class="item-stock align-middle"')
+        self.assertContains(page_response, 'Sản phẩm / Quy cách')
+        self.assertContains(page_response, 'function getGoodsReceiptProductSpecification(product)')
+        self.assertContains(page_response, 'class="goods-receipt-product-specification small text-muted"')
+        self.assertContains(page_response, 'class="item-product-specification d-block mt-1 text-muted"')
+        self.assertContains(page_response, "row.find('.item-product-specification-value').text(getGoodsReceiptProductSpecification(product))")
         self.assertContains(page_response, 'function focusGoodsReceiptItemQuantity($row)')
         self.assertContains(page_response, 'focusGoodsReceiptItemQuantity($addedRow)')
         self.assertContains(page_response, 'focusGoodsReceiptItemQuantity($existing)')
@@ -1109,6 +1116,7 @@ class ProductInventoryFlowTests(TestCase):
         warehouse_key = str(self.warehouse_a.id)
         self.assertEqual(row['code'], self.product.code)
         self.assertEqual(row['name'], self.product.name)
+        self.assertEqual(row['specification'], 'Thùng 24 chai x 330 ml')
         self.assertEqual(row['stocks'][warehouse_key], 12.0)
         self.assertEqual(row['sellable_stocks'][warehouse_key], 12.0)
 
@@ -1147,6 +1155,8 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, "$('#items_body .select2-item').each(function()")
 
     def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
+        self.product.specification = 'Hộp 10 gói x 500 g'
+        self.product.save(update_fields=['specification'])
         ProductStock.objects.create(
             product=self.product,
             warehouse=self.warehouse_a,
@@ -1159,6 +1169,11 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(page_response.status_code, 200)
         self.assertContains(page_response, 'function formatPurchaseOrderProductOption(data)')
         self.assertContains(page_response, 'templateResult: formatPurchaseOrderProductOption')
+        self.assertContains(page_response, 'Sản phẩm / Quy cách')
+        self.assertContains(page_response, 'function getPurchaseOrderProductSpecification(product)')
+        self.assertContains(page_response, 'class="purchase-order-product-specification small text-muted"')
+        self.assertContains(page_response, 'class="item-product-specification d-block mt-1 text-muted"')
+        self.assertContains(page_response, "row.find('.item-product-specification-value').text(getPurchaseOrderProductSpecification(product))")
         self.assertContains(page_response, 'Tồn kho:')
         self.assertContains(page_response, 'Có thể bán:')
         self.assertContains(page_response, "dropdownCssClass: 'purchase-order-product-dropdown'")
@@ -1176,6 +1191,7 @@ class ProductInventoryFlowTests(TestCase):
             if item['id'] == self.product.id
         )
         warehouse_key = str(self.warehouse_a.id)
+        self.assertEqual(row['specification'], 'Hộp 10 gói x 500 g')
         self.assertEqual(row['stocks'][warehouse_key], 9.0)
         self.assertEqual(row['sellable_stocks'][warehouse_key], 9.0)
 

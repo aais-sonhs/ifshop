@@ -130,7 +130,9 @@
     </div>
 
     <script>
-    // Xác nhận nút X cho mọi modal; modal có thể chủ động bỏ qua bằng data-confirm-close="false".
+    // Xác nhận nút X cho mọi modal. Hỗ trợ:
+    // - data-confirm-close="false": luôn đóng ngay.
+    // - data-confirm-close="dirty": chỉ hỏi khi hàm kiểm tra của modal báo có thay đổi.
     (function(){
         var confirmBox = document.getElementById('global_close_confirm');
         var messageEl = document.getElementById('global_close_confirm_message');
@@ -169,13 +171,29 @@
                 '.modal .modal-header .close[data-dismiss="modal"], ' +
                 '.modal .modal-header .close[data-bs-dismiss="modal"], ' +
                 '.modal[data-confirm-close="true"] [data-dismiss="modal"], ' +
-                '.modal[data-confirm-close="true"] [data-bs-dismiss="modal"]'
+                '.modal[data-confirm-close="true"] [data-bs-dismiss="modal"], ' +
+                '.modal[data-confirm-close="dirty"] [data-dismiss="modal"], ' +
+                '.modal[data-confirm-close="dirty"] [data-bs-dismiss="modal"]'
             );
             if(!trigger) return;
 
             var modal = trigger.closest('.modal');
             if(!modal) return;
             if(modal.getAttribute('data-confirm-close') === 'false') return;
+            var confirmMode = modal.getAttribute('data-confirm-close');
+            if(confirmMode === 'dirty'){
+                var hasUnsavedChanges = true;
+                if(typeof modal.confirmCloseDirtyCheck === 'function'){
+                    try {
+                        hasUnsavedChanges = Boolean(modal.confirmCloseDirtyCheck());
+                    } catch(error) {
+                        hasUnsavedChanges = true;
+                    }
+                } else {
+                    hasUnsavedChanges = modal.getAttribute('data-dirty') === 'true';
+                }
+                if(!hasUnsavedChanges) return;
+            }
 
             // Chặn Bootstrap xử lý click cho đến khi người dùng xác nhận.
             event.preventDefault();

@@ -103,7 +103,7 @@
 </div>
 
 <!-- MODAL THÊM/SỬA KHÁCH HÀNG -->
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -463,6 +463,8 @@ var _histOrders = [];
 var _customerOrderPreviewCache = {};
 var CUSTOMER_FILTER_KEY = 'ifshop_customer_filters';
 var CUSTOMER_PAGE_SIZE_KEY = 'ifshop_customer_page_size';
+var CUSTOMER_FORM_CLOSE_BASELINE = null;
+var CUSTOMER_FORM_CLOSE_TRACKING_TOKEN = 0;
 var customerListState = {
     page: 1,
     pageSize: 50,
@@ -808,6 +810,87 @@ function isPhoneLike(value){
     return onlyDigits(value).length >= 7;
 }
 
+function getCustomerFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function getCustomerFormCloseDeliveryAddresses(){
+    var items = [];
+    $('#delivery_address_rows .delivery-address-row').each(function(){
+        var $row = $(this);
+        items.push({
+            label: getCustomerFormCloseFieldValue($row.find('.delivery-address-label')),
+            address: getCustomerFormCloseFieldValue($row.find('.delivery-address-value')),
+            phone: getCustomerFormCloseFieldValue($row.find('.delivery-address-phone'))
+        });
+    });
+    return items;
+}
+
+function getCustomerFormCloseAvatar(){
+    var input = document.getElementById('inp_avatar_file');
+    var file = input && input.files && input.files.length ? input.files[0] : null;
+    return {
+        // Không đưa data URL lớn của ảnh xem trước vào snapshot.
+        current_src: file ? 'selected-file-preview' : ($('#avatar_preview').attr('src') || ''),
+        selected_file: file ? {
+            name: file.name || '',
+            size: Number(file.size || 0),
+            type: file.type || '',
+            last_modified: Number(file.lastModified || 0)
+        } : null
+    };
+}
+
+function getCustomerFormCloseSnapshot(){
+    return JSON.stringify({
+        customer_type: getCustomerFormCloseFieldValue('#inp_customer_type'),
+        customer_kind: getCustomerFormCloseFieldValue('#inp_customer_kind'),
+        code: getCustomerFormCloseFieldValue('#inp_code'),
+        group_id: getCustomerFormCloseFieldValue('#inp_group_id'),
+        name: getCustomerFormCloseFieldValue('#inp_name'),
+        phone: getCustomerFormCloseFieldValue('#inp_phone'),
+        email: getCustomerFormCloseFieldValue('#inp_email'),
+        id_number: getCustomerFormCloseFieldValue('#inp_id_number'),
+        company: getCustomerFormCloseFieldValue('#inp_company'),
+        tax_code: getCustomerFormCloseFieldValue('#inp_tax_code'),
+        company_address: getCustomerFormCloseFieldValue('#inp_company_address'),
+        company_hkd: getCustomerFormCloseFieldValue('#inp_company_hkd'),
+        owner_tax_code: getCustomerFormCloseFieldValue('#inp_owner_tax_code'),
+        address: getCustomerFormCloseFieldValue('#inp_address'),
+        delivery_addresses: getCustomerFormCloseDeliveryAddresses(),
+        note: getCustomerFormCloseFieldValue('#inp_note'),
+        avatar: getCustomerFormCloseAvatar()
+    });
+}
+
+function startCustomerFormCloseTracking(){
+    CUSTOMER_FORM_CLOSE_TRACKING_TOKEN++;
+    CUSTOMER_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = customerFormHasUnsavedChanges;
+    }
+    return CUSTOMER_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function captureCustomerFormCloseBaseline(trackingToken){
+    if(trackingToken !== CUSTOMER_FORM_CLOSE_TRACKING_TOKEN) return;
+    CUSTOMER_FORM_CLOSE_BASELINE = getCustomerFormCloseSnapshot();
+}
+
+function scheduleCustomerFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        captureCustomerFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function customerFormHasUnsavedChanges(){
+    if(CUSTOMER_FORM_CLOSE_BASELINE === null) return true;
+    return getCustomerFormCloseSnapshot() !== CUSTOMER_FORM_CLOSE_BASELINE;
+}
+
 function resetCustomerForm(){
     $('#edit_id').val('');
     $('input[id^=inp_],textarea[id^=inp_]').val('');
@@ -829,8 +912,10 @@ function openCustomerCreateFromSearch(term){
     } else {
         $('#inp_name').val(raw);
     }
+    var closeTrackingToken = startCustomerFormCloseTracking();
     $('#modal_title').text('Thêm khách hàng');
     $('#modal_form').modal('show');
+    scheduleCustomerFormCloseBaselineCapture(closeTrackingToken);
     setTimeout(function(){
         if(isPhoneLike(raw)) $('#inp_name').focus();
         else $('#inp_phone').focus();
@@ -1041,7 +1126,9 @@ $(document).ready(function(){
     });
     $('#btn_add').click(function(){
         resetCustomerForm();
+        var closeTrackingToken = startCustomerFormCloseTracking();
         $('#modal_title').text('Thêm khách hàng');$('#modal_form').modal('show');
+        scheduleCustomerFormCloseBaselineCapture(closeTrackingToken);
         setTimeout(function(){ $('#inp_name').focus(); }, 250);
     });
     $(document).on('click', '#btn_create_customer_from_search', function(){
@@ -1162,6 +1249,10 @@ $(document).ready(function(){
     });
     $('#data_tbl thead').on('click', '.customer-sort-btn', function(){
         toggleCustomerSort($(this).data('sort-key'));
+    });
+    $('#modal_form').on('hidden.bs.modal', function(){
+        CUSTOMER_FORM_CLOSE_TRACKING_TOKEN++;
+        CUSTOMER_FORM_CLOSE_BASELINE = null;
     });
 });
 
@@ -1388,6 +1479,7 @@ function renderTable(){
 }
 
 function editItem(d){
+    var closeTrackingToken = startCustomerFormCloseTracking();
     $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_name').val(d.name);$('#inp_phone').val(d.phone);
     $('#inp_email').val(d.email);$('#inp_company').val(d.company);$('#inp_tax_code').val(d.tax_code);
     $('#inp_id_number').val(d.id_number);$('#inp_company_address').val(d.company_address);
@@ -1401,6 +1493,7 @@ function editItem(d){
     $('#avatar_preview').attr('src', d.avatar_url || defaultAvatar);
     $('#inp_avatar_file').val('');
     $('#modal_title').text('Sửa khách hàng');$('#modal_form').modal('show');
+    scheduleCustomerFormCloseBaselineCapture(closeTrackingToken);
 }
 
 function deleteItem(id){

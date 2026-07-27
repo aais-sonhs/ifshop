@@ -87,7 +87,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable inventory-entry-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -182,6 +182,7 @@ var STOCK_CHECK_PAGE_STATE = {
 };
 var STOCK_CHECK_FILTER_TIMER = null;
 var STOCK_CHECK_LIST_XHR = null;
+var STOCK_CHECK_CLOSE_BASELINE = null;
 
 $(document).ready(function(){
     $('#stock_check_page_size').val(String(STOCK_CHECK_PAGE_STATE.page_size));
@@ -212,6 +213,7 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         var modalSession = ++STOCK_CHECK_MODAL_SESSION;
+        startStockCheckCloseTracking();
         $('#edit_id').val('');
         $('#inp_code,#inp_note').val('');
         $('#inp_warehouse_id').val('').trigger('change.select2');
@@ -224,6 +226,7 @@ $(document).ready(function(){
         $('#modal_form').one('shown.bs.modal', function(){
             if(modalSession !== STOCK_CHECK_MODAL_SESSION) return;
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
+            captureStockCheckCloseBaseline(modalSession);
             if(STOCK_CHECK_PRODUCTS_LOADED){
                 initializeQuickStockCheckProductSelect();
             }
@@ -347,10 +350,69 @@ $(document).ready(function(){
 
     $('#modal_form').on('hidden.bs.modal', function(){
         STOCK_CHECK_MODAL_SESSION++;
+        STOCK_CHECK_CLOSE_BASELINE = null;
         resetQuickStockCheckProductSelect();
         clearStockCheckItemRows();
     });
 });
+
+function getStockCheckCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizeStockCheckCloseQuantity(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getStockCheckCloseSnapshot(){
+    var items = [];
+    $('#items_body tr').each(function(){
+        var $row = $(this);
+        var $productSelect = $row.find('.item-product-select');
+        var selectedChoice = parseStockCheckProductChoice(
+            $productSelect.val(),
+            $productSelect.find('option:selected')
+        );
+        items.push({
+            product_id: selectedChoice.productId || '',
+            variant_id: selectedChoice.variantId || '',
+            actual_quantity: normalizeStockCheckCloseQuantity($row.find('.item-actual-qty').val()),
+            note: getStockCheckCloseFieldValue($row.find('.item-note'))
+        });
+    });
+
+    return JSON.stringify({
+        warehouse_id: getStockCheckCloseFieldValue('#inp_warehouse_id'),
+        check_date: getStockCheckCloseFieldValue('#inp_check_date'),
+        status: getStockCheckCloseFieldValue('#inp_status'),
+        note: getStockCheckCloseFieldValue('#inp_note'),
+        items: items
+    });
+}
+
+function startStockCheckCloseTracking(){
+    STOCK_CHECK_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = stockCheckHasUnsavedChanges;
+    }
+}
+
+function captureStockCheckCloseBaseline(modalSession){
+    if(modalSession !== STOCK_CHECK_MODAL_SESSION) return;
+    STOCK_CHECK_CLOSE_BASELINE = getStockCheckCloseSnapshot();
+}
+
+function stockCheckHasUnsavedChanges(){
+    // Nếu chi tiết cũ vẫn đang tải thì cảnh báo an toàn, tránh mất dữ liệu
+    // người dùng có thể vừa nhập trong lúc chờ.
+    if(STOCK_CHECK_CLOSE_BASELINE === null) return true;
+    return getStockCheckCloseSnapshot() !== STOCK_CHECK_CLOSE_BASELINE;
+}
 
 function applyStockCheckFilters(){
     STOCK_CHECK_PAGE_STATE.page = 1;
@@ -966,6 +1028,7 @@ function loadData(){
 
 function editItem(d){
     var modalSession = ++STOCK_CHECK_MODAL_SESSION;
+    startStockCheckCloseTracking();
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code);
     $('#inp_warehouse_id').val(d.warehouse_id).trigger('change.select2');
@@ -995,6 +1058,7 @@ function editItem(d){
                     addItemRow(item);
                 });
             }
+            captureStockCheckCloseBaseline(modalSession);
         }, true);
     });
     $('#modal_form').modal('show');

@@ -198,7 +198,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable product-form-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -732,6 +732,8 @@ var PRODUCT_CATEGORIES = [
     {% endfor %}
 ];
 var PRODUCT_DATA_MAP = {};
+var PRODUCT_FORM_CLOSE_BASELINE = null;
+var PRODUCT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PRODUCT_EDIT_FROM_URL_ID = (function(){
     try {
         var value = new URLSearchParams(window.location.search).get('edit_product_id') || '';
@@ -1244,6 +1246,105 @@ function renderProductPagination(meta){
     $('#product_pagination').html(html);
 }
 
+function getProductFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizeProductFormCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getProductFormCloseImage(){
+    var input = document.getElementById('inp_image');
+    var file = input && input.files && input.files.length ? input.files[0] : null;
+    return {
+        // Không đưa data URL rất lớn của ảnh xem trước vào snapshot.
+        current_src: file ? 'selected-file-preview' : ($('#img_preview').attr('src') || ''),
+        selected_file: file ? {
+            name: file.name || '',
+            size: Number(file.size || 0),
+            type: file.type || '',
+            last_modified: Number(file.lastModified || 0)
+        } : null
+    };
+}
+
+function getProductFormCloseComboItems(){
+    var items = [];
+    $('#combo_body tr').each(function(){
+        var $row = $(this);
+        var $product = $row.find('.combo-product');
+        var $quantity = $row.find('.combo-qty');
+        if(!$product.length && !$quantity.length) return;
+        items.push({
+            product_id: getProductFormCloseFieldValue($product),
+            quantity: normalizeProductFormCloseNumber($quantity.val())
+        });
+    });
+    return items;
+}
+
+function getProductFormCloseSnapshot(){
+    return JSON.stringify({
+        code: getProductFormCloseFieldValue('#inp_code'),
+        name: getProductFormCloseFieldValue('#inp_name'),
+        barcode: getProductFormCloseFieldValue('#inp_barcode'),
+        unit: getProductFormCloseFieldValue('#inp_unit'),
+        specification: getProductFormCloseFieldValue('#inp_specification'),
+        category_id: getProductFormCloseFieldValue('#inp_category_id'),
+        product_type_id: getProductFormCloseFieldValue('#inp_product_type_id'),
+        supplier_id: getProductFormCloseFieldValue('#inp_supplier_id'),
+        location_id: getProductFormCloseFieldValue('#inp_location_id'),
+        import_price: getMoneyValue('#inp_import_price'),
+        selling_price: getMoneyValue('#inp_selling_price'),
+        wholesale_price_no_warranty: getMoneyValue('#inp_wholesale_no_warranty'),
+        wholesale_price_warranty: getMoneyValue('#inp_wholesale_warranty'),
+        min_stock: normalizeProductFormCloseNumber($('#inp_min_stock').val()),
+        max_stock: normalizeProductFormCloseNumber($('#inp_max_stock').val()),
+        warranty_period_months: normalizeProductFormCloseNumber($('#inp_warranty_period_months').val()),
+        warranty_policy: getProductFormCloseFieldValue('#inp_warranty_policy'),
+        description: getProductFormCloseFieldValue('#inp_description'),
+        note: getProductFormCloseFieldValue('#inp_note'),
+        is_weight_based: $('#inp_is_weight_based').is(':checked'),
+        is_service: $('#inp_is_service').is(':checked'),
+        is_combo: $('#inp_is_combo').is(':checked'),
+        image: getProductFormCloseImage(),
+        combo_items: getProductFormCloseComboItems()
+    });
+}
+
+function startProductFormCloseTracking(){
+    PRODUCT_FORM_CLOSE_TRACKING_TOKEN++;
+    PRODUCT_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = productFormHasUnsavedChanges;
+    }
+    return PRODUCT_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function captureProductFormCloseBaseline(trackingToken){
+    if(trackingToken !== PRODUCT_FORM_CLOSE_TRACKING_TOKEN) return;
+    PRODUCT_FORM_CLOSE_BASELINE = getProductFormCloseSnapshot();
+}
+
+function scheduleProductFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        captureProductFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function productFormHasUnsavedChanges(){
+    // Trong lúc thành phần combo đang tải, cảnh báo an toàn để tránh mất
+    // dữ liệu người dùng có thể vừa nhập.
+    if(PRODUCT_FORM_CLOSE_BASELINE === null) return true;
+    return getProductFormCloseSnapshot() !== PRODUCT_FORM_CLOSE_BASELINE;
+}
+
 function resetProductForm(){
     $('#modal_form input, #modal_form textarea, #modal_form select').prop('disabled', false);
     $('.btn-quick-master').show().prop('disabled', false);
@@ -1305,8 +1406,10 @@ function openProductCreateFromSearch(term){
     } else {
         $('#inp_name').val(raw);
     }
+    var closeTrackingToken = startProductFormCloseTracking();
     $('#modal_title').text('Thêm sản phẩm');
     $('#modal_form').modal('show');
+    scheduleProductFormCloseBaselineCapture(closeTrackingToken);
     setTimeout(function(){
         if(termType === 'code' || termType === 'barcode') $('#inp_name').focus();
         else $('#inp_code').focus();
@@ -1442,16 +1545,22 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         resetProductForm();
+        var closeTrackingToken = startProductFormCloseTracking();
         $('#modal_title').text('Thêm sản phẩm');
         $('#modal_form').modal('show');
+        scheduleProductFormCloseBaselineCapture(closeTrackingToken);
         setTimeout(function(){ $('#inp_code').focus(); }, 250);
     });
     $('#btn_add_combo').click(function(){
         resetProductForm();
         $('#inp_is_combo').prop('checked', true).trigger('change');
+        var closeTrackingToken = startProductFormCloseTracking();
         $('#modal_title').text('Tạo combo sản phẩm');
         $('#modal_form').modal('show');
-        ensureComboSourceLoaded(function(){ addComboItemRow(); });
+        ensureComboSourceLoaded(function(){
+            addComboItemRow();
+            scheduleProductFormCloseBaselineCapture(closeTrackingToken);
+        });
         setTimeout(function(){ $('#inp_name').focus(); }, 250);
     });
 
@@ -2320,6 +2429,8 @@ function renderPriceChart(timeline){
 
 function editItem(d){
     resetProductForm();
+    var closeTrackingToken = startProductFormCloseTracking();
+    var waitsForComboItems = !!(d.is_combo && d.combo_items && d.combo_items.length > 0);
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code); $('#inp_name').val(d.name); $('#inp_unit').val(d.unit);
     $('#inp_barcode').val(d.barcode);
@@ -2357,6 +2468,7 @@ function editItem(d){
             $('#btn_add_combo_item').hide();
             $('#combo_lock_note').show();
             calcComboTotal();
+            scheduleProductFormCloseBaselineCapture(closeTrackingToken);
         });
     } else {
         $('#combo_section').hide();
@@ -2390,6 +2502,9 @@ function editItem(d){
 
     $('#modal_title').text('Sửa sản phẩm');
     $('#modal_form').modal('show');
+    if(!waitsForComboItems){
+        scheduleProductFormCloseBaselineCapture(closeTrackingToken);
+    }
 }
 
 function viewProductDetail(d){
@@ -2451,6 +2566,7 @@ $(document).keydown(function(e) {
 // View combo (read-only)
 function viewCombo(d){
     resetProductForm();
+    var closeTrackingToken = startProductFormCloseTracking();
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code).prop('disabled', true);
     $('#inp_name').val(d.name).prop('disabled', true);
@@ -2539,10 +2655,13 @@ function viewCombo(d){
     $('#btn_save').hide();
     $('#modal_title').html('<i class="fas fa-cubes mr-1"></i>🔒 Xem Combo — ' + d.code + ' <small class="text-white-50">(Không thể sửa)</small>');
     $('#modal_form').modal('show');
+    scheduleProductFormCloseBaselineCapture(closeTrackingToken);
 }
 
 // Reset modal on close: re-enable all fields
 $('#modal_form').on('hidden.bs.modal', function(){
+    PRODUCT_FORM_CLOSE_TRACKING_TOKEN++;
+    PRODUCT_FORM_CLOSE_BASELINE = null;
     $('#modal_form').find('input, select, textarea').prop('disabled', false);
     $('.btn-quick-master').show().prop('disabled', false);
     $('#btn_save,#btn_add_combo_item,#btn_remove_image,#inp_image').show();

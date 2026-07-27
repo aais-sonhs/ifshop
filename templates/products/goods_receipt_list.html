@@ -85,7 +85,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable inventory-entry-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -253,6 +253,8 @@ var GOODS_RECEIPT_PAGE_STATE = {
 };
 var GOODS_RECEIPT_FILTER_TIMER = null;
 var GOODS_RECEIPT_LIST_XHR = null;
+var GOODS_RECEIPT_CLOSE_BASELINE = null;
+var GOODS_RECEIPT_CLOSE_TRACKING_TOKEN = 0;
 
 $(document).ready(function(){
     // Load products with variants
@@ -282,6 +284,7 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
+        var closeTrackingToken = startGoodsReceiptCloseTracking();
         $('#edit_id').val('');
         $('#inp_code').val('');
         $('#inp_note').val('');
@@ -294,6 +297,7 @@ $(document).ready(function(){
         $('#modal_form').one('shown.bs.modal', function(){
             $('.select2').select2({dropdownParent: $('#modal_form'), width:'100%'});
             presetWarehouseForQuickEntry();
+            captureGoodsReceiptCloseBaseline(closeTrackingToken);
             if(PRODUCTS_LOADED){
                 initializeQuickReceiptProductSelect();
             }
@@ -463,10 +467,71 @@ $(document).ready(function(){
     // Select2 gắn trạng thái riêng vào phần tử select. Dọn instance khi đóng
     // để lần mở modal tiếp theo luôn khởi tạo một dropdown sản phẩm mới.
     $('#modal_form').on('hidden.bs.modal', function(){
+        GOODS_RECEIPT_CLOSE_TRACKING_TOKEN++;
+        GOODS_RECEIPT_CLOSE_BASELINE = null;
         resetQuickReceiptProductSelect();
         clearGoodsReceiptItemRows();
     });
 });
+
+function getGoodsReceiptCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizeGoodsReceiptCloseQuantity(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getGoodsReceiptCloseSnapshot(){
+    var items = [];
+    $('#items_body tr').each(function(){
+        var $row = $(this);
+        var $productSelect = $row.find('.item-product-select');
+        var selectedChoice = parseGoodsReceiptProductChoice(
+            $productSelect.val(),
+            $productSelect.find('option:selected')
+        );
+        items.push({
+            product_id: selectedChoice.productId || '',
+            variant_id: selectedChoice.variantId || '',
+            quantity: normalizeGoodsReceiptCloseQuantity($row.find('.item-qty').val()),
+            unit_price: parseMoneyInput($row.find('.item-unit-price').val())
+        });
+    });
+
+    return JSON.stringify({
+        supplier_id: getGoodsReceiptCloseFieldValue('#inp_supplier_id'),
+        warehouse_id: getGoodsReceiptCloseFieldValue('#inp_warehouse_id'),
+        note: getGoodsReceiptCloseFieldValue('#inp_note'),
+        items: items
+    });
+}
+
+function startGoodsReceiptCloseTracking(){
+    GOODS_RECEIPT_CLOSE_TRACKING_TOKEN++;
+    GOODS_RECEIPT_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = goodsReceiptHasUnsavedChanges;
+    }
+    return GOODS_RECEIPT_CLOSE_TRACKING_TOKEN;
+}
+
+function captureGoodsReceiptCloseBaseline(trackingToken){
+    if(trackingToken !== GOODS_RECEIPT_CLOSE_TRACKING_TOKEN) return;
+    GOODS_RECEIPT_CLOSE_BASELINE = getGoodsReceiptCloseSnapshot();
+}
+
+function goodsReceiptHasUnsavedChanges(){
+    // Khi dữ liệu chi tiết vẫn đang tải, ưu tiên cảnh báo để không làm mất
+    // thao tác người dùng có thể vừa nhập trong lúc chờ.
+    if(GOODS_RECEIPT_CLOSE_BASELINE === null) return true;
+    return getGoodsReceiptCloseSnapshot() !== GOODS_RECEIPT_CLOSE_BASELINE;
+}
 
 function destroyGoodsReceiptSelect2($select){
     if(!$select || !$select.length || !$select.hasClass('select2-hidden-accessible')) return;
@@ -1122,6 +1187,7 @@ function createPurchaseReturn(receiptId){
 }
 
 function editItem(d){
+    var closeTrackingToken = startGoodsReceiptCloseTracking();
     $('#edit_id').val(d.id);
     $('#inp_code').val(d.code);
     $('#inp_supplier_id').val(d.supplier_id);
@@ -1154,6 +1220,7 @@ function editItem(d){
                 d.items.forEach(function(item){ addItemRow(item); });
             }
             updateTotal();
+            captureGoodsReceiptCloseBaseline(closeTrackingToken);
         }, true);
     });
 }

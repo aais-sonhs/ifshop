@@ -260,6 +260,23 @@ class OrderRiskFlowTests(TestCase):
                     "if(modal.getAttribute('data-confirm-close') === 'false') return;",
                 )
 
+    def test_order_edit_modal_only_confirms_close_when_form_changed(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '.modal[data-confirm-close="dirty"] [data-dismiss="modal"]')
+        self.assertContains(response, "if(confirmMode === 'dirty')")
+        self.assertContains(response, "typeof modal.confirmCloseDirtyCheck === 'function'")
+        self.assertContains(response, 'function getOrderFormCloseSnapshot()')
+        self.assertContains(response, 'function getOrderFormCloseItems()')
+        self.assertContains(response, 'function startOrderFormDirtyCloseTracking()')
+        self.assertContains(response, 'function captureOrderFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function orderFormHasUnsavedChanges()')
+        self.assertContains(response, 'orderFormModalElement.confirmCloseDirtyCheck = orderFormHasUnsavedChanges')
+        self.assertContains(response, 'var closeTrackingToken = startOrderFormDirtyCloseTracking();', count=2)
+        self.assertContains(response, 'captureOrderFormCloseBaseline(closeTrackingToken);', count=2)
+        self.assertContains(response, "setOrderFormAlwaysConfirmClose();")
+
     def test_order_page_applies_date_filters_from_query_string_before_loading(self):
         response = self.client.get(reverse('order_tbl'), {
             'from_date': '2026-07-21',

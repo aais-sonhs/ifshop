@@ -1947,6 +1947,8 @@ var ORDER_SAVE_TIMEOUT_MS = 45000;
 var ORDER_SAVE_RECOVERY_DELAY_MS = ORDER_SAVE_TIMEOUT_MS + 2000;
 var ORDER_SAVE_RECOVERY_TIMER = null;
 var ORDER_SAVE_ALLOW_MODAL_HIDE = false;
+var ORDER_FORM_CLOSE_BASELINE = null;
+var ORDER_FORM_CLOSE_TRACKING_TOKEN = 0;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
 // Đơn đã hoàn đủ hàng vật lý không còn là giao dịch bán thực tế để cảnh báo.
@@ -3379,6 +3381,114 @@ window.addEventListener('offline', function(){
     ORDER_SAVE_XHR.abort('offline');
 });
 
+function getOrderFormCloseFieldValue(selector){
+    var $field = $(selector);
+    if(!$field.length) return null;
+    var value = $field.val();
+    if(Array.isArray(value)){
+        return value.map(function(item){ return String(item); });
+    }
+    return value == null ? '' : String(value);
+}
+
+function getOrderFormCloseItems(){
+    return $('#items_tbl tbody tr').not('.order-items-loading-row').map(function(){
+        var $row = $(this);
+        var isServiceLine = Number($row.data('service-line')) === 1;
+        var $product = $row.find('.sel_product');
+        var $selectedProduct = $product.find('option:selected');
+        var discount = getOrderLineDiscountData($row);
+        return {
+            sequence: Number($row.attr('data-item-sequence')) || 0,
+            item_type: isServiceLine ? 'service' : 'product',
+            product_id: isServiceLine ? '' : String($product.val() || ''),
+            variant_id: isServiceLine ? '' : String($selectedProduct.data('variant-id') || ''),
+            item_name: isServiceLine ? String($row.find('.inp_service_name').val() || '').trim() : '',
+            unit: isServiceLine ? String($row.find('.inp_service_unit').val() || '').trim() : '',
+            quantity: Number(parseFloat($row.find('.inp_qty').val()) || 0),
+            unit_price: Number(getMoneyValue($row.find('.inp_price')) || 0),
+            discount_mode: discount.mode,
+            discount_value: discount.mode === 'amount'
+                ? Number(Math.round(discount.amount))
+                : Number(discount.percent.toFixed(2)),
+            note: String($row.find('.inp_item_note').val() || '').trim()
+        };
+    }).get();
+}
+
+function getOrderFormCloseSnapshot(){
+    var paymentLines = getPaymentLines().map(function(line){
+        return {
+            payment_method_option_id: line.payment_method_option_id || null,
+            payment_method: Number(line.payment_method || 0),
+            amount: Number(line.amount || 0),
+            receipt_date: line.receipt_date || ''
+        };
+    });
+    return JSON.stringify({
+        document_type: getDocumentType(),
+        code: getOrderFormCloseFieldValue('#inp_code'),
+        customer_id: getOrderFormCloseFieldValue('#inp_customer_id'),
+        warehouse_id: getOrderFormCloseFieldValue('#inp_warehouse_id'),
+        order_date: getOrderFormCloseFieldValue('#inp_order_date'),
+        shipping_address: getOrderFormCloseFieldValue('#inp_shipping_address'),
+        shipping_phone: getOrderFormCloseFieldValue('#inp_shipping_phone'),
+        salesperson: getOrderFormCloseFieldValue('#inp_salesperson'),
+        server_staff: getOrderFormCloseFieldValue('#inp_server_staff'),
+        approver_id: getOrderFormCloseFieldValue('#inp_approver_id'),
+        bonus_amount: Number(getMoneyValue('#inp_bonus_amount') || 0),
+        quotation_id: getOrderFormCloseFieldValue('#inp_quotation_id'),
+        valid_until: getOrderFormCloseFieldValue('#inp_valid_until'),
+        quotation_status: getOrderFormCloseFieldValue('#inp_quotation_status'),
+        discount_mode: getOrderDiscountMode(),
+        discount_amount: Number(getMoneyValue('#inp_discount_amount') || 0),
+        discount_percent: Number(getOrderDiscountPercent()),
+        shipping_fee: Number(getMoneyValue('#inp_shipping_fee') || 0),
+        other_fee: Number(getMoneyValue('#inp_other_fee') || 0),
+        tags: getOrderFormCloseFieldValue('#inp_tags'),
+        note: getOrderFormCloseFieldValue('#inp_note'),
+        receipt_date: paymentLines.length ? getOrderFormCloseFieldValue('#inp_payment_date') : '',
+        payment_lines: paymentLines,
+        items: getOrderFormCloseItems()
+    });
+}
+
+function setOrderFormAlwaysConfirmClose(){
+    ORDER_FORM_CLOSE_TRACKING_TOKEN += 1;
+    ORDER_FORM_CLOSE_BASELINE = null;
+    $('#modal_form').attr('data-confirm-close', 'true');
+}
+
+function startOrderFormDirtyCloseTracking(){
+    ORDER_FORM_CLOSE_TRACKING_TOKEN += 1;
+    ORDER_FORM_CLOSE_BASELINE = null;
+    $('#modal_form').attr('data-confirm-close', 'dirty');
+    return ORDER_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function captureOrderFormCloseBaseline(trackingToken){
+    if(trackingToken != null && trackingToken !== ORDER_FORM_CLOSE_TRACKING_TOKEN) return;
+    if(!$('#modal_form').hasClass('show')) return;
+    ORDER_FORM_CLOSE_BASELINE = getOrderFormCloseSnapshot();
+}
+
+function scheduleOrderFormCloseBaselineCapture(trackingToken){
+    window.setTimeout(function(){
+        captureOrderFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function orderFormHasUnsavedChanges(){
+    if($('#modal_form').attr('data-confirm-close') !== 'dirty') return true;
+    if(ORDER_FORM_CLOSE_BASELINE === null) return true;
+    return getOrderFormCloseSnapshot() !== ORDER_FORM_CLOSE_BASELINE;
+}
+
+var orderFormModalElement = document.getElementById('modal_form');
+if(orderFormModalElement){
+    orderFormModalElement.confirmCloseDirtyCheck = orderFormHasUnsavedChanges;
+}
+
 function hideOrderFormAfterSuccessfulSave(){
     ORDER_SAVE_ALLOW_MODAL_HIDE = true;
     try {
@@ -4162,6 +4272,9 @@ function applyOrderWorkflowResult(r){
         loadOrderHistory(r.order_id);
     }
     loadData();
+    if($('#modal_form').attr('data-confirm-close') === 'dirty'){
+        scheduleOrderFormCloseBaselineCapture();
+    }
 }
 
 function collectCurrentOrderPayment(){
@@ -4892,6 +5005,9 @@ $(document).ready(function(){
             alert(message);
         }
     });
+    $('#modal_form').on('hidden.bs.modal.orderCloseDirty', function(){
+        setOrderFormAlwaysConfirmClose();
+    });
     var orderItemsViewport = document.getElementById('order_items_scroll');
     if(orderItemsViewport){
         var orderItemsSummary = document.getElementById('order_items_summary');
@@ -4967,6 +5083,7 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
+        setOrderFormAlwaysConfirmClose();
         resetCurrentOrderReturnState();
         fetchProductsForOrderForm(null);
         $('#edit_id').val('');$('#inp_note').val('');clearCustomer();setOrderWarehouseValue(getStoredOrderWarehouseId());
@@ -6904,6 +7021,7 @@ function rejectOrder(id, code){
 	function openQuotationDocument(id, copyMode){
 	    $.get('/api/quotations/detail/?id=' + id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
+        setOrderFormAlwaysConfirmClose();
         resetCurrentOrderReturnState();
         var q = res.quotation;
         $('#edit_id').val(copyMode ? '' : q.id);
@@ -7187,6 +7305,7 @@ function rejectOrder(id, code){
 	function editItem(id){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
+        var closeTrackingToken = startOrderFormDirtyCloseTracking();
         var o=res.order;
         setCurrentOrderReturnState(o, res.items);
         // Kiểm tra khóa
@@ -7245,7 +7364,10 @@ function rejectOrder(id, code){
             loadProducts: function(done){
                 fetchProductsForOrderForm(o.id, done);
             },
-            loadingText: 'Đang tải sản phẩm đơn hàng...'
+            loadingText: 'Đang tải sản phẩm đơn hàng...',
+            afterRender: function(){
+                captureOrderFormCloseBaseline(closeTrackingToken);
+            }
         });
         // Sửa đơn: mở dropdown và đặt con trỏ vào ô tìm NV bán hàng.
         setOrderFormInitialFocus('edit');
@@ -7256,6 +7378,7 @@ function rejectOrder(id, code){
 function viewItem(id){
     $.get('/api/orders/detail/?id='+id,function(res){
         if(res.status!=='ok'){alert(res.message);return;}
+        var closeTrackingToken = startOrderFormDirtyCloseTracking();
         var o=res.order;
         setCurrentOrderReturnState(o, res.items);
         $('#edit_id').val(o.id);$('#inp_code').val(o.code);
@@ -7322,6 +7445,7 @@ function viewItem(id){
 	                            resetOrderPage();
 	                            loadData();
 	                            loadOrderHistory(o.id);
+	                            scheduleOrderFormCloseBaselineCapture(closeTrackingToken);
 	                            toastr ? toastr.success(r.message) : alert(r.message);
 	                        } else {
 	                            alert(r.message);
@@ -7344,6 +7468,7 @@ function viewItem(id){
                 }
                 $('.btn_remove_item').hide();
                 syncOrderWorkflowButtons();
+                captureOrderFormCloseBaseline(closeTrackingToken);
             }
         });
 	        $('#modal_title').html(o.status === 5 ? 'Xem đơn hàng / sửa ghi chú' : '<i class="fas fa-lock mr-1"></i> Xem đơn hàng (Chỉ đọc)');
@@ -7730,6 +7855,7 @@ function downloadOrderPDF(id){
 function copyOrder(id){
     $.get('/api/orders/detail/?id='+id, function(res){
         if(res.status !== 'ok'){ alert(res.message); return; }
+        setOrderFormAlwaysConfirmClose();
         var o = res.order;
         // Reset form để tạo một đơn mới độc lập với thanh toán/lịch sử đơn gốc.
         resetCurrentOrderReturnState();

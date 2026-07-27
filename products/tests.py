@@ -402,6 +402,33 @@ class ProductInventoryFlowTests(TestCase):
         ):
             self.assertContains(response, f'id="{field_id}"', count=1)
 
+    def test_product_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getProductFormCloseSnapshot()')
+        self.assertContains(response, 'function getProductFormCloseImage()')
+        self.assertContains(response, 'function getProductFormCloseComboItems()')
+        self.assertContains(response, 'function startProductFormCloseTracking()')
+        self.assertContains(response, 'function captureProductFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function productFormHasUnsavedChanges()')
+        self.assertContains(response, 'startProductFormCloseTracking();', count=5)
+        self.assertContains(response, 'scheduleProductFormCloseBaselineCapture(closeTrackingToken);', count=6)
+        for field_name in (
+            'code', 'name', 'barcode', 'unit', 'specification', 'category_id',
+            'product_type_id', 'supplier_id', 'location_id', 'import_price',
+            'selling_price', 'wholesale_price_no_warranty',
+            'wholesale_price_warranty', 'min_stock', 'max_stock',
+            'warranty_period_months', 'warranty_policy', 'description', 'note',
+            'is_weight_based', 'is_service', 'is_combo', 'image', 'combo_items',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
     def test_product_edit_restores_supplier_value_in_select2(self):
         self.product.supplier = self.supplier
         self.product.save(update_fields=['supplier'])
@@ -1153,6 +1180,35 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, "$('#modal_form').on('hidden.bs.modal', function()")
         self.assertContains(response, "destroyGoodsReceiptSelect2($select);")
         self.assertContains(response, "$('#items_body .select2-item').each(function()")
+
+    def test_goods_receipt_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('goods_receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getGoodsReceiptCloseSnapshot()')
+        self.assertContains(response, 'function startGoodsReceiptCloseTracking()')
+        self.assertContains(response, 'function captureGoodsReceiptCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function goodsReceiptHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startGoodsReceiptCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'captureGoodsReceiptCloseBaseline(closeTrackingToken);',
+            count=2,
+        )
+        self.assertContains(response, "supplier_id: getGoodsReceiptCloseFieldValue('#inp_supplier_id')")
+        self.assertContains(response, "warehouse_id: getGoodsReceiptCloseFieldValue('#inp_warehouse_id')")
+        self.assertContains(response, "note: getGoodsReceiptCloseFieldValue('#inp_note')")
+        self.assertContains(response, 'quantity: normalizeGoodsReceiptCloseQuantity')
+        self.assertContains(response, 'unit_price: parseMoneyInput')
 
     def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
         self.product.specification = 'Hộp 10 gói x 500 g'
@@ -2794,6 +2850,28 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'id="stock_check_date_from"')
         self.assertContains(response, 'id="stock_check_date_to"')
         self.assertContains(response, "q: ($('#stock_check_search').val() || '').trim()")
+
+    def test_stock_check_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('stock_check_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getStockCheckCloseSnapshot()')
+        self.assertContains(response, 'function startStockCheckCloseTracking()')
+        self.assertContains(response, 'function captureStockCheckCloseBaseline(modalSession)')
+        self.assertContains(response, 'function stockCheckHasUnsavedChanges()')
+        self.assertContains(response, 'startStockCheckCloseTracking();', count=2)
+        self.assertContains(response, 'captureStockCheckCloseBaseline(modalSession);', count=2)
+        self.assertContains(response, "warehouse_id: getStockCheckCloseFieldValue('#inp_warehouse_id')")
+        self.assertContains(response, "check_date: getStockCheckCloseFieldValue('#inp_check_date')")
+        self.assertContains(response, "status: getStockCheckCloseFieldValue('#inp_status')")
+        self.assertContains(response, "note: getStockCheckCloseFieldValue('#inp_note')")
+        self.assertContains(response, 'actual_quantity: normalizeStockCheckCloseQuantity')
+        self.assertContains(response, "note: getStockCheckCloseFieldValue($row.find('.item-note'))")
 
     def test_save_stock_check_auto_generates_code_and_date(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse_a, quantity=Decimal('5.5'))

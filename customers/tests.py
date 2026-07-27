@@ -289,6 +289,41 @@ class CustomerScopeTests(TestCase):
         self.assertNotContains(response, '<th data-col="code">Mã KH</th>', html=True)
         self.assertNotContains(response, "customerColConfig.td('code'")
 
+    def test_customer_create_and_edit_only_confirm_close_when_form_changed(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('customer_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getCustomerFormCloseSnapshot()')
+        self.assertContains(response, 'function getCustomerFormCloseDeliveryAddresses()')
+        self.assertContains(response, 'function getCustomerFormCloseAvatar()')
+        self.assertContains(response, 'function startCustomerFormCloseTracking()')
+        self.assertContains(response, 'function captureCustomerFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function customerFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startCustomerFormCloseTracking();',
+            count=3,
+        )
+        self.assertContains(
+            response,
+            'scheduleCustomerFormCloseBaselineCapture(closeTrackingToken);',
+            count=3,
+        )
+        for field_name in (
+            'customer_type', 'customer_kind', 'code', 'group_id', 'name',
+            'phone', 'email', 'id_number', 'company', 'tax_code',
+            'company_address', 'company_hkd', 'owner_tax_code', 'address',
+            'delivery_addresses', 'note', 'avatar',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
     def test_customer_list_omits_removed_table_filters(self):
         self.client.force_login(self.manager)
 

@@ -75,6 +75,34 @@
         </div>
 
         <!-- TABS -->
+        <div class="sales-tab-config-toolbar d-flex justify-content-end mb-2">
+            <div class="dropdown d-inline-block cc-dropdown sales-tab-config-dropdown">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle cc-trigger" id="btn_sales_tab_config" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Chọn các tab báo cáo cần hiển thị">
+                    <i class="fas fa-eye mr-1"></i>Ẩn/Hiện
+                </button>
+                <div class="dropdown-menu dropdown-menu-right cc-menu sales-tab-config-menu" aria-labelledby="btn_sales_tab_config">
+                    <div class="cc-header">
+                        <div class="cc-title"><i class="fas fa-eye"></i><span>Hiển thị tab</span></div>
+                        <div class="cc-subtitle">Chọn các tab cần hiện trong báo cáo.</div>
+                    </div>
+                    <div class="cc-body" id="sales_tab_visibility_list">
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_overview" data-tab-id="tab_overview" checked><span>Tổng quan</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_daily_finance" data-tab-id="tab_daily_finance" checked><span>DT theo ngày</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_products" data-tab-id="tab_products" checked><span>DT theo hàng</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_sku" data-tab-id="tab_sku" checked><span>Chi tiết SKU</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_customers" data-tab-id="tab_customers" checked><span>DT Khách hàng</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_staff" data-tab-id="tab_staff" checked><span>DT Nhân viên</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_orders" data-tab-id="tab_orders" checked><span>Theo đơn</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_returns" data-tab-id="tab_returns" checked><span>Trả hàng</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_profit" data-tab-id="tab_profit" checked><span>Lợi nhuận gộp</span></label>
+                        <label class="cc-toggle-item"><input type="checkbox" class="sales-tab-visibility-toggle" id="sales_tab_toggle_slow_moving" data-tab-id="tab_slow_moving" checked><span>Hàng bán chậm</span></label>
+                    </div>
+                    <div class="cc-footer">
+                        <button type="button" class="btn btn-sm btn-outline-primary cc-select-all" id="btn_reset_sales_tabs"><i class="fas fa-check-double mr-1"></i>Hiện tất cả</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <ul class="nav nav-tabs mb-3" id="reportTabs" style="border-bottom:2px solid #dee2e6;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;">
             <li class="nav-item"><a class="nav-link active font-weight-bold" data-toggle="tab" href="#tab_overview"><i class="fas fa-tachometer-alt mr-1"></i>Tổng quan</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_daily_finance"><i class="fas fa-calendar-day mr-1"></i>DT theo ngày</a></li>
@@ -86,11 +114,6 @@
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_returns"><i class="fas fa-undo mr-1"></i>Trả hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_profit"><i class="fas fa-coins mr-1"></i>Lợi nhuận gộp</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold text-warning" data-toggle="tab" href="#tab_slow_moving"><i class="fas fa-hourglass-half mr-1"></i>Hàng bán chậm</a></li>
-            <li class="nav-item sales-tab-config-item">
-                <button type="button" class="nav-link font-weight-bold text-secondary" id="btn_sales_tab_config">
-                    <i class="fas fa-eye mr-1"></i>Ẩn/Hiện
-                </button>
-            </li>
         </ul>
 
         <div class="tab-content">
@@ -423,35 +446,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_sales_tab_config" tabindex="-1" role="dialog" aria-labelledby="sales_tab_config_title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="sales_tab_config_title"><i class="fas fa-eye mr-2"></i>Ẩn/hiện tab báo cáo</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Đóng"><span aria-hidden="true">&times;</span></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted">Chọn các tab cần hiển thị. Hệ thống luôn giữ lại ít nhất một tab.</p>
-                <div id="sales_tab_visibility_list">
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_overview" data-tab-id="tab_overview" checked><label class="custom-control-label" for="sales_tab_toggle_overview">Tổng quan</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_daily_finance" data-tab-id="tab_daily_finance" checked><label class="custom-control-label" for="sales_tab_toggle_daily_finance">DT theo ngày</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_products" data-tab-id="tab_products" checked><label class="custom-control-label" for="sales_tab_toggle_products">DT theo hàng</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_sku" data-tab-id="tab_sku" checked><label class="custom-control-label" for="sales_tab_toggle_sku">Chi tiết SKU</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_customers" data-tab-id="tab_customers" checked><label class="custom-control-label" for="sales_tab_toggle_customers">DT Khách hàng</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_staff" data-tab-id="tab_staff" checked><label class="custom-control-label" for="sales_tab_toggle_staff">DT Nhân viên</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_orders" data-tab-id="tab_orders" checked><label class="custom-control-label" for="sales_tab_toggle_orders">Theo đơn</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_returns" data-tab-id="tab_returns" checked><label class="custom-control-label" for="sales_tab_toggle_returns">Trả hàng</label></div>
-                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_profit" data-tab-id="tab_profit" checked><label class="custom-control-label" for="sales_tab_toggle_profit">Lợi nhuận gộp</label></div>
-                    <div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_slow_moving" data-tab-id="tab_slow_moving" checked><label class="custom-control-label" for="sales_tab_toggle_slow_moving">Hàng bán chậm</label></div>
-                </div>
-            </div>
-            <div class="modal-footer justify-content-between">
-                <button type="button" class="btn btn-outline-secondary" id="btn_reset_sales_tabs"><i class="fas fa-undo mr-1"></i>Hiện tất cả</button>
-                <button type="button" class="btn btn-primary" data-dismiss="modal">Xong</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -487,8 +481,9 @@
 .sales-table-column-toolbar{display:flex;align-items:center;justify-content:flex-end;padding:.5rem .75rem;border-bottom:1px solid #dee2e6;background:#f8fafc;}
 .sales-table-column-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .sales-table-column-header>h6:first-child,.sales-table-column-header>.card-title:first-child{margin-right:auto;}
-.sales-tab-config-item .nav-link{height:100%;border:0;background:#f8f9fa;white-space:nowrap;}
-.sales-tab-config-item .nav-link:hover,.sales-tab-config-item .nav-link:focus{color:#007bff!important;background:#eef6ff;outline:none;}
+.sales-tab-config-toolbar{position:relative;z-index:1040;}
+.sales-tab-config-dropdown .sales-tab-config-menu{left:auto!important;right:0!important;}
+.sales-tab-config-dropdown .cc-footer .btn{flex:1 1 auto!important;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>
@@ -1151,7 +1146,9 @@ $(document).ready(function(){
     applySalesReportTabVisibility();
     $('#btn_sales_tab_config').on('click',function(){
         applySalesReportTabVisibility();
-        $('#modal_sales_tab_config').modal('show');
+    });
+    $('.sales-tab-config-menu').on('click',function(event){
+        event.stopPropagation();
     });
     $('.sales-tab-visibility-toggle').on('change',function(){
         var tabId=String($(this).data('tab-id')||'');

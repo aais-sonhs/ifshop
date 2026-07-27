@@ -1128,11 +1128,18 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'Hàng bán chậm')
         self.assertContains(response, 'id="btn_sales_tab_config"')
         self.assertContains(response, '<i class="fas fa-eye mr-1"></i>Ẩn/Hiện', html=True)
-        self.assertContains(response, 'id="modal_sales_tab_config"')
+        self.assertNotContains(response, 'id="modal_sales_tab_config"')
+        self.assertContains(
+            response,
+            'class="dropdown-menu dropdown-menu-right cc-menu sales-tab-config-menu"',
+        )
+        self.assertContains(response, '<span>Hiển thị tab</span>', html=True)
         self.assertContains(response, 'DT theo ngày', count=2)
         self.assertContains(response, 'DT theo hàng', count=2)
-        self.assertContains(response, 'class="custom-control-input sales-tab-visibility-toggle"', count=10)
+        self.assertContains(response, 'class="sales-tab-visibility-toggle"', count=10)
         self.assertContains(response, 'id="btn_reset_sales_tabs"')
+        self.assertContains(response, "$('.sales-tab-config-menu').on('click',function(event)")
+        self.assertContains(response, 'event.stopPropagation();')
         self.assertContains(response, 'var SALES_REPORT_TAB_IDS=[')
         self.assertContains(response, "var SALES_REPORT_TAB_STORAGE_KEY='ifshop_sales_visible_tabs_v1_user_")
         self.assertContains(response, 'function loadSalesReportTabVisibility()')

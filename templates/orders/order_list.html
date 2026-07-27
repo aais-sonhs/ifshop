@@ -1947,6 +1947,8 @@ var ORDER_SAVE_TIMEOUT_MS = 45000;
 var ORDER_SAVE_RECOVERY_DELAY_MS = ORDER_SAVE_TIMEOUT_MS + 2000;
 var ORDER_SAVE_RECOVERY_TIMER = null;
 var ORDER_SAVE_ALLOW_MODAL_HIDE = false;
+var ORDER_PAYMENT_COLLECTION_REQUESTS = {};
+var ORDER_STOCK_EXPORT_REQUESTS = {};
 var ORDER_FORM_CLOSE_BASELINE = null;
 var ORDER_FORM_CLOSE_TRACKING_TOKEN = 0;
 var ORDER_ITEM_SORT_DIRECTION = 'asc';
@@ -3876,6 +3878,7 @@ function syncStatusFlowControls(currentStatus){
     var current = parseInt(currentStatus, 10) || 0;
     var next = getNextOrderStatus(current);
     var completionBlocked = next === 5 && !isOrderPaidEnoughForCompletion();
+    var stockExportPending = next === 4 && isOrderStockExportPending($('#edit_id').val());
     var hint = 'Đang ở: ' + (STATUS_LABELS[current] || current);
     if(!_timelineReadonly && completionBlocked){
         hint += ' · Cần thanh toán đủ sau khi xuất kho để hoàn thành';
@@ -3884,7 +3887,7 @@ function syncStatusFlowControls(currentStatus){
     }
     $('#status_flow_hint').text(hint);
     $('#btn_status_next')
-        .prop('disabled', _timelineReadonly || next === null || completionBlocked)
+        .prop('disabled', _timelineReadonly || next === null || completionBlocked || stockExportPending)
         .html('<i class="fas fa-arrow-right mr-1"></i>' + (next === null ? 'Hết bước' : STATUS_LABELS[next]));
     $('#btn_status_save').prop('disabled', _timelineReadonly).html('<i class="fas fa-save mr-1"></i>Cập nhật bước');
     syncOrderWorkflowButtons();
@@ -4166,7 +4169,7 @@ function prepareNextPaymentEntry(remainingAmount){
     }
     if(remaining > 0){
         enablePaymentEntry(remaining);
-        $('#btn_collect_payment_now,#btn_order_collect_payment').prop('disabled', false).show();
+        $('#btn_collect_payment_now,#btn_order_collect_payment').show();
         setTimeout(function(){
             $('#payment_lines_container .inp-pay-amount:first').focus().select();
         }, 80);
@@ -4215,7 +4218,9 @@ function syncPaymentSummary(){
     if(isPaymentEntryActive()){
         $('#btn_toggle_payment').removeClass('btn-outline-success').addClass('btn-outline-secondary').html('<i class="fas fa-times mr-1"></i> Hủy');
         $('#btn_add_payment_line').show();
-        $('#btn_collect_payment_now').toggle(Boolean($('#edit_id').val()) && totalPaying > 0);
+        $('#btn_collect_payment_now')
+            .toggle(Boolean($('#edit_id').val()) && totalPaying > 0)
+            .prop('disabled', isOrderPaymentCollectionPending($('#edit_id').val()));
         $('#payment_status_hint').removeClass('badge-light badge-info').addClass('badge-success').text(totalPaying > 0 ? 'Thu ' + fmt(totalPaying) + 'đ' : 'Nhập số tiền');
     } else if(_existingPaidAmount > 0){
         $('#btn_toggle_payment').removeClass('btn-outline-secondary').addClass('btn-outline-success').html('<i class="fas fa-plus-circle mr-1"></i> Thu thêm');
@@ -4263,13 +4268,19 @@ function syncOrderWorkflowButtons(){
     if(_orderFormReadonly){
         var canCollectReadonly = hasOrder && [4,5].indexOf(status) >= 0 && remaining > 0;
         $('.order-workflow-btn').hide();
-        $('#btn_order_collect_payment').toggle(canCollectReadonly).prop('disabled', false);
+        $('#btn_order_collect_payment')
+            .toggle(canCollectReadonly)
+            .prop('disabled', isOrderPaymentCollectionPending(orderId));
         $('#btn_toggle_payment').prop('disabled', !canCollectReadonly);
         $('#btn_skip_payment_now').hide();
         return;
     }
-    $('#btn_order_collect_payment').toggle(hasOrder && status !== 6 && remaining > 0);
-    $('#btn_order_export_stock').toggle(hasOrder && [0,1,2,3].indexOf(status) >= 0);
+    $('#btn_order_collect_payment')
+        .toggle(hasOrder && status !== 6 && remaining > 0)
+        .prop('disabled', isOrderPaymentCollectionPending(orderId));
+    $('#btn_order_export_stock')
+        .toggle(hasOrder && [0,1,2,3].indexOf(status) >= 0)
+        .prop('disabled', isOrderStockExportPending(orderId));
     $('#btn_order_return').toggle(hasOrder && [4,5].indexOf(status) >= 0);
     $('#btn_skip_payment_now').toggle(!isQuotation);
 }
@@ -4297,10 +4308,37 @@ function applyOrderWorkflowResult(r){
     }
 }
 
+function normalizeOrderPaymentCollectionId(orderId){
+    return String(orderId == null ? '' : orderId);
+}
+
+function isOrderPaymentCollectionPending(orderId){
+    var normalizedOrderId = normalizeOrderPaymentCollectionId(orderId);
+    return Boolean(normalizedOrderId && ORDER_PAYMENT_COLLECTION_REQUESTS[normalizedOrderId]);
+}
+
+function syncCurrentOrderPaymentCollectionState(){
+    var currentOrderId = normalizeOrderPaymentCollectionId($('#edit_id').val());
+    $('#btn_collect_payment_now').prop(
+        'disabled',
+        isOrderPaymentCollectionPending(currentOrderId)
+    );
+    syncOrderWorkflowButtons();
+}
+
 function collectCurrentOrderPayment(){
-    var orderId = $('#edit_id').val();
+    var orderId = normalizeOrderPaymentCollectionId($('#edit_id').val());
     if(!orderId){
         alert('Vui lòng lưu đơn hàng trước khi thu tiền riêng.');
+        return;
+    }
+    if(isOrderPaymentCollectionPending(orderId)){
+        var pendingMessage = 'Đơn hàng này đang được thu tiền. Vui lòng chờ hệ thống xử lý xong.';
+        if(typeof toastr !== 'undefined'){
+            toastr.info(pendingMessage);
+        } else {
+            alert(pendingMessage);
+        }
         return;
     }
     if(!isPaymentEntryActive()){
@@ -4322,9 +4360,9 @@ function collectCurrentOrderPayment(){
         alert(paymentDateError);
         return;
     }
-    var $buttons = $('#btn_collect_payment_now,#btn_order_collect_payment');
-    $buttons.prop('disabled', true);
-    $.ajax({
+    ORDER_PAYMENT_COLLECTION_REQUESTS[orderId] = true;
+    syncCurrentOrderPaymentCollectionState();
+    var request = $.ajax({
         url:'/api/orders/collect-payment/',
         type:'POST',
         contentType:'application/json',
@@ -4333,9 +4371,15 @@ function collectCurrentOrderPayment(){
         data:JSON.stringify({order_id: orderId, payment_lines: lines, receipt_date: $('#inp_payment_date').val()}),
         success:function(r){
             if(r.status === 'ok'){
-                var remainingAfterCollect = getWorkflowRemainingAmount(r);
-                applyOrderWorkflowResult(r);
-                prepareNextPaymentEntry(remainingAfterCollect);
+                if(normalizeOrderPaymentCollectionId($('#edit_id').val()) === orderId){
+                    var remainingAfterCollect = getWorkflowRemainingAmount(r);
+                    applyOrderWorkflowResult(r);
+                    prepareNextPaymentEntry(remainingAfterCollect);
+                } else {
+                    // Đơn khác đang được mở: chỉ tải lại danh sách, không đưa số tiền
+                    // hoặc trạng thái của đơn vừa thu vào biểu mẫu hiện tại.
+                    loadData();
+                }
                 if(typeof toastr !== 'undefined') toastr.success(r.message);
                 else alert(r.message);
             } else {
@@ -4352,21 +4396,48 @@ function collectCurrentOrderPayment(){
             notifyOrderSaveError(message);
         },
         complete:function(){
-            $buttons.prop('disabled', false);
+            if(ORDER_PAYMENT_COLLECTION_REQUESTS[orderId] === request){
+                delete ORDER_PAYMENT_COLLECTION_REQUESTS[orderId];
+            }
+            syncCurrentOrderPaymentCollectionState();
         }
     });
+    ORDER_PAYMENT_COLLECTION_REQUESTS[orderId] = request;
+}
+
+function normalizeOrderStockExportId(orderId){
+    return String(orderId == null ? '' : orderId);
+}
+
+function isOrderStockExportPending(orderId){
+    var normalizedOrderId = normalizeOrderStockExportId(orderId);
+    return Boolean(normalizedOrderId && ORDER_STOCK_EXPORT_REQUESTS[normalizedOrderId]);
+}
+
+function syncCurrentOrderStockExportState(){
+    var currentStatus = parseInt($('#inp_status').val(), 10) || 0;
+    syncStatusFlowControls(currentStatus);
 }
 
 function exportCurrentOrderStock(){
-    var orderId = $('#edit_id').val();
+    var orderId = normalizeOrderStockExportId($('#edit_id').val());
     if(!orderId){
         alert('Vui lòng lưu đơn hàng trước khi xuất kho.');
         return;
     }
+    if(isOrderStockExportPending(orderId)){
+        var pendingMessage = 'Đơn hàng này đang được xuất kho. Vui lòng chờ hệ thống xử lý xong.';
+        if(typeof toastr !== 'undefined'){
+            toastr.info(pendingMessage);
+        } else {
+            alert(pendingMessage);
+        }
+        return;
+    }
     if(!confirm('Xuất kho đơn hàng này? Tồn kho sẽ được trừ ngay; nếu thiếu hàng hệ thống sẽ ghi nhận tồn âm. Thanh toán vẫn có thể xử lý riêng.')) return;
-    var $btn = $('#btn_order_export_stock,#btn_status_next');
-    $btn.prop('disabled', true);
-    $.ajax({
+    ORDER_STOCK_EXPORT_REQUESTS[orderId] = true;
+    syncCurrentOrderStockExportState();
+    var request = $.ajax({
         url:'/api/orders/export-stock/',
         type:'POST',
         contentType:'application/json',
@@ -4374,16 +4445,26 @@ function exportCurrentOrderStock(){
         data:JSON.stringify({order_id: orderId, warehouse_id: $('#inp_warehouse_id').val() || null}),
         success:function(r){
             if(r.status === 'ok'){
-                applyOrderWorkflowResult(r);
+                if(normalizeOrderStockExportId($('#edit_id').val()) === orderId){
+                    applyOrderWorkflowResult(r);
+                } else {
+                    // Đơn khác đang được mở: chỉ tải lại danh sách, không ghi trạng thái
+                    // của đơn vừa xuất kho vào biểu mẫu hiện tại.
+                    loadData();
+                }
                 toastr ? toastr.success(r.message) : alert(r.message);
             } else {
                 alert(r.message);
             }
         },
         complete:function(){
-            $btn.prop('disabled', false);
+            if(ORDER_STOCK_EXPORT_REQUESTS[orderId] === request){
+                delete ORDER_STOCK_EXPORT_REQUESTS[orderId];
+            }
+            syncCurrentOrderStockExportState();
         }
     });
+    ORDER_STOCK_EXPORT_REQUESTS[orderId] = request;
 }
 
 function updateCurrentOrderStatus(targetStatus){

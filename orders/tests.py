@@ -280,6 +280,43 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'scheduleOrderFormCloseBaselineCapture(closeTrackingToken);')
         self.assertContains(response, "setOrderFormAlwaysConfirmClose();")
 
+    def test_stock_export_request_state_is_scoped_to_each_open_order(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var ORDER_STOCK_EXPORT_REQUESTS = {};')
+        self.assertContains(response, 'function isOrderStockExportPending(orderId)')
+        self.assertContains(response, 'ORDER_STOCK_EXPORT_REQUESTS[orderId] = request;')
+        self.assertContains(response, 'delete ORDER_STOCK_EXPORT_REQUESTS[orderId];')
+        self.assertContains(
+            response,
+            "if(normalizeOrderStockExportId($('#edit_id').val()) === orderId)",
+        )
+        self.assertContains(response, ".prop('disabled', isOrderStockExportPending(orderId));")
+        self.assertContains(
+            response,
+            "_timelineReadonly || next === null || completionBlocked || stockExportPending",
+        )
+
+    def test_payment_collection_request_state_is_scoped_to_each_open_order(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var ORDER_PAYMENT_COLLECTION_REQUESTS = {};')
+        self.assertContains(response, 'function isOrderPaymentCollectionPending(orderId)')
+        self.assertContains(response, 'ORDER_PAYMENT_COLLECTION_REQUESTS[orderId] = request;')
+        self.assertContains(response, 'delete ORDER_PAYMENT_COLLECTION_REQUESTS[orderId];')
+        self.assertContains(
+            response,
+            "if(normalizeOrderPaymentCollectionId($('#edit_id').val()) === orderId)",
+        )
+        self.assertContains(
+            response,
+            ".prop('disabled', isOrderPaymentCollectionPending(orderId));",
+            count=2,
+        )
+        self.assertContains(response, 'syncCurrentOrderPaymentCollectionState();', count=2)
+
     def test_packaging_create_and_edit_only_confirm_close_when_form_changed(self):
         response = self.client.get(reverse('packaging_tbl'))
 
@@ -1394,9 +1431,11 @@ class OrderRiskFlowTests(TestCase):
             response,
             'var canCollectReadonly = hasOrder && [4,5].indexOf(status) >= 0 && remaining > 0;',
         )
+        self.assertContains(response, ".toggle(canCollectReadonly)")
         self.assertContains(
             response,
-            "$('#btn_order_collect_payment').toggle(canCollectReadonly).prop('disabled', false);",
+            ".prop('disabled', isOrderPaymentCollectionPending(orderId));",
+            count=2,
         )
         self.assertContains(response, 'vẫn có thể thu số tiền còn thiếu.')
         self.assertContains(

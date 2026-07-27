@@ -3768,6 +3768,44 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(order_list_response, 'id="modal_warranty_items"')
         self.assertContains(order_list_response, 'warranty-modal-content')
 
+    def test_order_return_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('order_return_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getOrderReturnFormCloseSnapshot()')
+        self.assertContains(response, 'function startOrderReturnFormCloseTracking()')
+        self.assertContains(response, 'function captureOrderReturnFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function orderReturnFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startOrderReturnFormCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'scheduleOrderReturnFormCloseBaselineCapture(closeTrackingToken);',
+            count=2,
+        )
+        self.assertContains(response, 'function updateOrderReturnFormCloseBaselineField(')
+        for field_name in (
+            'code',
+            'order_id',
+            'return_date',
+            'return_amount',
+            'exchange_amount',
+            'compensation_amount',
+            'payment_method_option_id',
+            'cash_book_id',
+            'reason',
+            'status',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
     def test_save_order_return_with_exchange_items_collects_difference_and_moves_stock(self):
         exchange_product = Product.objects.create(
             store=self.store,

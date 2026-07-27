@@ -23,7 +23,7 @@
         <div class="table-responsive"><table id="data_tbl" class="table table-bordered table-striped table-sm"><thead><tr><th>STT</th><th>Mã phiếu</th><th>ĐH gốc</th><th>Đơn đổi</th><th>Khách hàng</th><th>Ngày trả</th><th class="text-right">Hàng trả</th><th class="text-right">Hàng đổi</th><th class="text-right">Hoàn/Thu</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody></tbody></table></div>
     </div>
 </div>
-<div class="modal fade" id="modal_form" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false"><div class="modal-dialog"><div class="modal-content">
     <div class="modal-header bg-warning"><h5 class="modal-title" id="modal_title">Tạo phiếu trả</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div>
     <div class="modal-body"><input type="hidden" id="edit_id">
         <div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_code"></div>
@@ -75,6 +75,77 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function escapeHtml(value){return $('<div>').text(value || '').html();}
+var ORDER_RETURN_FORM_CLOSE_BASELINE = null;
+var ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN = 0;
+
+function getOrderReturnFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizeOrderReturnFormCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getOrderReturnFormCloseSnapshot(){
+    return JSON.stringify({
+        code: getOrderReturnFormCloseFieldValue('#inp_code'),
+        order_id: getOrderReturnFormCloseFieldValue('#inp_order_id'),
+        return_date: getOrderReturnFormCloseFieldValue('#inp_return_date'),
+        return_amount: normalizeOrderReturnFormCloseNumber($('#inp_return_amount').val()),
+        exchange_amount: normalizeOrderReturnFormCloseNumber($('#inp_exchange_amount').val()),
+        compensation_amount: normalizeOrderReturnFormCloseNumber($('#inp_compensation_amount').val()),
+        payment_method_option_id: getOrderReturnFormCloseFieldValue('#inp_payment_method'),
+        cash_book_id: getOrderReturnFormCloseFieldValue('#inp_cash_book_id'),
+        reason: getOrderReturnFormCloseFieldValue('#inp_reason'),
+        status: getOrderReturnFormCloseFieldValue('#inp_status')
+    });
+}
+
+function startOrderReturnFormCloseTracking(){
+    ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN++;
+    ORDER_RETURN_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = orderReturnFormHasUnsavedChanges;
+    }
+    return ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function captureOrderReturnFormCloseBaseline(trackingToken){
+    if(trackingToken !== ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN) return;
+    ORDER_RETURN_FORM_CLOSE_BASELINE = getOrderReturnFormCloseSnapshot();
+}
+
+function scheduleOrderReturnFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        captureOrderReturnFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function updateOrderReturnFormCloseBaselineField(trackingToken, fieldName, value){
+    if(trackingToken !== ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN) return;
+    if(ORDER_RETURN_FORM_CLOSE_BASELINE === null){
+        captureOrderReturnFormCloseBaseline(trackingToken);
+        return;
+    }
+    try {
+        var baseline = JSON.parse(ORDER_RETURN_FORM_CLOSE_BASELINE);
+        baseline[fieldName] = value == null ? '' : String(value);
+        ORDER_RETURN_FORM_CLOSE_BASELINE = JSON.stringify(baseline);
+    } catch(error) {
+        ORDER_RETURN_FORM_CLOSE_BASELINE = null;
+    }
+}
+
+function orderReturnFormHasUnsavedChanges(){
+    if(ORDER_RETURN_FORM_CLOSE_BASELINE === null) return true;
+    return getOrderReturnFormCloseSnapshot() !== ORDER_RETURN_FORM_CLOSE_BASELINE;
+}
+
 function calcManualReturnBalance(){
     var returnAmount = Number($('#inp_return_amount').val()) || 0;
     var exchangeAmount = Number($('#inp_exchange_amount').val()) || 0;
@@ -101,9 +172,14 @@ function syncRefundCashBookFromMethod(){
         ? 'Đã chọn quỹ mặc định của phương thức; bạn có thể đổi sang quỹ khác.'
         : 'Phương thức này chưa có quỹ mặc định; vui lòng chọn tài khoản/quỹ để hoàn tiền.');
 }
-function loadOrderOptions(selectedId){
+function loadOrderOptions(selectedId, done){
+    var selectionAtRequest = getOrderReturnFormCloseFieldValue('#inp_order_id');
     $.get('/api/orders/', function(res){
-        var current = selectedId || $('#inp_order_id').val() || '';
+        var selectionBeforeRender = getOrderReturnFormCloseFieldValue('#inp_order_id');
+        var selectionChangedDuringLoad = selectionBeforeRender !== selectionAtRequest;
+        var current = selectionChangedDuringLoad
+            ? selectionBeforeRender
+            : (selectedId || selectionBeforeRender || '');
         var html = '<option value="">Chọn đơn hàng gốc</option>';
         (res.data || []).forEach(function(order){
             if([4,5].indexOf(Number(order.status)) < 0) return;
@@ -111,21 +187,35 @@ function loadOrderOptions(selectedId){
             html += '<option value="' + order.id + '">' + escapeHtml(label) + '</option>';
         });
         $('#inp_order_id').html(html).val(current ? String(current) : '');
+        if(typeof done === 'function'){
+            done({selectionChangedDuringLoad: selectionChangedDuringLoad});
+        }
     });
 }
 function openReturnForm(orderId){
     $('#edit_id').val('');
     $('.btn-return-print').hide();
     $('#inp_code,#inp_reason').val('');
+    $('#inp_order_id').val('');
     $('#inp_return_date').val('');
     $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').val(0);
     calcManualReturnBalance();
     $('#inp_status').val('0');
     $('#inp_payment_method').val($('#inp_payment_method option:first').val() || '');
     syncRefundCashBookFromMethod();
+    var closeTrackingToken = startOrderReturnFormCloseTracking();
     $('#modal_title').text('Tạo phiếu trả');
-    loadOrderOptions(orderId || '');
+    loadOrderOptions(orderId || '', function(loadState){
+        if(!loadState.selectionChangedDuringLoad){
+            updateOrderReturnFormCloseBaselineField(
+                closeTrackingToken,
+                'order_id',
+                getOrderReturnFormCloseFieldValue('#inp_order_id')
+            );
+        }
+    });
     $('#modal_form').modal('show');
+    scheduleOrderReturnFormCloseBaselineCapture(closeTrackingToken);
 }
 $(document).ready(function(){
     var params = new URLSearchParams(window.location.search);
@@ -137,6 +227,10 @@ $(document).ready(function(){
     $('.btn-return-print').click(function(){var returnId=$('#edit_id').val();if(!returnId)return;window.open('/api/order-returns/print/?id='+encodeURIComponent(returnId)+'&type='+encodeURIComponent($(this).data('print-type')||'a4'),'_blank');});
     $('#inp_return_amount,#inp_exchange_amount,#inp_compensation_amount').on('input', calcManualReturnBalance);
     $('#inp_payment_method').on('change', syncRefundCashBookFromMethod);
+    $('#modal_form').on('hidden.bs.modal', function(){
+        ORDER_RETURN_FORM_CLOSE_TRACKING_TOKEN++;
+        ORDER_RETURN_FORM_CLOSE_BASELINE = null;
+    });
     $('#btn_save').click(function(){var paymentMeta=getSelectedRefundPaymentMeta();var balance=calcManualReturnBalance();var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),order_id:$('#inp_order_id').val()||null,return_date:$('#inp_return_date').val(),return_amount:$('#inp_return_amount').val(),exchange_amount:$('#inp_exchange_amount').val(),compensation_amount:$('#inp_compensation_amount').val(),total_refund:balance.refund,reason:$('#inp_reason').val(),status:parseInt($('#inp_status').val(),10),payment_method:paymentMeta.payment_method,payment_method_option_id:paymentMeta.payment_method_option_id,cash_book_id:paymentMeta.cash_book_id};if(!data.code||!data.return_date||!data.order_id){alert('Vui lòng nhập mã, chọn đơn gốc và ngày trả');return;}
         if(data.status===2&&(balance.refund>0||balance.due>0)&&!data.cash_book_id){alert('Vui lòng chọn tài khoản/quỹ để ghi nhận khoản hoàn/thu tiền.');return;}
         $.ajax({url:'/api/order-returns/save/',type:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}});});
@@ -165,6 +259,36 @@ function loadData(selectedReturnId){
         }
     });
 }
-function editItem(d){$('#edit_id').val(d.id);$('.btn-return-print').show();$('#inp_code').val(d.code);loadOrderOptions(d.order_id);$('#inp_return_date').val(d.return_date);$('#inp_return_amount').val(d.return_amount||d.total_refund||0);$('#inp_exchange_amount').val(d.exchange_amount||0);$('#inp_compensation_amount').val(d.compensation_amount||0);calcManualReturnBalance();$('#inp_reason').val(d.reason);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');syncRefundCashBookFromMethod();if(d.cash_book_id){$('#inp_cash_book_id').val(String(d.cash_book_id));}$('#modal_title').text('Sửa phiếu trả');$('#modal_form').modal('show');}
+function editItem(d){
+    $('#edit_id').val(d.id);
+    $('.btn-return-print').show();
+    $('#inp_code').val(d.code);
+    $('#inp_order_id').val(d.order_id ? String(d.order_id) : '');
+    $('#inp_return_date').val(d.return_date);
+    $('#inp_return_amount').val(d.return_amount || d.total_refund || 0);
+    $('#inp_exchange_amount').val(d.exchange_amount || 0);
+    $('#inp_compensation_amount').val(d.compensation_amount || 0);
+    calcManualReturnBalance();
+    $('#inp_reason').val(d.reason);
+    $('#inp_status').val(d.status);
+    $('#inp_payment_method').val(d.payment_method_option_id || $('#inp_payment_method option:first').val() || '');
+    syncRefundCashBookFromMethod();
+    if(d.cash_book_id){
+        $('#inp_cash_book_id').val(String(d.cash_book_id));
+    }
+    var closeTrackingToken = startOrderReturnFormCloseTracking();
+    $('#modal_title').text('Sửa phiếu trả');
+    loadOrderOptions(d.order_id, function(loadState){
+        if(!loadState.selectionChangedDuringLoad){
+            updateOrderReturnFormCloseBaselineField(
+                closeTrackingToken,
+                'order_id',
+                getOrderReturnFormCloseFieldValue('#inp_order_id')
+            );
+        }
+    });
+    $('#modal_form').modal('show');
+    scheduleOrderReturnFormCloseBaselineCapture(closeTrackingToken);
+}
 </script>
 {% endblock %}

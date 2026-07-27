@@ -1,7 +1,12 @@
 from django.urls import path
-from . import views
+from . import scheduler_views, views
 
 urlpatterns = [
+    path(
+        'api/internal/run-scheduled-emails/',
+        scheduler_views.api_run_scheduled_emails,
+        name='api_run_scheduled_emails',
+    ),
     path('setting/stock-alert-email/', views.stock_alert_email_setting, name='stock_alert_email_setting'),
     path('api/stock-alert-email/save/', views.api_save_stock_alert_email_setting, name='api_save_stock_alert_email_setting'),
     path('api/stock-alert-email/test/', views.api_test_stock_alert_email, name='api_test_stock_alert_email'),

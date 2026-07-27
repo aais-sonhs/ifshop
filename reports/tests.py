@@ -23,8 +23,7 @@ from products.models import (
 from system_management.models import Brand, Store, UserProfile
 from reports.models import DailyEmailReport, StockAlert, StockAlertEmailRecipient
 from reports.daily_email_reports import collect_daily_email_report_metrics
-from reports.management.commands.send_daily_email_reports import process_daily_email_report
-from reports.management.commands.send_low_stock_alerts import process_stock_alert
+from reports.email_scheduler import process_daily_email_report, process_stock_alert
 
 
 class SalesReportTests(TestCase):
@@ -2856,3 +2855,87 @@ class DailyEmailReportSettingTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         config.refresh_from_db()
         self.assertEqual(config.last_status, 'sent')
+
+
+class ScheduledEmailApiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(
+            username='scheduler_api_owner',
+            email='scheduler-owner@example.com',
+            password='pass123',
+        )
+        cls.brand = Brand.objects.create(
+            name='Brand Scheduler API',
+            owner=cls.owner,
+        )
+        cls.store = Store.objects.create(
+            brand=cls.brand,
+            name='Cửa hàng Scheduler API',
+            code='SCA',
+        )
+        UserProfile.objects.create(user=cls.owner, store=cls.store)
+        cls.warehouse = Warehouse.objects.create(
+            store=cls.store,
+            code='KHO-SCA',
+            name='Kho Scheduler API',
+        )
+        cls.category = ProductCategory.objects.create(
+            name='Danh mục Scheduler API',
+        )
+        cls.product = Product.objects.create(
+            store=cls.store,
+            code='SP-SCA-001',
+            name='Sản phẩm Scheduler API',
+            category=cls.category,
+            min_stock=5,
+            created_by=cls.owner,
+        )
+        ProductStock.objects.create(
+            product=cls.product,
+            warehouse=cls.warehouse,
+            quantity=1,
+        )
+        cls.stock_config = StockAlert.objects.create(
+            brand=cls.brand,
+            is_active=True,
+            alert_on_min=True,
+            send_time=time(0, 0),
+        )
+        cls.stock_config.recipient_users.add(cls.owner)
+        cls.stock_config.categories.add(cls.category)
+        cls.daily_config = DailyEmailReport.objects.create(
+            brand=cls.brand,
+            is_active=True,
+            send_time=time(0, 0),
+        )
+        cls.daily_config.recipient_users.add(cls.owner)
+
+    def test_scheduler_api_requires_post(self):
+        response = self.client.get(reverse('api_run_scheduled_emails'))
+
+        self.assertEqual(response.status_code, 405)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='ifshop@example.com',
+    )
+    def test_scheduler_api_runs_both_email_jobs_once_per_day(self):
+        response = self.client.post(reverse('api_run_scheduled_emails'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertEqual(payload['stock_alerts']['totals']['sent'], 1)
+        self.assertEqual(payload['daily_email_reports']['totals']['sent'], 1)
+        self.assertEqual(len(mail.outbox), 2)
+
+        second_response = self.client.post(reverse('api_run_scheduled_emails'))
+
+        self.assertEqual(second_response.status_code, 200, second_response.content)
+        second_payload = second_response.json()
+        self.assertEqual(second_payload['stock_alerts']['totals']['skipped'], 1)
+        self.assertEqual(
+            second_payload['daily_email_reports']['totals']['skipped'],
+            1,
+        )
+        self.assertEqual(len(mail.outbox), 2)

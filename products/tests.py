@@ -549,6 +549,37 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'function buildWarehouseProductEditUrl(productId)')
         self.assertContains(response, 'WAREHOUSE_PRODUCT_EDITOR_OPENED')
 
+    def test_warehouse_inventory_modal_only_confirms_close_when_stock_changed(self):
+        response = self.client.get(reverse('warehouse_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_inventory_product" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getWarehouseInventoryCloseSnapshot()')
+        self.assertContains(response, 'function startWarehouseInventoryCloseTracking()')
+        self.assertContains(response, 'function captureWarehouseInventoryCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function warehouseInventoryHasUnsavedChanges()')
+        self.assertContains(response, 'var closeTrackingToken = startWarehouseInventoryCloseTracking();')
+        self.assertContains(
+            response,
+            'scheduleWarehouseInventoryCloseBaselineCapture(closeTrackingToken);',
+        )
+        self.assertContains(
+            response,
+            "min_stock: normalizeWarehouseInventoryCloseNumber($('#inventory_min_stock').val())",
+        )
+        self.assertContains(
+            response,
+            "max_stock: normalizeWarehouseInventoryCloseNumber($('#inventory_max_stock').val())",
+        )
+        self.assertContains(
+            response,
+            'quantity: normalizeWarehouseInventoryCloseNumber($(this).val())',
+        )
+
     def test_warehouse_inventory_returns_actual_and_sellable_stock_in_user_scope(self):
         from orders.models import Order, OrderItem
 

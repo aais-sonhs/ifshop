@@ -3478,6 +3478,22 @@ function scheduleOrderFormCloseBaselineCapture(trackingToken){
     }, 0);
 }
 
+function updateOrderFormCloseBaselineField(trackingToken, fieldName, value){
+    if(trackingToken !== ORDER_FORM_CLOSE_TRACKING_TOKEN) return;
+    if($('#modal_form').attr('data-confirm-close') !== 'dirty') return;
+    if(ORDER_FORM_CLOSE_BASELINE === null){
+        scheduleOrderFormCloseBaselineCapture(trackingToken);
+        return;
+    }
+    try {
+        var baseline = JSON.parse(ORDER_FORM_CLOSE_BASELINE);
+        baseline[fieldName] = value == null ? '' : String(value);
+        ORDER_FORM_CLOSE_BASELINE = JSON.stringify(baseline);
+    } catch(error) {
+        ORDER_FORM_CLOSE_BASELINE = null;
+    }
+}
+
 function orderFormHasUnsavedChanges(){
     if($('#modal_form').attr('data-confirm-close') !== 'dirty') return true;
     if(ORDER_FORM_CLOSE_BASELINE === null) return true;
@@ -3504,12 +3520,16 @@ function setDocumentType(type){
     syncDocumentTypeUI();
 }
 
-function fetchNextDocumentCode(type){
+function fetchNextDocumentCode(type, closeTrackingToken){
     var docType = type === 'quotation' ? 'quotation' : 'order';
     var url = docType === 'quotation' ? '/api/quotations/next-code/' : '/api/orders/next-code/';
     $.get(url, function(res){
         if(!$('#edit_id').val() && getDocumentType() === docType){
-            $('#inp_code').val(res.code || '');
+            var nextCode = res.code || '';
+            $('#inp_code').val(nextCode);
+            if(closeTrackingToken != null){
+                updateOrderFormCloseBaselineField(closeTrackingToken, 'code', nextCode);
+            }
         }
     });
 }
@@ -5083,7 +5103,7 @@ $(document).ready(function(){
     });
 
     $('#btn_add').click(function(){
-        setOrderFormAlwaysConfirmClose();
+        var closeTrackingToken = startOrderFormDirtyCloseTracking();
         resetCurrentOrderReturnState();
         fetchProductsForOrderForm(null);
         $('#edit_id').val('');$('#inp_note').val('');clearCustomer();setOrderWarehouseValue(getStoredOrderWarehouseId());
@@ -5112,7 +5132,7 @@ $(document).ready(function(){
             setDocumentType('order');
         });
         applyStoredOrderPaymentPreferencesToNewForm();
-        fetchNextDocumentCode('order');
+        fetchNextDocumentCode('order', closeTrackingToken);
         // Auto-fill ngày hôm nay
         var today = new Date().toISOString().split('T')[0];
         $('#inp_order_date').val(today);
@@ -5124,6 +5144,7 @@ $(document).ready(function(){
         // Tạo mới: ưu tiên nhập sản phẩm ngay khi form vừa mở.
         setOrderFormInitialFocus('create');
         $('#modal_form').modal('show');
+        scheduleOrderFormCloseBaselineCapture(closeTrackingToken);
     });
 
     $('input[name="document_type"]').change(function(){
@@ -5144,8 +5165,10 @@ $(document).ready(function(){
     } else if(createMode === 'quotation'){
         $('#btn_add').trigger('click');
         setTimeout(function(){
+            var closeTrackingToken = ORDER_FORM_CLOSE_TRACKING_TOKEN;
             setDocumentType('quotation');
-            fetchNextDocumentCode('quotation');
+            scheduleOrderFormCloseBaselineCapture(closeTrackingToken);
+            fetchNextDocumentCode('quotation', closeTrackingToken);
         }, 0);
     }
 

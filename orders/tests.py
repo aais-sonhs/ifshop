@@ -273,8 +273,11 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'function captureOrderFormCloseBaseline(trackingToken)')
         self.assertContains(response, 'function orderFormHasUnsavedChanges()')
         self.assertContains(response, 'orderFormModalElement.confirmCloseDirtyCheck = orderFormHasUnsavedChanges')
-        self.assertContains(response, 'var closeTrackingToken = startOrderFormDirtyCloseTracking();', count=2)
+        self.assertContains(response, 'var closeTrackingToken = startOrderFormDirtyCloseTracking();', count=3)
         self.assertContains(response, 'captureOrderFormCloseBaseline(closeTrackingToken);', count=2)
+        self.assertContains(response, "fetchNextDocumentCode('order', closeTrackingToken);")
+        self.assertContains(response, 'function updateOrderFormCloseBaselineField(trackingToken, fieldName, value)')
+        self.assertContains(response, 'scheduleOrderFormCloseBaselineCapture(closeTrackingToken);')
         self.assertContains(response, "setOrderFormAlwaysConfirmClose();")
 
     def test_order_page_applies_date_filters_from_query_string_before_loading(self):

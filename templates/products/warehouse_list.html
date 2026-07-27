@@ -128,7 +128,7 @@
 <select id="inventory_sellable_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option></select>
 <select id="inventory_stock_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option><option value="negative"></option></select>
 
-<div class="modal fade" id="modal_inventory_product" tabindex="-1">
+<div class="modal fade" id="modal_inventory_product" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-info text-white">
@@ -250,6 +250,8 @@
 var WAREHOUSE_INVENTORY_MAP = {};
 var WAREHOUSE_INVENTORY_DATA = [];
 var WAREHOUSE_PRODUCT_EDITOR_OPENED = false;
+var WAREHOUSE_INVENTORY_CLOSE_BASELINE = null;
+var WAREHOUSE_INVENTORY_CLOSE_TRACKING_TOKEN = 0;
 
 var INVENTORY_PAGE_SIZE_KEY = 'ifshop_inventory_page_size';
 var INVENTORY_PAGE_STATE = {
@@ -443,7 +445,60 @@ $(document).ready(function() {
             }
         });
     });
+
+    $('#modal_inventory_product').on('hidden.bs.modal', function() {
+        WAREHOUSE_INVENTORY_CLOSE_TRACKING_TOKEN++;
+        WAREHOUSE_INVENTORY_CLOSE_BASELINE = null;
+    });
 });
+
+function normalizeWarehouseInventoryCloseNumber(value) {
+    var rawValue = String(value == null ? '' : value).trim();
+    if (rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getWarehouseInventoryCloseSnapshot() {
+    var stocks = [];
+    $('#inventory_stock_edit_tbl .inventory-stock-input').each(function() {
+        stocks.push({
+            warehouse_id: String($(this).data('warehouse-id') || ''),
+            quantity: normalizeWarehouseInventoryCloseNumber($(this).val())
+        });
+    });
+    return JSON.stringify({
+        min_stock: normalizeWarehouseInventoryCloseNumber($('#inventory_min_stock').val()),
+        max_stock: normalizeWarehouseInventoryCloseNumber($('#inventory_max_stock').val()),
+        stocks: stocks
+    });
+}
+
+function startWarehouseInventoryCloseTracking() {
+    WAREHOUSE_INVENTORY_CLOSE_TRACKING_TOKEN++;
+    WAREHOUSE_INVENTORY_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_inventory_product');
+    if (modal) {
+        modal.confirmCloseDirtyCheck = warehouseInventoryHasUnsavedChanges;
+    }
+    return WAREHOUSE_INVENTORY_CLOSE_TRACKING_TOKEN;
+}
+
+function captureWarehouseInventoryCloseBaseline(trackingToken) {
+    if (trackingToken !== WAREHOUSE_INVENTORY_CLOSE_TRACKING_TOKEN) return;
+    WAREHOUSE_INVENTORY_CLOSE_BASELINE = getWarehouseInventoryCloseSnapshot();
+}
+
+function scheduleWarehouseInventoryCloseBaselineCapture(trackingToken) {
+    setTimeout(function() {
+        captureWarehouseInventoryCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function warehouseInventoryHasUnsavedChanges() {
+    if (WAREHOUSE_INVENTORY_CLOSE_BASELINE === null) return true;
+    return getWarehouseInventoryCloseSnapshot() !== WAREHOUSE_INVENTORY_CLOSE_BASELINE;
+}
 
 function loadData() {
     $.get('/api/warehouses/', function(res) {
@@ -663,6 +718,7 @@ function renderInventoryPagination(meta) {
 function openInventoryEdit(productId) {
     var product = WAREHOUSE_INVENTORY_MAP[String(productId)];
     if (!product) return alert('Không tìm thấy dữ liệu sản phẩm');
+    var closeTrackingToken = startWarehouseInventoryCloseTracking();
 
     $('#inventory_product_id').val(product.id);
     $('#inventory_product_name').text((product.name || '') + ' (' + (product.code || '') + ')');
@@ -688,6 +744,7 @@ function openInventoryEdit(productId) {
     $('#inventory_stock_edit_tbl tbody').html(rows);
     $('#inventory_stock_total').text(formatQuantity(product.total_stock));
     $('#modal_inventory_product').modal('show');
+    scheduleWarehouseInventoryCloseBaselineCapture(closeTrackingToken);
     loadInventoryPurchaseHistory(product.id);
 }
 

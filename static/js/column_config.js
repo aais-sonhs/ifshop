@@ -117,7 +117,7 @@
             itemsHtml = '<div class="cc-empty">Tat ca cot tren bang nay dang luon hien thi.</div>';
         }
 
-        var html = '<div class="dropdown d-inline-block cc-dropdown">' +
+        var html = '<div class="dropdown d-inline-block cc-dropdown" id="'+this.instanceId+'">' +
             '<button class="btn btn-sm btn-outline-secondary dropdown-toggle cc-trigger" data-toggle="dropdown" title="Tùy chỉnh cột hiển thị">' +
             '<i class="fas fa-columns mr-1"></i>Tùy chỉnh hiển thị</button>' +
             '<div class="dropdown-menu cc-menu">' +
@@ -132,14 +132,15 @@
             '</div></div>';
 
         $container.prepend(html);
+        var $root = $container.find('#' + this.instanceId);
 
         // Prevent dropdown close on click inside
-        $(document).on('click', '.cc-menu', function(e){
+        $root.on('click', '.cc-menu', function(e){
             e.stopPropagation();
         });
 
         // Toggle handler
-        $(document).on('change', '.cc-col-toggle', function(){
+        $root.on('change', '.cc-col-toggle', function(){
             var key = $(this).data('col');
             self.state[key] = $(this).is(':checked');
             self._saveState();
@@ -147,22 +148,22 @@
         });
 
         // Select all
-        $(document).on('click', '.cc-select-all', function(){
+        $root.on('click', '.cc-select-all', function(){
             self.columns.forEach(function(col){
                 self.state[col.key] = true;
             });
             self._saveState();
-            $('.cc-col-toggle').prop('checked', true);
+            $root.find('.cc-col-toggle').prop('checked', true);
             self.apply();
         });
 
         // Reset to default
-        $(document).on('click', '.cc-reset', function(){
+        $root.on('click', '.cc-reset', function(){
             self.columns.forEach(function(col){
                 self.state[col.key] = col.default !== false;
             });
             self._saveState();
-            $('.cc-col-toggle').each(function(){
+            $root.find('.cc-col-toggle').each(function(){
                 var key = $(this).data('col');
                 $(this).prop('checked', self.state[key]);
             });

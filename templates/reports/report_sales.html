@@ -77,8 +77,8 @@
         <!-- TABS -->
         <ul class="nav nav-tabs mb-3" id="reportTabs" style="border-bottom:2px solid #dee2e6;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;">
             <li class="nav-item"><a class="nav-link active font-weight-bold" data-toggle="tab" href="#tab_overview"><i class="fas fa-tachometer-alt mr-1"></i>Tổng quan</a></li>
-            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_daily_finance"><i class="fas fa-calendar-day mr-1"></i>Tổng hợp ngày</a></li>
-            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_products"><i class="fas fa-boxes mr-1"></i>DT Mặt hàng</a></li>
+            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_daily_finance"><i class="fas fa-calendar-day mr-1"></i>DT theo ngày</a></li>
+            <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_products"><i class="fas fa-boxes mr-1"></i>DT theo hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_sku"><i class="fas fa-barcode mr-1"></i>Chi tiết SKU</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_customers"><i class="fas fa-users mr-1"></i>DT Khách hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_staff"><i class="fas fa-user-tie mr-1"></i>DT Nhân viên</a></li>
@@ -86,6 +86,11 @@
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_returns"><i class="fas fa-undo mr-1"></i>Trả hàng</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_profit"><i class="fas fa-coins mr-1"></i>Lợi nhuận gộp</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold text-warning" data-toggle="tab" href="#tab_slow_moving"><i class="fas fa-hourglass-half mr-1"></i>Hàng bán chậm</a></li>
+            <li class="nav-item sales-tab-config-item">
+                <button type="button" class="nav-link font-weight-bold text-secondary" id="btn_sales_tab_config">
+                    <i class="fas fa-eye mr-1"></i>Ẩn/Hiện
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content">
@@ -263,9 +268,9 @@
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height:620px;overflow-y:auto;">
                             <table class="table table-bordered table-sm table-hover mb-0" id="daily_finance_tbl">
-                                <thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Ngày</th><th class="text-right">Tiền hàng</th><th class="text-right">Doanh thu</th><th class="text-right">Doanh thu thuần</th><th class="text-right">Giá vốn thuần</th><th class="text-right">Lợi nhuận gộp</th><th class="text-right">Tỷ suất lợi nhuận gộp</th><th class="text-right">Lợi nhuận ròng</th></tr></thead>
+                                <thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Ngày</th><th class="text-right">Tiền hàng</th><th class="text-right">Doanh thu</th><th class="text-right">Hàng bị trả lại</th><th class="text-right">Doanh thu thuần</th><th class="text-right">Giá vốn thuần</th><th class="text-right">Lợi nhuận gộp</th><th class="text-right">Tỷ suất lợi nhuận gộp</th><th class="text-right">Lợi nhuận ròng</th></tr></thead>
                                 <tbody></tbody>
-                                <tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;"><tr><td>TỔNG</td><td id="df_ft_goods" class="text-right">0</td><td id="df_ft_revenue" class="text-right">0</td><td id="df_ft_net_revenue" class="text-right">0</td><td id="df_ft_cost" class="text-right">0</td><td id="df_ft_gross_profit" class="text-right">0</td><td id="df_ft_gross_margin" class="text-right">0%</td><td id="df_ft_net_profit" class="text-right">0</td></tr></tfoot>
+                                <tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;"><tr><td>TỔNG</td><td id="df_ft_goods" class="text-right">0</td><td id="df_ft_revenue" class="text-right">0</td><td id="df_ft_returns" class="text-right text-danger">0</td><td id="df_ft_net_revenue" class="text-right">0</td><td id="df_ft_cost" class="text-right">0</td><td id="df_ft_gross_profit" class="text-right">0</td><td id="df_ft_gross_margin" class="text-right">0%</td><td id="df_ft_net_profit" class="text-right">0</td></tr></tfoot>
                             </table>
                         </div>
                     </div>
@@ -278,8 +283,8 @@
                     <div class="col-md-7"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Top 15 sản phẩm theo doanh thu</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_product_revenue"></canvas></div></div></div>
                     <div class="col-md-5"><div class="card card-outline card-teal"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Tỷ trọng danh mục</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_category_pie"></canvas></div></div></div>
                 </div>
-                <div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="product_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Sản phẩm</th><th>Nhóm mặt hàng</th><th>Loại SP</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">LN dòng</th><th class="text-right">Biên LN</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="4">TỔNG</td><td id="pd_ft_qty" class="text-right">0</td><td id="pd_ft_rev" class="text-right">0</td><td id="pd_ft_cost" class="text-right">0</td><td id="pd_ft_profit" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
-                <div class="card card-outline card-info mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-layer-group mr-1"></i>Doanh thu theo nhóm mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="category_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Nhóm mặt hàng</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="cat_ft_qty" class="text-right">0</td><td id="cat_ft_rev" class="text-right">0</td><td id="cat_ft_cost" class="text-right">0</td><td id="cat_ft_profit" class="text-right">0</td><td></td><td></td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="product_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Sản phẩm</th><th>Nhóm mặt hàng</th><th>Loại SP</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">LN dòng</th><th class="text-right">Biên LN</th><th class="text-right app-sortable-heading">Lợi nhuận gộp <button type="button" class="app-sort-toggle-btn product-detail-sort-btn" data-sort-field="gross_profit" data-sort-label="lợi nhuận gộp" title="Bấm để sắp xếp lợi nhuận gộp giảm dần" aria-label="Bấm để sắp xếp lợi nhuận gộp giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right app-sortable-heading">Tỉ suất LN gộp <button type="button" class="app-sort-toggle-btn product-detail-sort-btn" data-sort-field="gross_margin" data-sort-label="tỉ suất lợi nhuận gộp" title="Bấm để sắp xếp tỉ suất lợi nhuận gộp giảm dần" aria-label="Bấm để sắp xếp tỉ suất lợi nhuận gộp giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="4">TỔNG</td><td id="pd_ft_qty" class="text-right">0</td><td id="pd_ft_rev" class="text-right">0</td><td id="pd_ft_cost" class="text-right">0</td><td id="pd_ft_profit" class="text-right">0</td><td></td><td id="pd_ft_gross_profit" class="text-right">0</td><td id="pd_ft_gross_margin" class="text-right">0%</td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-info mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-layer-group mr-1"></i>Doanh thu theo nhóm mặt hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="category_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Nhóm mặt hàng</th><th class="text-right">SL bán</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Biên LN</th><th class="text-right app-sortable-heading">Lợi nhuận gộp <button type="button" class="app-sort-toggle-btn category-detail-sort-btn" data-sort-field="gross_profit" data-sort-label="lợi nhuận gộp theo nhóm mặt hàng" title="Bấm để sắp xếp lợi nhuận gộp giảm dần" aria-label="Bấm để sắp xếp lợi nhuận gộp giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right app-sortable-heading">Tỉ suất LN gộp <button type="button" class="app-sort-toggle-btn category-detail-sort-btn" data-sort-field="gross_margin" data-sort-label="tỉ suất lợi nhuận gộp theo nhóm mặt hàng" title="Bấm để sắp xếp tỉ suất lợi nhuận gộp giảm dần" aria-label="Bấm để sắp xếp tỉ suất lợi nhuận gộp giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="cat_ft_qty" class="text-right">0</td><td id="cat_ft_rev" class="text-right">0</td><td id="cat_ft_cost" class="text-right">0</td><td id="cat_ft_profit" class="text-right">0</td><td></td><td id="cat_ft_gross_profit" class="text-right">0</td><td id="cat_ft_gross_margin" class="text-right">0%</td><td></td></tr></tfoot></table></div></div></div>
             </div>
 
             <!-- TAB 4: CHI TIẾT SKU -->
@@ -304,7 +309,7 @@
                     <div class="col-md-7"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-bar mr-1"></i>Top 15 khách hàng theo doanh thu</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_customer_revenue"></canvas></div></div></div>
                     <div class="col-md-5"><div class="card card-outline card-indigo"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Tỷ trọng nhóm KH</h6></div><div class="card-body" style="height:380px;"><canvas id="chart_group_pie"></canvas></div></div></div>
                 </div>
-                <div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Khách hàng</th><th>Khách buôn/lẻ</th><th>Nhóm</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="4">TỔNG</td><td id="cd_ft_orders" class="text-right">0</td><td id="cd_ft_rev" class="text-right">0</td><td id="cd_ft_cost" class="text-right">0</td><td id="cd_ft_profit" class="text-right">0</td><td id="cd_ft_paid" class="text-right">0</td><td id="cd_ft_debt" class="text-right">0</td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-info"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết doanh thu khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:500px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_detail_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Khách hàng</th><th>Khách buôn/lẻ</th><th>Nhóm</th><th class="text-right">Số ĐH</th><th class="text-right app-sortable-heading">Doanh thu <button type="button" class="app-sort-toggle-btn customer-detail-sort-btn" data-sort-field="revenue" data-sort-label="doanh thu khách hàng" title="Bấm để sắp xếp doanh thu giảm dần" aria-label="Bấm để sắp xếp doanh thu giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right">Giá vốn</th><th class="text-right app-sortable-heading">Lợi nhuận <button type="button" class="app-sort-toggle-btn customer-detail-sort-btn" data-sort-field="profit" data-sort-label="lợi nhuận khách hàng" title="Bấm để sắp xếp lợi nhuận giảm dần" aria-label="Bấm để sắp xếp lợi nhuận giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td colspan="4">TỔNG</td><td id="cd_ft_orders" class="text-right">0</td><td id="cd_ft_rev" class="text-right">0</td><td id="cd_ft_cost" class="text-right">0</td><td id="cd_ft_profit" class="text-right">0</td><td id="cd_ft_paid" class="text-right">0</td><td id="cd_ft_debt" class="text-right">0</td></tr></tfoot></table></div></div></div>
                 <div class="card card-outline card-primary mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-user-tag mr-1"></i>Doanh thu khách buôn/lẻ</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:360px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_kind_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Khách buôn/lẻ</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="ck_ft_orders" class="text-right">0</td><td id="ck_ft_rev" class="text-right">0</td><td id="ck_ft_cost" class="text-right">0</td><td id="ck_ft_profit" class="text-right">0</td><td id="ck_ft_paid" class="text-right">0</td><td id="ck_ft_debt" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
                 <div class="card card-outline card-secondary mt-3"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-users-cog mr-1"></i>Doanh thu theo nhóm khách hàng</h6></div><div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow-y:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="customer_group_tbl"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>Nhóm KH</th><th class="text-right">Số ĐH</th><th class="text-right">Doanh thu</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Tỷ trọng</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;"><tr><td>TỔNG</td><td id="cg_ft_orders" class="text-right">0</td><td id="cg_ft_rev" class="text-right">0</td><td id="cg_ft_cost" class="text-right">0</td><td id="cg_ft_profit" class="text-right">0</td><td id="cg_ft_paid" class="text-right">0</td><td id="cg_ft_debt" class="text-right">0</td><td></td></tr></tfoot></table></div></div></div>
             </div>
@@ -329,7 +334,7 @@
                     <div class="col-md-6"><div class="card card-outline card-primary"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-pie mr-1"></i>Trạng thái đơn hàng</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_order_status"></canvas></div></div></div>
                     <div class="col-md-6"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0"><i class="fas fa-chart-doughnut mr-1"></i>Trạng thái thanh toán</h6></div><div class="card-body" style="height:360px;"><canvas id="chart_payment_status"></canvas></div></div></div>
                 </div>
-                <div class="card card-outline card-info"><div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết đơn hàng</h6><small class="text-muted">Doanh thu = Tiền hàng - Chiết khấu + Phí vận chuyển + Chi phí khác. Bấm mã đơn hoặc “Mở đơn” để đi thẳng vào đơn hàng.</small></div><div class="card-body p-0"><div class="table-responsive" style="max-height:520px;overflow:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="order_report_tbl" style="min-width:2200px;"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Khách hàng</th><th>Khách buôn/lẻ</th><th>Nhân viên</th><th>Cửa hàng</th><th style="min-width:280px;">Sản phẩm lỗ</th><th class="text-right">Tiền hàng</th><th class="text-right">Chiết khấu</th><th class="text-right">Phí vận chuyển</th><th class="text-right">Chi phí khác</th><th class="text-right">Doanh thu</th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Giá vốn</th><th class="text-right">Lợi nhuận</th><th>TT đơn</th><th>TT thanh toán</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;"><tr><td colspan="8">TỔNG</td><td id="or_ft_goods" class="text-right">0</td><td id="or_ft_discount" class="text-right text-danger">0</td><td id="or_ft_shipping" class="text-right">0</td><td id="or_ft_other_fee" class="text-right">0</td><td id="or_ft_revenue" class="text-right">0</td><td id="or_ft_paid" class="text-right">0</td><td id="or_ft_debt" class="text-right">0</td><td id="or_ft_cost" class="text-right">0</td><td id="or_ft_profit" class="text-right">0</td><td colspan="2"></td></tr></tfoot></table></div></div></div>
+                <div class="card card-outline card-info"><div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;"><h6 class="card-title mb-0"><i class="fas fa-table mr-1"></i>Chi tiết đơn hàng</h6><small class="text-muted">Doanh thu = Tiền hàng - Chiết khấu + Phí vận chuyển + Chi phí khác. Bấm mã đơn hoặc “Mở đơn” để đi thẳng vào đơn hàng.</small></div><div class="card-body p-0"><div class="table-responsive" style="max-height:520px;overflow:auto;"><table class="table table-bordered table-sm table-hover mb-0" id="order_report_tbl" style="min-width:2200px;"><thead class="bg-light" style="position:sticky;top:0;z-index:1;"><tr><th>STT</th><th>Mã ĐH</th><th>Ngày</th><th>Khách hàng</th><th>Khách buôn/lẻ</th><th>Nhân viên</th><th>Cửa hàng</th><th style="min-width:280px;">Sản phẩm lỗ</th><th class="text-right">Tiền hàng</th><th class="text-right">Chiết khấu</th><th class="text-right">Phí vận chuyển</th><th class="text-right">Chi phí khác</th><th class="text-right app-sortable-heading">Doanh thu <button type="button" class="app-sort-toggle-btn order-report-sort-btn" data-sort-field="revenue" data-sort-label="doanh thu đơn hàng" title="Bấm để sắp xếp doanh thu giảm dần" aria-label="Bấm để sắp xếp doanh thu giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th class="text-right">Đã thu</th><th class="text-right">Công nợ</th><th class="text-right">Giá vốn</th><th class="text-right app-sortable-heading">Lợi nhuận <button type="button" class="app-sort-toggle-btn order-report-sort-btn" data-sort-field="profit" data-sort-label="lợi nhuận đơn hàng" title="Bấm để sắp xếp lợi nhuận giảm dần" aria-label="Bấm để sắp xếp lợi nhuận giảm dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th><th>TT đơn</th><th>TT thanh toán</th></tr></thead><tbody></tbody><tfoot class="font-weight-bold bg-light" style="position:sticky;bottom:0;z-index:1;"><tr><td colspan="8">TỔNG</td><td id="or_ft_goods" class="text-right">0</td><td id="or_ft_discount" class="text-right text-danger">0</td><td id="or_ft_shipping" class="text-right">0</td><td id="or_ft_other_fee" class="text-right">0</td><td id="or_ft_revenue" class="text-right">0</td><td id="or_ft_paid" class="text-right">0</td><td id="or_ft_debt" class="text-right">0</td><td id="or_ft_cost" class="text-right">0</td><td id="or_ft_profit" class="text-right">0</td><td colspan="2"></td></tr></tfoot></table></div></div></div>
             </div>
 
             <!-- TAB 6: TRẢ HÀNG -->
@@ -417,6 +422,36 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modal_sales_tab_config" tabindex="-1" role="dialog" aria-labelledby="sales_tab_config_title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sales_tab_config_title"><i class="fas fa-eye mr-2"></i>Ẩn/hiện tab báo cáo</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Đóng"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">Chọn các tab cần hiển thị. Hệ thống luôn giữ lại ít nhất một tab.</p>
+                <div id="sales_tab_visibility_list">
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_overview" data-tab-id="tab_overview" checked><label class="custom-control-label" for="sales_tab_toggle_overview">Tổng quan</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_daily_finance" data-tab-id="tab_daily_finance" checked><label class="custom-control-label" for="sales_tab_toggle_daily_finance">DT theo ngày</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_products" data-tab-id="tab_products" checked><label class="custom-control-label" for="sales_tab_toggle_products">DT theo hàng</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_sku" data-tab-id="tab_sku" checked><label class="custom-control-label" for="sales_tab_toggle_sku">Chi tiết SKU</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_customers" data-tab-id="tab_customers" checked><label class="custom-control-label" for="sales_tab_toggle_customers">DT Khách hàng</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_staff" data-tab-id="tab_staff" checked><label class="custom-control-label" for="sales_tab_toggle_staff">DT Nhân viên</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_orders" data-tab-id="tab_orders" checked><label class="custom-control-label" for="sales_tab_toggle_orders">Theo đơn</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_returns" data-tab-id="tab_returns" checked><label class="custom-control-label" for="sales_tab_toggle_returns">Trả hàng</label></div>
+                    <div class="custom-control custom-checkbox mb-2"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_profit" data-tab-id="tab_profit" checked><label class="custom-control-label" for="sales_tab_toggle_profit">Lợi nhuận gộp</label></div>
+                    <div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input sales-tab-visibility-toggle" id="sales_tab_toggle_slow_moving" data-tab-id="tab_slow_moving" checked><label class="custom-control-label" for="sales_tab_toggle_slow_moving">Hàng bán chậm</label></div>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <button type="button" class="btn btn-outline-secondary" id="btn_reset_sales_tabs"><i class="fas fa-undo mr-1"></i>Hiện tất cả</button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Xong</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -444,6 +479,16 @@
 .slow-moving-table-wrap thead th{position:sticky;top:0;z-index:2;white-space:nowrap;}
 .slow-moving-row-critical{background:#fff5f5;}
 .slow-moving-row-slow{background:#fffaf0;}
+.sales-table-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:.5rem .75rem;border-top:1px solid #dee2e6;background:#fff;}
+.sales-table-pagination[hidden]{display:none!important;}
+.sales-table-pagination-actions,.sales-table-pagination-buttons{display:flex;align-items:center;flex-wrap:wrap;gap:6px;}
+.sales-table-pagination .form-control{width:auto;min-width:92px;}
+.sales-table-column-config{display:inline-flex;align-items:center;}
+.sales-table-column-toolbar{display:flex;align-items:center;justify-content:flex-end;padding:.5rem .75rem;border-bottom:1px solid #dee2e6;background:#f8fafc;}
+.sales-table-column-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.sales-table-column-header>h6:first-child,.sales-table-column-header>.card-title:first-child{margin-right:auto;}
+.sales-tab-config-item .nav-link{height:100%;border:0;background:#f8f9fa;white-space:nowrap;}
+.sales-tab-config-item .nav-link:hover,.sales-tab-config-item .nav-link:focus{color:#007bff!important;background:#eef6ff;outline:none;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>
@@ -482,6 +527,13 @@ function renderLossProducts(order){
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
 function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
 var _filtersLoaded=false, _charts={}, _overviewProductRows=[], _overviewCustomerRows=[], _orderDetailRows=[];
+var _productDetailSourceRows=[], _productCategorySourceRows=[];
+var _productDetailSortField='', _productDetailSortDirections={gross_profit:'desc',gross_margin:'desc'};
+var _categoryDetailSortField='', _categoryDetailSortDirections={gross_profit:'desc',gross_margin:'desc'};
+var _customerDetailSourceRows=[], _customerGroupSourceRows=[], _customerKindSourceRows=[];
+var _customerDetailSortField='', _customerDetailSortDirections={revenue:'desc',profit:'desc'};
+var _orderTabSummary={}, _orderReportSourceRows=[], _orderStatusSourceRows=[], _paymentStatusSourceRows=[];
+var _orderReportSortField='', _orderReportSortDirections={revenue:'desc',profit:'desc'};
 var _slowMovingRows=[], _slowMovingSummary={}, _slowMovingSort={key:'',direction:''};
 var _supplierBreakdownRows=[], _supplierBreakdownSummary={};
 var COLORS=['#36A2EB','#FF6384','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#7BC8A4','#E7646A','#8B5CF6','#10B981','#F59E0B','#3B82F6','#EF4444','#6366F1'];
@@ -683,6 +735,339 @@ function appendMetricFiltersToUrl(url){
     return url;
 }
 
+var SALES_TABLE_DEFAULT_PAGE_SIZE=25;
+var SALES_TABLE_PAGE_SIZE_OPTIONS=[25,50,100,200];
+var _salesTablePaginationStates={};
+var _salesTablePaginationObservers=[];
+
+function getSalesTablePageSize(tableId){
+    var saved=parseInt(localStorage.getItem('ifshop_sales_table_page_size_'+tableId)||'',10);
+    return SALES_TABLE_PAGE_SIZE_OPTIONS.indexOf(saved)>=0?saved:SALES_TABLE_DEFAULT_PAGE_SIZE;
+}
+
+function buildSalesTablePaginationButtons(currentPage,totalPages){
+    if(totalPages<=1) return '';
+    var pages=[1];
+    for(var page=Math.max(2,currentPage-2);page<=Math.min(totalPages-1,currentPage+2);page++){
+        pages.push(page);
+    }
+    if(totalPages>1) pages.push(totalPages);
+    pages=pages.filter(function(page,index,values){
+        return values.indexOf(page)===index;
+    }).sort(function(a,b){return a-b;});
+
+    var html='<button type="button" class="btn btn-sm btn-outline-secondary sales-table-page-btn" data-page="'+
+        (currentPage-1)+'"'+(currentPage<=1?' disabled':'')+'>Trước</button>';
+    var previousPage=0;
+    pages.forEach(function(page){
+        if(previousPage&&page-previousPage>1){
+            html+='<span class="btn btn-sm btn-light disabled">…</span>';
+        }
+        html+='<button type="button" class="btn btn-sm '+
+            (page===currentPage?'btn-primary active':'btn-outline-primary')+
+            ' sales-table-page-btn" data-page="'+page+'">'+page+'</button>';
+        previousPage=page;
+    });
+    html+='<button type="button" class="btn btn-sm btn-outline-secondary sales-table-page-btn" data-page="'+
+        (currentPage+1)+'"'+(currentPage>=totalPages?' disabled':'')+'>Sau</button>';
+    return html;
+}
+
+function updateSalesTablePagination(tableId,resetPage){
+    var state=_salesTablePaginationStates[tableId];
+    var $table=$('#'+tableId);
+    if(!state||!$table.length) return;
+    if(resetPage) state.page=1;
+
+    var $rows=$table.children('tbody').children('tr');
+    var onlyMessageRow=$rows.length===1&&$rows.first().children('td[colspan]').length>0;
+    var $pagination=$('.sales-table-pagination[data-table-id="'+tableId+'"]');
+    if(!$rows.length||onlyMessageRow){
+        $rows.show();
+        $pagination.attr('hidden',true);
+        return;
+    }
+
+    var total=$rows.length;
+    var pageSize=state.pageSize;
+    var totalPages=Math.max(1,Math.ceil(total/pageSize));
+    if(state.page>totalPages) state.page=totalPages;
+    if(state.page<1) state.page=1;
+    var start=(state.page-1)*pageSize;
+    var end=Math.min(start+pageSize,total);
+
+    $rows.hide().slice(start,end).show();
+    $pagination.removeAttr('hidden');
+    $pagination.find('.sales-table-pagination-summary').html(
+        'Hiển thị <strong>'+fmt(start+1)+'-'+fmt(end)+'</strong> / <strong>'+fmt(total)+'</strong> dòng · Trang <strong>'+
+        state.page+'/'+totalPages+'</strong>'
+    );
+    $pagination.find('.sales-table-page-size').val(String(pageSize));
+    $pagination.find('.sales-table-pagination-buttons').html(
+        buildSalesTablePaginationButtons(state.page,totalPages)
+    );
+}
+
+function initSalesTablePagination(){
+    $('#reportTabs').siblings('.tab-content').first().find('table[id]').each(function(){
+        var table=this;
+        var tableId=String(table.id||'');
+        var tbody=table.tBodies&&table.tBodies[0];
+        if(!tableId||!tbody||_salesTablePaginationStates[tableId]) return;
+
+        var pageSize=getSalesTablePageSize(tableId);
+        _salesTablePaginationStates[tableId]={page:1,pageSize:pageSize};
+        var optionsHtml=SALES_TABLE_PAGE_SIZE_OPTIONS.map(function(size){
+            return '<option value="'+size+'"'+(size===pageSize?' selected':'')+'>'+size+' dòng</option>';
+        }).join('');
+        var columnConfigHtml=tableId==='supplier_sales_tbl'
+            ? ''
+            : '<span class="sales-table-column-config" id="sales_col_config_'+tableId+'"></span>';
+        var paginationHtml=
+            '<div class="sales-table-pagination" data-table-id="'+tableId+'" hidden>'+
+                '<div class="sales-table-pagination-summary small text-muted"></div>'+
+                '<div class="sales-table-pagination-actions">'+
+                    '<label class="small text-muted mb-0" for="sales_page_size_'+tableId+'">Hiển thị</label>'+
+                    '<select class="form-control form-control-sm sales-table-page-size" id="sales_page_size_'+tableId+'">'+
+                        optionsHtml+
+                    '</select>'+
+                    '<div class="sales-table-pagination-buttons"></div>'+
+                '</div>'+
+            '</div>';
+        var $responsive=$(table).closest('.table-responsive');
+        if(columnConfigHtml){
+            var $cardHeader=$(table).closest('.card').children('.card-header').first();
+            if($cardHeader.length){
+                $cardHeader
+                    .addClass('sales-table-column-header')
+                    .append(columnConfigHtml);
+            }else if($responsive.length){
+                $responsive.before('<div class="sales-table-column-toolbar">'+columnConfigHtml+'</div>');
+            }else{
+                $(table).before('<div class="sales-table-column-toolbar">'+columnConfigHtml+'</div>');
+            }
+        }
+        if($responsive.length){
+            $responsive.after(paginationHtml);
+        }else{
+            $(table).after(paginationHtml);
+        }
+
+        var observer=new MutationObserver(function(mutations){
+            var rowsChanged=mutations.some(function(mutation){
+                return mutation.type==='childList';
+            });
+            if(rowsChanged) updateSalesTablePagination(tableId,true);
+        });
+        observer.observe(tbody,{childList:true});
+        _salesTablePaginationObservers.push(observer);
+        updateSalesTablePagination(tableId,true);
+    });
+
+    $(document).on('change','.sales-table-page-size',function(){
+        var tableId=String($(this).closest('.sales-table-pagination').data('table-id')||'');
+        var state=_salesTablePaginationStates[tableId];
+        if(!state) return;
+        state.pageSize=parseInt($(this).val()||String(SALES_TABLE_DEFAULT_PAGE_SIZE),10)||SALES_TABLE_DEFAULT_PAGE_SIZE;
+        state.page=1;
+        localStorage.setItem('ifshop_sales_table_page_size_'+tableId,String(state.pageSize));
+        updateSalesTablePagination(tableId,false);
+    });
+    $(document).on('click','.sales-table-page-btn',function(){
+        if($(this).prop('disabled')) return;
+        var $pagination=$(this).closest('.sales-table-pagination');
+        var tableId=String($pagination.data('table-id')||'');
+        var state=_salesTablePaginationStates[tableId];
+        var page=parseInt($(this).data('page'),10);
+        if(!state||!page||page<1||page===state.page) return;
+        state.page=page;
+        updateSalesTablePagination(tableId,false);
+        var table=document.getElementById(tableId);
+        if(table){
+            var scrollContainer=$(table).closest('.table-responsive').get(0);
+            if(scrollContainer) scrollContainer.scrollTop=0;
+            table.scrollIntoView({behavior:'smooth',block:'start'});
+        }
+    });
+}
+
+var _salesTableColumnConfigs={};
+var _salesTableColumnObservers=[];
+
+function getSalesTableColumnLabel($header,index){
+    var $copy=$header.clone();
+    $copy.find('button,.sr-only').remove();
+    return $copy.text().replace(/\s+/g,' ').trim()||('Cột '+(index+1));
+}
+
+function getSalesTableColumns(tableId){
+    return $('#'+tableId+' thead tr').first().children('th').map(function(index){
+        return {
+            key:'col_'+index,
+            label:getSalesTableColumnLabel($(this),index),
+            default:true,
+            alwaysOn:index===0
+        };
+    }).get();
+}
+
+function assignSalesTableColumnKeys(tableId,columns){
+    var $table=$('#'+tableId);
+    $table.find('thead tr').each(function(){
+        var visualIndex=0;
+        $(this).children('th').each(function(){
+            var $cell=$(this);
+            var span=parseInt($cell.attr('data-sales-original-colspan')||$cell.attr('colspan')||'1',10)||1;
+            if(span>1&&!$cell.attr('data-sales-original-colspan')){
+                $cell.attr('data-sales-original-colspan',span);
+            }
+            $cell.removeAttr('data-col data-sales-col-start data-sales-col-span');
+            if(span===1&&columns[visualIndex]){
+                $cell.attr('data-col',columns[visualIndex].key);
+            }else if(span>1){
+                $cell
+                    .attr('data-sales-col-start',visualIndex)
+                    .attr('data-sales-col-span',span);
+            }
+            visualIndex+=span;
+        });
+    });
+    $table.find('tbody tr,tfoot tr').each(function(){
+        var visualIndex=0;
+        $(this).children('td,th').each(function(){
+            var $cell=$(this);
+            var span=parseInt($cell.attr('data-sales-original-colspan')||$cell.attr('colspan')||'1',10)||1;
+            if(span>1&&!$cell.attr('data-sales-original-colspan')){
+                $cell.attr('data-sales-original-colspan',span);
+            }
+            $cell.removeAttr('data-col data-sales-col-start data-sales-col-span');
+            if(span===1&&columns[visualIndex]){
+                $cell.attr('data-col',columns[visualIndex].key);
+            }else if(span>1){
+                $cell
+                    .attr('data-sales-col-start',visualIndex)
+                    .attr('data-sales-col-span',span);
+            }
+            visualIndex+=span;
+        });
+    });
+}
+
+function syncSalesTableColumnSpans(tableId,columns,state){
+    $('#'+tableId).find('[data-sales-col-span]').each(function(){
+        var start=parseInt($(this).attr('data-sales-col-start')||'0',10)||0;
+        var span=parseInt($(this).attr('data-sales-col-span')||'1',10)||1;
+        var visibleCount=0;
+        for(var index=start;index<start+span&&index<columns.length;index++){
+            var column=columns[index];
+            if(column.alwaysOn||state[column.key]!==false) visibleCount++;
+        }
+        $(this)
+            .attr('colspan',Math.max(visibleCount,1))
+            .toggle(visibleCount>0);
+    });
+}
+
+function initSalesTableColumnConfigs(){
+    $('#reportTabs').siblings('.tab-content').first().find('table[id]').each(function(){
+        var table=this;
+        var tableId=String(table.id||'');
+        var tbody=table.tBodies&&table.tBodies[0];
+        if(!tableId||!tbody||tableId==='supplier_sales_tbl'||_salesTableColumnConfigs[tableId]) return;
+
+        var columns=getSalesTableColumns(tableId);
+        if(columns.length<2) return;
+        assignSalesTableColumnKeys(tableId,columns);
+        var config=new ColumnConfig({
+            storageKey:'ifshop_sales_columns_'+tableId+'_user_{{ request.user.id|default:"anonymous" }}',
+            tableSelector:'#'+tableId,
+            buttonContainer:'#sales_col_config_'+tableId,
+            columns:columns,
+            onApply:function(state){
+                syncSalesTableColumnSpans(tableId,columns,state);
+            }
+        });
+        _salesTableColumnConfigs[tableId]=config;
+        $('#sales_col_config_'+tableId).on('click','.cc-trigger',function(event){
+            event.preventDefault();
+            event.stopPropagation();
+            $(this).dropdown('toggle');
+        });
+
+        var observer=new MutationObserver(function(mutations){
+            var rowsChanged=mutations.some(function(mutation){
+                return mutation.type==='childList';
+            });
+            if(!rowsChanged) return;
+            assignSalesTableColumnKeys(tableId,columns);
+            config.apply();
+        });
+        observer.observe(tbody,{childList:true});
+        _salesTableColumnObservers.push(observer);
+    });
+}
+
+var SALES_REPORT_TAB_IDS=[
+    'tab_overview',
+    'tab_daily_finance',
+    'tab_products',
+    'tab_sku',
+    'tab_customers',
+    'tab_staff',
+    'tab_orders',
+    'tab_returns',
+    'tab_profit',
+    'tab_slow_moving'
+];
+var SALES_REPORT_TAB_STORAGE_KEY='ifshop_sales_visible_tabs_v1_user_{{ request.user.id|default:"anonymous" }}';
+var _salesReportTabVisibility={};
+
+function loadSalesReportTabVisibility(){
+    var saved={};
+    try{
+        saved=JSON.parse(localStorage.getItem(SALES_REPORT_TAB_STORAGE_KEY)||'{}')||{};
+    }catch(error){
+        saved={};
+    }
+    SALES_REPORT_TAB_IDS.forEach(function(tabId){
+        _salesReportTabVisibility[tabId]=saved[tabId]!==false;
+    });
+    var hasVisibleTab=SALES_REPORT_TAB_IDS.some(function(tabId){
+        return _salesReportTabVisibility[tabId];
+    });
+    if(!hasVisibleTab) _salesReportTabVisibility.tab_overview=true;
+}
+
+function saveSalesReportTabVisibility(){
+    try{
+        localStorage.setItem(SALES_REPORT_TAB_STORAGE_KEY,JSON.stringify(_salesReportTabVisibility));
+    }catch(error){}
+}
+
+function applySalesReportTabVisibility(){
+    var visibleCount=0;
+    SALES_REPORT_TAB_IDS.forEach(function(tabId){
+        var visible=_salesReportTabVisibility[tabId]!==false;
+        if(visible) visibleCount++;
+        $('#reportTabs a[data-toggle="tab"][href="#'+tabId+'"]').closest('.nav-item').toggle(visible);
+        $('.sales-tab-visibility-toggle[data-tab-id="'+tabId+'"]').prop('checked',visible);
+    });
+    $('.sales-tab-visibility-toggle').each(function(){
+        $(this).prop('disabled',visibleCount===1&&$(this).is(':checked'));
+    });
+    if(!$('#reportTabs a[data-toggle="tab"].active:visible').length){
+        $('#reportTabs a[data-toggle="tab"]:visible').first().tab('show');
+    }
+}
+
+function showSalesReportTab(tabId){
+    if(SALES_REPORT_TAB_IDS.indexOf(tabId)<0) return;
+    _salesReportTabVisibility[tabId]=true;
+    saveSalesReportTabVisibility();
+    applySalesReportTabVisibility();
+    $('#reportTabs a[data-toggle="tab"][href="#'+tabId+'"]').tab('show');
+}
+
 $(document).ready(function(){
     var today=new Date(), firstDay=new Date(today.getFullYear(),today.getMonth(),1);
     $('#filter_from_date').val(toIsoDate(firstDay));
@@ -702,12 +1087,85 @@ $(document).ready(function(){
         }
         renderSlowMovingRows();
     });
+    $('.product-detail-sort-btn').on('click', function(){
+        var field=String($(this).data('sort-field')||'');
+        if(field!=='gross_profit'&&field!=='gross_margin') return;
+        if(_productDetailSortField===field){
+            _productDetailSortDirections[field]=_productDetailSortDirections[field]==='desc'?'asc':'desc';
+        }else{
+            _productDetailSortField=field;
+            _productDetailSortDirections[field]='desc';
+        }
+        syncProductDetailSortButtons();
+        renderProductTab();
+    });
+    syncProductDetailSortButtons();
+    $('.category-detail-sort-btn').on('click', function(){
+        var field=String($(this).data('sort-field')||'');
+        if(field!=='gross_profit'&&field!=='gross_margin') return;
+        if(_categoryDetailSortField===field){
+            _categoryDetailSortDirections[field]=_categoryDetailSortDirections[field]==='desc'?'asc':'desc';
+        }else{
+            _categoryDetailSortField=field;
+            _categoryDetailSortDirections[field]='desc';
+        }
+        syncCategoryDetailSortButtons();
+        renderProductTab();
+    });
+    syncCategoryDetailSortButtons();
+    $('.customer-detail-sort-btn').on('click', function(){
+        var field=String($(this).data('sort-field')||'');
+        if(field!=='revenue'&&field!=='profit') return;
+        if(_customerDetailSortField===field){
+            _customerDetailSortDirections[field]=_customerDetailSortDirections[field]==='desc'?'asc':'desc';
+        }else{
+            _customerDetailSortField=field;
+            _customerDetailSortDirections[field]='desc';
+        }
+        syncCustomerDetailSortButtons();
+        renderCustomerTab();
+    });
+    syncCustomerDetailSortButtons();
+    $('.order-report-sort-btn').on('click', function(){
+        var field=String($(this).data('sort-field')||'');
+        if(field!=='revenue'&&field!=='profit') return;
+        if(_orderReportSortField===field){
+            _orderReportSortDirections[field]=_orderReportSortDirections[field]==='desc'?'asc':'desc';
+        }else{
+            _orderReportSortField=field;
+            _orderReportSortDirections[field]='desc';
+        }
+        syncOrderReportSortButtons();
+        renderOrderTab();
+    });
+    syncOrderReportSortButtons();
     $('#supplier_sales_filter').on('change', function(){applySupplierFilter($(this).val(),false);});
     $('#btn_clear_supplier_filter').on('click', function(){applySupplierFilter('',false);});
     $('#order_detail_from_date,#order_detail_to_date').on('change', refreshOrderDetails);
     $('#btn_order_detail_current_month').on('click', function(){setOrderDetailCurrentMonth();refreshOrderDetails();});
     $('#orderDetailCollapse').on('shown.bs.collapse', refreshOrderDetails).on('hidden.bs.collapse', function(){$('#order_detail_tbl tbody').empty();});
     $('#supplierSalesCollapse').on('shown.bs.collapse', function(){captureSupplierSalesFullWidth();syncSupplierSalesColumnLayout();});
+    initSalesTablePagination();
+    initSalesTableColumnConfigs();
+    loadSalesReportTabVisibility();
+    applySalesReportTabVisibility();
+    $('#btn_sales_tab_config').on('click',function(){
+        applySalesReportTabVisibility();
+        $('#modal_sales_tab_config').modal('show');
+    });
+    $('.sales-tab-visibility-toggle').on('change',function(){
+        var tabId=String($(this).data('tab-id')||'');
+        _salesReportTabVisibility[tabId]=$(this).is(':checked');
+        saveSalesReportTabVisibility();
+        applySalesReportTabVisibility();
+    });
+    $('#btn_reset_sales_tabs').on('click',function(){
+        SALES_REPORT_TAB_IDS.forEach(function(tabId){
+            _salesReportTabVisibility[tabId]=true;
+        });
+        saveSalesReportTabVisibility();
+        applySalesReportTabVisibility();
+    });
     applyQuickRangeState();
     applyTimeGroupUi(getTimeGroupText());
     loadReport();
@@ -729,7 +1187,7 @@ $(document).ready(function(){
         applyTimeGroupUi(getTimeGroupText());
         loadReport();
     });
-    $('#btn_view_loss').click(function(e){e.preventDefault();$('#filter_profit').val('loss');loadReport();setTimeout(function(){$('#reportTabs a[href="#tab_orders"]').tab('show');},500);});
+    $('#btn_view_loss').click(function(e){e.preventDefault();$('#filter_profit').val('loss');loadReport();setTimeout(function(){showSalesReportTab('tab_orders');},500);});
 });
 
 function loadReport(){
@@ -810,7 +1268,7 @@ function renderDailyTable(daily){
     $('#report_tbl tbody').html(h);$('#ft_count').text(tc);$('#ft_revenue').text(fmtD(tr));$('#ft_cost').text(fmtD(tco));$('#ft_profit').html('<span class="'+totalClass+'">'+fmtD(tp)+'</span>');$('#ft_profit_margin').html('<span class="'+totalClass+'">'+totalMargin.toFixed(1)+'%</span>');$('#ft_returns').text(fmtD(tre));
 }
 function renderDailyFinanceTab(rows){
-    var h='',tg=0,tr=0,tnr=0,tc=0,tgp=0,tnp=0;
+    var h='',tg=0,tr=0,tret=0,tnr=0,tc=0,tgp=0,tnp=0;
     (rows||[]).forEach(function(d){
         var goods=Number(d.goods_amount||0), revenue=Number(d.revenue||0), returns=Number(d.returns||0), netRevenue=Number(d.net_revenue);
         if(!isFinite(netRevenue)) netRevenue=revenue-returns;
@@ -820,11 +1278,12 @@ function renderDailyFinanceTab(rows){
         var margin=netRevenue>0?(grossProfit/netRevenue*100):0;
         var gpClass=grossProfit>=0?'text-success':'text-danger';
         var npClass=netProfit>=0?'text-success':'text-danger';
-        tg+=goods;tr+=revenue;tnr+=netRevenue;tc+=cost;tgp+=grossProfit;tnp+=netProfit;
+        tg+=goods;tr+=revenue;tret+=returns;tnr+=netRevenue;tc+=cost;tgp+=grossProfit;tnp+=netProfit;
         h+='<tr>' +
             '<td class="text-nowrap">'+escapeHtml(d.date||'')+'</td>' +
             '<td class="text-right">'+fmtD(goods)+'</td>' +
             '<td class="text-right">'+fmtD(revenue)+'</td>' +
+            '<td class="text-right text-danger">'+fmtD(returns)+'</td>' +
             '<td class="text-right">'+fmtD(netRevenue)+'</td>' +
             '<td class="text-right">'+fmtD(cost)+'</td>' +
             '<td class="text-right '+gpClass+'">'+fmtD(grossProfit)+'</td>' +
@@ -832,10 +1291,10 @@ function renderDailyFinanceTab(rows){
             '<td class="text-right '+npClass+'">'+fmtD(netProfit)+'</td>' +
         '</tr>';
     });
-    if(!h)h='<tr><td colspan="8" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+    if(!h)h='<tr><td colspan="9" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
     var totalMargin=tnr>0?(tgp/tnr*100):0;
     $('#daily_finance_tbl tbody').html(h);
-    $('#df_ft_goods').text(fmtD(tg));$('#df_ft_revenue').text(fmtD(tr));$('#df_ft_net_revenue').text(fmtD(tnr));$('#df_ft_cost').text(fmtD(tc));
+    $('#df_ft_goods').text(fmtD(tg));$('#df_ft_revenue').text(fmtD(tr));$('#df_ft_returns').text(fmtD(tret));$('#df_ft_net_revenue').text(fmtD(tnr));$('#df_ft_cost').text(fmtD(tc));
     $('#df_ft_gross_profit').html('<span class="'+(tgp>=0?'text-success':'text-danger')+'">'+fmtD(tgp)+'</span>');
     $('#df_ft_gross_margin').html('<span class="'+(tgp>=0?'text-success':'text-danger')+'">'+totalMargin.toFixed(1)+'%</span>');
     $('#df_ft_net_profit').html('<span class="'+(tnp>=0?'text-success':'text-danger')+'">'+fmtD(tnp)+'</span>');
@@ -1055,13 +1514,102 @@ function renderDailyChart(daily){
     _charts.daily=new Chart(ctx,{type:'bar',data:{labels:daily.map(function(d){return d.date;}),datasets:[{label:'Doanh thu',data:daily.map(function(d){return d.revenue;}),backgroundColor:'rgba(54,162,235,0.7)',borderColor:'rgba(54,162,235,1)',borderWidth:1,borderRadius:4,order:2},{label:'Lợi nhuận',data:daily.map(function(d){return d.profit;}),type:'line',borderColor:'#28a745',backgroundColor:'rgba(40,167,69,0.1)',fill:true,tension:0.3,pointRadius:3,order:1}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top',labels:{usePointStyle:true,padding:15}}},scales:{y:{beginAtZero:true,ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}},x:{ticks:{maxRotation:45}}}}});
 }
 // TAB 2: Product breakdown
+function getProductDetailSortValue(row,field){
+    var lineProfit=Number(row.line_profit!=null?row.line_profit:(row.profit!=null?row.profit:(Number(row.amount||0)-Number(row.cost||0))))||0;
+    var grossProfit=Number(row.gross_profit!=null?row.gross_profit:lineProfit)||0;
+    if(field==='gross_profit') return grossProfit;
+    var grossMargin=Number(row.gross_margin);
+    if(isFinite(grossMargin)) return grossMargin;
+    var netRevenue=Number(row.net_revenue!=null?row.net_revenue:row.amount)||0;
+    return netRevenue>0?(grossProfit/netRevenue*100):0;
+}
+function sortProductDetailRows(rows){
+    if(!_productDetailSortField) return (rows||[]).slice();
+    var field=_productDetailSortField;
+    var direction=_productDetailSortDirections[field]==='asc'?1:-1;
+    return (rows||[]).map(function(row,index){return {row:row,index:index};}).sort(function(left,right){
+        var difference=getProductDetailSortValue(left.row,field)-getProductDetailSortValue(right.row,field);
+        if(difference!==0) return difference*direction;
+        var nameDifference=String(left.row.name||'').localeCompare(String(right.row.name||''),'vi');
+        return nameDifference||left.index-right.index;
+    }).map(function(item){return item.row;});
+}
+function syncProductDetailSortButtons(){
+    $('.product-detail-sort-btn').each(function(){
+        var field=String($(this).data('sort-field')||'');
+        var label=String($(this).data('sort-label')||'dữ liệu');
+        var active=_productDetailSortField===field;
+        var direction=_productDetailSortDirections[field]||'desc';
+        var nextDirection=direction==='desc'?'tăng dần':'giảm dần';
+        var title=active
+            ? 'Đang sắp xếp '+label+' '+(direction==='desc'?'giảm dần':'tăng dần')+'. Bấm để chuyển sang '+nextDirection
+            : 'Bấm để sắp xếp '+label+' giảm dần';
+        $(this).find('i')
+            .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+            .addClass(active?(direction==='desc'?'fa-sort-amount-down':'fa-sort-amount-up'):'fa-sort');
+        $(this)
+            .toggleClass('active',active)
+            .attr('data-direction',active?direction:'')
+            .attr('title',title)
+            .attr('aria-label',title);
+    });
+}
+function getCategoryDetailSortValue(row,field){
+    var revenue=Number(row.revenue||0)||0;
+    var cost=Number(row.cost||0)||0;
+    var profit=Number(row.profit!=null?row.profit:(revenue-cost))||0;
+    var grossProfit=Number(row.gross_profit!=null?row.gross_profit:profit)||0;
+    if(field==='gross_profit') return grossProfit;
+    var grossMargin=Number(row.gross_margin);
+    if(isFinite(grossMargin)) return grossMargin;
+    var netRevenue=Number(row.net_revenue!=null?row.net_revenue:revenue)||0;
+    return netRevenue>0?(grossProfit/netRevenue*100):0;
+}
+function sortCategoryDetailRows(rows){
+    if(!_categoryDetailSortField) return (rows||[]).slice();
+    var field=_categoryDetailSortField;
+    var direction=_categoryDetailSortDirections[field]==='asc'?1:-1;
+    return (rows||[]).map(function(row,index){return {row:row,index:index};}).sort(function(left,right){
+        var difference=getCategoryDetailSortValue(left.row,field)-getCategoryDetailSortValue(right.row,field);
+        if(difference!==0) return difference*direction;
+        var nameDifference=String(left.row.name||'').localeCompare(String(right.row.name||''),'vi');
+        return nameDifference||left.index-right.index;
+    }).map(function(item){return item.row;});
+}
+function syncCategoryDetailSortButtons(){
+    $('.category-detail-sort-btn').each(function(){
+        var field=String($(this).data('sort-field')||'');
+        var label=String($(this).data('sort-label')||'dữ liệu');
+        var active=_categoryDetailSortField===field;
+        var direction=_categoryDetailSortDirections[field]||'desc';
+        var nextDirection=direction==='desc'?'tăng dần':'giảm dần';
+        var title=active
+            ? 'Đang sắp xếp '+label+' '+(direction==='desc'?'giảm dần':'tăng dần')+'. Bấm để chuyển sang '+nextDirection
+            : 'Bấm để sắp xếp '+label+' giảm dần';
+        $(this).find('i')
+            .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+            .addClass(active?(direction==='desc'?'fa-sort-amount-down':'fa-sort-amount-up'):'fa-sort');
+        $(this)
+            .toggleClass('active',active)
+            .attr('data-direction',active?direction:'')
+            .attr('title',title)
+            .attr('aria-label',title);
+    });
+}
 function renderProductTab(products, catBreakdown){
-    var filteredProducts=(products||[]).filter(matchesMetricRanges);
-    var filteredCategories=(catBreakdown||[]).filter(matchesMetricRanges);
+    if(Array.isArray(products)) _productDetailSourceRows=products;
+    if(Array.isArray(catBreakdown)) _productCategorySourceRows=catBreakdown;
+    var filteredProducts=(_productDetailSourceRows||[]).filter(matchesMetricRanges);
+    var filteredCategories=(_productCategorySourceRows||[]).filter(matchesMetricRanges);
+    var productTableRows=sortProductDetailRows(filteredProducts);
+    var categoryTableRows=sortCategoryDetailRows(filteredCategories);
+    syncProductDetailSortButtons();
+    syncCategoryDetailSortButtons();
     // Table
-    var h='',tq=0,tr=0,tc=0,tp=0;(filteredProducts||[]).forEach(function(p,i){var profit=p.profit||(p.amount-p.cost);var margin=p.amount>0?((profit/p.amount)*100).toFixed(1)+'%':'0%';var cls=profit>=0?'text-success':'text-danger';var safeName=String(p.name||'');var safeCategory=String(p.category||'');var safeProductType=String(p.product_type||'');tq+=(p.qty||p.total_qty||0);tr+=(p.amount||0);tc+=(p.cost||0);tp+=profit;h+='<tr><td>'+(i+1)+'</td><td title="'+escapeHtml(safeName)+'">'+escapeHtml(safeName.substring(0,30))+((safeName.length>30)?'...':'')+'</td><td><small>'+escapeHtml(safeCategory)+'</small></td><td><small>'+escapeHtml(safeProductType)+'</small></td><td class="text-right">'+fmt(p.qty||p.total_qty||0)+'</td><td class="text-right">'+fmtD(p.amount||0)+'</td><td class="text-right">'+fmtD(p.cost||0)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td></tr>';});
-    if(!h)h='<tr><td colspan="9" class="text-center text-muted">Không có dữ liệu</td></tr>';
-    $('#product_detail_tbl tbody').html(h);$('#pd_ft_qty').text(fmt(tq));$('#pd_ft_rev').text(fmtD(tr));$('#pd_ft_cost').text(fmtD(tc));$('#pd_ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');
+    var h='',tq=0,tr=0,tc=0,tp=0,tnr=0,tgp=0;(productTableRows||[]).forEach(function(p,i){var profit=Number(p.line_profit!=null?p.line_profit:(p.profit!=null?p.profit:(p.amount-p.cost)))||0;var margin=p.amount>0?((profit/p.amount)*100).toFixed(1)+'%':'0%';var grossProfit=Number(p.gross_profit!=null?p.gross_profit:profit)||0;var netRevenue=Number(p.net_revenue!=null?p.net_revenue:p.amount)||0;var grossMargin=Number(p.gross_margin);if(!isFinite(grossMargin))grossMargin=netRevenue>0?(grossProfit/netRevenue*100):0;var cls=profit>=0?'text-success':'text-danger';var grossCls=grossProfit>=0?'text-success':'text-danger';var safeName=String(p.name||'');var safeCategory=String(p.category||'');var safeProductType=String(p.product_type||'');tq+=(p.qty||p.total_qty||0);tr+=(p.amount||0);tc+=(p.cost||0);tp+=profit;tnr+=netRevenue;tgp+=grossProfit;h+='<tr><td>'+(i+1)+'</td><td title="'+escapeHtml(safeName)+'">'+escapeHtml(safeName.substring(0,30))+((safeName.length>30)?'...':'')+'</td><td><small>'+escapeHtml(safeCategory)+'</small></td><td><small>'+escapeHtml(safeProductType)+'</small></td><td class="text-right">'+fmt(p.qty||p.total_qty||0)+'</td><td class="text-right">'+fmtD(p.amount||0)+'</td><td class="text-right">'+fmtD(p.cost||0)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td><td class="text-right '+grossCls+'">'+fmtD(grossProfit)+'</td><td class="text-right '+grossCls+'">'+grossMargin.toFixed(1)+'%</td></tr>';});
+    if(!h)h='<tr><td colspan="11" class="text-center text-muted">Không có dữ liệu</td></tr>';
+    var totalGrossMargin=tnr>0?(tgp/tnr*100):0;
+    $('#product_detail_tbl tbody').html(h);$('#pd_ft_qty').text(fmt(tq));$('#pd_ft_rev').text(fmtD(tr));$('#pd_ft_cost').text(fmtD(tc));$('#pd_ft_profit').html('<span class="'+(tp>=0?'text-success':'text-danger')+'">'+fmtD(tp)+'</span>');$('#pd_ft_gross_profit').html('<span class="'+(tgp>=0?'text-success':'text-danger')+'">'+fmtD(tgp)+'</span>');$('#pd_ft_gross_margin').html('<span class="'+(tgp>=0?'text-success':'text-danger')+'">'+totalGrossMargin.toFixed(1)+'%</span>');
     // Bar chart
     destroyChart('productRev');var top15=(filteredProducts||[]).slice(0,15);
     if(top15.length){var ctx=document.getElementById('chart_product_revenue').getContext('2d');_charts.productRev=new Chart(ctx,{type:'bar',data:{labels:top15.map(function(p){return(p.name||'').substring(0,12);}),datasets:[{label:'Doanh thu',data:top15.map(function(p){return p.amount||0;}),backgroundColor:'rgba(54,162,235,0.7)',borderRadius:4},{label:'Lợi nhuận',data:top15.map(function(p){return p.profit||(p.amount-p.cost)||0;}),backgroundColor:'rgba(40,167,69,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmtD(c.raw);}}},legend:{position:'top'}},scales:{x:{ticks:{callback:function(v){return(v/1000000).toFixed(0)+'tr';}}}}}}); }
@@ -1069,18 +1617,24 @@ function renderProductTab(products, catBreakdown){
     destroyChart('catPie');
     if(filteredCategories&&filteredCategories.length){var ctx2=document.getElementById('chart_category_pie').getContext('2d');_charts.catPie=new Chart(ctx2,{type:'doughnut',data:{labels:filteredCategories.map(function(c){return c.name;}),datasets:[{data:filteredCategories.map(function(c){return c.revenue;}),backgroundColor:COLORS.slice(0,filteredCategories.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){return c.label+': '+fmtD(c.raw);}}}}}});}
     // Category table
-    var totalCategoryRevenue=0, catHtml='',catQty=0,catRev=0,catCost=0,catProfit=0;
-    (filteredCategories||[]).forEach(function(c){ totalCategoryRevenue += Number(c.revenue||0); });
-    (filteredCategories||[]).forEach(function(c){
+    var totalCategoryRevenue=0, catHtml='',catQty=0,catRev=0,catCost=0,catProfit=0,catNetRevenue=0,catGrossProfit=0;
+    (categoryTableRows||[]).forEach(function(c){ totalCategoryRevenue += Number(c.revenue||0); });
+    (categoryTableRows||[]).forEach(function(c){
         var revenue=Number(c.revenue||0), cost=Number(c.cost||0), profit=Number(c.profit||0), qty=Number(c.qty||0);
         var margin=revenue>0?((profit/revenue)*100).toFixed(1)+'%':'0%';
+        var grossProfit=Number(c.gross_profit!=null?c.gross_profit:profit)||0;
+        var netRevenue=Number(c.net_revenue!=null?c.net_revenue:revenue)||0;
+        var grossMargin=Number(c.gross_margin);
+        if(!isFinite(grossMargin))grossMargin=netRevenue>0?(grossProfit/netRevenue*100):0;
         var contribution=totalCategoryRevenue>0?((revenue/totalCategoryRevenue)*100).toFixed(1)+'%':'0%';
         var cls=profit>=0?'text-success':'text-danger';
-        catQty+=qty;catRev+=revenue;catCost+=cost;catProfit+=profit;
-        catHtml+='<tr><td><strong>'+escapeHtml(c.name||'Không DM')+'</strong></td><td class="text-right">'+fmt(qty)+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(cost)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td><td class="text-right"><span class="badge badge-light border">'+contribution+'</span></td></tr>';
+        var grossCls=grossProfit>=0?'text-success':'text-danger';
+        catQty+=qty;catRev+=revenue;catCost+=cost;catProfit+=profit;catNetRevenue+=netRevenue;catGrossProfit+=grossProfit;
+        catHtml+='<tr><td><strong>'+escapeHtml(c.name||'Không DM')+'</strong></td><td class="text-right">'+fmt(qty)+'</td><td class="text-right">'+fmtD(revenue)+'</td><td class="text-right">'+fmtD(cost)+'</td><td class="text-right '+cls+'">'+fmtD(profit)+'</td><td class="text-right '+cls+'">'+margin+'</td><td class="text-right '+grossCls+'">'+fmtD(grossProfit)+'</td><td class="text-right '+grossCls+'">'+grossMargin.toFixed(1)+'%</td><td class="text-right"><span class="badge badge-light border">'+contribution+'</span></td></tr>';
     });
-    if(!catHtml)catHtml='<tr><td colspan="7" class="text-center text-muted">Không có dữ liệu</td></tr>';
-    $('#category_detail_tbl tbody').html(catHtml);$('#cat_ft_qty').text(fmt(catQty));$('#cat_ft_rev').text(fmtD(catRev));$('#cat_ft_cost').text(fmtD(catCost));$('#cat_ft_profit').html('<span class="'+(catProfit>=0?'text-success':'text-danger')+'">'+fmtD(catProfit)+'</span>');
+    if(!catHtml)catHtml='<tr><td colspan="9" class="text-center text-muted">Không có dữ liệu</td></tr>';
+    var catGrossMargin=catNetRevenue>0?(catGrossProfit/catNetRevenue*100):0;
+    $('#category_detail_tbl tbody').html(catHtml);$('#cat_ft_qty').text(fmt(catQty));$('#cat_ft_rev').text(fmtD(catRev));$('#cat_ft_cost').text(fmtD(catCost));$('#cat_ft_profit').html('<span class="'+(catProfit>=0?'text-success':'text-danger')+'">'+fmtD(catProfit)+'</span>');$('#cat_ft_gross_profit').html('<span class="'+(catGrossProfit>=0?'text-success':'text-danger')+'">'+fmtD(catGrossProfit)+'</span>');$('#cat_ft_gross_margin').html('<span class="'+(catGrossProfit>=0?'text-success':'text-danger')+'">'+catGrossMargin.toFixed(1)+'%</span>');
 }
 
 function renderSkuTab(rows){
@@ -1110,12 +1664,52 @@ function renderSkuTab(rows){
 }
 
 // TAB 3: Customer breakdown
+function getCustomerDetailSortValue(row,field){
+    if(field==='revenue') return Number(row.amount!=null?row.amount:row.total_amount)||0;
+    return Number(row.profit||0)||0;
+}
+function sortCustomerDetailRows(rows){
+    if(!_customerDetailSortField) return (rows||[]).slice();
+    var field=_customerDetailSortField;
+    var direction=_customerDetailSortDirections[field]==='asc'?1:-1;
+    return (rows||[]).map(function(row,index){return {row:row,index:index};}).sort(function(left,right){
+        var difference=getCustomerDetailSortValue(left.row,field)-getCustomerDetailSortValue(right.row,field);
+        if(difference!==0) return difference*direction;
+        var nameDifference=String(left.row.name||'').localeCompare(String(right.row.name||''),'vi');
+        return nameDifference||left.index-right.index;
+    }).map(function(item){return item.row;});
+}
+function syncCustomerDetailSortButtons(){
+    $('.customer-detail-sort-btn').each(function(){
+        var field=String($(this).data('sort-field')||'');
+        var label=String($(this).data('sort-label')||'dữ liệu');
+        var active=_customerDetailSortField===field;
+        var direction=_customerDetailSortDirections[field]||'desc';
+        var nextDirection=direction==='desc'?'tăng dần':'giảm dần';
+        var title=active
+            ? 'Đang sắp xếp '+label+' '+(direction==='desc'?'giảm dần':'tăng dần')+'. Bấm để chuyển sang '+nextDirection
+            : 'Bấm để sắp xếp '+label+' giảm dần';
+        $(this).find('i')
+            .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+            .addClass(active?(direction==='desc'?'fa-sort-amount-down':'fa-sort-amount-up'):'fa-sort');
+        $(this)
+            .toggleClass('active',active)
+            .attr('data-direction',active?direction:'')
+            .attr('title',title)
+            .attr('aria-label',title);
+    });
+}
 function renderCustomerTab(customers, groupBreakdown, customerKindBreakdown){
-    var filteredCustomers=(customers||[]).filter(matchesMetricRanges);
-    var filteredGroups=(groupBreakdown||[]).filter(matchesMetricRanges);
-    var filteredKinds=(customerKindBreakdown||[]).filter(matchesMetricRanges);
+    if(Array.isArray(customers)) _customerDetailSourceRows=customers;
+    if(Array.isArray(groupBreakdown)) _customerGroupSourceRows=groupBreakdown;
+    if(Array.isArray(customerKindBreakdown)) _customerKindSourceRows=customerKindBreakdown;
+    var filteredCustomers=(_customerDetailSourceRows||[]).filter(matchesMetricRanges);
+    var filteredGroups=(_customerGroupSourceRows||[]).filter(matchesMetricRanges);
+    var filteredKinds=(_customerKindSourceRows||[]).filter(matchesMetricRanges);
+    var customerTableRows=sortCustomerDetailRows(filteredCustomers);
+    syncCustomerDetailSortButtons();
     var h='',to=0,tr=0,tc=0,tp=0,tpaid=0,td=0;
-    (filteredCustomers||[]).forEach(function(c,i){
+    (customerTableRows||[]).forEach(function(c,i){
         var orders=Number(c.orders||c.order_count||0), revenue=Number(c.amount||c.total_amount||0), cost=Number(c.cost||0), profit=Number(c.profit||0), paid=Number(c.paid||0), debt=Number(c.debt||(revenue-paid)||0);
         var profitClass=profit>=0?'text-success':'text-danger';
         to+=orders;tr+=revenue;tc+=cost;tp+=profit;tpaid+=paid;td+=debt;
@@ -1170,7 +1764,47 @@ function renderStaffTab(staff){
 }
 
 // TAB 5: Orders
+function sortOrderReportRows(rows){
+    if(!_orderReportSortField) return (rows||[]).slice();
+    var field=_orderReportSortField;
+    var direction=_orderReportSortDirections[field]==='asc'?1:-1;
+    return (rows||[]).map(function(row,index){return {row:row,index:index};}).sort(function(left,right){
+        var difference=(Number(left.row[field]||0)||0)-(Number(right.row[field]||0)||0);
+        if(difference!==0) return difference*direction;
+        var codeDifference=String(left.row.code||'').localeCompare(String(right.row.code||''),'vi');
+        return codeDifference||left.index-right.index;
+    }).map(function(item){return item.row;});
+}
+function syncOrderReportSortButtons(){
+    $('.order-report-sort-btn').each(function(){
+        var field=String($(this).data('sort-field')||'');
+        var label=String($(this).data('sort-label')||'dữ liệu');
+        var active=_orderReportSortField===field;
+        var direction=_orderReportSortDirections[field]||'desc';
+        var nextDirection=direction==='desc'?'tăng dần':'giảm dần';
+        var title=active
+            ? 'Đang sắp xếp '+label+' '+(direction==='desc'?'giảm dần':'tăng dần')+'. Bấm để chuyển sang '+nextDirection
+            : 'Bấm để sắp xếp '+label+' giảm dần';
+        $(this).find('i')
+            .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+            .addClass(active?(direction==='desc'?'fa-sort-amount-down':'fa-sort-amount-up'):'fa-sort');
+        $(this)
+            .toggleClass('active',active)
+            .attr('data-direction',active?direction:'')
+            .attr('title',title)
+            .attr('aria-label',title);
+    });
+}
 function renderOrderTab(summary, orders, statusBreakdown, paymentBreakdown){
+    if(summary&&typeof summary==='object') _orderTabSummary=summary;
+    if(Array.isArray(orders)) _orderReportSourceRows=orders;
+    if(Array.isArray(statusBreakdown)) _orderStatusSourceRows=statusBreakdown;
+    if(Array.isArray(paymentBreakdown)) _paymentStatusSourceRows=paymentBreakdown;
+    summary=_orderTabSummary||{};
+    orders=_orderReportSourceRows||[];
+    statusBreakdown=_orderStatusSourceRows||[];
+    paymentBreakdown=_paymentStatusSourceRows||[];
+    syncOrderReportSortButtons();
     var totalOrders=Number(summary.total_orders||0), totalRevenue=Number(summary.total_revenue||0), totalProfit=Number(summary.total_profit||0), totalDebt=Number(summary.total_debt||0);
     $('#or_avg_order').text(fmtD(totalOrders?totalRevenue/totalOrders:0));
     $('#or_avg_profit').text(fmtD(totalOrders?totalProfit/totalOrders:0));
@@ -1178,7 +1812,8 @@ function renderOrderTab(summary, orders, statusBreakdown, paymentBreakdown){
 
     var h='',sumGoods=0,sumDiscount=0,sumShipping=0,sumOtherFee=0,sumRevenue=0,sumPaid=0,sumDebt=0,sumCost=0,sumProfit=0;
     var filteredOrders=(orders||[]).filter(matchesMetricRanges);
-    (filteredOrders||[]).forEach(function(o,i){
+    var orderTableRows=sortOrderReportRows(filteredOrders);
+    (orderTableRows||[]).forEach(function(o,i){
         var profitClass=o.profit>=0?'text-success':'text-danger';
         var debtClass=o.debt>0?'text-danger':'';
         var statusText=escapeHtml(o.status_display||'');

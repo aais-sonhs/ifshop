@@ -984,6 +984,132 @@ class SalesReportTests(TestCase):
         self.assertContains(response, '<option value="10" selected>10 khách hàng</option>', html=True)
         self.assertNotContains(response, '>9 khách hàng</option>')
         self.assertContains(response, '200 khách hàng')
+        for paginated_table_id in (
+            'report_tbl',
+            'top_products_tbl',
+            'top_customers_tbl',
+            'supplier_sales_tbl',
+            'store_breakdown_tbl',
+            'order_detail_tbl',
+            'daily_finance_tbl',
+            'product_detail_tbl',
+            'category_detail_tbl',
+            'sku_detail_tbl',
+            'customer_detail_tbl',
+            'customer_kind_tbl',
+            'customer_group_tbl',
+            'staff_detail_tbl',
+            'order_report_tbl',
+            'return_order_tbl',
+            'return_product_tbl',
+            'profit_category_tbl',
+            'slow_moving_tbl',
+        ):
+            self.assertContains(response, f'id="{paginated_table_id}"')
+        self.assertContains(response, 'Hàng bị trả lại')
+        self.assertContains(response, 'id="df_ft_returns"')
+        self.assertContains(response, 'tret+=returns')
+        self.assertContains(response, 'Tỉ suất LN gộp')
+        self.assertContains(response, 'id="pd_ft_gross_profit"')
+        self.assertContains(response, 'id="pd_ft_gross_margin"')
+        self.assertContains(response, 'p.gross_profit')
+        self.assertContains(response, 'p.gross_margin')
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn product-detail-sort-btn"',
+            count=2,
+        )
+        self.assertContains(response, 'data-sort-field="gross_profit"')
+        self.assertContains(response, 'data-sort-field="gross_margin"')
+        self.assertContains(response, 'function sortProductDetailRows(rows)')
+        self.assertContains(response, 'function syncProductDetailSortButtons()')
+        self.assertContains(
+            response,
+            "_productDetailSortDirections={gross_profit:'desc',gross_margin:'desc'}",
+        )
+        self.assertContains(
+            response,
+            "_productDetailSortDirections[field]=_productDetailSortDirections[field]==='desc'?'asc':'desc'",
+        )
+        self.assertContains(response, 'id="cat_ft_gross_profit"')
+        self.assertContains(response, 'id="cat_ft_gross_margin"')
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn category-detail-sort-btn"',
+            count=2,
+        )
+        self.assertContains(response, 'function sortCategoryDetailRows(rows)')
+        self.assertContains(response, 'function syncCategoryDetailSortButtons()')
+        self.assertContains(
+            response,
+            "_categoryDetailSortDirections={gross_profit:'desc',gross_margin:'desc'}",
+        )
+        self.assertContains(
+            response,
+            "_categoryDetailSortDirections[field]=_categoryDetailSortDirections[field]==='desc'?'asc':'desc'",
+        )
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn customer-detail-sort-btn"',
+            count=2,
+        )
+        self.assertContains(response, 'data-sort-field="revenue"')
+        self.assertContains(response, 'data-sort-field="profit"')
+        self.assertContains(response, 'function sortCustomerDetailRows(rows)')
+        self.assertContains(response, 'function syncCustomerDetailSortButtons()')
+        self.assertContains(
+            response,
+            "_customerDetailSortDirections={revenue:'desc',profit:'desc'}",
+        )
+        self.assertContains(
+            response,
+            "_customerDetailSortDirections[field]=_customerDetailSortDirections[field]==='desc'?'asc':'desc'",
+        )
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn order-report-sort-btn"',
+            count=2,
+        )
+        self.assertContains(response, 'function sortOrderReportRows(rows)')
+        self.assertContains(response, 'function syncOrderReportSortButtons()')
+        self.assertContains(
+            response,
+            "_orderReportSortDirections={revenue:'desc',profit:'desc'}",
+        )
+        self.assertContains(
+            response,
+            "_orderReportSortDirections[field]=_orderReportSortDirections[field]==='desc'?'asc':'desc'",
+        )
+        self.assertContains(response, 'var SALES_TABLE_DEFAULT_PAGE_SIZE=25;')
+        self.assertContains(response, 'var SALES_TABLE_PAGE_SIZE_OPTIONS=[25,50,100,200];')
+        self.assertContains(response, 'function initSalesTablePagination()')
+        self.assertContains(
+            response,
+            "$('#reportTabs').siblings('.tab-content').first().find('table[id]')",
+        )
+        self.assertContains(response, 'new MutationObserver(function(mutations)')
+        self.assertContains(response, 'class="sales-table-pagination"')
+        self.assertContains(response, 'sales-table-pagination-summary')
+        self.assertContains(response, 'sales-table-page-size')
+        self.assertContains(response, 'sales-table-page-btn')
+        self.assertContains(response, 'initSalesTablePagination();')
+        self.assertContains(response, 'class="sales-table-column-config"')
+        self.assertContains(response, 'sales-table-column-header')
+        self.assertContains(
+            response,
+            "$(table).closest('.card').children('.card-header').first()",
+        )
+        self.assertContains(response, 'function getSalesTableColumns(tableId)')
+        self.assertContains(response, 'function assignSalesTableColumnKeys(tableId,columns)')
+        self.assertContains(response, 'function syncSalesTableColumnSpans(tableId,columns,state)')
+        self.assertContains(response, 'function initSalesTableColumnConfigs()')
+        self.assertContains(response, "alwaysOn:index===0")
+        self.assertContains(
+            response,
+            "storageKey:'ifshop_sales_columns_'+tableId+'_user_",
+        )
+        self.assertContains(response, "tableId==='supplier_sales_tbl'")
+        self.assertContains(response, 'initSalesTableColumnConfigs();')
         self.assertContains(response, "var productLimit=parseInt($('#top_products_limit').val()||'10',10)||10;")
         self.assertContains(response, "var customerLimit=parseInt($('#top_customers_limit').val()||'10',10)||10;")
         self.assertContains(response, 'renderOverviewRankings();')
@@ -1000,6 +1126,20 @@ class SalesReportTests(TestCase):
         self.assertContains(response, "$('#order_detail_tbl tbody').empty()")
         self.assertContains(response, 'href="#tab_slow_moving"')
         self.assertContains(response, 'Hàng bán chậm')
+        self.assertContains(response, 'id="btn_sales_tab_config"')
+        self.assertContains(response, '<i class="fas fa-eye mr-1"></i>Ẩn/Hiện', html=True)
+        self.assertContains(response, 'id="modal_sales_tab_config"')
+        self.assertContains(response, 'DT theo ngày', count=2)
+        self.assertContains(response, 'DT theo hàng', count=2)
+        self.assertContains(response, 'class="custom-control-input sales-tab-visibility-toggle"', count=10)
+        self.assertContains(response, 'id="btn_reset_sales_tabs"')
+        self.assertContains(response, 'var SALES_REPORT_TAB_IDS=[')
+        self.assertContains(response, "var SALES_REPORT_TAB_STORAGE_KEY='ifshop_sales_visible_tabs_v1_user_")
+        self.assertContains(response, 'function loadSalesReportTabVisibility()')
+        self.assertContains(response, 'function applySalesReportTabVisibility()')
+        self.assertContains(response, 'function showSalesReportTab(tabId)')
+        self.assertContains(response, 'visibleCount===1')
+        self.assertContains(response, "showSalesReportTab('tab_orders')")
         self.assertContains(response, 'id="slow_moving_threshold"')
         self.assertContains(response, '<option value="30" selected>Chậm từ 30 ngày</option>', html=True)
         self.assertContains(response, 'id="slow_moving_search"')
@@ -1007,7 +1147,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'data-sort="days_without_sale"')
         self.assertContains(response, 'data-sort="stock"')
         self.assertContains(response, 'data-sort="stock_value"')
-        self.assertContains(response, 'class="text-right app-sortable-heading"', count=3)
+        self.assertContains(response, 'class="text-right app-sortable-heading"', count=11)
         self.assertContains(response, 'class="app-sort-toggle-btn slow-moving-sort"', count=3)
         self.assertContains(response, 'fa-sort-amount-up')
         self.assertContains(response, 'fa-sort-amount-down')
@@ -1490,6 +1630,42 @@ class SalesReportTests(TestCase):
         self.assertEqual(row['gross_margin'], 53.3)
         self.assertEqual(row['net_profit'], 80.0)
         self.assertEqual(payload['daily'][0]['profit_margin'], 53.3)
+        product_row = payload['product_breakdown'][0]
+        self.assertEqual(product_row['line_profit'], 40.0)
+        self.assertEqual(product_row['returns_amount'], 30.0)
+        self.assertEqual(product_row['return_cost'], 70.0)
+        self.assertEqual(product_row['net_revenue'], 150.0)
+        self.assertEqual(product_row['net_cost'], 70.0)
+        self.assertEqual(product_row['gross_profit'], 80.0)
+        self.assertEqual(product_row['gross_margin'], 53.3)
+        category_row = payload['category_breakdown'][0]
+        self.assertEqual(category_row['returns_amount'], 30.0)
+        self.assertEqual(category_row['return_cost'], 70.0)
+        self.assertEqual(category_row['net_revenue'], 150.0)
+        self.assertEqual(category_row['net_cost'], 70.0)
+        self.assertEqual(category_row['gross_profit'], 80.0)
+        self.assertEqual(category_row['gross_margin'], 53.3)
+
+        export_response = self.client.get(reverse('export_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        daily_sheet = workbook['Tổng hợp ngày']
+        self.assertEqual(daily_sheet.cell(row=1, column=4).value, 'Hàng bị trả lại')
+        self.assertEqual(daily_sheet.cell(row=2, column=4).value, 30)
+        self.assertEqual(daily_sheet.cell(row=3, column=4).value, 30)
+        product_sheet = workbook['Mặt hàng']
+        self.assertEqual(product_sheet.cell(row=1, column=10).value, 'Lợi nhuận gộp')
+        self.assertEqual(product_sheet.cell(row=1, column=11).value, 'Tỉ suất LN gộp')
+        self.assertEqual(product_sheet.cell(row=2, column=10).value, 80)
+        self.assertAlmostEqual(product_sheet.cell(row=2, column=11).value, 0.533)
+        category_sheet = workbook['Nhóm mặt hàng']
+        self.assertEqual(category_sheet.cell(row=1, column=8).value, 'Lợi nhuận gộp')
+        self.assertEqual(category_sheet.cell(row=1, column=9).value, 'Tỉ suất LN gộp')
+        self.assertEqual(category_sheet.cell(row=2, column=8).value, 80)
+        self.assertAlmostEqual(category_sheet.cell(row=2, column=9).value, 0.533)
 
     def test_api_report_sales_groups_multiple_products_and_returns_by_supplier(self):
         today = date.today()
@@ -1632,6 +1808,113 @@ class SalesReportTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
         self.assertIn('Lan Nguyen', payload['filter_options']['salespersons'])
+
+    def test_api_report_sales_attributes_revenue_to_creator_unless_salesperson_is_assigned(self):
+        today = date.today()
+        ngoc = User.objects.create_user(
+            username='ngoc_sales_report',
+            password='pass123',
+            first_name='Ngọc',
+        )
+        UserProfile.objects.create(user=ngoc, store=self.store)
+        Order.objects.create(
+            code='DH-RP-CREATOR-NGOC',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            creator_name='Tên lưu cũ không đúng',
+            created_by=ngoc,
+        )
+        Order.objects.create(
+            code='DH-RP-ASSIGNED-STAFF',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=250,
+            final_amount=250,
+            paid_amount=250,
+            order_date=today,
+            salesperson='Lan được gán',
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        staff_rows = {
+            row['salesperson']: row
+            for row in payload['staff_breakdown']
+        }
+        self.assertEqual(staff_rows['Ngọc']['order_count'], 1)
+        self.assertEqual(staff_rows['Ngọc']['revenue'], 100.0)
+        self.assertEqual(staff_rows['Lan được gán']['order_count'], 1)
+        self.assertEqual(staff_rows['Lan được gán']['revenue'], 250.0)
+        self.assertNotIn('(Chưa gán NV)', staff_rows)
+        self.assertEqual(
+            {
+                row['code']: row['salesperson']
+                for row in payload['order_details']
+            },
+            {
+                'DH-RP-ASSIGNED-STAFF': 'Lan được gán',
+                'DH-RP-CREATOR-NGOC': 'Ngọc',
+            },
+        )
+
+        filtered_response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'salesperson': 'Ngọc',
+        })
+        self.assertEqual(filtered_response.status_code, 200)
+        filtered_payload = filtered_response.json()
+        self.assertEqual(filtered_payload['summary']['total_orders'], 1)
+        self.assertEqual(filtered_payload['summary']['total_revenue'], 100.0)
+        self.assertEqual(
+            [row['salesperson'] for row in filtered_payload['staff_breakdown']],
+            ['Ngọc'],
+        )
+
+        staff_report_response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(staff_report_response.status_code, 200)
+        staff_report_rows = {
+            row['salesperson']: row
+            for row in staff_report_response.json()['staff_data']
+        }
+        self.assertEqual(staff_report_rows['Ngọc']['order_count'], 1)
+        self.assertEqual(staff_report_rows['Ngọc']['revenue'], 100.0)
+        self.assertEqual(staff_report_rows['Lan được gán']['order_count'], 1)
+        self.assertEqual(staff_report_rows['Lan được gán']['revenue'], 250.0)
+        self.assertNotIn('(Chưa gán NV)', staff_report_rows)
+
+        export_response = self.client.get(reverse('export_staff_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        sheet = workbook['BC Doanh thu NV']
+        exported_revenue = {
+            sheet.cell(row=row, column=2).value: sheet.cell(row=row, column=4).value
+            for row in range(5, sheet.max_row)
+        }
+        self.assertEqual(exported_revenue['Ngọc'], 100)
+        self.assertEqual(exported_revenue['Lan được gán'], 250)
 
     def test_api_report_sales_filters_customer_kind_wholesale(self):
         today = date.today()

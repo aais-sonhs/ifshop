@@ -27,7 +27,12 @@ from core.store_utils import (
     is_brand_owner,
 )
 from products.models import ProductCategory
-from .models import StockAlert, StockAlertEmailRecipient
+from .models import DailyEmailReport, StockAlert, StockAlertEmailRecipient
+from .daily_email_reports import (
+    DailyEmailReportConfigurationError,
+    get_daily_email_report_recipients,
+    send_daily_email_report,
+)
 from .stock_alerts import (
     StockAlertConfigurationError,
     get_stock_alert_recipients,
@@ -128,6 +133,169 @@ def _stock_alert_forbidden_json():
         'status': 'error',
         'message': 'Chỉ chủ thương hiệu mới được cấu hình cảnh báo tồn kho qua email.',
     }, status=403)
+
+
+def _daily_email_report_for_brand(brand):
+    config, _ = DailyEmailReport.objects.get_or_create(
+        brand=brand,
+        defaults={
+            'email_recipients': '',
+            'is_active': False,
+        },
+    )
+    return config
+
+
+def _daily_email_report_forbidden_json():
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Chỉ chủ thương hiệu mới được cấu hình báo cáo email hằng ngày.',
+    }, status=403)
+
+
+@login_required(login_url='/login/')
+def daily_email_report_setting(request):
+    if not is_brand_owner(request.user):
+        messages.error(request, 'Chỉ chủ thương hiệu mới được cấu hình báo cáo email hằng ngày.')
+        return redirect('/dashboard/')
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        messages.error(request, 'Không tìm thấy thương hiệu để lưu cấu hình.')
+        return redirect('/dashboard/')
+
+    config = _daily_email_report_for_brand(brand)
+    selected_user_ids = set(config.recipient_users.values_list('id', flat=True))
+    staff_options = []
+    for user in _stock_alert_users_for_brand(brand):
+        staff_options.append({
+            'id': user.id,
+            'name': user.get_full_name().strip() or user.username,
+            'username': user.username,
+            'email': user.email or '',
+            'selected': user.id in selected_user_ids and bool(user.email),
+        })
+    extra_emails, _ = parse_recipient_emails(config.email_recipients)
+
+    context = {
+        'active_tab': 'daily_email_report_setting',
+        'daily_email_report': config,
+        'staff_options': staff_options,
+        'extra_emails': extra_emails,
+        'smtp_ready': not (
+            str(getattr(settings, 'EMAIL_BACKEND', '') or '').endswith('smtp.EmailBackend')
+            and not getattr(settings, 'EMAIL_HOST_USER', '')
+        ),
+    }
+    return render(request, 'system/daily_email_report_setting.html', context)
+
+
+@login_required(login_url='/login/')
+def api_save_daily_email_report_setting(request):
+    if not is_brand_owner(request.user):
+        return _daily_email_report_forbidden_json()
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Phương thức không hợp lệ.'}, status=405)
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu.'}, status=400)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Dữ liệu gửi lên không hợp lệ.'}, status=400)
+
+    send_time = parse_time(str(data.get('send_time') or '21:00'))
+    if not send_time:
+        return JsonResponse({'status': 'error', 'message': 'Giờ gửi không hợp lệ.'}, status=400)
+
+    selected_user_ids = _parse_id_set(data.get('recipient_user_ids'))
+    allowed_users = list(
+        _stock_alert_users_for_brand(brand)
+        .filter(id__in=selected_user_ids)
+        .exclude(email='')
+    )
+    if len(allowed_users) != len(selected_user_ids):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Có người nhận không thuộc thương hiệu hoặc chưa có email.',
+        }, status=400)
+
+    extra_emails, invalid_emails = parse_recipient_emails(data.get('email_recipients'))
+    if invalid_emails:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Email không hợp lệ: ' + ', '.join(invalid_emails),
+        }, status=400)
+    user_emails = {user.email.strip().lower() for user in allowed_users}
+    duplicate_emails = sorted(user_emails.intersection(extra_emails))
+    if duplicate_emails:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Email đang được chọn trùng: ' + ', '.join(duplicate_emails),
+        }, status=400)
+
+    is_active = bool(data.get('is_active', False))
+    if is_active and not allowed_users and not extra_emails:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Vui lòng chọn ít nhất một người nhận.',
+        }, status=400)
+
+    with transaction.atomic():
+        config = _daily_email_report_for_brand(brand)
+        config.send_time = send_time
+        config.is_active = is_active
+        config.email_recipients = ', '.join(extra_emails)
+        config.save()
+        config.recipient_users.set(allowed_users)
+
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'Đã lưu cấu hình báo cáo email hằng ngày.',
+        'recipient_count': len(get_daily_email_report_recipients(config)),
+    })
+
+
+@login_required(login_url='/login/')
+def api_test_daily_email_report(request):
+    if not is_brand_owner(request.user):
+        return _daily_email_report_forbidden_json()
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Phương thức không hợp lệ.'}, status=405)
+
+    brand = _stock_alert_brand_for_user(request.user)
+    if not brand:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy thương hiệu.'}, status=400)
+    config = _daily_email_report_for_brand(brand)
+    try:
+        result = send_daily_email_report(config, is_test=True)
+        config.last_test_sent = timezone.now()
+        config.last_error = ''
+        config.save(update_fields=['last_test_sent', 'last_error', 'updated_at'])
+        return JsonResponse({
+            'status': 'ok',
+            'message': (
+                f"Đã gửi báo cáo thử tới {result['sent_recipient_count']} người nhận."
+            ),
+        })
+    except DailyEmailReportConfigurationError as exc:
+        logger.warning(
+            'Cấu hình báo cáo email hằng ngày chưa hợp lệ cho brand_id=%s: %s',
+            brand.id,
+            exc,
+        )
+        config.last_error = str(exc)
+        config.save(update_fields=['last_error', 'updated_at'])
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
+    except Exception as exc:
+        logger.exception(
+            'Không thể gửi thử báo cáo email hằng ngày cho brand_id=%s',
+            brand.id,
+        )
+        config.last_error = str(exc)
+        config.save(update_fields=['last_error', 'updated_at'])
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
 
 
 @login_required(login_url='/login/')

@@ -21,7 +21,9 @@ from products.models import (
     Warehouse,
 )
 from system_management.models import Brand, Store, UserProfile
-from reports.models import StockAlert, StockAlertEmailRecipient
+from reports.models import DailyEmailReport, StockAlert, StockAlertEmailRecipient
+from reports.daily_email_reports import collect_daily_email_report_metrics
+from reports.management.commands.send_daily_email_reports import process_daily_email_report
 from reports.management.commands.send_low_stock_alerts import process_stock_alert
 
 
@@ -2639,6 +2641,215 @@ class StockAlertEmailSettingTests(TestCase):
         ):
             first = process_stock_alert(config.id, now=run_at)
             second = process_stock_alert(config.id, now=run_at)
+
+        self.assertEqual(first['status'], 'sent')
+        self.assertEqual(second['status'], 'skipped')
+        self.assertEqual(len(mail.outbox), 1)
+        config.refresh_from_db()
+        self.assertEqual(config.last_status, 'sent')
+
+
+class DailyEmailReportSettingTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(
+            username='daily_report_owner',
+            email='owner-daily@example.com',
+            password='pass123',
+        )
+        cls.brand = Brand.objects.create(
+            name='Brand Daily Email',
+            owner=cls.owner,
+        )
+        cls.store = Store.objects.create(
+            brand=cls.brand,
+            name='Cửa hàng báo cáo ngày',
+            code='DLY',
+        )
+        UserProfile.objects.create(user=cls.owner, store=cls.store)
+        cls.staff = User.objects.create_user(
+            username='daily_report_staff',
+            email='daily-staff@example.com',
+            password='pass123',
+        )
+        UserProfile.objects.create(
+            user=cls.staff,
+            store=cls.store,
+            position='Kế toán',
+        )
+        cls.warehouse = Warehouse.objects.create(
+            store=cls.store,
+            code='KHO-DLY',
+            name='Kho báo cáo ngày',
+        )
+        cls.product = Product.objects.create(
+            store=cls.store,
+            code='SP-DLY-001',
+            name='Sản phẩm báo cáo ngày',
+            cost_price=40,
+            created_by=cls.owner,
+        )
+        cls.customer = Customer.objects.create(
+            store=cls.store,
+            code='KH-DLY-001',
+            name='Khách báo cáo ngày',
+            created_by=cls.owner,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _create_daily_transactions(self):
+        report_date = date.today()
+        order = Order.objects.create(
+            code='DH-DLY-001',
+            store=self.store,
+            warehouse=self.warehouse,
+            customer=self.customer,
+            status=5,
+            payment_status=1,
+            total_amount=200,
+            final_amount=150,
+            paid_amount=100,
+            order_date=report_date,
+            created_by=self.owner,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=100,
+            cost_price=40,
+            total_price=200,
+        )
+        order_return = OrderReturn.objects.create(
+            code='TH-DLY-001',
+            order=order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            total_refund=30,
+            return_date=report_date,
+            created_by=self.owner,
+        )
+        OrderReturnItem.objects.create(
+            order_return=order_return,
+            product=self.product,
+            quantity=1,
+            unit_price=30,
+            total_price=30,
+        )
+        Receipt.objects.create(
+            code='PT-DLY-001',
+            store=self.store,
+            customer=self.customer,
+            order=order,
+            amount=100,
+            receipt_date=report_date,
+            status=1,
+            created_by=self.owner,
+        )
+        Receipt.objects.create(
+            code='PT-DLY-002',
+            store=self.store,
+            customer=self.customer,
+            amount=50,
+            receipt_date=report_date,
+            status=1,
+            created_by=self.owner,
+        )
+
+    def test_setting_page_and_menu_are_available_to_brand_owner(self):
+        response = self.client.get(reverse('daily_email_report_setting'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'BC email hàng ngày')
+        self.assertContains(response, 'Doanh thu')
+        self.assertContains(response, 'Lợi nhuận gộp')
+        self.assertContains(response, 'Tổng tiền về')
+        self.assertContains(response, 'id="daily_email_report_send_time"')
+        self.assertContains(response, 'placeholder="HH:MM"')
+
+    def test_regular_staff_cannot_manage_daily_email_report(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse('daily_email_report_setting'))
+        self.assertEqual(response.status_code, 302)
+        response = self.client.post(
+            reverse('api_save_daily_email_report_setting'),
+            data='{}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_metrics_include_returns_cost_and_completed_receipts(self):
+        self._create_daily_transactions()
+        config = DailyEmailReport.objects.create(brand=self.brand)
+
+        metrics = collect_daily_email_report_metrics(
+            config,
+            report_date=date.today(),
+        )
+
+        self.assertEqual(metrics['revenue'], 150)
+        self.assertEqual(metrics['returns_total'], 30)
+        self.assertEqual(metrics['net_revenue'], 120)
+        self.assertEqual(metrics['net_cost'], 40)
+        self.assertEqual(metrics['gross_profit'], 80)
+        self.assertEqual(metrics['total_money_received'], 150)
+
+    def test_save_and_send_test_daily_email_report(self):
+        self._create_daily_transactions()
+        response = self.client.post(
+            reverse('api_save_daily_email_report_setting'),
+            data={
+                'is_active': True,
+                'send_time': '21:00',
+                'recipient_user_ids': [self.staff.id],
+                'email_recipients': 'external-daily@example.com',
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        config = DailyEmailReport.objects.get(brand=self.brand)
+        self.assertTrue(config.is_active)
+        self.assertEqual(
+            list(config.recipient_users.values_list('id', flat=True)),
+            [self.staff.id],
+        )
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            response = self.client.post(reverse('api_test_daily_email_report'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(
+            {message.to[0] for message in mail.outbox},
+            {'daily-staff@example.com', 'external-daily@example.com'},
+        )
+        self.assertIn('Doanh thu: 150đ', mail.outbox[0].body)
+        self.assertIn('Lợi nhuận gộp: 80đ', mail.outbox[0].body)
+        self.assertIn('Tổng tiền về: 150đ', mail.outbox[0].body)
+
+    def test_scheduled_daily_report_sends_only_once_per_day(self):
+        self._create_daily_transactions()
+        config = DailyEmailReport.objects.create(
+            brand=self.brand,
+            is_active=True,
+            send_time=time(21, 0),
+        )
+        config.recipient_users.add(self.staff)
+        run_at = datetime.combine(date.today(), time(21, 0))
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            first = process_daily_email_report(config.id, now=run_at)
+            second = process_daily_email_report(config.id, now=run_at)
 
         self.assertEqual(first['status'], 'sent')
         self.assertEqual(second['status'], 'skipped')

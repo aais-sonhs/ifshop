@@ -106,3 +106,43 @@ class StockAlertEmailRecipient(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class DailyEmailReport(models.Model):
+    """Cấu hình email tổng hợp doanh thu gửi hằng ngày theo thương hiệu."""
+
+    brand = models.OneToOneField(
+        'system_management.Brand',
+        on_delete=models.CASCADE,
+        related_name='daily_email_report_config',
+        verbose_name='Thương hiệu',
+    )
+    recipient_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='daily_email_report_configs',
+        verbose_name='Người nhận trong hệ thống',
+    )
+    email_recipients = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='Danh sách email nhận bổ sung',
+        help_text='Nhiều email phân cách bởi dấu phẩy hoặc xuống dòng',
+    )
+    send_time = models.TimeField(default=time(21, 0), verbose_name='Giờ gửi hằng ngày')
+    is_active = models.BooleanField(default=False, verbose_name='Đang hoạt động')
+    last_run_at = models.DateTimeField(blank=True, null=True, verbose_name='Lần chạy gần nhất')
+    last_sent = models.DateTimeField(blank=True, null=True, verbose_name='Lần gửi cuối')
+    last_test_sent = models.DateTimeField(blank=True, null=True, verbose_name='Lần gửi thử cuối')
+    last_status = models.CharField(max_length=30, blank=True, default='', verbose_name='Trạng thái gần nhất')
+    last_error = models.TextField(blank=True, default='', verbose_name='Lỗi gửi gần nhất')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'daily_email_reports'
+        verbose_name = 'Báo cáo email hằng ngày'
+        verbose_name_plural = 'Báo cáo email hằng ngày'
+
+    def __str__(self):
+        return f"{self.brand.name} - {'Đang bật' if self.is_active else 'Đang tắt'}"

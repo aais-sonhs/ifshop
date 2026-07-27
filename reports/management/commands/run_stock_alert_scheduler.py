@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = 'Chạy bộ lập lịch cảnh báo tồn kho, kiểm tra cấu hình mỗi phút.'
+    help = 'Chạy bộ lập lịch email tự động, kiểm tra các cấu hình mỗi phút.'
 
     def add_arguments(self, parser):
         parser.add_argument('--once', action='store_true', help='Chỉ kiểm tra một lần rồi thoát.')
@@ -15,6 +15,7 @@ class Command(BaseCommand):
         interval = max(15, int(options.get('interval') or 60))
         while True:
             call_command('send_low_stock_alerts', verbosity=1)
+            call_command('send_daily_email_reports', verbosity=1)
             if options.get('once'):
                 return
             time.sleep(interval)

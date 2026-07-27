@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-xl-10 offset-xl-1">
+        <div class="card card-outline card-primary">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-chart-line mr-2"></i>BC email hàng ngày</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-light border d-flex align-items-start">
+                    <i class="fas fa-envelope-open-text text-primary mt-1 mr-3"></i>
+                    <div>
+                        Hệ thống gửi báo cáo bán hàng của ngày hiện tại tới các email đã chọn.
+                        Báo cáo gồm <strong>Doanh thu, Lợi nhuận gộp và Tổng tiền về</strong>.
+                    </div>
+                </div>
+
+                {% if not smtp_ready %}
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Máy chủ chưa có tài khoản gửi email. Cần cấu hình <code>EMAIL_HOST_USER</code> và <code>EMAIL_HOST_PASSWORD</code> trước khi gửi thử hoặc bật lịch gửi.
+                </div>
+                {% endif %}
+
+                <div class="card card-outline card-primary">
+                    <div class="card-header py-2"><strong><i class="fas fa-sliders-h mr-1"></i>Lịch gửi</strong></div>
+                    <div class="card-body">
+                        <div class="row align-items-end">
+                            <div class="col-md-5 mb-3 mb-md-0">
+                                <div class="custom-control custom-switch">
+                                    <input type="checkbox" class="custom-control-input" id="daily_email_report_active" {% if daily_email_report.is_active %}checked{% endif %}>
+                                    <label class="custom-control-label font-weight-bold" for="daily_email_report_active">Bật gửi báo cáo hằng ngày</label>
+                                </div>
+                                <small class="text-muted">Có thể lưu ở trạng thái tắt rồi gửi thử trước.</small>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="daily_email_report_send_time">Giờ gửi</label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="daily_email_report_send_time"
+                                       value="{{ daily_email_report.send_time|time:'H:i'|default:'21:00' }}"
+                                       inputmode="numeric"
+                                       autocomplete="off"
+                                       maxlength="5"
+                                       pattern="(?:[01]\d|2[0-3]):[0-5]\d"
+                                       placeholder="HH:MM"
+                                       title="Nhập giờ theo định dạng 24 giờ, ví dụ 09:00 hoặc 21:00">
+                                <small class="form-text text-muted">Định dạng 24 giờ, ví dụ 09:00 hoặc 21:00.</small>
+                            </div>
+                            <div class="col-md-4 mt-3 mt-md-0">
+                                <small class="text-muted d-block"><i class="fas fa-map-marker-alt mr-1"></i>Múi giờ: Asia/Ho_Chi_Minh</small>
+                                <small class="text-muted d-block">Email vẫn gửi khi các chỉ số trong ngày bằng 0.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-info mt-3">
+                    <div class="card-header py-2"><strong><i class="fas fa-chart-bar mr-1"></i>Nội dung báo cáo</strong></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3 mb-md-0">
+                                <div class="daily-report-metric border-primary">
+                                    <i class="fas fa-shopping-cart text-primary"></i>
+                                    <div><small>Doanh thu</small><strong>Tổng đơn trong ngày</strong></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3 mb-md-0">
+                                <div class="daily-report-metric border-success">
+                                    <i class="fas fa-coins text-success"></i>
+                                    <div><small>Lợi nhuận gộp</small><strong>Đã điều chỉnh hàng trả</strong></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="daily-report-metric border-warning">
+                                    <i class="fas fa-hand-holding-usd text-warning"></i>
+                                    <div><small>Tổng tiền về</small><strong>Phiếu thu hoàn thành</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-3">
+                            Tổng tiền về tính theo ngày phiếu thu, bao gồm cả tiền thu công nợ của các đơn cũ.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-success mt-3">
+                    <div class="card-header py-2"><strong><i class="fas fa-user-check mr-1"></i>Email nhận báo cáo</strong></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-lg-7">
+                                <small class="text-muted d-block mb-2">Chọn tài khoản có email trong thương hiệu.</small>
+                                <div class="border rounded" id="daily_email_report_recipient_list" style="max-height:300px;overflow-y:auto;">
+                                    {% for person in staff_options %}
+                                    <label class="d-flex align-items-start px-3 py-2 mb-0 border-bottom daily-report-recipient-row {% if not person.email %}text-muted disabled{% endif %}">
+                                        <input type="checkbox"
+                                               class="mt-1 mr-2 daily-report-recipient-user"
+                                               value="{{ person.id }}"
+                                               {% if person.selected %}checked{% endif %}
+                                               {% if not person.email %}disabled{% endif %}>
+                                        <span class="flex-grow-1">
+                                            <strong>{{ person.name }}</strong>
+                                            {% if person.username != person.name %}<small class="text-muted">({{ person.username }})</small>{% endif %}
+                                            <small class="d-block {% if person.email %}text-primary{% else %}text-danger{% endif %}">
+                                                {{ person.email|default:"Chưa có email trong tài khoản" }}
+                                            </small>
+                                        </span>
+                                    </label>
+                                    {% empty %}
+                                    <div class="text-muted text-center p-3">Chưa có tài khoản nào trong thương hiệu.</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-lg-5 mt-3 mt-lg-0">
+                                <label for="daily_email_report_extra_email">Thêm email không có tài khoản</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="email" class="form-control" id="daily_email_report_extra_email" placeholder="ketoan@congty.vn">
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-info" id="btn_add_daily_report_email">
+                                            <i class="fas fa-plus mr-1"></i>Thêm
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="border rounded mt-2" id="daily_email_report_extra_rows"></div>
+                            </div>
+                        </div>
+                        <div class="small text-info mt-3" id="daily_email_report_recipient_count"></div>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-secondary mt-3">
+                    <div class="card-header py-2"><strong><i class="fas fa-history mr-1"></i>Trạng thái gửi</strong></div>
+                    <div class="card-body py-2">
+                        <div class="row small">
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần chạy lịch gần nhất:</span> <strong>{{ daily_email_report.last_run_at|date:"d/m/Y H:i"|default:"Chưa chạy" }}</strong></div>
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần gửi thành công:</span> <strong>{{ daily_email_report.last_sent|date:"d/m/Y H:i"|default:"Chưa gửi" }}</strong></div>
+                            <div class="col-md-4 py-1"><span class="text-muted">Lần gửi thử:</span> <strong>{{ daily_email_report.last_test_sent|date:"d/m/Y H:i"|default:"Chưa gửi thử" }}</strong></div>
+                        </div>
+                        {% if daily_email_report.last_error %}
+                        <div class="alert alert-danger py-2 mt-2 mb-0"><i class="fas fa-times-circle mr-1"></i>{{ daily_email_report.last_error }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-center flex-wrap mt-4" style="gap:10px;">
+                    <button type="button" class="btn btn-primary btn-lg" id="btn_save_daily_email_report"><i class="fas fa-save mr-2"></i>Lưu cài đặt</button>
+                    <button type="button" class="btn btn-outline-info btn-lg" id="btn_test_daily_email_report"><i class="fas fa-paper-plane mr-2"></i>Lưu và gửi thử</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{ extra_emails|json_script:"daily-email-report-extra-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.daily-report-metric { display:flex;align-items:center;gap:14px;padding:15px;border:1px solid #e5e7eb;border-left-width:4px;border-radius:8px;height:100%; }
+.daily-report-metric i { font-size:24px;width:30px;text-align:center; }
+.daily-report-metric small,.daily-report-metric strong { display:block; }
+.daily-report-recipient-row { cursor:pointer;transition:background-color .15s; }
+.daily-report-recipient-row:hover { background:#f4f8ff; }
+.daily-report-recipient-row.disabled { cursor:not-allowed; }
+</style>
+<script>
+(function(){
+    var extraEmails = JSON.parse($('#daily-email-report-extra-data').text() || '[]');
+
+    function normalize24HourTime(value){
+        var match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+        if(!match) return '';
+        var hours = Number(match[1]);
+        var minutes = Number(match[2]);
+        if(hours > 23 || minutes > 59) return '';
+        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+    }
+
+    function normalizedEmail(value){
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function renderExtraEmails(){
+        var $rows = $('#daily_email_report_extra_rows').empty();
+        if(!extraEmails.length){
+            $('<div>', {'class':'small text-muted text-center p-3'}).text('Chưa thêm email bổ sung.').appendTo($rows);
+            return;
+        }
+        extraEmails.forEach(function(email){
+            var $row = $('<div>', {'class':'d-flex align-items-center px-3 py-2 border-bottom daily-report-extra-row'});
+            $('<i>', {'class':'fas fa-envelope text-info mr-2'}).appendTo($row);
+            $('<span>', {'class':'flex-grow-1 text-break'}).text(email).appendTo($row);
+            $('<button>', {
+                type: 'button',
+                'class': 'btn btn-xs btn-outline-danger daily-report-remove-extra-email',
+                'data-email': email,
+                title: 'Xóa email'
+            }).html('<i class="fas fa-times"></i>').appendTo($row);
+            $rows.append($row);
+        });
+    }
+
+    function updateRecipientCount(){
+        var userCount = $('.daily-report-recipient-user:checked').length;
+        $('#daily_email_report_recipient_count').text(
+            'Đã chọn ' + (userCount + extraEmails.length) + ' người nhận/email.'
+        );
+    }
+
+    function addExtraEmail(){
+        var $input = $('#daily_email_report_extra_email');
+        var email = normalizedEmail($input.val());
+        if(!email || !$input[0].checkValidity()){
+            alert('Vui lòng nhập một địa chỉ email hợp lệ.');
+            return;
+        }
+        var accountDuplicate = $('.daily-report-recipient-user').filter(function(){
+            return normalizedEmail($(this).siblings('span').find('small.d-block').text()) === email;
+        }).length > 0;
+        if(extraEmails.indexOf(email) !== -1 || accountDuplicate){
+            alert('Email này đã có trong danh sách.');
+            return;
+        }
+        extraEmails.push(email);
+        $input.val('');
+        renderExtraEmails();
+        updateRecipientCount();
+    }
+
+    function payload(){
+        var rawSendTime = $('#daily_email_report_send_time').val();
+        return {
+            is_active: $('#daily_email_report_active').prop('checked'),
+            send_time: normalize24HourTime(rawSendTime) || rawSendTime || '21:00',
+            recipient_user_ids: $('.daily-report-recipient-user:checked').map(function(){
+                return Number(this.value);
+            }).get(),
+            email_recipients: extraEmails.join(', ')
+        };
+    }
+
+    function apiError(xhr){
+        return (xhr.responseJSON && xhr.responseJSON.message) || 'Không thể thực hiện yêu cầu. Vui lòng thử lại.';
+    }
+
+    function saveConfig(showMessage){
+        return $.ajax({
+            url: '{% url "api_save_daily_email_report_setting" %}',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            data: JSON.stringify(payload())
+        }).done(function(res){
+            if(showMessage) alert(res.message);
+        });
+    }
+
+    $('#btn_add_daily_report_email').on('click', addExtraEmail);
+    $('#daily_email_report_extra_email').on('keydown', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            addExtraEmail();
+        }
+    });
+    $(document).on('click', '.daily-report-remove-extra-email', function(){
+        var email = normalizedEmail($(this).data('email'));
+        extraEmails = extraEmails.filter(function(candidate){ return candidate !== email; });
+        renderExtraEmails();
+        updateRecipientCount();
+    });
+    $('.daily-report-recipient-user').on('change', updateRecipientCount);
+    $('#daily_email_report_send_time').on('blur', function(){
+        var normalizedTime = normalize24HourTime($(this).val());
+        if(normalizedTime) $(this).val(normalizedTime);
+    });
+
+    $('#btn_save_daily_email_report').on('click', function(){
+        var $button = $(this).prop('disabled', true);
+        saveConfig(true)
+            .fail(function(xhr){ alert(apiError(xhr)); })
+            .always(function(){ $button.prop('disabled', false); });
+    });
+    $('#btn_test_daily_email_report').on('click', function(){
+        var $button = $(this).prop('disabled', true);
+        saveConfig(false).done(function(){
+            $.ajax({
+                url: '{% url "api_test_daily_email_report" %}',
+                type: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            }).done(function(res){
+                alert(res.message);
+                location.reload();
+            }).fail(function(xhr){
+                alert(apiError(xhr));
+            });
+        }).fail(function(xhr){
+            alert(apiError(xhr));
+        }).always(function(){
+            $button.prop('disabled', false);
+        });
+    });
+
+    renderExtraEmails();
+    updateRecipientCount();
+})();
+</script>
+{% endblock %}

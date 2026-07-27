@@ -915,10 +915,20 @@ def _serialize_product_list(products):
         else:
             total_stock = float(sum(s.quantity for s in p.stocks.all()))
 
-        # Giá vốn trên sản phẩm đã được đồng bộ từ toàn bộ lịch sử nhập hợp lệ.
-        # Không tính lại theo các lô mới nhất vì cách đó tạo ra một giá LIFO
-        # khác với giá bình quân dùng khi ghi nhận đơn bán.
-        effective_cost = float(p.cost_price)
+        # Ưu tiên giá vốn bình quân đã đồng bộ từ lịch sử nhập. Sản phẩm cũ hoặc
+        # được nhập từ Excel có thể mới chỉ có giá nhập; khi đó dùng giá nhập làm
+        # giá vốn tham chiếu, thống nhất với luồng bán hàng và báo cáo tồn kho.
+        stored_cost = _to_decimal(p.cost_price)
+        import_cost = _to_decimal(p.import_price)
+        if stored_cost > 0:
+            effective_cost = float(stored_cost)
+            cost_price_source = 'cost_price'
+        elif import_cost > 0:
+            effective_cost = float(import_cost)
+            cost_price_source = 'import_price'
+        else:
+            effective_cost = 0
+            cost_price_source = 'none'
 
         latest_purchase = None
         recent_import_prices = []
@@ -969,6 +979,7 @@ def _serialize_product_list(products):
             'import_price': float(p.import_price),
             'cost_price': effective_cost,
             'cost_price_stored': float(p.cost_price),
+            'cost_price_source': cost_price_source,
             'selling_price': float(p.selling_price),
             'retail_price': float(p.selling_price),
             'wholesale_price_no_warranty': float(p.wholesale_price_no_warranty),

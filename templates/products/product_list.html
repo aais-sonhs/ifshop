@@ -1809,7 +1809,12 @@ function loadData(done, requestOverrides){
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
             var costDisplay = '<span class="text-primary font-weight-bold">'+fmt(d.cost_price)+'đ</span>';
-            var costTooltip = 'Giá vốn bình quân gia quyền = tổng giá trị nhập hợp lệ còn lại sau trả hàng / tổng số lượng nhập hợp lệ còn lại sau trả hàng.';
+            var costTooltip = d.cost_price_source === 'import_price'
+                ? 'Chưa có giá vốn bình quân; hệ thống đang tạm dùng giá nhập làm giá vốn.'
+                : 'Giá vốn bình quân gia quyền = tổng giá trị nhập hợp lệ còn lại sau trả hàng / tổng số lượng nhập hợp lệ còn lại sau trả hàng.';
+            if(d.cost_price_source === 'import_price' && Number(d.cost_price || 0) > 0){
+                costDisplay += '<small class="text-muted d-block">Theo giá nhập</small>';
+            }
             var importDisplay = '<div class="font-weight-bold">'+fmt(d.import_price)+'đ</div>';
             var wsNoWDisplay = fmt(d.wholesale_price_no_warranty) + 'đ';
             var wsWDisplay = fmt(d.wholesale_price_warranty) + 'đ';

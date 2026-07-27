@@ -2118,6 +2118,32 @@ class ProductInventoryFlowTests(TestCase):
         order_product_row = next(row for row in order_product_payload if row['id'] == self.product.id)
         self.assertEqual(order_product_row['cost_price'], 11.0)
 
+    def test_product_list_uses_import_price_when_stored_cost_is_missing(self):
+        self.product.import_price = Decimal('125000')
+        self.product.cost_price = Decimal('0')
+        self.product.save(update_fields=['import_price', 'cost_price'])
+
+        response = self.client.get(reverse('api_get_products'))
+
+        self.assertEqual(response.status_code, 200)
+        product_row = next(row for row in response.json()['data'] if row['id'] == self.product.id)
+        self.assertEqual(product_row['cost_price'], 125000.0)
+        self.assertEqual(product_row['cost_price_stored'], 0.0)
+        self.assertEqual(product_row['cost_price_source'], 'import_price')
+
+    def test_product_list_keeps_weighted_cost_ahead_of_import_price(self):
+        self.product.import_price = Decimal('125000')
+        self.product.cost_price = Decimal('110000')
+        self.product.save(update_fields=['import_price', 'cost_price'])
+
+        response = self.client.get(reverse('api_get_products'))
+
+        self.assertEqual(response.status_code, 200)
+        product_row = next(row for row in response.json()['data'] if row['id'] == self.product.id)
+        self.assertEqual(product_row['cost_price'], 110000.0)
+        self.assertEqual(product_row['cost_price_stored'], 110000.0)
+        self.assertEqual(product_row['cost_price_source'], 'cost_price')
+
     def test_draft_receipt_does_not_change_existing_product_cost(self):
         self.product.cost_price = Decimal('120')
         self.product.import_price = Decimal('100')

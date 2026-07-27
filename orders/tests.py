@@ -280,6 +280,32 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'scheduleOrderFormCloseBaselineCapture(closeTrackingToken);')
         self.assertContains(response, "setOrderFormAlwaysConfirmClose();")
 
+    def test_packaging_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('packaging_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getPackagingFormCloseSnapshot()')
+        self.assertContains(response, 'function startPackagingFormCloseTracking()')
+        self.assertContains(response, 'function capturePackagingFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function packagingFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startPackagingFormCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'schedulePackagingFormCloseBaselineCapture(closeTrackingToken);',
+            count=2,
+        )
+        for field_name in ('code', 'order_id', 'weight', 'status', 'packed_at', 'note'):
+            self.assertContains(response, f'{field_name}:')
+
     def test_order_page_applies_date_filters_from_query_string_before_loading(self):
         response = self.client.get(reverse('order_tbl'), {
             'from_date': '2026-07-21',

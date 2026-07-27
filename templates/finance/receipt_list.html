@@ -190,7 +190,7 @@
 </div>
 
 <!-- MODAL PHIẾU THU -->
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
@@ -445,6 +445,62 @@ var allOrders = [];
 var allReceipts = [];
 var currentEditingReceipt = null;
 var RECEIPT_FILTER_KEY = 'ifshop_receipt_filters';
+var RECEIPT_FORM_CLOSE_BASELINE = null;
+var RECEIPT_FORM_CLOSE_TRACKING_TOKEN = 0;
+
+function getReceiptFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizeReceiptFormCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getReceiptFormCloseSnapshot(){
+    return JSON.stringify({
+        code: getReceiptFormCloseFieldValue('#inp_code'),
+        category_id: getReceiptFormCloseFieldValue('#inp_category_id'),
+        customer_id: getReceiptFormCloseFieldValue('#inp_customer_id'),
+        order_id: getReceiptFormCloseFieldValue('#inp_order_id'),
+        cash_book_id: getReceiptFormCloseFieldValue('#inp_cash_book_id'),
+        receipt_date: getReceiptFormCloseFieldValue('#inp_receipt_date'),
+        amount: normalizeReceiptFormCloseNumber($('#inp_amount').val()),
+        payment_method_option_id: getReceiptFormCloseFieldValue('#inp_payment_method'),
+        status: getReceiptFormCloseFieldValue('#inp_status'),
+        description: getReceiptFormCloseFieldValue('#inp_description'),
+        note: getReceiptFormCloseFieldValue('#inp_note')
+    });
+}
+
+function startReceiptFormCloseTracking(){
+    RECEIPT_FORM_CLOSE_TRACKING_TOKEN++;
+    RECEIPT_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = receiptFormHasUnsavedChanges;
+    }
+    return RECEIPT_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function captureReceiptFormCloseBaseline(trackingToken){
+    if(trackingToken !== RECEIPT_FORM_CLOSE_TRACKING_TOKEN) return;
+    RECEIPT_FORM_CLOSE_BASELINE = getReceiptFormCloseSnapshot();
+}
+
+function scheduleReceiptFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        captureReceiptFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function receiptFormHasUnsavedChanges(){
+    if(RECEIPT_FORM_CLOSE_BASELINE === null) return true;
+    return getReceiptFormCloseSnapshot() !== RECEIPT_FORM_CLOSE_BASELINE;
+}
 
 var allColumns = [
     {key:'stt',            label:'STT',               default:true},
@@ -1051,8 +1107,10 @@ function editItem(receipt){
         $('#order_info,#order_lock_note').hide();
     }
 
+    var closeTrackingToken = startReceiptFormCloseTracking();
     $('#modal_title').text('Sửa phiếu thu');
     $('#modal_form').modal('show');
+    scheduleReceiptFormCloseBaselineCapture(closeTrackingToken);
 }
 
 $(document).ready(function(){
@@ -1259,8 +1317,10 @@ $(document).ready(function(){
             }
         });
         $('#inp_code').val(prefix + String(maxNum + 1).padStart(3, '0'));
+        var closeTrackingToken = startReceiptFormCloseTracking();
         $('#modal_title').text('Tạo phiếu thu');
         $('#modal_form').modal('show');
+        scheduleReceiptFormCloseBaselineCapture(closeTrackingToken);
     });
 
     $('#btn_save').click(function(){
@@ -1313,6 +1373,8 @@ $(document).ready(function(){
     });
 
     $('#modal_form').on('hidden.bs.modal', function(){
+        RECEIPT_FORM_CLOSE_TRACKING_TOKEN++;
+        RECEIPT_FORM_CLOSE_BASELINE = null;
         currentEditingReceipt = null;
         $('#modal_form').find('input, select, textarea').prop('disabled', false);
         $('#modal_form').find('select.select2').trigger('change.select2');

@@ -1061,6 +1061,35 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, "q: ($('#supplier_search').val() || '').trim()")
         self.assertContains(response, 'page_size: SUPPLIER_PAGE_STATE.page_size || 50')
 
+    def test_supplier_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('supplier_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getSupplierFormCloseSnapshot()')
+        self.assertContains(response, 'function startSupplierFormCloseTracking()')
+        self.assertContains(response, 'function captureSupplierFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function supplierFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startSupplierFormCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'scheduleSupplierFormCloseBaselineCapture(closeTrackingToken);',
+            count=2,
+        )
+        for field_name in (
+            'code', 'name', 'phone', 'email', 'tax_code',
+            'contact_person', 'address', 'note',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
     def test_inventory_user_can_quick_create_supplier_from_goods_receipt(self):
         response = self.client.post(
             reverse('api_quick_create_supplier'),
@@ -1201,6 +1230,34 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'function buildGoodsReceiptProductAjaxConfig()')
         self.assertContains(response, 'transport:function(params, success)')
         self.assertContains(response, 'ajax: buildGoodsReceiptProductAjaxConfig()')
+
+    def test_purchase_return_create_and_edit_only_confirm_close_when_form_changed(self):
+        response = self.client.get(reverse('purchase_return_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getPurchaseReturnCloseSnapshot()')
+        self.assertContains(response, 'function startPurchaseReturnCloseTracking()')
+        self.assertContains(response, 'function capturePurchaseReturnCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function purchaseReturnHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startPurchaseReturnCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'schedulePurchaseReturnCloseBaselineCapture(closeTrackingToken);',
+        )
+        for field_name in (
+            'goods_receipt_id', 'return_date', 'status', 'reason',
+            'note', 'items', 'goods_receipt_item_id', 'quantity', 'unit_price',
+        ):
+            self.assertContains(response, f'{field_name}:')
 
     def test_goods_receipt_product_picker_is_rebuilt_after_modal_closes(self):
         response = self.client.get(reverse('goods_receipt_tbl'))

@@ -17,7 +17,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -78,6 +78,9 @@
 
 {% block extra_js %}
 <script>
+var PACKAGING_FORM_CLOSE_BASELINE = null;
+var PACKAGING_FORM_CLOSE_TRACKING_TOKEN = 0;
+
 $(document).ready(function(){
     loadData();
 
@@ -88,8 +91,10 @@ $(document).ready(function(){
         $('#inp_weight').val(0);
         $('#inp_status').val('0');
         $('#inp_packed_at').val('');
+        var closeTrackingToken = startPackagingFormCloseTracking();
         $('#modal_title').text('Tạo đóng gói');
         $('#modal_form').modal('show');
+        schedulePackagingFormCloseBaselineCapture(closeTrackingToken);
     });
 
     $('#btn_save').click(function(){
@@ -116,7 +121,60 @@ $(document).ready(function(){
             }
         });
     });
+    $('#modal_form').on('hidden.bs.modal', function(){
+        PACKAGING_FORM_CLOSE_TRACKING_TOKEN++;
+        PACKAGING_FORM_CLOSE_BASELINE = null;
+    });
 });
+
+function getPackagingFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizePackagingFormCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getPackagingFormCloseSnapshot(){
+    return JSON.stringify({
+        code: getPackagingFormCloseFieldValue('#inp_code'),
+        order_id: getPackagingFormCloseFieldValue('#inp_order_id'),
+        weight: normalizePackagingFormCloseNumber($('#inp_weight').val()),
+        status: getPackagingFormCloseFieldValue('#inp_status'),
+        packed_at: getPackagingFormCloseFieldValue('#inp_packed_at'),
+        note: getPackagingFormCloseFieldValue('#inp_note')
+    });
+}
+
+function startPackagingFormCloseTracking(){
+    PACKAGING_FORM_CLOSE_TRACKING_TOKEN++;
+    PACKAGING_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = packagingFormHasUnsavedChanges;
+    }
+    return PACKAGING_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function capturePackagingFormCloseBaseline(trackingToken){
+    if(trackingToken !== PACKAGING_FORM_CLOSE_TRACKING_TOKEN) return;
+    PACKAGING_FORM_CLOSE_BASELINE = getPackagingFormCloseSnapshot();
+}
+
+function schedulePackagingFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        capturePackagingFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function packagingFormHasUnsavedChanges(){
+    if(PACKAGING_FORM_CLOSE_BASELINE === null) return true;
+    return getPackagingFormCloseSnapshot() !== PACKAGING_FORM_CLOSE_BASELINE;
+}
 
 function loadData(){
     $.get('/api/packagings/', function(res){
@@ -142,8 +200,10 @@ function editItem(d){
     $('#inp_status').val(d.status);
     $('#inp_packed_at').val(d.packed_at);
     $('#inp_note').val(d.note);
+    var closeTrackingToken = startPackagingFormCloseTracking();
     $('#modal_title').text('Sửa đóng gói');
     $('#modal_form').modal('show');
+    schedulePackagingFormCloseBaselineCapture(closeTrackingToken);
 }
 
 function deleteItem(id){

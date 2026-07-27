@@ -131,7 +131,7 @@
         <div id="payment_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -182,6 +182,8 @@ var PAYMENT_PAGE_STATE = {
     meta: null
 };
 var PAYMENT_NEXT_CODE = '';
+var PAYMENT_FORM_CLOSE_BASELINE = null;
+var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
     try {
         var params = new URLSearchParams(window.location.search);
@@ -273,7 +275,9 @@ $(document).ready(function(){
         $('#inp_payment_date').val(today);
         $('#inp_status').val('0');$('#inp_payment_method').val('2');
         $('#inp_code').val(PAYMENT_NEXT_CODE || '');
+        var closeTrackingToken = startPaymentFormCloseTracking();
         $('#modal_title').text('Tạo phiếu chi');$('#modal_form').modal('show');
+        schedulePaymentFormCloseBaselineCapture(closeTrackingToken);
     });
     $('#btn_save').click(function(){
         var $methodOpt = $('#inp_payment_method option:selected');
@@ -326,7 +330,66 @@ $(document).ready(function(){
         PAYMENT_PAGE_STATE.page = page;
         loadData();
     });
+    $('#modal_form').on('hidden.bs.modal', function(){
+        PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
+        PAYMENT_FORM_CLOSE_BASELINE = null;
+    });
 });
+
+function getPaymentFormCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizePaymentFormCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getPaymentFormCloseSnapshot(){
+    return JSON.stringify({
+        code: getPaymentFormCloseFieldValue('#inp_code'),
+        category_id: getPaymentFormCloseFieldValue('#inp_category_id'),
+        supplier_id: getPaymentFormCloseFieldValue('#inp_supplier_id'),
+        goods_receipt_id: getPaymentFormCloseFieldValue('#inp_goods_receipt_id'),
+        cash_book_id: getPaymentFormCloseFieldValue('#inp_cash_book_id'),
+        amount: normalizePaymentFormCloseNumber($('#inp_amount').val()),
+        payment_date: getPaymentFormCloseFieldValue('#inp_payment_date'),
+        payment_method_option_id: getPaymentFormCloseFieldValue('#inp_payment_method'),
+        status: getPaymentFormCloseFieldValue('#inp_status'),
+        description: getPaymentFormCloseFieldValue('#inp_description'),
+        note: getPaymentFormCloseFieldValue('#inp_note')
+    });
+}
+
+function startPaymentFormCloseTracking(){
+    PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
+    PAYMENT_FORM_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = paymentFormHasUnsavedChanges;
+    }
+    return PAYMENT_FORM_CLOSE_TRACKING_TOKEN;
+}
+
+function capturePaymentFormCloseBaseline(trackingToken){
+    if(trackingToken !== PAYMENT_FORM_CLOSE_TRACKING_TOKEN) return;
+    PAYMENT_FORM_CLOSE_BASELINE = getPaymentFormCloseSnapshot();
+}
+
+function schedulePaymentFormCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        capturePaymentFormCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function paymentFormHasUnsavedChanges(){
+    if(PAYMENT_FORM_CLOSE_BASELINE === null) return true;
+    return getPaymentFormCloseSnapshot() !== PAYMENT_FORM_CLOSE_BASELINE;
+}
+
 function fmtDt(dateStr, createdAt){
     if(!dateStr) return '';
     var p = dateStr.split('-');
@@ -421,7 +484,9 @@ function editItem(d){
     $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
     $('#inp_amount').val(d.amount);$('#inp_payment_date').val(d.payment_date);
     $('#inp_description').val(d.description);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || '');$('#inp_note').val(d.note);
+    var closeTrackingToken = startPaymentFormCloseTracking();
     $('#modal_title').text('Sửa phiếu chi');$('#modal_form').modal('show');
+    schedulePaymentFormCloseBaselineCapture(closeTrackingToken);
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;

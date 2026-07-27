@@ -77,7 +77,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal_form" tabindex="-1">
+<div class="modal fade" id="modal_form" tabindex="-1" data-confirm-close="dirty" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable inventory-entry-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -119,6 +119,8 @@ var PURCHASE_RETURNS = [];
 var CURRENT_RETURN = null;
 var PURCHASE_RETURN_FILTER_TIMER = null;
 var PURCHASE_RETURN_LIST_XHR = null;
+var PURCHASE_RETURN_CLOSE_BASELINE = null;
+var PURCHASE_RETURN_CLOSE_TRACKING_TOKEN = 0;
 function esc(value){ return $('<div>').text(value == null ? '' : String(value)).html(); }
 function num(value){ return Number(value || 0); }
 function qty(value){ return num(value).toLocaleString('vi-VN', {maximumFractionDigits:2}); }
@@ -154,8 +156,10 @@ $(function(){
         $('#receipt_summary').hide();
         $('#items_tbl tbody').html('<tr><td colspan="8" class="text-center text-muted">Chọn phiếu nhập để tải sản phẩm</td></tr>');
         $('#return_total').text('0đ');
+        var closeTrackingToken = startPurchaseReturnCloseTracking();
         $('#modal_title').text('Tạo phiếu trả hàng nhập');
         $('#modal_form').modal('show');
+        schedulePurchaseReturnCloseBaselineCapture(closeTrackingToken);
     });
     $('#inp_goods_receipt_id').change(function(){ loadReceiptItems(); });
     $(document).on('input', '.return-qty,.return-price', calcTotal);
@@ -164,10 +168,76 @@ $(function(){
     var receiptId = new URLSearchParams(window.location.search).get('receipt_id');
     if(receiptId && $('#inp_goods_receipt_id option[value="'+receiptId+'"]').length){
         $('#btn_add').trigger('click');
+        var closeTrackingToken = PURCHASE_RETURN_CLOSE_TRACKING_TOKEN;
         $('#inp_goods_receipt_id').val(receiptId).trigger('change.select2');
-        loadReceiptItems();
+        loadReceiptItems(function(){
+            capturePurchaseReturnCloseBaseline(closeTrackingToken);
+        });
     }
+    $('#modal_form').on('hidden.bs.modal', function(){
+        PURCHASE_RETURN_CLOSE_TRACKING_TOKEN++;
+        PURCHASE_RETURN_CLOSE_BASELINE = null;
+    });
 });
+
+function getPurchaseReturnCloseFieldValue(selector){
+    var value = $(selector).val();
+    return value == null ? '' : String(value);
+}
+
+function normalizePurchaseReturnCloseNumber(value){
+    var rawValue = String(value == null ? '' : value).trim();
+    if(rawValue === '') return '';
+    var numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : rawValue;
+}
+
+function getPurchaseReturnCloseSnapshot(){
+    var items = [];
+    $('#items_tbl tbody tr[data-item-id]').each(function(){
+        var $row = $(this);
+        items.push({
+            goods_receipt_item_id: String($row.data('item-id') || ''),
+            quantity: normalizePurchaseReturnCloseNumber($row.find('.return-qty').val()),
+            unit_price: normalizePurchaseReturnCloseNumber($row.find('.return-price').val()),
+            note: getPurchaseReturnCloseFieldValue($row.find('.return-item-note'))
+        });
+    });
+    return JSON.stringify({
+        goods_receipt_id: getPurchaseReturnCloseFieldValue('#inp_goods_receipt_id'),
+        return_date: getPurchaseReturnCloseFieldValue('#inp_return_date'),
+        status: getPurchaseReturnCloseFieldValue('#inp_status'),
+        reason: getPurchaseReturnCloseFieldValue('#inp_reason'),
+        note: getPurchaseReturnCloseFieldValue('#inp_note'),
+        items: items
+    });
+}
+
+function startPurchaseReturnCloseTracking(){
+    PURCHASE_RETURN_CLOSE_TRACKING_TOKEN++;
+    PURCHASE_RETURN_CLOSE_BASELINE = null;
+    var modal = document.getElementById('modal_form');
+    if(modal){
+        modal.confirmCloseDirtyCheck = purchaseReturnHasUnsavedChanges;
+    }
+    return PURCHASE_RETURN_CLOSE_TRACKING_TOKEN;
+}
+
+function capturePurchaseReturnCloseBaseline(trackingToken){
+    if(trackingToken !== PURCHASE_RETURN_CLOSE_TRACKING_TOKEN) return;
+    PURCHASE_RETURN_CLOSE_BASELINE = getPurchaseReturnCloseSnapshot();
+}
+
+function schedulePurchaseReturnCloseBaselineCapture(trackingToken){
+    setTimeout(function(){
+        capturePurchaseReturnCloseBaseline(trackingToken);
+    }, 0);
+}
+
+function purchaseReturnHasUnsavedChanges(){
+    if(PURCHASE_RETURN_CLOSE_BASELINE === null) return true;
+    return getPurchaseReturnCloseSnapshot() !== PURCHASE_RETURN_CLOSE_BASELINE;
+}
 
 function getPurchaseReturnFilters(){
     return {
@@ -271,8 +341,21 @@ function saveReturn(){
 }
 
 function editReturn(id){
-    CURRENT_RETURN=PURCHASE_RETURNS.find(function(row){return row.id===id;}); if(!CURRENT_RETURN)return;
-    $('#edit_id').val(CURRENT_RETURN.id);$('#inp_code').val(CURRENT_RETURN.code);$('#inp_goods_receipt_id').val(String(CURRENT_RETURN.goods_receipt_id)).trigger('change.select2');$('#inp_return_date').val(CURRENT_RETURN.return_date);$('#inp_status').val(String(CURRENT_RETURN.status));$('#inp_reason').val(CURRENT_RETURN.reason);$('#inp_note').val(CURRENT_RETURN.note);$('#modal_title').text('Sửa phiếu trả '+CURRENT_RETURN.code);$('#modal_form').modal('show');loadReceiptItems();
+    CURRENT_RETURN=PURCHASE_RETURNS.find(function(row){return row.id===id;});
+    if(!CURRENT_RETURN)return;
+    $('#edit_id').val(CURRENT_RETURN.id);
+    $('#inp_code').val(CURRENT_RETURN.code);
+    $('#inp_goods_receipt_id').val(String(CURRENT_RETURN.goods_receipt_id)).trigger('change.select2');
+    $('#inp_return_date').val(CURRENT_RETURN.return_date);
+    $('#inp_status').val(String(CURRENT_RETURN.status));
+    $('#inp_reason').val(CURRENT_RETURN.reason);
+    $('#inp_note').val(CURRENT_RETURN.note);
+    var closeTrackingToken = startPurchaseReturnCloseTracking();
+    $('#modal_title').text('Sửa phiếu trả '+CURRENT_RETURN.code);
+    $('#modal_form').modal('show');
+    loadReceiptItems(function(){
+        capturePurchaseReturnCloseBaseline(closeTrackingToken);
+    });
 }
 
 function deleteReturn(id){

@@ -318,6 +318,72 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "params.get('store_id')")
         self.assertContains(response, 'applyPaymentUrlFilters();')
 
+    def test_payment_create_and_edit_only_confirm_close_when_form_changed(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('payment_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getPaymentFormCloseSnapshot()')
+        self.assertContains(response, 'function startPaymentFormCloseTracking()')
+        self.assertContains(response, 'function capturePaymentFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function paymentFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startPaymentFormCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'schedulePaymentFormCloseBaselineCapture(closeTrackingToken);',
+            count=2,
+        )
+        for field_name in (
+            'code', 'category_id', 'supplier_id', 'goods_receipt_id',
+            'cash_book_id', 'amount', 'payment_date',
+            'payment_method_option_id', 'status', 'description', 'note',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
+    def test_receipt_create_and_edit_only_confirm_close_when_form_changed(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getReceiptFormCloseSnapshot()')
+        self.assertContains(response, 'function startReceiptFormCloseTracking()')
+        self.assertContains(response, 'function captureReceiptFormCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function receiptFormHasUnsavedChanges()')
+        self.assertContains(
+            response,
+            'var closeTrackingToken = startReceiptFormCloseTracking();',
+            count=2,
+        )
+        self.assertContains(
+            response,
+            'scheduleReceiptFormCloseBaselineCapture(closeTrackingToken);',
+            count=2,
+        )
+        for field_name in (
+            'code', 'category_id', 'customer_id', 'order_id',
+            'cash_book_id', 'receipt_date', 'amount',
+            'payment_method_option_id', 'status', 'description', 'note',
+        ):
+            self.assertContains(response, f'{field_name}:')
+
     def test_save_payment_auto_generates_code_when_blank(self):
         response = self.client.post(
             reverse('api_save_payment'),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <div class="row">
     <div class="col-xl-10 offset-xl-1">
@@ -35,18 +36,26 @@
                             </div>
                             <div class="col-md-3">
                                 <label for="stock_alert_send_time">Giờ gửi</label>
-                                <input type="text"
-                                       class="form-control"
-                                       id="stock_alert_send_time"
-                                       value="{{ stock_alert.send_time|time:'H:i'|default:'21:00' }}"
-                                       inputmode="numeric"
-                                       autocomplete="off"
-                                       maxlength="5"
-                                       pattern="(?:[01]\d|2[0-3]):[0-5]\d"
-                                       placeholder="HH:MM"
-                                       aria-describedby="stock_alert_send_time_help"
-                                       title="Nhập giờ theo định dạng 24 giờ, ví dụ 09:00 hoặc 21:00">
-                                <small class="form-text text-muted" id="stock_alert_send_time_help">Định dạng 24 giờ, ví dụ 09:00 hoặc 21:00.</small>
+                                <div class="input-group date"
+                                     id="stock_alert_send_time_picker"
+                                     data-target-input="nearest">
+                                    <input type="text"
+                                           class="form-control datetimepicker-input"
+                                           id="stock_alert_send_time"
+                                           value="{{ stock_alert.send_time|time:'h:i A'|default:'09:00 PM' }}"
+                                           data-target="#stock_alert_send_time_picker"
+                                           aria-describedby="stock_alert_send_time_help"
+                                           autocomplete="off"
+                                           title="Chọn giờ gửi">
+                                    <div class="input-group-append"
+                                         data-target="#stock_alert_send_time_picker"
+                                         data-toggle="datetimepicker">
+                                        <div class="input-group-text">
+                                            <i class="far fa-clock"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted" id="stock_alert_send_time_help">Chọn giờ và phút, dùng AM hoặc PM.</small>
                             </div>
                             <div class="col-md-4 mt-3 mt-md-0">
                                 <small class="text-muted d-block"><i class="fas fa-map-marker-alt mr-1"></i>Múi giờ: Asia/Ho_Chi_Minh</small>
@@ -158,6 +167,9 @@
 {% endblock %}
 
 {% block extra_js %}
+<link rel="stylesheet" href="{% static 'plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css' %}">
+<script src="{% static 'plugins/moment/moment.min.js' %}"></script>
+<script src="{% static 'plugins/tempusdominus-bootstrap-4/js/tempusdominus-bootstrap-4.min.js' %}"></script>
 <style>
 .stock-alert-recipient-row { cursor:pointer; transition:background-color .15s,border-color .15s; }
 .stock-alert-recipient-row:hover { background:#f4f8ff; }
@@ -166,6 +178,16 @@
 </style>
 <script>
 (function(){
+    $('#stock_alert_send_time_picker').datetimepicker({
+        format: 'hh:mm A',
+        locale: 'en'
+    });
+
+    function to24HourTime(value){
+        var parsed = moment(String(value || '').trim(), ['hh:mm A', 'h:mm A'], true);
+        return parsed.isValid() ? parsed.format('HH:mm') : value;
+    }
+
     var recipientList = JSON.parse($('#stock-alert-recipient-data').text() || '[]');
     var recipientsByKey = {};
     var activeRecipientKey = null;
@@ -253,15 +275,6 @@
         );
     }
 
-    function normalize24HourTime(value){
-        var match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-        if(!match) return '';
-        var hours = Number(match[1]);
-        var minutes = Number(match[2]);
-        if(hours > 23 || minutes > 59) return '';
-        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
-    }
-
     function payload(){
         var rawSendTime = $('#stock_alert_send_time').val();
         var assignments = Object.keys(recipientsByKey).map(function(key){
@@ -277,7 +290,7 @@
         });
         return {
             is_active: $('#stock_alert_active').prop('checked'),
-            send_time: normalize24HourTime(rawSendTime) || rawSendTime || '21:00',
+            send_time: to24HourTime(rawSendTime) || '21:00',
             include_child_categories: $('#stock_alert_include_children').prop('checked'),
             recipient_assignments: assignments
         };
@@ -371,10 +384,6 @@
             event.preventDefault();
             addExtraEmail();
         }
-    });
-    $('#stock_alert_send_time').on('blur', function(){
-        var normalizedTime = normalize24HourTime($(this).val());
-        if(normalizedTime) $(this).val(normalizedTime);
     });
     $(document).on('click', '.stock-alert-remove-extra-email', function(event){
         event.preventDefault();

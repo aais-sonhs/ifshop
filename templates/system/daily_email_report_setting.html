@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
 <div class="row">
     <div class="col-xl-10 offset-xl-1">
@@ -35,17 +36,25 @@
                             </div>
                             <div class="col-md-3">
                                 <label for="daily_email_report_send_time">Giờ gửi</label>
-                                <input type="text"
-                                       class="form-control"
-                                       id="daily_email_report_send_time"
-                                       value="{{ daily_email_report.send_time|time:'H:i'|default:'21:00' }}"
-                                       inputmode="numeric"
-                                       autocomplete="off"
-                                       maxlength="5"
-                                       pattern="(?:[01]\d|2[0-3]):[0-5]\d"
-                                       placeholder="HH:MM"
-                                       title="Nhập giờ theo định dạng 24 giờ, ví dụ 09:00 hoặc 21:00">
-                                <small class="form-text text-muted">Định dạng 24 giờ, ví dụ 09:00 hoặc 21:00.</small>
+                                <div class="input-group date"
+                                     id="daily_email_report_send_time_picker"
+                                     data-target-input="nearest">
+                                    <input type="text"
+                                           class="form-control datetimepicker-input"
+                                           id="daily_email_report_send_time"
+                                           value="{{ daily_email_report.send_time|time:'h:i A'|default:'09:00 PM' }}"
+                                           data-target="#daily_email_report_send_time_picker"
+                                           autocomplete="off"
+                                           title="Chọn giờ gửi">
+                                    <div class="input-group-append"
+                                         data-target="#daily_email_report_send_time_picker"
+                                         data-toggle="datetimepicker">
+                                        <div class="input-group-text">
+                                            <i class="far fa-clock"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">Chọn giờ và phút, dùng AM hoặc PM.</small>
                             </div>
                             <div class="col-md-4 mt-3 mt-md-0">
                                 <small class="text-muted d-block"><i class="fas fa-map-marker-alt mr-1"></i>Múi giờ: Asia/Ho_Chi_Minh</small>
@@ -154,6 +163,9 @@
 {% endblock %}
 
 {% block extra_js %}
+<link rel="stylesheet" href="{% static 'plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css' %}">
+<script src="{% static 'plugins/moment/moment.min.js' %}"></script>
+<script src="{% static 'plugins/tempusdominus-bootstrap-4/js/tempusdominus-bootstrap-4.min.js' %}"></script>
 <style>
 .daily-report-metric { display:flex;align-items:center;gap:14px;padding:15px;border:1px solid #e5e7eb;border-left-width:4px;border-radius:8px;height:100%; }
 .daily-report-metric i { font-size:24px;width:30px;text-align:center; }
@@ -164,16 +176,17 @@
 </style>
 <script>
 (function(){
-    var extraEmails = JSON.parse($('#daily-email-report-extra-data').text() || '[]');
+    $('#daily_email_report_send_time_picker').datetimepicker({
+        format: 'hh:mm A',
+        locale: 'en'
+    });
 
-    function normalize24HourTime(value){
-        var match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-        if(!match) return '';
-        var hours = Number(match[1]);
-        var minutes = Number(match[2]);
-        if(hours > 23 || minutes > 59) return '';
-        return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+    function to24HourTime(value){
+        var parsed = moment(String(value || '').trim(), ['hh:mm A', 'h:mm A'], true);
+        return parsed.isValid() ? parsed.format('HH:mm') : value;
     }
+
+    var extraEmails = JSON.parse($('#daily-email-report-extra-data').text() || '[]');
 
     function normalizedEmail(value){
         return String(value || '').trim().toLowerCase();
@@ -230,7 +243,7 @@
         var rawSendTime = $('#daily_email_report_send_time').val();
         return {
             is_active: $('#daily_email_report_active').prop('checked'),
-            send_time: normalize24HourTime(rawSendTime) || rawSendTime || '21:00',
+            send_time: to24HourTime(rawSendTime) || '21:00',
             recipient_user_ids: $('.daily-report-recipient-user:checked').map(function(){
                 return Number(this.value);
             }).get(),
@@ -268,11 +281,6 @@
         updateRecipientCount();
     });
     $('.daily-report-recipient-user').on('change', updateRecipientCount);
-    $('#daily_email_report_send_time').on('blur', function(){
-        var normalizedTime = normalize24HourTime($(this).val());
-        if(normalizedTime) $(this).val(normalizedTime);
-    });
-
     $('#btn_save_daily_email_report').on('click', function(){
         var $button = $(this).prop('disabled', true);
         saveConfig(true)

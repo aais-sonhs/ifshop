@@ -75,7 +75,8 @@
         </div>
 
         <!-- TABS -->
-        <div class="sales-tab-config-toolbar d-flex justify-content-end mb-2">
+        <div class="sales-report-tabs-layout d-flex flex-wrap align-items-stretch mb-3">
+        <div class="sales-tab-config-toolbar d-flex">
             <div class="dropdown d-inline-block cc-dropdown sales-tab-config-dropdown">
                 <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle cc-trigger" id="btn_sales_tab_config" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Chọn các tab báo cáo cần hiển thị">
                     <i class="fas fa-eye mr-1"></i>Ẩn/Hiện
@@ -103,7 +104,7 @@
                 </div>
             </div>
         </div>
-        <ul class="nav nav-tabs mb-3" id="reportTabs" style="border-bottom:2px solid #dee2e6;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;">
+        <ul class="nav nav-tabs mb-0" id="reportTabs" style="border-bottom:2px solid #dee2e6;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;">
             <li class="nav-item"><a class="nav-link active font-weight-bold" data-toggle="tab" href="#tab_overview"><i class="fas fa-tachometer-alt mr-1"></i>Tổng quan</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_daily_finance"><i class="fas fa-calendar-day mr-1"></i>DT theo ngày</a></li>
             <li class="nav-item"><a class="nav-link font-weight-bold" data-toggle="tab" href="#tab_products"><i class="fas fa-boxes mr-1"></i>DT theo hàng</a></li>
@@ -116,7 +117,7 @@
             <li class="nav-item"><a class="nav-link font-weight-bold text-warning" data-toggle="tab" href="#tab_slow_moving"><i class="fas fa-hourglass-half mr-1"></i>Hàng bán chậm</a></li>
         </ul>
 
-        <div class="tab-content">
+        <div class="tab-content sales-report-tab-content">
             <!-- TAB 1: TỔNG QUAN -->
             <div class="tab-pane fade show active" id="tab_overview">
                 <div class="row mb-3">
@@ -443,6 +444,7 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
 </div>
 
@@ -481,9 +483,12 @@
 .sales-table-column-toolbar{display:flex;align-items:center;justify-content:flex-end;padding:.5rem .75rem;border-bottom:1px solid #dee2e6;background:#f8fafc;}
 .sales-table-column-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .sales-table-column-header>h6:first-child,.sales-table-column-header>.card-title:first-child{margin-right:auto;}
-.sales-tab-config-toolbar{position:relative;z-index:1040;}
-.sales-tab-config-dropdown .sales-tab-config-menu{left:auto!important;right:0!important;}
+.sales-report-tabs-layout>#reportTabs{order:1;flex:1 1 0;min-width:0;}
+.sales-tab-config-toolbar{order:2;flex:0 0 auto;align-items:stretch;position:relative;z-index:1040;margin-left:8px;}
+.sales-tab-config-dropdown,.sales-tab-config-dropdown .cc-trigger{height:100%;}
+.sales-tab-config-dropdown .sales-tab-config-menu{top:calc(100% + 4px)!important;left:auto!important;right:0!important;transform:none!important;}
 .sales-tab-config-dropdown .cc-footer .btn{flex:1 1 auto!important;}
+.sales-report-tab-content{order:3;flex:0 0 100%;min-width:0;margin-top:1rem;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>

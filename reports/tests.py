@@ -1131,9 +1131,21 @@ class SalesReportTests(TestCase):
         self.assertNotContains(response, 'id="modal_sales_tab_config"')
         self.assertContains(
             response,
+            'class="sales-report-tabs-layout d-flex flex-wrap align-items-stretch mb-3"',
+        )
+        self.assertContains(
+            response,
             'class="dropdown-menu dropdown-menu-right cc-menu sales-tab-config-menu"',
         )
         self.assertContains(response, '<span>Hiển thị tab</span>', html=True)
+        self.assertContains(
+            response,
+            '.sales-report-tabs-layout>#reportTabs{order:1;flex:1 1 0;min-width:0;}',
+        )
+        self.assertContains(
+            response,
+            'top:calc(100% + 4px)!important;left:auto!important;right:0!important;transform:none!important;',
+        )
         self.assertContains(response, 'DT theo ngày', count=2)
         self.assertContains(response, 'DT theo hàng', count=2)
         self.assertContains(response, 'class="sales-tab-visibility-toggle"', count=10)

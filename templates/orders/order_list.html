@@ -418,10 +418,15 @@
                     <div class="card-header py-1 d-flex align-items-center justify-content-between">
                         <h6 class="card-title mb-0"><i class="fas fa-box-open mr-1"></i>Chi tiết sản phẩm</h6>
                         <div class="card-tools d-flex align-items-center" style="gap:8px;">
-                            <select class="custom-select custom-select-sm" id="order_item_sort" title="Sắp xếp cách hiển thị sản phẩm theo STT">
-                                <option value="asc">STT: thấp → cao</option>
-                                <option value="desc">STT: cao → thấp</option>
-                            </select>
+                            <span class="small text-muted">STT</span>
+                            <button type="button"
+                                    class="app-sort-toggle-btn active"
+                                    id="order_item_sort"
+                                    data-direction="asc"
+                                    title="Đang hiển thị STT tăng dần. Bấm để chuyển sang giảm dần"
+                                    aria-label="Đang hiển thị STT tăng dần. Bấm để chuyển sang giảm dần">
+                                <i class="fas fa-sort-amount-up"></i>
+                            </button>
                             <button type="button" class="btn btn-xs btn-outline-secondary" id="btn_toggle_stock_info" title="Ẩn/hiện kiểm tra tồn kho">
                                 <i class="fas fa-eye mr-1"></i> Kiểm tra tồn
                             </button>
@@ -1144,9 +1149,7 @@
     margin: 0;
 }
 #order_item_sort {
-    width: 150px;
-    flex: 0 0 150px;
-    font-size: 12px;
+    flex: 0 0 24px;
 }
 @media (min-width: 992px) {
     #modal_form .order-form-dialog {
@@ -5090,8 +5093,8 @@ $(document).ready(function(){
                 ensureOrderProductSelectReady($select.closest('tr'), true);
             }
         });
-    $('#order_item_sort').on('change', function(){
-        setOrderItemSortDirection($(this).val());
+    $('#order_item_sort').on('click', function(){
+        setOrderItemSortDirection(ORDER_ITEM_SORT_DIRECTION === 'desc' ? 'asc' : 'desc');
     });
     $('#modal_form').on('shown.bs.modal.orderItemsViewport', function(){
         scheduleOrderItemsViewportRefresh();
@@ -5965,7 +5968,7 @@ function applyOrderItemDisplayOrder(){
         var $row = $(row);
         $row.find('.order-item-sequence').text($row.attr('data-item-sequence'));
     });
-    $('#order_item_sort').val(ORDER_ITEM_SORT_DIRECTION);
+    syncOrderItemSortButton();
     filterOrderItemRows();
     scheduleOrderItemsViewportRefresh();
 }
@@ -5983,6 +5986,19 @@ $(document).on('change input', '#items_tbl .sel_product, #items_tbl .inp_service
 function setOrderItemSortDirection(direction){
     ORDER_ITEM_SORT_DIRECTION = direction === 'desc' ? 'desc' : 'asc';
     applyOrderItemDisplayOrder();
+}
+
+function syncOrderItemSortButton(){
+    var descending = ORDER_ITEM_SORT_DIRECTION === 'desc';
+    var currentLabel = descending ? 'giảm dần' : 'tăng dần';
+    var nextLabel = descending ? 'tăng dần' : 'giảm dần';
+    var title = 'Đang hiển thị STT ' + currentLabel + '. Bấm để chuyển sang ' + nextLabel;
+    $('#order_item_sort')
+        .attr('data-direction', ORDER_ITEM_SORT_DIRECTION)
+        .attr('title', title)
+        .attr('aria-label', title)
+        .find('i')
+        .attr('class', descending ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up');
 }
 
 function normalizeOrderItemSequences(){

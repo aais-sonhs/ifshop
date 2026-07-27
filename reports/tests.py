@@ -421,6 +421,7 @@ class SalesReportTests(TestCase):
         api_response = self.client.get(reverse('api_report_finance'), params)
 
         self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'class="text-right app-sortable-heading"')
         self.assertContains(page_response, debt_order.code)
         self.assertContains(page_response, f'/order-tbl/?open_order={debt_order.id}')
         self.assertContains(page_response, '700đ')
@@ -534,10 +535,63 @@ class SalesReportTests(TestCase):
         self.assertContains(response, '<th>Tên sản phẩm</th>', count=1)
         self.assertNotContains(response, '<th>Mã SP</th>')
         self.assertContains(response, '<th title="Nhà cung cấp">NCC</th>', html=True)
-        self.assertContains(response, '>Giá tính tồn</th>')
+        self.assertContains(response, 'Giá tính tồn')
         self.assertContains(response, 'Dùng giá nhập')
         self.assertContains(response, 'colspan="13"')
         self.assertContains(response, 'var productIdentityHtml =')
+        self.assertContains(response, 'id="inventory_report_tabs"')
+        self.assertContains(response, 'id="inventory_product_tab"')
+        self.assertContains(response, 'BC kho theo sản phẩm')
+        self.assertContains(response, 'id="inventory_category_tab"')
+        self.assertContains(response, 'BC kho theo danh mục')
+        self.assertContains(response, 'id="inventory_category_tbl"')
+        self.assertContains(response, 'function buildInventoryCategoryRows(data)')
+        self.assertContains(response, 'function renderInventoryCategoryTable(data)')
+        self.assertContains(response, 'id="inventory_category_stock_value_sort"')
+        self.assertContains(response, 'id="inventory_category_quantity_sort"')
+        self.assertContains(response, 'Bấm để sắp xếp tổng tồn giảm dần')
+        self.assertContains(response, 'Đang sắp xếp giá trị tồn giảm dần. Bấm để chuyển sang tăng dần')
+        self.assertContains(response, "var _inventoryCategorySortField = 'stock_value';")
+        self.assertContains(response, "var _inventoryCategoryStockValueSortDirection = 'desc';")
+        self.assertContains(response, "var _inventoryCategoryQuantitySortDirection = 'desc';")
+        self.assertContains(response, 'function sortInventoryCategoryRows(rows)')
+        self.assertContains(response, 'function syncInventoryCategorySortButtons()')
+        self.assertContains(
+            response,
+            "_inventoryCategoryStockValueSortDirection === 'desc' ? 'asc' : 'desc';",
+        )
+        self.assertContains(
+            response,
+            "_inventoryCategoryQuantitySortDirection === 'desc' ? 'asc' : 'desc';",
+        )
+        self.assertContains(response, "row.products[String(item.product_id)] = true;")
+        self.assertContains(response, 'id="inventory_product_page_size"')
+        self.assertContains(response, '<option value="25">25 dòng</option>', html=True)
+        self.assertContains(response, '<option value="200">200 dòng</option>', html=True)
+        self.assertContains(response, 'id="inventory_product_pagination_summary"')
+        self.assertContains(response, 'id="inventory_product_pagination"')
+        self.assertContains(response, 'function renderInventoryProductPagination(meta)')
+        self.assertContains(response, 'function renderInventoryProductTable()')
+        self.assertContains(response, '_inventoryProductRows.slice(startOffset, endOffset)')
+        self.assertContains(response, 'inventory-product-page-btn')
+        self.assertContains(response, 'id="inventory_valuation_sort"')
+        self.assertContains(response, 'class="app-sort-toggle-btn inventory-product-sort-btn active"')
+        self.assertContains(response, 'data-direction="desc"')
+        self.assertContains(response, 'fas fa-sort-amount-down')
+        self.assertContains(response, 'id="inventory_stock_sort"')
+        self.assertContains(response, 'class="app-sortable-heading"', count=2)
+        self.assertContains(response, '.app-sortable-heading {')
+        self.assertContains(response, 'white-space: nowrap;')
+        self.assertContains(response, 'Bấm để sắp xếp tồn kho giảm dần')
+        self.assertContains(response, 'var _inventoryProductSortField = \'valuation_price\';')
+        self.assertContains(response, "var _inventoryValuationSortDirection = 'desc';")
+        self.assertContains(response, "var _inventoryStockSortDirection = 'desc';")
+        self.assertContains(response, 'function sortInventoryProductRows(rows)')
+        self.assertContains(response, 'function syncInventoryProductSortButtons()')
+        self.assertContains(
+            response,
+            "var difference = Number(a[_inventoryProductSortField] || 0) - Number(b[_inventoryProductSortField] || 0);",
+        )
 
     def test_api_inventory_report_exposes_product_supplier(self):
         from products.models import Supplier
@@ -685,6 +739,12 @@ class SalesReportTests(TestCase):
         self.assertIn(root.id, [item['id'] for item in payload['categories']])
         self.assertNotIn(product_type.id, [item['id'] for item in payload['categories']])
         self.assertIn(product_type.id, [item['id'] for item in payload['product_types']])
+        inventory_row = next(
+            item for item in payload['data']
+            if item['product_code'] == product.code
+        )
+        self.assertEqual(inventory_row['category_id'], root.id)
+        self.assertEqual(inventory_row['category_name'], root.name)
 
         by_category = self.client.get(reverse('api_report_inventory'), {
             'category_id': root.id,
@@ -947,6 +1007,10 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'data-sort="days_without_sale"')
         self.assertContains(response, 'data-sort="stock"')
         self.assertContains(response, 'data-sort="stock_value"')
+        self.assertContains(response, 'class="text-right app-sortable-heading"', count=3)
+        self.assertContains(response, 'class="app-sort-toggle-btn slow-moving-sort"', count=3)
+        self.assertContains(response, 'fa-sort-amount-up')
+        self.assertContains(response, 'fa-sort-amount-down')
         self.assertContains(response, "_slowMovingSort.direction==='asc'?'desc':'asc'")
         self.assertNotContains(response, '<th>Mức cảnh báo</th>')
         self.assertContains(response, 'Ngày chưa bán')

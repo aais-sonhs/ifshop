@@ -80,7 +80,7 @@
         <div class="mb-2 d-flex align-items-center flex-wrap" id="customer_filter_summary" style="gap:6px;"></div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th data-col="total_purchased" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_purchased" data-sort-label="Tổng mua" title="Sắp xếp Tổng mua tăng dần"><span>Tổng mua</span><i class="fas fa-sort sort-icon"></i></button></th><th data-col="debt" aria-sort="none"><button type="button" class="customer-sort-btn" data-sort-key="total_debt" data-sort-label="Công nợ" title="Sắp xếp Công nợ tăng dần"><span>Công nợ</span><i class="fas fa-sort sort-icon"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
+                <thead><tr><th data-col="stt">STT</th><th data-col="avatar">Ảnh</th><th data-col="name">Tên khách hàng</th><th data-col="type">Loại</th><th data-col="kind">Buôn/lẻ</th><th data-col="phone">SĐT</th><th data-col="email">Email</th><th data-col="group">Nhóm</th><th data-col="membership">Hạng TV</th><th data-col="points">Điểm</th><th class="app-sortable-heading" data-col="total_purchased" aria-sort="none">Tổng mua <button type="button" class="app-sort-toggle-btn customer-sort-btn" data-sort-key="total_purchased" data-sort-label="Tổng mua" title="Sắp xếp Tổng mua tăng dần" aria-label="Sắp xếp Tổng mua tăng dần"><i class="fas fa-sort sort-icon"></i></button></th><th class="app-sortable-heading" data-col="debt" aria-sort="none">Công nợ <button type="button" class="app-sort-toggle-btn customer-sort-btn" data-sort-key="total_debt" data-sort-label="Công nợ" title="Sắp xếp Công nợ tăng dần" aria-label="Sắp xếp Công nợ tăng dần"><i class="fas fa-sort sort-icon"></i></button></th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -333,13 +333,6 @@
 .customer-order-items .badge{font-weight:normal;}
 .customer-row-highlight td{background:#d8f3dc !important;box-shadow:inset 3px 0 0 #28a745;}
 #customer_pagination .page-link{min-width:36px;text-align:center;}
-.customer-sort-btn{display:inline-flex;align-items:center;gap:6px;padding:3px 5px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;}
-.customer-sort-btn .sort-icon{font-size:14px;color:#6c757d;transition:color .15s;}
-.customer-sort-btn:hover{background:#e9ecef;color:#004085;}
-.customer-sort-btn:hover .sort-icon{color:#0056b3;}
-.customer-sort-btn.active{background:#dbeafe;color:#004085;box-shadow:inset 0 0 0 1px #7db7f5;}
-.customer-sort-btn.active .sort-icon{color:#0056b3;}
-.customer-sort-btn:focus{outline:2px solid rgba(0,123,255,.35);outline-offset:3px;border-radius:2px;}
 </style>
 {% endblock %}
 
@@ -766,14 +759,14 @@ function updateCustomerSortControls(){
         $button.removeClass('sort-asc sort-desc');
 
         var $icon = $button.find('.sort-icon');
-        $icon.removeClass('fa-sort fa-sort-up fa-sort-down');
+        $icon.removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down');
 
         if(direction === 'asc') {
             $button.addClass('sort-asc');
-            $icon.addClass('fa-sort-up');
+            $icon.addClass('fa-sort-amount-up');
         } else if(direction === 'desc') {
             $button.addClass('sort-desc');
-            $icon.addClass('fa-sort-down');
+            $icon.addClass('fa-sort-amount-down');
         } else {
             $icon.addClass('fa-sort');
         }

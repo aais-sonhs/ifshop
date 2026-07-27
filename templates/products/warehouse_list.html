@@ -31,15 +31,16 @@
 
 <style>
 .th-sortable { position:relative; white-space:nowrap; }
-.th-sortable .sort-btn { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1px solid #dee2e6; border-radius:4px; margin-left:5px; font-size:11px; color:#888; background:#f8f9fa; cursor:pointer; transition:all .15s; vertical-align:middle; }
-.th-sortable .sort-btn:hover { background:#e2e6ea; color:#007bff; border-color:#007bff; }
-.th-sortable .sort-btn.active { background:#007bff; color:#fff; border-color:#007bff; }
-.sort-dropdown { display:none; position:absolute; right:0; top:100%; margin-top:4px; min-width:130px; background:#fff; border:1px solid #dee2e6; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.15); z-index:100; overflow:hidden; }
-.sort-dropdown.show { display:block; }
-.sort-dropdown .sort-option { display:flex; align-items:center; gap:6px; padding:7px 12px; font-size:13px; color:#495057; cursor:pointer; transition:background .1s; white-space:nowrap; }
-.sort-dropdown .sort-option:hover { background:#f0f4ff; }
-.sort-dropdown .sort-option.active { background:#e8f0fe; color:#007bff; font-weight:600; }
-.sort-dropdown .sort-option i { width:14px; text-align:center; font-size:12px; }
+.warehouse-negative-stock-filter {
+    margin-left: 3px;
+}
+.warehouse-negative-stock-filter.active,
+.warehouse-negative-stock-filter.active:hover,
+.warehouse-negative-stock-filter.active:focus {
+    color: #fff;
+    background: #dc3545;
+    border-color: #dc3545;
+}
 .warehouse-product-edit-link { color:#1769aa; text-decoration:none; }
 .warehouse-product-edit-link:hover,
 .warehouse-product-edit-link:focus { color:#0d47a1; text-decoration:underline; }
@@ -94,24 +95,35 @@
                         <th style="min-width:150px;">Danh mục</th>
                         <th style="min-width:170px;">NCC</th>
                         <th style="width:165px;min-width:165px;white-space:nowrap;">Tồn tối (thiểu / đa)</th>
-                        <th class="text-right th-sortable" style="width:130px;">
+                        <th class="text-right th-sortable app-sortable-heading" style="width:130px;">
                             Có thể bán
-                            <span class="sort-btn" data-target="inventory_sellable_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
-                            <div class="sort-dropdown" id="dd_sellable">
-                                <div class="sort-option" data-value="asc" data-select="inventory_sellable_sort"><i class="fas fa-sort-amount-up-alt"></i> Tăng dần</div>
-                                <div class="sort-option" data-value="desc" data-select="inventory_sellable_sort"><i class="fas fa-sort-amount-down"></i> Giảm dần</div>
-                                <div class="sort-option" data-value="" data-select="inventory_sellable_sort"><i class="fas fa-times"></i> Bỏ sắp xếp</div>
-                            </div>
+                            <button type="button"
+                                    class="app-sort-toggle-btn warehouse-inventory-sort-btn"
+                                    data-target="inventory_sellable_sort"
+                                    data-sort-label="có thể bán"
+                                    title="Bấm để sắp xếp có thể bán giảm dần"
+                                    aria-label="Bấm để sắp xếp có thể bán giảm dần">
+                                <i class="fas fa-sort"></i>
+                            </button>
                         </th>
-                        <th class="text-right th-sortable" style="width:130px;">
+                        <th class="text-right th-sortable app-sortable-heading" style="width:130px;">
                             Tồn kho
-                            <span class="sort-btn" data-target="inventory_stock_sort" title="Sắp xếp"><i class="fas fa-sort"></i></span>
-                            <div class="sort-dropdown" id="dd_stock">
-                                <div class="sort-option" data-value="asc" data-select="inventory_stock_sort"><i class="fas fa-sort-amount-up-alt"></i> Tăng dần</div>
-                                <div class="sort-option" data-value="desc" data-select="inventory_stock_sort"><i class="fas fa-sort-amount-down"></i> Giảm dần</div>
-                                <div class="sort-option" data-value="negative" data-select="inventory_stock_sort"><i class="fas fa-filter"></i> Tồn kho âm</div>
-                                <div class="sort-option" data-value="" data-select="inventory_stock_sort"><i class="fas fa-times"></i> Bỏ sắp xếp</div>
-                            </div>
+                            <button type="button"
+                                    class="app-sort-toggle-btn warehouse-inventory-sort-btn"
+                                    data-target="inventory_stock_sort"
+                                    data-sort-label="tồn kho"
+                                    title="Bấm để sắp xếp tồn kho giảm dần"
+                                    aria-label="Bấm để sắp xếp tồn kho giảm dần">
+                                <i class="fas fa-sort"></i>
+                            </button>
+                            <button type="button"
+                                    class="app-sort-toggle-btn warehouse-negative-stock-filter"
+                                    id="inventory_negative_stock_filter"
+                                    title="Chỉ hiển thị sản phẩm có tồn kho âm"
+                                    aria-label="Chỉ hiển thị sản phẩm có tồn kho âm"
+                                    aria-pressed="false">
+                                <i class="fas fa-filter"></i>
+                            </button>
                         </th>
                         <th class="text-center" style="width:60px;">TT</th>
                     </tr>
@@ -124,7 +136,7 @@
         <div id="inventory_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
-<!-- Hidden selects to keep JS compatibility -->
+<!-- Trạng thái sắp xếp do nút icon điều khiển -->
 <select id="inventory_sellable_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option></select>
 <select id="inventory_stock_sort" style="display:none;"><option value=""></option><option value="asc"></option><option value="desc"></option><option value="negative"></option></select>
 
@@ -270,11 +282,13 @@ $(document).ready(function() {
     $('#inventory_sellable_sort').change(function() {
         if ($(this).val()) $('#inventory_stock_sort').val('');
         INVENTORY_PAGE_STATE.page = 1;
+        syncWarehouseInventorySortButtons();
         renderInventoryTable();
     });
     $('#inventory_stock_sort').change(function() {
         if ($(this).val()) $('#inventory_sellable_sort').val('');
         INVENTORY_PAGE_STATE.page = 1;
+        syncWarehouseInventorySortButtons();
         renderInventoryTable();
     });
     $('#inventory_search').on('input', function() {
@@ -294,54 +308,16 @@ $(document).ready(function() {
         loadInventoryData();
     });
 
-    // Sort icon → open dropdown popup
-    $(document).on('click', '.sort-btn', function(e) {
-        e.stopPropagation();
-        var $btn = $(this);
-        var $dropdown = $btn.siblings('.sort-dropdown');
-        // Close all other dropdowns
-        $('.sort-dropdown').not($dropdown).removeClass('show');
-        $dropdown.toggleClass('show');
+    $(document).on('click', '.warehouse-inventory-sort-btn', function() {
+        var selectId = String($(this).data('target') || '');
+        var currentDirection = $('#' + selectId).val() || '';
+        var nextDirection = currentDirection === 'desc' ? 'asc' : 'desc';
+        $('#' + selectId).val(nextDirection).trigger('change');
     });
 
-    // Pick a sort option from dropdown
-    $(document).on('click', '.sort-option', function(e) {
-        e.stopPropagation();
-        var $opt = $(this);
-        var selectId = $opt.data('select');
-        var value = $opt.data('value');
-        // Update hidden select & trigger existing logic
-        $('#' + selectId).val(value).trigger('change');
-        // Update active state in dropdown
-        $opt.closest('.sort-dropdown').find('.sort-option').removeClass('active');
-        if (value) $opt.addClass('active');
-        // Update sort-btn icon & state
-        var $btn = $opt.closest('.th-sortable').find('.sort-btn');
-        if (value) {
-            $btn.addClass('active');
-            var iconMap = {asc:'fas fa-sort-amount-up-alt', desc:'fas fa-sort-amount-down', negative:'fas fa-filter'};
-            $btn.find('i').attr('class', iconMap[value] || 'fas fa-sort');
-        } else {
-            $btn.removeClass('active');
-            $btn.find('i').attr('class', 'fas fa-sort');
-        }
-        // Reset the OTHER column's btn state
-        var otherSelectId = selectId === 'inventory_sellable_sort' ? 'inventory_stock_sort' : 'inventory_sellable_sort';
-        if (value && !$('#' + otherSelectId).val()) {
-            // already cleared by hidden select .change handler
-        }
-        var $otherBtn = $('.sort-btn[data-target="' + otherSelectId + '"]');
-        if (value) {
-            $otherBtn.removeClass('active').find('i').attr('class', 'fas fa-sort');
-            $otherBtn.siblings('.sort-dropdown').find('.sort-option').removeClass('active');
-        }
-        // Close dropdown
-        $opt.closest('.sort-dropdown').removeClass('show');
-    });
-
-    // Close dropdown when clicking outside
-    $(document).on('click', function() {
-        $('.sort-dropdown').removeClass('show');
+    $('#inventory_negative_stock_filter').on('click', function() {
+        var isActive = $('#inventory_stock_sort').val() === 'negative';
+        $('#inventory_stock_sort').val(isActive ? '' : 'negative').trigger('change');
     });
 
     // Pagination controls
@@ -567,6 +543,41 @@ function loadInventoryData() {
             '<tr><td colspan="9" class="text-center text-danger">Không tải được dữ liệu tồn kho</td></tr>'
         );
     });
+}
+
+function syncWarehouseInventorySortButtons() {
+    $('.warehouse-inventory-sort-btn').each(function() {
+        var $button = $(this);
+        var value = $('#' + $button.data('target')).val() || '';
+        var active = value === 'asc' || value === 'desc';
+        var descending = value === 'desc';
+        var label = String($button.data('sort-label') || 'dữ liệu');
+        var nextDirection = active && descending ? 'tăng dần' : 'giảm dần';
+        var title = active
+            ? 'Đang sắp xếp ' + label + ' ' + (descending ? 'giảm dần' : 'tăng dần') +
+              '. Bấm để chuyển sang ' + nextDirection
+            : 'Bấm để sắp xếp ' + label + ' giảm dần';
+        $button
+            .toggleClass('active', active)
+            .attr('data-direction', active ? value : '')
+            .attr('title', title)
+            .attr('aria-label', title)
+            .find('i')
+            .attr('class', active
+                ? (descending ? 'fas fa-sort-amount-down' : 'fas fa-sort-amount-up')
+                : 'fas fa-sort');
+    });
+
+    var negativeOnly = $('#inventory_stock_sort').val() === 'negative';
+    $('#inventory_negative_stock_filter')
+        .toggleClass('active', negativeOnly)
+        .attr('aria-pressed', negativeOnly ? 'true' : 'false')
+        .attr('title', negativeOnly
+            ? 'Đang chỉ hiển thị tồn kho âm. Bấm để bỏ lọc'
+            : 'Chỉ hiển thị sản phẩm có tồn kho âm')
+        .attr('aria-label', negativeOnly
+            ? 'Đang chỉ hiển thị tồn kho âm. Bấm để bỏ lọc'
+            : 'Chỉ hiển thị sản phẩm có tồn kho âm');
 }
 
 function renderInventoryTable() {

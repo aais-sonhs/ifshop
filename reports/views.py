@@ -2230,7 +2230,8 @@ def api_report_inventory(request):
     stock_status = request.GET.get('stock_status', '')  # positive, zero, negative
 
     stocks = ProductStock.objects.select_related(
-        'product', 'product__category', 'product__supplier', 'warehouse',
+        'product', 'product__category', 'product__category__parent',
+        'product__supplier', 'warehouse',
     ).filter(
         product__is_deleted=False,
     )
@@ -2272,12 +2273,20 @@ def api_report_inventory(request):
             alert = 'Trên tối đa'
             alert_type = 'warning'
 
+        product_category = s.product.category
+        root_category = (
+            product_category.parent
+            if product_category and product_category.parent_id
+            else product_category
+        )
         data.append({
             'product_id': s.product_id,
             'product_code': s.product.code,
             'product_name': s.product.name,
             'supplier': s.product.supplier.name if s.product.supplier else '',
             'category': s.product.category.name if s.product.category else '',
+            'category_id': root_category.id if root_category else None,
+            'category_name': root_category.name if root_category else '',
             'warehouse': s.warehouse.name,
             'warehouse_id': s.warehouse_id,
             'quantity': qty,

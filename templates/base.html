@@ -18,6 +18,42 @@
     <!-- ./wrapper -->
     <link rel="stylesheet" href="{% static 'plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css' %}?{% now 'U' %}">
     <style>
+    .app-sort-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        margin-left: 4px;
+        border: 1px solid #adb5bd;
+        border-radius: 4px;
+        color: #6c757d;
+        background: #fff;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+    .app-sort-toggle-btn:hover,
+    .app-sort-toggle-btn:focus {
+        color: #007bff;
+        border-color: #007bff;
+        outline: none;
+    }
+    .app-sort-toggle-btn.active,
+    .app-sort-toggle-btn.active:hover,
+    .app-sort-toggle-btn.active:focus {
+        color: #fff;
+        background: #007bff;
+        border-color: #007bff;
+        outline: none;
+    }
+    .app-sort-toggle-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+    }
+    .app-sortable-heading {
+        white-space: nowrap;
+    }
     .global-close-confirm {
         position: fixed;
         inset: 0;

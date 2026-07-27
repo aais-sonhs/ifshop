@@ -402,10 +402,10 @@
                                         <th>Danh mục</th>
                                         <th>NCC</th>
                                         <th class="text-center">Lần bán gần nhất</th>
-                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="days_without_sale">Ngày chưa bán <i class="fas fa-sort" aria-hidden="true"></i></button></th>
-                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock">Tồn hiện tại <i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th class="text-right app-sortable-heading">Ngày chưa bán <button type="button" class="app-sort-toggle-btn slow-moving-sort" data-sort="days_without_sale" data-sort-label="Ngày chưa bán" title="Sắp xếp ngày chưa bán tăng dần" aria-label="Sắp xếp ngày chưa bán tăng dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th class="text-right app-sortable-heading">Tồn hiện tại <button type="button" class="app-sort-toggle-btn slow-moving-sort" data-sort="stock" data-sort-label="Tồn hiện tại" title="Sắp xếp tồn hiện tại tăng dần" aria-label="Sắp xếp tồn hiện tại tăng dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th>
                                         <th class="text-right">Giá tính tồn</th>
-                                        <th class="text-right"><button type="button" class="slow-moving-sort" data-sort="stock_value">Giá trị tồn <i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                                        <th class="text-right app-sortable-heading">Giá trị tồn <button type="button" class="app-sort-toggle-btn slow-moving-sort" data-sort="stock_value" data-sort-label="Giá trị tồn" title="Sắp xếp giá trị tồn tăng dần" aria-label="Sắp xếp giá trị tồn tăng dần"><i class="fas fa-sort" aria-hidden="true"></i></button></th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
@@ -442,9 +442,6 @@
 .slow-moving-table-wrap{max-height:600px;overflow:auto;}
 .slow-moving-table-wrap table{min-width:1180px;}
 .slow-moving-table-wrap thead th{position:sticky;top:0;z-index:2;white-space:nowrap;}
-.slow-moving-sort{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;white-space:nowrap;cursor:pointer;}
-.slow-moving-sort:focus{outline:1px dotted #6c757d;outline-offset:2px;}
-.slow-moving-sort i{width:11px;margin-left:3px;color:#6c757d;}
 .slow-moving-row-critical{background:#fff5f5;}
 .slow-moving-row-slow{background:#fffaf0;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
@@ -1313,9 +1310,19 @@ function renderSlowMovingRows(){
     }
     $('.slow-moving-sort').each(function(){
         var active=String($(this).data('sort')||'')===_slowMovingSort.key;
-        var $icon=$(this).find('i').removeClass('fa-sort fa-sort-up fa-sort-down');
-        $icon.addClass(active?(_slowMovingSort.direction==='asc'?'fa-sort-up':'fa-sort-down'):'fa-sort');
-        $(this).attr('aria-label', $(this).text().trim()+(active?(_slowMovingSort.direction==='asc'?' đang tăng dần':' đang giảm dần'):', chưa sắp xếp'));
+        var direction=active?_slowMovingSort.direction:'';
+        var label=String($(this).data('sort-label')||'dữ liệu');
+        var nextDirection=direction==='asc'?'giảm dần':'tăng dần';
+        var title=active
+            ? 'Đang sắp xếp '+label+' '+(direction==='asc'?'tăng dần':'giảm dần')+'. Bấm để chuyển sang '+nextDirection
+            : 'Sắp xếp '+label+' tăng dần';
+        var $icon=$(this).find('i').removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down');
+        $icon.addClass(active?(direction==='asc'?'fa-sort-amount-up':'fa-sort-amount-down'):'fa-sort');
+        $(this)
+            .toggleClass('active',active)
+            .attr('data-direction',direction)
+            .attr('title',title)
+            .attr('aria-label',title);
     });
 
     var html='';

@@ -1321,7 +1321,12 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="order_item_sort"')
-        self.assertContains(response, '<option value="desc">STT: cao → thấp</option>', html=True)
+        self.assertContains(response, 'class="app-sort-toggle-btn active"')
+        self.assertContains(response, 'data-direction="asc"')
+        self.assertContains(response, 'function syncOrderItemSortButton()')
+        self.assertContains(response, "ORDER_ITEM_SORT_DIRECTION === 'desc' ? 'asc' : 'desc'")
+        self.assertNotContains(response, 'STT: thấp → cao')
+        self.assertNotContains(response, 'STT: cao → thấp')
         self.assertContains(response, 'id="order_items_scroll"')
         self.assertContains(response, 'id="order_items_summary"')
         self.assertContains(response, 'modal-dialog-scrollable order-form-dialog')

@@ -9,7 +9,7 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
-from finance.models import CashBook, Payment, Receipt
+from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from products.models import (
     GoodsReceipt,
@@ -2742,6 +2742,18 @@ class DailyEmailReportSettingTests(TestCase):
         )
         cls.bank_account = CashBook.objects.create(name='TK ngân hàng A')
         cls.cash_account = CashBook.objects.create(name='Quỹ tiền mặt')
+        cls.bank_method = PaymentMethodOption.objects.create(
+            code='BANK-DAILY-REPORT',
+            name='Chuyển khoản công ty La Maison Bui',
+            legacy_type=2,
+            default_cash_book=cls.bank_account,
+        )
+        cls.cash_method = PaymentMethodOption.objects.create(
+            code='CASH-DAILY-REPORT',
+            name='Tiền mặt tại quỹ',
+            legacy_type=1,
+            default_cash_book=cls.cash_account,
+        )
 
     def setUp(self):
         self.client.force_login(self.owner)
@@ -2790,6 +2802,7 @@ class DailyEmailReportSettingTests(TestCase):
             code='PT-DLY-001',
             store=self.store,
             cash_book=self.bank_account,
+            payment_method_option=self.bank_method,
             customer=self.customer,
             order=order,
             amount=100,
@@ -2801,6 +2814,7 @@ class DailyEmailReportSettingTests(TestCase):
             code='PT-DLY-002',
             store=self.store,
             cash_book=self.cash_account,
+            payment_method_option=self.cash_method,
             customer=self.customer,
             amount=50,
             receipt_date=report_date,
@@ -2853,13 +2867,19 @@ class DailyEmailReportSettingTests(TestCase):
             [
                 {
                     'cash_book_id': self.bank_account.id,
-                    'name': 'TK ngân hàng A',
+                    'payment_method_option_id': self.bank_method.id,
+                    'name': 'Chuyển khoản công ty La Maison Bui',
+                    'cash_book_name': 'TK ngân hàng A',
+                    'payment_method_name': 'Chuyển khoản công ty La Maison Bui',
                     'amount': 100,
                     'amount_text': '100đ',
                 },
                 {
                     'cash_book_id': self.cash_account.id,
-                    'name': 'Quỹ tiền mặt',
+                    'payment_method_option_id': self.cash_method.id,
+                    'name': 'Tiền mặt tại quỹ',
+                    'cash_book_name': 'Quỹ tiền mặt',
+                    'payment_method_name': 'Tiền mặt tại quỹ',
                     'amount': 50,
                     'amount_text': '50đ',
                 },
@@ -2889,7 +2909,10 @@ class DailyEmailReportSettingTests(TestCase):
             [
                 {
                     'cash_book_id': None,
+                    'payment_method_option_id': None,
                     'name': 'Chưa gán tài khoản',
+                    'cash_book_name': 'Chưa gán tài khoản',
+                    'payment_method_name': 'Chuyển khoản',
                     'amount': 25,
                     'amount_text': '25đ',
                 },
@@ -2935,13 +2958,27 @@ class DailyEmailReportSettingTests(TestCase):
         self.assertIn('Doanh thu: 150đ', mail.outbox[0].body)
         self.assertIn('Lợi nhuận gộp: 80đ', mail.outbox[0].body)
         self.assertIn('Tổng tiền về: 150đ', mail.outbox[0].body)
-        self.assertIn('Chi tiết tiền về theo tài khoản:', mail.outbox[0].body)
-        self.assertIn('- TK ngân hàng A: 100đ', mail.outbox[0].body)
-        self.assertIn('- Quỹ tiền mặt: 50đ', mail.outbox[0].body)
+        self.assertIn('Chi tiết tiền về theo tài khoản nhận:', mail.outbox[0].body)
+        self.assertIn(
+            '- Chuyển khoản công ty La Maison Bui (sổ quỹ: TK ngân hàng A): 100đ',
+            mail.outbox[0].body,
+        )
+        self.assertIn(
+            '- Tiền mặt tại quỹ (sổ quỹ: Quỹ tiền mặt): 50đ',
+            mail.outbox[0].body,
+        )
         html_body = mail.outbox[0].alternatives[0].content
-        self.assertIn('Chi tiết theo tài khoản', html_body)
+        self.assertIn('Chi tiết theo tài khoản nhận', html_body)
+        self.assertIn('Chuyển khoản công ty La Maison Bui', html_body)
+        self.assertIn('Tiền mặt tại quỹ', html_body)
+        self.assertIn('table-layout:fixed', html_body)
+        self.assertIn('background:#28a745', html_body)
+        self.assertIn('background:#17a2b8', html_body)
+        self.assertIn('Tài khoản nhận', html_body)
+        self.assertIn('Sổ quỹ', html_body)
         self.assertIn('TK ngân hàng A', html_body)
         self.assertIn('Quỹ tiền mặt', html_body)
+        self.assertIn('Tổng hợp bán hàng trong ngày', html_body)
 
     def test_disabled_daily_report_recipient_is_kept_but_not_sent(self):
         response = self.client.post(

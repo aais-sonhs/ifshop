@@ -201,18 +201,42 @@ def collect_daily_email_report_metrics(config, report_date=None):
         receipt_date=report_date,
         status=1,
     ).distinct()
-    money_received_by_cash_book = [
-        {
+    money_received_by_cash_book = []
+    receipt_payment_method_labels = dict(Receipt.PAYMENT_METHOD_CHOICES)
+    receipt_groups = (
+        completed_receipts.order_by()
+        .values(
+            'cash_book_id',
+            'cash_book__name',
+            'payment_method_option_id',
+            'payment_method_option__name',
+            'payment_method',
+        )
+        .annotate(amount=Sum('amount'))
+        .order_by(
+            '-amount',
+            'payment_method_option__name',
+            'cash_book__name',
+            'cash_book_id',
+        )
+    )
+    for row in receipt_groups:
+        cash_book_name = row['cash_book__name'] or 'Chưa gán tài khoản'
+        payment_method_name = (
+            row['payment_method_option__name']
+            or receipt_payment_method_labels.get(row['payment_method'])
+            or 'Chưa xác định'
+        )
+        account_name = row['payment_method_option__name'] or row['cash_book__name']
+        money_received_by_cash_book.append({
             'cash_book_id': row['cash_book_id'],
-            'name': row['cash_book__name'] or 'Chưa gán tài khoản',
+            'payment_method_option_id': row['payment_method_option_id'],
+            'name': account_name or 'Chưa gán tài khoản',
+            'cash_book_name': cash_book_name,
+            'payment_method_name': payment_method_name,
             'amount': _decimal(row['amount']),
             'amount_text': _money_text(row['amount']),
-        }
-        for row in completed_receipts.order_by()
-        .values('cash_book_id', 'cash_book__name')
-        .annotate(amount=Sum('amount'))
-        .order_by('-amount', 'cash_book__name', 'cash_book_id')
-    ]
+        })
     total_money_received = sum(
         (row['amount'] for row in money_received_by_cash_book),
         Decimal('0'),
@@ -289,11 +313,15 @@ def send_daily_email_report(config, *, is_test=False, now=None, report_date=None
         f"Tổng tiền về: {metrics['total_money_received_text']}",
     ]
     if metrics['money_received_by_cash_book']:
-        text_lines.append('Chi tiết tiền về theo tài khoản:')
-        text_lines.extend(
-            f"- {row['name']}: {row['amount_text']}"
-            for row in metrics['money_received_by_cash_book']
-        )
+        text_lines.append('Chi tiết tiền về theo tài khoản nhận:')
+        for row in metrics['money_received_by_cash_book']:
+            cash_book_detail = (
+                f" (sổ quỹ: {row['cash_book_name']})"
+                if row['cash_book_name'] != row['name'] else ''
+            )
+            text_lines.append(
+                f"- {row['name']}{cash_book_detail}: {row['amount_text']}"
+            )
     text_body = '\n'.join(text_lines)
 
     sent_recipients = []

@@ -124,7 +124,14 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Số tiền</th><th>HTTT</th><th>Ngày chi</th><th>Quỹ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Số tiền</th><th>HTTT</th>
+                    <th id="payment_date_header" aria-sort="descending">
+                        <button type="button" class="btn btn-link btn-sm p-0 text-dark font-weight-bold"
+                                id="btn_sort_payment_date" title="Sắp xếp Ngày chi tăng/giảm dần">
+                            Ngày chi <i id="payment_date_sort_icon" class="fas fa-sort-down ml-1" aria-hidden="true"></i>
+                        </button>
+                    </th>
+                    <th>Quỹ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -182,6 +189,7 @@ var PAYMENT_PAGE_STATE = {
     meta: null
 };
 var PAYMENT_NEXT_CODE = '';
+var PAYMENT_DATE_SORT_DIRECTION = 'desc';
 var PAYMENT_FORM_CLOSE_BASELINE = null;
 var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
@@ -231,6 +239,7 @@ function getPaymentRequestParams(includePagination){
     Object.keys(filters).forEach(function(key){
         if(filters[key] !== '') params[key] = filters[key];
     });
+    params.payment_date_order = PAYMENT_DATE_SORT_DIRECTION;
     if(includePagination){
         params.page = PAYMENT_PAGE_STATE.page || 1;
         params.page_size = PAYMENT_PAGE_STATE.page_size || 50;
@@ -241,10 +250,29 @@ function buildPaymentExportUrl(){
     var query = $.param(getPaymentRequestParams(false));
     return '/api/payments/export-excel/' + (query ? '?' + query : '');
 }
+function updatePaymentDateSortIndicator(){
+    var isAscending = PAYMENT_DATE_SORT_DIRECTION === 'asc';
+    $('#payment_date_header').attr('aria-sort', isAscending ? 'ascending' : 'descending');
+    $('#payment_date_sort_icon')
+        .toggleClass('fa-sort-up', isAscending)
+        .toggleClass('fa-sort-down', !isAscending);
+    $('#btn_sort_payment_date').attr(
+        'title',
+        isAscending ? 'Đang tăng dần — bấm để sắp xếp giảm dần' : 'Đang giảm dần — bấm để sắp xếp tăng dần'
+    );
+}
 $(document).ready(function(){
     applyPaymentUrlFilters();
     $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
+    updatePaymentDateSortIndicator();
     loadData();
+
+    $('#btn_sort_payment_date').on('click', function(){
+        PAYMENT_DATE_SORT_DIRECTION = PAYMENT_DATE_SORT_DIRECTION === 'desc' ? 'asc' : 'desc';
+        resetPaymentPage();
+        updatePaymentDateSortIndicator();
+        loadData();
+    });
 
     // Hiển thị số dư khi chọn quỹ
     $('#inp_cash_book_id').change(function(){

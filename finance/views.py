@@ -892,6 +892,12 @@ def api_get_finance_entries(request):
 def api_get_payments(request):
     """Trả về danh sách phiếu chi sau khi áp quyền và bộ lọc."""
     should_paginate = request.GET.get('page') is not None or request.GET.get('page_size') is not None
+    payment_date_order = request.GET.get('payment_date_order')
+    ordering = (
+        ('payment_date', 'created_at', 'id')
+        if payment_date_order == 'asc'
+        else ('-payment_date', '-created_at', '-id')
+    )
     payments = (
         Payment.objects
         .select_related(
@@ -904,7 +910,7 @@ def api_get_payments(request):
             'payment_method_option',
             'created_by',
         )
-        .order_by('-payment_date', '-created_at', '-id')
+        .order_by(*ordering)
     )
     payments = _filter_payments_for_user(payments, request)
     total_all_count = payments.count()

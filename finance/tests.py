@@ -152,6 +152,79 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(len(payload['data']), 11)
         self.assertEqual(payload['next_code'], 'PC-001')
 
+    def test_payment_list_sorts_by_payment_date_in_requested_direction(self):
+        today = date.today()
+        for index, days_ago in enumerate((1, 3, 2), start=1):
+            Payment.objects.create(
+                code=f'PC-SORT-{index}',
+                store=self.store,
+                amount=Decimal('100'),
+                payment_date=today - timedelta(days=days_ago),
+                status=0,
+                created_by=self.user,
+            )
+
+        ascending_response = self.client.get(
+            reverse('api_get_payments'),
+            data={'payment_date_order': 'asc'},
+        )
+        descending_response = self.client.get(
+            reverse('api_get_payments'),
+            data={'payment_date_order': 'desc'},
+        )
+
+        self.assertEqual(
+            [item['code'] for item in ascending_response.json()['data']],
+            ['PC-SORT-2', 'PC-SORT-3', 'PC-SORT-1'],
+        )
+        self.assertEqual(
+            [item['code'] for item in descending_response.json()['data']],
+            ['PC-SORT-1', 'PC-SORT-3', 'PC-SORT-2'],
+        )
+
+    def test_payment_list_order_stays_stable_after_edit(self):
+        payments = [
+            Payment.objects.create(
+                code=f'PC-STABLE-{index}',
+                store=self.store,
+                amount=Decimal('100'),
+                payment_date=date.today(),
+                status=0,
+                created_by=self.user,
+            )
+            for index in range(1, 4)
+        ]
+        expected_codes = [payment.code for payment in reversed(payments)]
+
+        before_edit = self.client.get(reverse('api_get_payments'))
+        self.assertEqual(
+            [item['code'] for item in before_edit.json()['data']],
+            expected_codes,
+        )
+
+        edited_payment = payments[1]
+        edit_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': edited_payment.id,
+                'code': edited_payment.code,
+                'amount': 100,
+                'payment_date': date.today().isoformat(),
+                'status': 0,
+                'payment_method': 2,
+                'description': 'Sửa nhưng không đổi vị trí',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+
+        after_edit = self.client.get(reverse('api_get_payments'))
+        self.assertEqual(
+            [item['code'] for item in after_edit.json()['data']],
+            expected_codes,
+        )
+
     def test_payment_list_filters_full_queryset_and_export_uses_same_filters(self):
         today = date.today()
         category = FinanceCategory.objects.create(name='Chi phí lọc', type=2)
@@ -350,6 +423,12 @@ class FinanceFlowTests(TestCase):
             'payment_method_option_id', 'status', 'description', 'note',
         ):
             self.assertContains(response, f'{field_name}:')
+        self.assertContains(response, 'id="btn_sort_payment_date"')
+        self.assertContains(response, "var PAYMENT_DATE_SORT_DIRECTION = 'desc';")
+        self.assertContains(
+            response,
+            "PAYMENT_DATE_SORT_DIRECTION = PAYMENT_DATE_SORT_DIRECTION === 'desc' ? 'asc' : 'desc';",
+        )
 
     def test_receipt_create_and_edit_only_confirm_close_when_form_changed(self):
         self.brand.owner = self.user

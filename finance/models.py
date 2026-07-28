@@ -193,7 +193,7 @@ class Payment(SoftDeleteModel):
         db_table = 'payments'
         verbose_name = 'Phiếu chi'
         verbose_name_plural = 'Phiếu chi'
-        ordering = ['-payment_date']
+        ordering = ['-payment_date', '-created_at', '-id']
 
     def __str__(self):
         return self.code

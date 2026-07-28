@@ -9,7 +9,7 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
-from finance.models import Payment, Receipt
+from finance.models import CashBook, Payment, Receipt
 from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
 from products.models import (
     GoodsReceipt,
@@ -2695,6 +2695,8 @@ class DailyEmailReportSettingTests(TestCase):
             name='Khách báo cáo ngày',
             created_by=cls.owner,
         )
+        cls.bank_account = CashBook.objects.create(name='TK ngân hàng A')
+        cls.cash_account = CashBook.objects.create(name='Quỹ tiền mặt')
 
     def setUp(self):
         self.client.force_login(self.owner)
@@ -2742,6 +2744,7 @@ class DailyEmailReportSettingTests(TestCase):
         Receipt.objects.create(
             code='PT-DLY-001',
             store=self.store,
+            cash_book=self.bank_account,
             customer=self.customer,
             order=order,
             amount=100,
@@ -2752,6 +2755,7 @@ class DailyEmailReportSettingTests(TestCase):
         Receipt.objects.create(
             code='PT-DLY-002',
             store=self.store,
+            cash_book=self.cash_account,
             customer=self.customer,
             amount=50,
             receipt_date=report_date,
@@ -2799,6 +2803,53 @@ class DailyEmailReportSettingTests(TestCase):
         self.assertEqual(metrics['net_cost'], 40)
         self.assertEqual(metrics['gross_profit'], 80)
         self.assertEqual(metrics['total_money_received'], 150)
+        self.assertEqual(
+            metrics['money_received_by_cash_book'],
+            [
+                {
+                    'cash_book_id': self.bank_account.id,
+                    'name': 'TK ngân hàng A',
+                    'amount': 100,
+                    'amount_text': '100đ',
+                },
+                {
+                    'cash_book_id': self.cash_account.id,
+                    'name': 'Quỹ tiền mặt',
+                    'amount': 50,
+                    'amount_text': '50đ',
+                },
+            ],
+        )
+
+    def test_metrics_show_completed_receipts_without_a_cash_book_separately(self):
+        Receipt.objects.create(
+            code='PT-DLY-UNASSIGNED',
+            store=self.store,
+            customer=self.customer,
+            amount=25,
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.owner,
+        )
+        config = DailyEmailReport.objects.create(brand=self.brand)
+
+        metrics = collect_daily_email_report_metrics(
+            config,
+            report_date=date.today(),
+        )
+
+        self.assertEqual(metrics['total_money_received'], 25)
+        self.assertEqual(
+            metrics['money_received_by_cash_book'],
+            [
+                {
+                    'cash_book_id': None,
+                    'name': 'Chưa gán tài khoản',
+                    'amount': 25,
+                    'amount_text': '25đ',
+                },
+            ],
+        )
 
     def test_save_and_send_test_daily_email_report(self):
         self._create_daily_transactions()
@@ -2835,6 +2886,13 @@ class DailyEmailReportSettingTests(TestCase):
         self.assertIn('Doanh thu: 150đ', mail.outbox[0].body)
         self.assertIn('Lợi nhuận gộp: 80đ', mail.outbox[0].body)
         self.assertIn('Tổng tiền về: 150đ', mail.outbox[0].body)
+        self.assertIn('Chi tiết tiền về theo tài khoản:', mail.outbox[0].body)
+        self.assertIn('- TK ngân hàng A: 100đ', mail.outbox[0].body)
+        self.assertIn('- Quỹ tiền mặt: 50đ', mail.outbox[0].body)
+        html_body = mail.outbox[0].alternatives[0].content
+        self.assertIn('Chi tiết theo tài khoản', html_body)
+        self.assertIn('TK ngân hàng A', html_body)
+        self.assertIn('Quỹ tiền mặt', html_body)
 
     def test_scheduled_daily_report_sends_only_once_per_day(self):
         self._create_daily_transactions()

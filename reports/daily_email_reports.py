@@ -180,12 +180,26 @@ def collect_daily_email_report_metrics(config, report_date=None):
         Q(store__brand_id=config.brand_id) |
         Q(store__isnull=True, order__store__brand_id=config.brand_id)
     )
-    total_money_received = _decimal(
-        Receipt.objects.filter(
-            receipt_scope,
-            receipt_date=report_date,
-            status=1,
-        ).distinct().aggregate(total=Sum('amount'))['total']
+    completed_receipts = Receipt.objects.filter(
+        receipt_scope,
+        receipt_date=report_date,
+        status=1,
+    ).distinct()
+    money_received_by_cash_book = [
+        {
+            'cash_book_id': row['cash_book_id'],
+            'name': row['cash_book__name'] or 'Chưa gán tài khoản',
+            'amount': _decimal(row['amount']),
+            'amount_text': _money_text(row['amount']),
+        }
+        for row in completed_receipts.order_by()
+        .values('cash_book_id', 'cash_book__name')
+        .annotate(amount=Sum('amount'))
+        .order_by('-amount', 'cash_book__name', 'cash_book_id')
+    ]
+    total_money_received = sum(
+        (row['amount'] for row in money_received_by_cash_book),
+        Decimal('0'),
     )
 
     net_revenue = revenue - returns_total
@@ -207,6 +221,7 @@ def collect_daily_email_report_metrics(config, report_date=None):
         'gross_profit': gross_profit,
         'gross_margin': gross_margin.quantize(Decimal('0.1')),
         'total_money_received': total_money_received,
+        'money_received_by_cash_book': money_received_by_cash_book,
         'revenue_text': _money_text(revenue),
         'gross_profit_text': _money_text(gross_profit),
         'total_money_received_text': _money_text(total_money_received),
@@ -250,13 +265,20 @@ def send_daily_email_report(config, *, is_test=False, now=None, report_date=None
         'is_test': is_test,
     }
     html_body = render_to_string('reports/email/daily_sales_report.html', context)
-    text_body = '\n'.join([
+    text_lines = [
         f'BÁO CÁO BÁN HÀNG NGÀY - {brand_name}',
         f'Ngày báo cáo: {report_date:%d/%m/%Y}',
         f"Doanh thu: {metrics['revenue_text']}",
         f"Lợi nhuận gộp: {metrics['gross_profit_text']}",
         f"Tổng tiền về: {metrics['total_money_received_text']}",
-    ])
+    ]
+    if metrics['money_received_by_cash_book']:
+        text_lines.append('Chi tiết tiền về theo tài khoản:')
+        text_lines.extend(
+            f"- {row['name']}: {row['amount_text']}"
+            for row in metrics['money_received_by_cash_book']
+        )
+    text_body = '\n'.join(text_lines)
 
     sent_recipients = []
     for email in recipients:

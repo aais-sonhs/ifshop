@@ -27,7 +27,12 @@ from core.store_utils import (
     is_brand_owner,
 )
 from products.models import ProductCategory
-from .models import DailyEmailReport, StockAlert, StockAlertEmailRecipient
+from .models import (
+    DailyEmailReport,
+    DailyEmailReportRecipient,
+    StockAlert,
+    StockAlertEmailRecipient,
+)
 from .daily_email_reports import (
     DailyEmailReportConfigurationError,
     get_daily_email_report_recipients,
@@ -165,23 +170,53 @@ def daily_email_report_setting(request):
         return redirect('/dashboard/')
 
     config = _daily_email_report_for_brand(brand)
-    selected_user_ids = set(config.recipient_users.values_list('id', flat=True))
+    recipient_settings = list(
+        config.recipient_settings.select_related('user').all()
+    )
+    has_recipient_settings = bool(recipient_settings)
+    settings_by_user_id = {
+        recipient.user_id: recipient
+        for recipient in recipient_settings
+        if recipient.user_id
+    }
+    legacy_user_ids = set(config.recipient_users.values_list('id', flat=True))
     staff_options = []
     for user in _stock_alert_users_for_brand(brand):
+        recipient = settings_by_user_id.get(user.id)
+        selected = (
+            recipient.is_active
+            if recipient else (
+                user.id in legacy_user_ids if not has_recipient_settings else False
+            )
+        )
         staff_options.append({
             'id': user.id,
             'name': user.get_full_name().strip() or user.username,
             'username': user.username,
             'email': user.email or '',
-            'selected': user.id in selected_user_ids and bool(user.email),
+            'selected': selected and bool(user.email),
         })
-    extra_emails, _ = parse_recipient_emails(config.email_recipients)
+    if has_recipient_settings:
+        extra_recipients = [
+            {
+                'email': recipient.email,
+                'is_active': recipient.is_active,
+            }
+            for recipient in recipient_settings
+            if not recipient.user_id
+        ]
+    else:
+        legacy_extra_emails, _ = parse_recipient_emails(config.email_recipients)
+        extra_recipients = [
+            {'email': email, 'is_active': True}
+            for email in legacy_extra_emails
+        ]
 
     context = {
         'active_tab': 'daily_email_report_setting',
         'daily_email_report': config,
         'staff_options': staff_options,
-        'extra_emails': extra_emails,
+        'extra_recipients': extra_recipients,
         'smtp_ready': not (
             str(getattr(settings, 'EMAIL_BACKEND', '') or '').endswith('smtp.EmailBackend')
             and not getattr(settings, 'EMAIL_HOST_USER', '')
@@ -209,46 +244,118 @@ def api_save_daily_email_report_setting(request):
     if not send_time:
         return JsonResponse({'status': 'error', 'message': 'Giờ gửi không hợp lệ.'}, status=400)
 
-    selected_user_ids = _parse_id_set(data.get('recipient_user_ids'))
-    allowed_users = list(
-        _stock_alert_users_for_brand(brand)
-        .filter(id__in=selected_user_ids)
-        .exclude(email='')
-    )
-    if len(allowed_users) != len(selected_user_ids):
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Có người nhận không thuộc thương hiệu hoặc chưa có email.',
-        }, status=400)
+    raw_assignments = data.get('recipient_assignments')
+    if not isinstance(raw_assignments, list):
+        raw_assignments = [
+            {'user_id': user_id, 'is_active': True}
+            for user_id in _parse_id_set(data.get('recipient_user_ids'))
+        ]
+        legacy_emails, invalid_emails = parse_recipient_emails(
+            data.get('email_recipients')
+        )
+        if invalid_emails:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Email không hợp lệ: ' + ', '.join(invalid_emails),
+            }, status=400)
+        raw_assignments.extend(
+            {'email': email, 'is_active': True}
+            for email in legacy_emails
+        )
 
-    extra_emails, invalid_emails = parse_recipient_emails(data.get('email_recipients'))
-    if invalid_emails:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Email không hợp lệ: ' + ', '.join(invalid_emails),
-        }, status=400)
-    user_emails = {user.email.strip().lower() for user in allowed_users}
-    duplicate_emails = sorted(user_emails.intersection(extra_emails))
-    if duplicate_emails:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'Email đang được chọn trùng: ' + ', '.join(duplicate_emails),
-        }, status=400)
+    allowed_users = {
+        user.id: user
+        for user in _stock_alert_users_for_brand(brand).exclude(email='')
+    }
+    assignments = []
+    seen_recipient_keys = set()
+    seen_emails = set()
+    for raw_assignment in raw_assignments:
+        if not isinstance(raw_assignment, dict):
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Danh sách người nhận không hợp lệ.',
+            }, status=400)
+
+        user_id = raw_assignment.get('user_id')
+        user = None
+        if user_id not in (None, ''):
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                user_id = 0
+            user = allowed_users.get(user_id)
+            if not user:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Có người nhận không thuộc thương hiệu hoặc chưa có email.',
+                }, status=400)
+            email = user.email.strip().lower()
+            recipient_key = f'user:{user.id}'
+        else:
+            parsed_emails, invalid_emails = parse_recipient_emails(
+                str(raw_assignment.get('email') or '').strip()
+            )
+            if invalid_emails or len(parsed_emails) != 1:
+                invalid_value = (
+                    invalid_emails[0]
+                    if invalid_emails else str(raw_assignment.get('email') or '')
+                )
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Email không hợp lệ: ' + invalid_value,
+                }, status=400)
+            email = parsed_emails[0]
+            recipient_key = f'email:{email}'
+
+        if recipient_key in seen_recipient_keys or email in seen_emails:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Email {email} đang được chọn trùng.',
+            }, status=400)
+        seen_recipient_keys.add(recipient_key)
+        seen_emails.add(email)
+        assignments.append({
+            'user': user,
+            'email': email,
+            'is_active': bool(raw_assignment.get('is_active', True)),
+        })
 
     is_active = bool(data.get('is_active', False))
-    if is_active and not allowed_users and not extra_emails:
+    active_assignments = [
+        assignment for assignment in assignments if assignment['is_active']
+    ]
+    if is_active and not active_assignments:
         return JsonResponse({
             'status': 'error',
-            'message': 'Vui lòng chọn ít nhất một người nhận.',
+            'message': 'Vui lòng bật ít nhất một người nhận.',
         }, status=400)
 
     with transaction.atomic():
         config = _daily_email_report_for_brand(brand)
         config.send_time = send_time
         config.is_active = is_active
-        config.email_recipients = ', '.join(extra_emails)
+        config.email_recipients = ', '.join(
+            assignment['email']
+            for assignment in active_assignments
+            if not assignment['user']
+        )
         config.save()
-        config.recipient_users.set(allowed_users)
+        config.recipient_users.set(
+            assignment['user']
+            for assignment in active_assignments
+            if assignment['user']
+        )
+        config.recipient_settings.all().delete()
+        DailyEmailReportRecipient.objects.bulk_create([
+            DailyEmailReportRecipient(
+                daily_email_report=config,
+                user=assignment['user'],
+                email=assignment['email'],
+                is_active=assignment['is_active'],
+            )
+            for assignment in assignments
+        ])
 
     return JsonResponse({
         'status': 'ok',
@@ -327,7 +434,10 @@ def stock_alert_email_setting(request):
         display_name = user.get_full_name().strip() or user.username
         recipient = scopes_by_user_id.get(user.id)
         selected = (
-            bool(recipient) if has_scoped_recipients else user.id in legacy_user_ids
+            recipient.is_active
+            if recipient else (
+                user.id in legacy_user_ids if not has_scoped_recipients else False
+            )
         ) and bool(user.email)
         category_ids = (
             [category.id for category in recipient.categories.all()]
@@ -350,6 +460,7 @@ def stock_alert_email_setting(request):
             'email': user.email or '',
             'label': display_name,
             'selected': selected,
+            'is_active': selected,
             'category_ids': category_ids,
         })
 
@@ -378,7 +489,14 @@ def stock_alert_email_setting(request):
             'user_id': None,
             'email': email,
             'label': email,
-            'selected': True,
+            'selected': (
+                bool(recipient.get('is_active', True))
+                if isinstance(recipient, dict) else recipient.is_active
+            ),
+            'is_active': (
+                bool(recipient.get('is_active', True))
+                if isinstance(recipient, dict) else recipient.is_active
+            ),
             'category_ids': category_ids,
         })
 
@@ -496,8 +614,9 @@ def api_save_stock_alert_email_setting(request):
                 'message': f'Email {email} đang được chọn trùng.',
             }, status=400)
 
+        recipient_is_active = bool(raw_assignment.get('is_active', True))
         category_ids = _parse_id_set(raw_assignment.get('category_ids'))
-        if not category_ids:
+        if recipient_is_active and not category_ids:
             return JsonResponse({
                 'status': 'error',
                 'message': f'Vui lòng chọn ít nhất một danh mục cho email {email}.',
@@ -509,6 +628,7 @@ def api_save_stock_alert_email_setting(request):
         assignments.append({
             'user': user,
             'email': email,
+            'is_active': recipient_is_active,
             'category_ids': category_ids,
         })
 
@@ -523,13 +643,18 @@ def api_save_stock_alert_email_setting(request):
         }, status=400)
 
     is_active = bool(data.get('is_active', False))
-    if is_active and not assignments:
-        return JsonResponse({'status': 'error', 'message': 'Vui lòng chọn ít nhất một người nhận.'}, status=400)
+    active_assignments = [
+        assignment for assignment in assignments if assignment['is_active']
+    ]
+    if is_active and not active_assignments:
+        return JsonResponse({'status': 'error', 'message': 'Vui lòng bật ít nhất một người nhận.'}, status=400)
 
     with transaction.atomic():
         config = _stock_alert_for_brand(brand)
         config.email_recipients = ', '.join(
-            assignment['email'] for assignment in assignments if not assignment['user']
+            assignment['email']
+            for assignment in active_assignments
+            if not assignment['user']
         )
         config.include_child_categories = bool(data.get('include_child_categories', True))
         config.send_time = send_time
@@ -538,7 +663,9 @@ def api_save_stock_alert_email_setting(request):
         config.is_active = is_active
         config.save()
         config.recipient_users.set(
-            assignment['user'] for assignment in assignments if assignment['user']
+            assignment['user']
+            for assignment in active_assignments
+            if assignment['user']
         )
         config.categories.set(selected_categories)
         config.email_recipient_scopes.all().delete()
@@ -547,6 +674,7 @@ def api_save_stock_alert_email_setting(request):
                 stock_alert=config,
                 user=assignment['user'],
                 email=assignment['email'],
+                is_active=assignment['is_active'],
             )
             recipient.categories.set(assignment['category_ids'])
 

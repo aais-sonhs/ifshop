@@ -98,15 +98,10 @@
                     <div class="card-body">
                         <div class="row">
                             <div class="col-lg-7">
-                                <small class="text-muted d-block mb-2">Chọn tài khoản có email trong thương hiệu.</small>
+                                <small class="text-muted d-block mb-2">Mỗi email mới thêm mặc định bật; tắt công tắc nếu không muốn gửi.</small>
                                 <div class="border rounded" id="daily_email_report_recipient_list" style="max-height:300px;overflow-y:auto;">
                                     {% for person in staff_options %}
-                                    <label class="d-flex align-items-start px-3 py-2 mb-0 border-bottom daily-report-recipient-row {% if not person.email %}text-muted disabled{% endif %}">
-                                        <input type="checkbox"
-                                               class="mt-1 mr-2 daily-report-recipient-user"
-                                               value="{{ person.id }}"
-                                               {% if person.selected %}checked{% endif %}
-                                               {% if not person.email %}disabled{% endif %}>
+                                    <div class="d-flex align-items-center px-3 py-2 mb-0 border-bottom daily-report-recipient-row {% if not person.email %}text-muted disabled{% elif not person.selected %}recipient-off{% endif %}">
                                         <span class="flex-grow-1">
                                             <strong>{{ person.name }}</strong>
                                             {% if person.username != person.name %}<small class="text-muted">({{ person.username }})</small>{% endif %}
@@ -114,7 +109,17 @@
                                                 {{ person.email|default:"Chưa có email trong tài khoản" }}
                                             </small>
                                         </span>
-                                    </label>
+                                        {% if person.email %}
+                                        <div class="custom-control custom-switch ml-2">
+                                            <input type="checkbox"
+                                                   class="custom-control-input daily-report-recipient-user"
+                                                   id="daily_report_recipient_user_{{ person.id }}"
+                                                   value="{{ person.id }}"
+                                                   {% if person.selected %}checked{% endif %}>
+                                            <label class="custom-control-label" for="daily_report_recipient_user_{{ person.id }}" title="Bật/tắt nhận email"></label>
+                                        </div>
+                                        {% endif %}
+                                    </div>
                                     {% empty %}
                                     <div class="text-muted text-center p-3">Chưa có tài khoản nào trong thương hiệu.</div>
                                     {% endfor %}
@@ -159,7 +164,7 @@
         </div>
     </div>
 </div>
-{{ extra_emails|json_script:"daily-email-report-extra-data" }}
+{{ extra_recipients|json_script:"daily-email-report-extra-data" }}
 {% endblock %}
 
 {% block extra_js %}
@@ -173,6 +178,7 @@
 .daily-report-recipient-row { cursor:pointer;transition:background-color .15s; }
 .daily-report-recipient-row:hover { background:#f4f8ff; }
 .daily-report-recipient-row.disabled { cursor:not-allowed; }
+.daily-report-recipient-row.recipient-off,.daily-report-extra-row.recipient-off { opacity:.65; }
 </style>
 <script>
 (function(){
@@ -186,7 +192,13 @@
         return parsed.isValid() ? parsed.format('HH:mm') : value;
     }
 
-    var extraEmails = JSON.parse($('#daily-email-report-extra-data').text() || '[]');
+    var extraRecipients = JSON.parse($('#daily-email-report-extra-data').text() || '[]').map(function(recipient){
+        if(typeof recipient === 'string') return {email: recipient, is_active: true};
+        return {
+            email: normalizedEmail(recipient.email),
+            is_active: recipient.is_active !== false
+        };
+    });
 
     function normalizedEmail(value){
         return String(value || '').trim().toLowerCase();
@@ -194,28 +206,48 @@
 
     function renderExtraEmails(){
         var $rows = $('#daily_email_report_extra_rows').empty();
-        if(!extraEmails.length){
+        if(!extraRecipients.length){
             $('<div>', {'class':'small text-muted text-center p-3'}).text('Chưa thêm email bổ sung.').appendTo($rows);
             return;
         }
-        extraEmails.forEach(function(email){
-            var $row = $('<div>', {'class':'d-flex align-items-center px-3 py-2 border-bottom daily-report-extra-row'});
+        extraRecipients.forEach(function(recipient, index){
+            var email = recipient.email;
+            var $row = $('<div>', {
+                'class':'d-flex align-items-center px-3 py-2 border-bottom daily-report-extra-row',
+                'data-email': email
+            });
             $('<i>', {'class':'fas fa-envelope text-info mr-2'}).appendTo($row);
             $('<span>', {'class':'flex-grow-1 text-break'}).text(email).appendTo($row);
+            var toggleId = 'daily-report-extra-toggle-' + index;
+            $('<div>', {'class':'custom-control custom-switch mr-2'}).append(
+                $('<input>', {
+                    type: 'checkbox',
+                    'class': 'custom-control-input daily-report-recipient-extra',
+                    id: toggleId,
+                    checked: !!recipient.is_active
+                }),
+                $('<label>', {
+                    'class': 'custom-control-label',
+                    'for': toggleId,
+                    title: 'Bật/tắt nhận email'
+                })
+            ).appendTo($row);
             $('<button>', {
                 type: 'button',
                 'class': 'btn btn-xs btn-outline-danger daily-report-remove-extra-email',
                 'data-email': email,
                 title: 'Xóa email'
             }).html('<i class="fas fa-times"></i>').appendTo($row);
+            $row.toggleClass('recipient-off', !recipient.is_active);
             $rows.append($row);
         });
     }
 
     function updateRecipientCount(){
         var userCount = $('.daily-report-recipient-user:checked').length;
+        var extraCount = extraRecipients.filter(function(recipient){ return recipient.is_active; }).length;
         $('#daily_email_report_recipient_count').text(
-            'Đã chọn ' + (userCount + extraEmails.length) + ' người nhận/email.'
+            'Đang bật ' + (userCount + extraCount) + ' người nhận/email.'
         );
     }
 
@@ -227,13 +259,16 @@
             return;
         }
         var accountDuplicate = $('.daily-report-recipient-user').filter(function(){
-            return normalizedEmail($(this).siblings('span').find('small.d-block').text()) === email;
+            return normalizedEmail(
+                $(this).closest('.daily-report-recipient-row').find('small.d-block').text()
+            ) === email;
         }).length > 0;
-        if(extraEmails.indexOf(email) !== -1 || accountDuplicate){
+        var extraDuplicate = extraRecipients.some(function(recipient){ return recipient.email === email; });
+        if(extraDuplicate || accountDuplicate){
             alert('Email này đã có trong danh sách.');
             return;
         }
-        extraEmails.push(email);
+        extraRecipients.push({email: email, is_active: true});
         $input.val('');
         renderExtraEmails();
         updateRecipientCount();
@@ -241,13 +276,24 @@
 
     function payload(){
         var rawSendTime = $('#daily_email_report_send_time').val();
+        var assignments = $('.daily-report-recipient-user').map(function(){
+            return {
+                user_id: Number(this.value),
+                email: '',
+                is_active: $(this).prop('checked')
+            };
+        }).get();
+        extraRecipients.forEach(function(recipient){
+            assignments.push({
+                user_id: null,
+                email: recipient.email,
+                is_active: !!recipient.is_active
+            });
+        });
         return {
             is_active: $('#daily_email_report_active').prop('checked'),
             send_time: to24HourTime(rawSendTime) || '21:00',
-            recipient_user_ids: $('.daily-report-recipient-user:checked').map(function(){
-                return Number(this.value);
-            }).get(),
-            email_recipients: extraEmails.join(', ')
+            recipient_assignments: assignments
         };
     }
 
@@ -276,11 +322,22 @@
     });
     $(document).on('click', '.daily-report-remove-extra-email', function(){
         var email = normalizedEmail($(this).data('email'));
-        extraEmails = extraEmails.filter(function(candidate){ return candidate !== email; });
+        extraRecipients = extraRecipients.filter(function(recipient){ return recipient.email !== email; });
         renderExtraEmails();
         updateRecipientCount();
     });
-    $('.daily-report-recipient-user').on('change', updateRecipientCount);
+    $(document).on('change', '.daily-report-recipient-user', function(){
+        $(this).closest('.daily-report-recipient-row').toggleClass('recipient-off', !$(this).prop('checked'));
+        updateRecipientCount();
+    });
+    $(document).on('change', '.daily-report-recipient-extra', function(){
+        var $row = $(this).closest('.daily-report-extra-row');
+        var email = normalizedEmail($row.data('email'));
+        var recipient = extraRecipients.find(function(candidate){ return candidate.email === email; });
+        if(recipient) recipient.is_active = $(this).prop('checked');
+        $row.toggleClass('recipient-off', !$(this).prop('checked'));
+        updateRecipientCount();
+    });
     $('#btn_save_daily_email_report').on('click', function(){
         var $button = $(this).prop('disabled', true);
         saveConfig(true)

@@ -21,7 +21,11 @@ from products.models import (
     Warehouse,
 )
 from system_management.models import Brand, Store, UserProfile
-from reports.models import DailyEmailReport, StockAlert, StockAlertEmailRecipient
+from reports.models import (
+    DailyEmailReport,
+    StockAlert,
+    StockAlertEmailRecipient,
+)
 from reports.daily_email_reports import collect_daily_email_report_metrics
 from reports.email_scheduler import process_daily_email_report, process_stock_alert
 
@@ -2624,6 +2628,47 @@ class StockAlertEmailSettingTests(TestCase):
         self.assertIn('Sản phẩm ngoài danh mục', messages_by_email['owner@example.com'].body)
         self.assertNotIn('Cà phê sắp hết', messages_by_email['owner@example.com'].body)
 
+    def test_disabled_stock_recipient_is_kept_but_does_not_receive_email(self):
+        response = self.client.post(
+            reverse('api_save_stock_alert_email_setting'),
+            data={
+                'is_active': True,
+                'send_time': '21:00',
+                'include_child_categories': True,
+                'recipient_assignments': [
+                    {
+                        'user_id': self.staff.id,
+                        'is_active': True,
+                        'category_ids': [self.parent_category.id],
+                    },
+                    {
+                        'email': 'paused-stock@example.com',
+                        'is_active': False,
+                        'category_ids': [],
+                    },
+                ],
+            },
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        config = StockAlert.objects.get(brand=self.brand)
+        paused = StockAlertEmailRecipient.objects.get(
+            stock_alert=config,
+            email='paused-stock@example.com',
+        )
+        self.assertFalse(paused.is_active)
+        self.assertEqual(config.email_recipient_scopes.count(), 2)
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            response = self.client.post(reverse('api_test_stock_alert_email'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([message.to for message in mail.outbox], [['warehouse@example.com']])
+
     def test_scheduled_processing_sends_only_once_per_day(self):
         config = StockAlert.objects.create(
             brand=self.brand,
@@ -2870,6 +2915,10 @@ class DailyEmailReportSettingTests(TestCase):
             list(config.recipient_users.values_list('id', flat=True)),
             [self.staff.id],
         )
+        self.assertEqual(config.recipient_settings.count(), 2)
+        self.assertFalse(
+            config.recipient_settings.filter(is_active=False).exists()
+        )
 
         with override_settings(
             EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
@@ -2893,6 +2942,52 @@ class DailyEmailReportSettingTests(TestCase):
         self.assertIn('Chi tiết theo tài khoản', html_body)
         self.assertIn('TK ngân hàng A', html_body)
         self.assertIn('Quỹ tiền mặt', html_body)
+
+    def test_disabled_daily_report_recipient_is_kept_but_not_sent(self):
+        response = self.client.post(
+            reverse('api_save_daily_email_report_setting'),
+            data={
+                'is_active': True,
+                'send_time': '21:00',
+                'recipient_assignments': [
+                    {'user_id': self.staff.id, 'is_active': True},
+                    {'user_id': self.owner.id, 'is_active': False},
+                    {'email': 'paused-daily@example.com', 'is_active': False},
+                ],
+            },
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        config = DailyEmailReport.objects.get(brand=self.brand)
+        self.assertEqual(config.recipient_settings.count(), 3)
+        self.assertEqual(
+            set(
+                config.recipient_settings.filter(is_active=False)
+                .values_list('email', flat=True)
+            ),
+            {'owner-daily@example.com', 'paused-daily@example.com'},
+        )
+
+        with override_settings(
+            EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+            DEFAULT_FROM_EMAIL='ifshop@example.com',
+        ):
+            response = self.client.post(reverse('api_test_daily_email_report'))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([message.to for message in mail.outbox], [['daily-staff@example.com']])
+
+        response = self.client.get(reverse('daily_email_report_setting'))
+        staff_by_id = {
+            person['id']: person for person in response.context['staff_options']
+        }
+        self.assertTrue(staff_by_id[self.staff.id]['selected'])
+        self.assertFalse(staff_by_id[self.owner.id]['selected'])
+        self.assertEqual(
+            response.context['extra_recipients'],
+            [{'email': 'paused-daily@example.com', 'is_active': False}],
+        )
 
     def test_scheduled_daily_report_sends_only_once_per_day(self):
         self._create_daily_transactions()

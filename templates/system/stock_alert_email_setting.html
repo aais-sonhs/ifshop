@@ -70,12 +70,11 @@
                         <div class="card card-outline card-info h-100">
                             <div class="card-header py-2"><strong><i class="fas fa-user-check mr-1"></i>Tài khoản / email nhận</strong></div>
                             <div class="card-body">
-                                <small class="text-muted d-block mb-2">Bấm vào từng tài khoản rồi chọn danh mục ở khung bên phải.</small>
+                                <small class="text-muted d-block mb-2">Mỗi email mới thêm mặc định bật. Có thể tắt riêng mà không làm mất danh mục đã gán.</small>
                                 <div class="border rounded" id="stock_alert_recipient_list" style="max-height:300px;overflow-y:auto;">
                                     {% for person in staff_options %}
                                     <div class="d-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-recipient-row {% if not person.email %}text-muted disabled{% endif %}"
                                          {% if person.email %}data-recipient-key="{{ person.key }}"{% endif %}>
-                                        <input type="checkbox" class="mt-1 mr-2 stock-alert-recipient-user" value="{{ person.id }}" {% if person.selected %}checked{% endif %} {% if not person.email %}disabled{% endif %}>
                                         <span class="flex-grow-1">
                                             <strong>{{ person.name }}</strong>
                                             {% if person.username != person.name %}<small class="text-muted">({{ person.username }})</small>{% endif %}
@@ -84,6 +83,16 @@
                                             </small>
                                         </span>
                                         {% if person.email %}<span class="badge badge-light stock-alert-category-badge">{{ person.category_ids|length }}</span>{% endif %}
+                                        {% if person.email %}
+                                        <div class="custom-control custom-switch ml-2">
+                                            <input type="checkbox"
+                                                   class="custom-control-input stock-alert-recipient-user"
+                                                   id="stock_alert_recipient_user_{{ person.id }}"
+                                                   value="{{ person.id }}"
+                                                   {% if person.selected %}checked{% endif %}>
+                                            <label class="custom-control-label" for="stock_alert_recipient_user_{{ person.id }}" title="Bật/tắt nhận email"></label>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                     {% empty %}
                                     <div class="text-muted text-center p-3">Chưa có tài khoản nào trong thương hiệu.</div>
@@ -175,6 +184,7 @@
 .stock-alert-recipient-row:hover { background:#f4f8ff; }
 .stock-alert-recipient-row.active { background:#e8f0fe; box-shadow:inset 3px 0 #4361ee; }
 .stock-alert-recipient-row.disabled { cursor:not-allowed; }
+.stock-alert-recipient-row.recipient-off { opacity:.65; }
 </style>
 <script>
 (function(){
@@ -191,6 +201,7 @@
     var recipientList = JSON.parse($('#stock-alert-recipient-data').text() || '[]');
     var recipientsByKey = {};
     var activeRecipientKey = null;
+    var extraToggleSequence = 0;
 
     recipientList.forEach(function(recipient){
         recipient.category_ids = (recipient.category_ids || []).map(Number);
@@ -220,6 +231,7 @@
     function setRecipientSelected(recipient, selected){
         recipient.selected = !!selected;
         recipientRow(recipient.key).find('input[type="checkbox"]').prop('checked', recipient.selected);
+        recipientRow(recipient.key).toggleClass('recipient-off', !recipient.selected);
     }
 
     function syncCategoriesFromActiveRecipient(){
@@ -246,21 +258,31 @@
             'class': 'd-flex align-items-start px-3 py-2 mb-0 border-bottom stock-alert-recipient-row',
             'data-recipient-key': recipient.key
         });
-        $('<input>', {
-            type: 'checkbox',
-            'class': 'mt-1 mr-2 stock-alert-recipient-extra',
-            checked: !!recipient.selected
-        }).appendTo($row);
         $('<span>', {'class':'flex-grow-1'}).append(
             $('<strong>').text(recipient.email),
             $('<small>', {'class':'d-block text-muted'}).text('Email bổ sung')
         ).appendTo($row);
         $('<span>', {'class':'badge badge-light stock-alert-category-badge mr-2'}).text(recipient.category_ids.length).appendTo($row);
+        var toggleId = 'stock-alert-extra-toggle-' + (++extraToggleSequence);
+        $('<div>', {'class':'custom-control custom-switch mr-2'}).append(
+            $('<input>', {
+                type: 'checkbox',
+                'class': 'custom-control-input stock-alert-recipient-extra',
+                id: toggleId,
+                checked: !!recipient.selected
+            }),
+            $('<label>', {
+                'class': 'custom-control-label',
+                'for': toggleId,
+                title: 'Bật/tắt nhận email'
+            })
+        ).appendTo($row);
         $('<button>', {
             type: 'button',
             'class': 'btn btn-xs btn-outline-danger stock-alert-remove-extra-email',
             title: 'Xóa email'
         }).html('<i class="fas fa-times"></i>').appendTo($row);
+        $row.toggleClass('recipient-off', !recipient.selected);
         $('#stock_alert_extra_recipient_rows').append($row);
     }
 
@@ -280,11 +302,12 @@
         var assignments = Object.keys(recipientsByKey).map(function(key){
             return recipientsByKey[key];
         }).filter(function(recipient){
-            return recipient.selected;
+            return !!recipient.email;
         }).map(function(recipient){
             return {
                 user_id: recipient.kind === 'user' ? recipient.user_id : null,
                 email: recipient.kind === 'email' ? recipient.email : '',
+                is_active: !!recipient.selected,
                 category_ids: recipient.category_ids
             };
         });
@@ -344,7 +367,6 @@
         var recipient = activeRecipient();
         if(!recipient) return;
         recipient.category_ids = selectedValues('.stock-alert-category');
-        if(recipient.category_ids.length) setRecipientSelected(recipient, true);
         updateRecipientBadge(recipient.key);
         updateCounts();
     });
@@ -423,6 +445,9 @@
     });
 
     recipientList.filter(function(recipient){ return recipient.kind === 'email'; }).forEach(renderExtraRecipient);
+    recipientList.filter(function(recipient){ return recipient.kind === 'user'; }).forEach(function(recipient){
+        recipientRow(recipient.key).toggleClass('recipient-off', !recipient.selected);
+    });
     var initialKey = recipientList.find(function(recipient){ return recipient.selected && recipient.email; });
     if(!initialKey) initialKey = recipientList.find(function(recipient){ return recipient.email; });
     if(initialKey) activateRecipient(initialKey.key);

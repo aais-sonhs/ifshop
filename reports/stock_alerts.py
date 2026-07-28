@@ -42,6 +42,8 @@ def get_stock_alert_recipients(config):
     if scoped_recipients:
         raw_emails = []
         for recipient in scoped_recipients:
+            if not recipient.is_active:
+                continue
             if recipient.user_id:
                 if not recipient.user.is_active:
                     continue
@@ -124,6 +126,8 @@ def get_stock_alert_recipient_scopes(config):
 
     scopes_by_email = {}
     for recipient in recipients:
+        if not recipient.is_active:
+            continue
         if recipient.user_id:
             if not recipient.user.is_active:
                 continue

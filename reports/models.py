@@ -78,6 +78,7 @@ class StockAlertEmailRecipient(models.Model):
         verbose_name='Tài khoản hệ thống',
     )
     email = models.EmailField(verbose_name='Email nhận cảnh báo')
+    is_active = models.BooleanField(default=True, verbose_name='Đang nhận email')
     categories = models.ManyToManyField(
         'products.ProductCategory',
         blank=True,
@@ -146,3 +147,46 @@ class DailyEmailReport(models.Model):
 
     def __str__(self):
         return f"{self.brand.name} - {'Đang bật' if self.is_active else 'Đang tắt'}"
+
+
+class DailyEmailReportRecipient(models.Model):
+    """Trạng thái bật/tắt của từng người nhận báo cáo email hằng ngày."""
+
+    daily_email_report = models.ForeignKey(
+        DailyEmailReport,
+        on_delete=models.CASCADE,
+        related_name='recipient_settings',
+        verbose_name='Cấu hình báo cáo',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='daily_email_report_recipient_settings',
+        verbose_name='Tài khoản hệ thống',
+    )
+    email = models.EmailField(verbose_name='Email nhận báo cáo')
+    is_active = models.BooleanField(default=True, verbose_name='Đang nhận email')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'daily_email_report_recipients'
+        verbose_name = 'Người nhận báo cáo email hằng ngày'
+        verbose_name_plural = 'Người nhận báo cáo email hằng ngày'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['daily_email_report', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='uniq_daily_email_report_recipient_user',
+            ),
+            models.UniqueConstraint(
+                fields=['daily_email_report', 'email'],
+                condition=models.Q(user__isnull=True),
+                name='uniq_daily_email_report_recipient_extra_email',
+            ),
+        ]
+
+    def __str__(self):
+        return self.email

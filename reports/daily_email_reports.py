@@ -35,20 +35,36 @@ def _report_date(now=None):
 
 
 def get_daily_email_report_recipients(config):
-    user_emails = list(
-        config.recipient_users.filter(is_active=True)
-        .exclude(email='')
-        .values_list('email', flat=True)
+    recipient_settings = list(
+        config.recipient_settings.select_related('user').all()
     )
-    extra_emails, invalid_emails = parse_recipient_emails(config.email_recipients)
-    if invalid_emails:
-        raise DailyEmailReportConfigurationError(
-            'Email không hợp lệ: ' + ', '.join(invalid_emails)
+    if recipient_settings:
+        raw_emails = []
+        for recipient in recipient_settings:
+            if not recipient.is_active:
+                continue
+            if recipient.user_id:
+                if not recipient.user.is_active:
+                    continue
+                raw_emails.append(recipient.user.email)
+            else:
+                raw_emails.append(recipient.email)
+    else:
+        raw_emails = list(
+            config.recipient_users.filter(is_active=True)
+            .exclude(email='')
+            .values_list('email', flat=True)
         )
+        extra_emails, invalid_emails = parse_recipient_emails(config.email_recipients)
+        if invalid_emails:
+            raise DailyEmailReportConfigurationError(
+                'Email không hợp lệ: ' + ', '.join(invalid_emails)
+            )
+        raw_emails.extend(extra_emails)
 
     recipients = []
     seen = set()
-    for raw_email in user_emails + extra_emails:
+    for raw_email in raw_emails:
         parsed, invalid = parse_recipient_emails(raw_email)
         if invalid:
             raise DailyEmailReportConfigurationError(

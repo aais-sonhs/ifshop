@@ -49,6 +49,13 @@ def process_stock_alert(config_id, *, now=None, force=False):
 
     try:
         config = StockAlert.objects.select_related('brand').get(id=config_id)
+        logger.info(
+            'Bắt đầu xử lý cảnh báo tồn kho: stock_alert_id=%s, brand=%s, '
+            'thời_điểm=%s',
+            config_id,
+            config.brand.name,
+            now.isoformat(),
+        )
         result = send_stock_alert_email(config, now=now)
         config.last_status = 'sent' if result['sent'] else 'no_low_stock'
         config.last_error = ''
@@ -57,6 +64,24 @@ def process_stock_alert(config_id, *, now=None, force=False):
             config.last_sent = now
             update_fields.append('last_sent')
         config.save(update_fields=update_fields)
+        if result['sent']:
+            logger.info(
+                'Đã gửi cảnh báo tồn kho: stock_alert_id=%s, brand=%s, '
+                'người_nhận=%s, số_dòng=%s, thời_điểm=%s',
+                config_id,
+                config.brand.name,
+                result.get('sent_recipient_count', result['recipient_count']),
+                result['row_count'],
+                now.isoformat(),
+            )
+        else:
+            logger.info(
+                'Không gửi cảnh báo tồn kho vì không có sản phẩm tồn thấp: '
+                'stock_alert_id=%s, brand=%s, thời_điểm=%s',
+                config_id,
+                config.brand.name,
+                now.isoformat(),
+            )
         return {
             'status': config.last_status,
             'sent': result['sent'],
@@ -113,6 +138,13 @@ def process_daily_email_report(config_id, *, now=None, force=False):
 
     try:
         config = DailyEmailReport.objects.select_related('brand').get(id=config_id)
+        logger.info(
+            'Bắt đầu gửi báo cáo email hằng ngày: daily_email_report_id=%s, '
+            'brand=%s, thời_điểm=%s',
+            config_id,
+            config.brand.name,
+            now.isoformat(),
+        )
         result = send_daily_email_report(config, now=now)
         config.last_status = 'sent'
         config.last_sent = now
@@ -123,6 +155,14 @@ def process_daily_email_report(config_id, *, now=None, force=False):
             'last_error',
             'updated_at',
         ])
+        logger.info(
+            'Đã gửi báo cáo email hằng ngày: daily_email_report_id=%s, '
+            'brand=%s, người_nhận=%s, thời_điểm=%s',
+            config_id,
+            config.brand.name,
+            result['sent_recipient_count'],
+            now.isoformat(),
+        )
         return {
             'status': 'sent',
             'sent': True,
@@ -149,6 +189,7 @@ def process_daily_email_report(config_id, *, now=None, force=False):
 def run_due_email_jobs(now=None):
     """Kiểm tra một lượt mọi cấu hình email đến hạn rồi trả kết quả tổng hợp."""
     now = _local_now(now)
+    logger.info('Bắt đầu lượt email scheduler: thời_điểm=%s', now.isoformat())
 
     stock_totals = _empty_totals(('sent', 'no_low_stock', 'error', 'skipped'))
     stock_results = []
@@ -185,6 +226,14 @@ def run_due_email_jobs(now=None):
 
     has_errors = bool(
         stock_totals.get('error') or daily_totals.get('error')
+    )
+    logger.info(
+        'Hoàn tất lượt email scheduler: thời_điểm=%s, stock_alerts=%s, '
+        'daily_email_reports=%s, có_lỗi=%s',
+        now.isoformat(),
+        stock_totals,
+        daily_totals,
+        has_errors,
     )
     return {
         'status': 'partial_error' if has_errors else 'ok',

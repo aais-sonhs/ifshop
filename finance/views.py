@@ -567,6 +567,7 @@ def api_get_receipts(request):
     ).all()
     receipts = _filter_receipts_for_user(receipts, request)
     receipts = _apply_receipt_filters(receipts, request)
+    receipts = receipts.order_by('-receipt_date', '-id')
     data = [{
         'id': r.id, 'code': r.code,
         'category': r.category.name if r.category else '',

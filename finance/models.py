@@ -119,7 +119,10 @@ class Receipt(SoftDeleteModel):
         db_table = 'receipts'
         verbose_name = 'Phiếu thu'
         verbose_name_plural = 'Phiếu thu'
-        ordering = ['-receipt_date']
+        # Giữ thứ tự ổn định khi nhiều phiếu có cùng ngày thu. Nếu chỉ sắp theo
+        # receipt_date, database có thể trả các dòng cùng ngày theo thứ tự khác
+        # sau mỗi lần cập nhật và khiến dòng vừa sửa bị "nhảy" vị trí.
+        ordering = ['-receipt_date', '-id']
 
     def __str__(self):
         return self.code

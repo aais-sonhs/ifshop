@@ -383,6 +383,12 @@ class FinanceFlowTests(TestCase):
             'payment_method_option_id', 'status', 'description', 'note',
         ):
             self.assertContains(response, f'{field_name}:')
+        self.assertContains(response, 'id="btn_sort_receipt_date"')
+        self.assertContains(response, "var receiptDateSortDirection = 'desc';")
+        self.assertContains(
+            response,
+            "receiptDateSortDirection = receiptDateSortDirection === 'desc' ? 'asc' : 'desc';",
+        )
 
     def test_save_payment_auto_generates_code_when_blank(self):
         response = self.client.post(
@@ -666,6 +672,47 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(receipt.payment_method, 1)
         self.assertEqual(receipt.description, 'Chỉ sửa diễn giải')
         self.assertEqual(receipt.note, 'Giữ nguyên đơn và hình thức thanh toán')
+
+    def test_receipt_list_order_stays_stable_after_edit(self):
+        receipts = [
+            Receipt.objects.create(
+                code=f'PT-STABLE-{index}',
+                store=self.store,
+                customer=self.customer,
+                amount=Decimal('100'),
+                receipt_date=date.today(),
+                status=0,
+                created_by=self.user,
+            )
+            for index in range(1, 4)
+        ]
+        expected_codes = [receipt.code for receipt in reversed(receipts)]
+
+        before_edit = self.client.get(reverse('api_get_receipts'))
+        self.assertEqual(before_edit.status_code, 200)
+        self.assertEqual(
+            [item['code'] for item in before_edit.json()['data']],
+            expected_codes,
+        )
+
+        edited_receipt = receipts[1]
+        edit_response = self.client.post(
+            reverse('api_save_receipt'),
+            data=json.dumps({
+                'id': edited_receipt.id,
+                'description': 'Sửa nhưng không đổi vị trí',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+
+        after_edit = self.client.get(reverse('api_get_receipts'))
+        self.assertEqual(after_edit.status_code, 200)
+        self.assertEqual(
+            [item['code'] for item in after_edit.json()['data']],
+            expected_codes,
+        )
 
     def test_export_receipts_excel_includes_note_column(self):
         Receipt.objects.create(

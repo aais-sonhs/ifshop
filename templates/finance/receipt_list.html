@@ -174,7 +174,12 @@
                         <th data-col="order_creator">Người tạo đơn</th>
                         <th data-col="amount">Số tiền</th>
                         <th data-col="method">HTTT</th>
-                        <th data-col="date">Ngày thu</th>
+                        <th data-col="date" id="receipt_date_header" aria-sort="descending">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-dark font-weight-bold"
+                                    id="btn_sort_receipt_date" title="Sắp xếp Ngày thu tăng/giảm dần">
+                                Ngày thu <i id="receipt_date_sort_icon" class="fas fa-sort-down ml-1" aria-hidden="true"></i>
+                            </button>
+                        </th>
                         <th data-col="created_at">Ngày tạo phiếu</th>
                         <th data-col="cashbook">Quỹ/TK</th>
                         <th data-col="receipt_creator">Người tạo phiếu</th>
@@ -443,6 +448,7 @@ function setQuickDateRange(range){
 
 var allOrders = [];
 var allReceipts = [];
+var receiptDateSortDirection = 'desc';
 var currentEditingReceipt = null;
 var RECEIPT_FILTER_KEY = 'ifshop_receipt_filters';
 var RECEIPT_FORM_CLOSE_BASELINE = null;
@@ -647,7 +653,7 @@ function getFilteredReceipts(){
     var amountFrom = filters.amount_from === '' ? null : parseFloat(filters.amount_from);
     var amountTo = filters.amount_to === '' ? null : parseFloat(filters.amount_to);
 
-    return allReceipts.filter(function(receipt){
+    var filteredReceipts = allReceipts.filter(function(receipt){
         if(statusValue !== '' && statusValue !== undefined && receipt.status !== parseInt(statusValue, 10)) return false;
         if(filters.date_from && receipt.receipt_date < filters.date_from) return false;
         if(filters.date_to && receipt.receipt_date > filters.date_to) return false;
@@ -682,6 +688,30 @@ function getFilteredReceipts(){
         }
         return true;
     });
+
+    return filteredReceipts.sort(function(a, b){
+        var aDate = String(a.receipt_date || '');
+        var bDate = String(b.receipt_date || '');
+        var comparison = aDate < bDate ? -1 : (aDate > bDate ? 1 : 0);
+
+        // ID là tiêu chí phụ cố định để các phiếu cùng ngày không đổi chỗ khi sửa.
+        if(comparison === 0){
+            comparison = Number(a.id || 0) - Number(b.id || 0);
+        }
+        return receiptDateSortDirection === 'asc' ? comparison : -comparison;
+    });
+}
+
+function updateReceiptDateSortIndicator(){
+    var isAscending = receiptDateSortDirection === 'asc';
+    $('#receipt_date_header').attr('aria-sort', isAscending ? 'ascending' : 'descending');
+    $('#receipt_date_sort_icon')
+        .toggleClass('fa-sort-up', isAscending)
+        .toggleClass('fa-sort-down', !isAscending);
+    $('#btn_sort_receipt_date').attr(
+        'title',
+        isAscending ? 'Đang tăng dần — bấm để sắp xếp giảm dần' : 'Đang giảm dần — bấm để sắp xếp tăng dần'
+    );
 }
 
 function renderReceiptFilterSummary(filteredCount, totalCount){
@@ -823,6 +853,7 @@ function getAnalyticsRows(filteredRows){
 
 function updateReceiptView(){
     var filtered = getFilteredReceipts();
+    updateReceiptDateSortIndicator();
     renderTable(filtered);
     renderReceiptFilterSummary(filtered.length, allReceipts.length);
     loadSummary(filtered);
@@ -1117,6 +1148,11 @@ $(document).ready(function(){
     loadData();
     renderReceiptSavedFilters();
     applyColumnVisibility();
+
+    $('#btn_sort_receipt_date').on('click', function(){
+        receiptDateSortDirection = receiptDateSortDirection === 'desc' ? 'asc' : 'desc';
+        updateReceiptView();
+    });
 
     $('#btn_col_toggle').click(function(e){
         e.stopPropagation();

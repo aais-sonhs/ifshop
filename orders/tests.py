@@ -1349,7 +1349,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            '<th style="width:37%" class="order-product-column">Sản phẩm</th>',
+            '<th style="width:36%" class="order-product-column">Sản phẩm</th>',
             html=True,
         )
         self.assertContains(
@@ -1369,7 +1369,7 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            '<th style="width:7%" class="order-quantity-column">SL</th>',
+            '<th style="width:8%" class="order-quantity-column">SL</th>',
             html=True,
         )
         self.assertContains(

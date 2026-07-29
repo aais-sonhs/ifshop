@@ -1005,8 +1005,10 @@ def dashboard_page(request):
 @login_required(login_url="/login/")
 def api_dashboard_data(request):
     """API lấy dữ liệu dashboard"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, time, timedelta
+    from django.conf import settings
     from django.db.models import Count, DecimalField, ExpressionWrapper, Sum
+    from django.utils import timezone
     from core.store_utils import get_managed_store_ids
     from products.models import ProductStock
 
@@ -1014,10 +1016,24 @@ def api_dashboard_data(request):
     today = datetime.now().date()
     first_day = today.replace(day=1)
 
-    # Doanh thu + đơn tháng này
+    def exported_period_q(from_day, to_day, prefix=''):
+        start_at = datetime.combine(from_day, time.min)
+        end_at = datetime.combine(to_day + timedelta(days=1), time.min)
+        if settings.USE_TZ:
+            current_timezone = timezone.get_current_timezone()
+            start_at = timezone.make_aware(start_at, current_timezone)
+            end_at = timezone.make_aware(end_at, current_timezone)
+        return Q(**{
+            f'{prefix}exported_at__gte': start_at,
+            f'{prefix}exported_at__lt': end_at,
+        })
+
+    # Doanh thu + đơn tháng này được ghi nhận theo thời điểm xuất kho.
     month_orders = Order.objects.filter(
-        store_id__in=store_ids, order_date__gte=first_day, order_date__lte=today
-    ).exclude(status=6)
+        exported_period_q(first_day, today),
+        store_id__in=store_ids,
+        status__in=[4, 5],
+    )
     stats = month_orders.aggregate(
         total_revenue=Sum('final_amount'),
         total_orders=Count('id'),
@@ -1026,8 +1042,14 @@ def api_dashboard_data(request):
     revenue = float(stats['total_revenue'] or 0)
     paid = float(stats['total_paid'] or 0)
     orders_count = stats['total_orders'] or 0
+    # Công nợ vẫn là số dư của các đơn phát sinh trong tháng, kể cả chưa xuất kho.
+    debt_orders = Order.objects.filter(
+        store_id__in=store_ids,
+        order_date__gte=first_day,
+        order_date__lte=today,
+    ).exclude(status=6)
     debt = float(
-        month_orders.filter(final_amount__gt=F('paid_amount')).aggregate(
+        debt_orders.filter(final_amount__gt=F('paid_amount')).aggregate(
             total=Sum(ExpressionWrapper(
                 F('final_amount') - F('paid_amount'),
                 output_field=DecimalField(max_digits=18, decimal_places=0),
@@ -1038,10 +1060,8 @@ def api_dashboard_data(request):
     # Tính lợi nhuận (doanh thu - giá vốn)
     from orders.models import OrderItem
     cost = OrderItem.objects.filter(
-        order__store_id__in=store_ids,
-        order__order_date__gte=first_day,
-        order__order_date__lte=today,
-    ).exclude(order__status=6).aggregate(
+        order__in=month_orders,
+    ).aggregate(
         total=Sum(F('cost_price') * F('quantity'))
     )['total'] or 0
     profit = revenue - float(cost)
@@ -1057,8 +1077,10 @@ def api_dashboard_data(request):
     for i in range(6, -1, -1):
         day = today - timedelta(days=i)
         day_rev = Order.objects.filter(
-            store_id__in=store_ids, order_date=day
-        ).exclude(status=6).aggregate(r=Sum('final_amount'))['r'] or 0
+            exported_period_q(day, day),
+            store_id__in=store_ids,
+            status__in=[4, 5],
+        ).aggregate(r=Sum('final_amount'))['r'] or 0
         chart_data.append({
             'date': day.strftime('%d/%m'),
             'revenue': float(day_rev)
@@ -1066,18 +1088,17 @@ def api_dashboard_data(request):
 
     # Top SP bán chạy
     top_products = OrderItem.objects.filter(
-        order__store_id__in=store_ids,
-        order__order_date__gte=first_day,
-    ).exclude(order__status=6).values('product__name').annotate(
+        order__in=month_orders,
+    ).values('product__name').annotate(
         total_qty=Sum('quantity'),
         total_amount=Sum('total_price')
     ).order_by('-total_amount')[:10]
 
     # Top KH
     top_customers = Order.objects.filter(
-        store_id__in=store_ids, order_date__gte=first_day,
+        id__in=month_orders.values('id'),
         customer__isnull=False,
-    ).exclude(status=6).values('customer__name', 'customer__phone').annotate(
+    ).values('customer__name', 'customer__phone').annotate(
         total=Sum('final_amount'), count=Count('id')
     ).order_by('-total')[:10]
 

@@ -121,8 +121,10 @@ def collect_daily_email_report_metrics(config, report_date=None):
         Order.objects.filter(
             store__brand_id=config.brand_id,
             store__is_active=True,
-            order_date=report_date,
             status__in=[4, 5],
+        ).filter(
+            Q(exported_at__date=report_date)
+            | Q(exported_at__isnull=True, order_date=report_date)
         ).order_by('id')
     )
     order_ids = [order.id for order in orders]

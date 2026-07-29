@@ -20,8 +20,8 @@
             <div class="collapse show" id="filterCollapse">
                 <div class="card-body py-2">
                     <div class="row">
-                        <div class="col-md-2"><label class="small text-muted mb-1">Từ ngày</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-                        <div class="col-md-2"><label class="small text-muted mb-1">Đến ngày</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+                        <div class="col-md-2"><label class="small text-muted mb-1" id="filter_from_date_label">Từ ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+                        <div class="col-md-2"><label class="small text-muted mb-1" id="filter_to_date_label">Đến ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
                         <div class="col-md-2" id="store_filter_wrap" style="display:none;"><label class="small text-muted mb-1">Cửa hàng</label><select class="form-control form-control-sm" id="filter_store_id"><option value="">🏢 Tất cả</option></select></div>
                         <div class="col-md-2"><label class="small text-muted mb-1">Khách buôn/lẻ</label><select class="form-control form-control-sm" id="filter_customer_kind"><option value="">👥 Tất cả</option></select></div>
                         <div class="col-md-2"><label class="small text-muted mb-1">Nhóm KH</label><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Tất cả</option></select></div>
@@ -53,6 +53,7 @@
                             <option value="realized">Đã xuất kho + Hoàn thành</option>
                             <option value="all_active">Tất cả đơn chưa hủy</option>
                         </select>
+                        <span class="badge badge-success" id="sales_date_basis_badge">Ghi nhận theo ngày xuất kho</span>
                         <span class="small text-muted">Xem theo:</span>
                         <select class="form-control form-control-sm" id="filter_time_group" style="width:auto;min-width:110px;">
                             <option value="day">Ngày</option>
@@ -499,7 +500,9 @@ function fmtD(n){return fmt(n)+'đ';}
 function escapeHtml(value){return $('<div>').text(value || '').html();}
 function getOrderOpenUrl(order){return '/order-tbl/?open_order='+encodeURIComponent(order.id);}
 function getDailyOrdersUrl(dateKey){
-    return '/order-tbl/?from_date='+encodeURIComponent(dateKey)+'&to_date='+encodeURIComponent(dateKey);
+    var realized=($('#filter_order_scope').val()||'realized')==='realized';
+    return '/order-tbl/?from_date='+encodeURIComponent(dateKey)+'&to_date='+encodeURIComponent(dateKey)
+        +(realized?'&date_basis=exported&export_status=exported':'');
 }
 function renderDailyOrderDate(row){
     var dateKey=String(row.period_key||'');
@@ -526,6 +529,16 @@ function renderLossProducts(order){
 }
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
 function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
+function syncRevenueDateBasisUi(){
+    var realized=($('#filter_order_scope').val()||'realized')==='realized';
+    var label=realized?'ngày xuất kho':'ngày đặt hàng';
+    $('#filter_from_date_label').text('Từ '+label);
+    $('#filter_to_date_label').text('Đến '+label);
+    $('#sales_date_basis_badge')
+        .toggleClass('badge-success',realized)
+        .toggleClass('badge-secondary',!realized)
+        .text(realized?'Ghi nhận doanh thu theo ngày xuất kho':'Đang xem theo ngày đặt hàng');
+}
 var _filtersLoaded=false, _charts={}, _overviewProductRows=[], _overviewCustomerRows=[], _orderDetailRows=[];
 var _productDetailSourceRows=[], _productCategorySourceRows=[];
 var _productDetailSortField='', _productDetailSortDirections={gross_profit:'desc',gross_margin:'desc'};
@@ -662,7 +675,8 @@ function applyTimeGroupUi(label){
 }
 function renderSalesReportFilterSummary(summary){
     var chips=[];
-    if($('#filter_from_date').val()||$('#filter_to_date').val()) chips.push('<span class="badge badge-light border px-2 py-1">Ngày: '+escapeHtml($('#filter_from_date').val()||'...')+' → '+escapeHtml($('#filter_to_date').val()||'...')+'</span>');
+    var dateBasis=(($('#filter_order_scope').val()||'realized')==='realized')?'Ngày xuất kho':'Ngày đặt hàng';
+    if($('#filter_from_date').val()||$('#filter_to_date').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+dateBasis+': '+escapeHtml($('#filter_from_date').val()||'...')+' → '+escapeHtml($('#filter_to_date').val()||'...')+'</span>');
     chips.push('<span class="badge badge-light border px-2 py-1">Theo '+escapeHtml(getTimeGroupText())+'</span>');
     chips.push('<span class="badge badge-light border px-2 py-1">Phạm vi: '+escapeHtml(getSelectedText('#filter_order_scope'))+'</span>');
     if($('#filter_store_id').val()) chips.push('<span class="badge badge-light border px-2 py-1">'+escapeHtml(getSelectedText('#filter_store_id'))+'</span>');
@@ -1170,6 +1184,7 @@ $(document).ready(function(){
     });
     applyQuickRangeState();
     applyTimeGroupUi(getTimeGroupText());
+    syncRevenueDateBasisUi();
     loadReport();
     $('#btn_search').click(function(){loadReport();});
     $('#filter_store_id, #filter_customer_kind, #filter_customer_group, #filter_category, #filter_product_type, #filter_profit, #filter_customer_id, #filter_product_id, #filter_salesperson, #filter_time_group, #filter_order_scope').change(function(){loadReport();});
@@ -1193,6 +1208,7 @@ $(document).ready(function(){
 });
 
 function loadReport(){
+    syncRevenueDateBasisUi();
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
     var timeGroup=$('#filter_time_group').val()||'day',orderScope=$('#filter_order_scope').val()||'realized';
     var url='/api/report-sales/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup)+'&order_scope='+encodeURIComponent(orderScope);

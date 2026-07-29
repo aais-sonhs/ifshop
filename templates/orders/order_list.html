@@ -1991,6 +1991,7 @@ var ORDER_STOCK_INFO_STORAGE_KEY = 'ifshop_order_stock_info_visible_v2';
 var ORDER_PAGE_SIZE_KEY = 'ifshop_order_page_size';
 var ORDER_OPEN_FILTER_ID = '';
 var ORDER_OPEN_FILTER_LABEL = '';
+var ORDER_DATE_FILTER_BASIS = 'order';
 var ORDER_PAGE_STATE = {
     page: 1,
     page_size: (function(){
@@ -6664,6 +6665,10 @@ function applyOrderListQueryFilters(params){
     var openOrderId = String(params.get('open_order') || '').trim();
     ORDER_OPEN_FILTER_ID = /^\d+$/.test(openOrderId) ? openOrderId : '';
     ORDER_OPEN_FILTER_LABEL = '';
+    ORDER_DATE_FILTER_BASIS = params.get('date_basis') === 'exported' ? 'exported' : 'order';
+    var dateTitle = ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt';
+    $('#filter_from_date').attr({'title':dateTitle+' từ','aria-label':dateTitle+' từ'});
+    $('#filter_to_date').attr({'title':dateTitle+' đến','aria-label':dateTitle+' đến'});
     ['from_date', 'to_date'].forEach(function(key){
         var value=String(params.get(key)||'');
         if(/^\d{4}-\d{2}-\d{2}$/.test(value)){
@@ -6687,6 +6692,7 @@ function getCurrentOrderFilters(){
         product: ($('#filter_product').val() || '').trim(),
         from_date: $('#filter_from_date').val() || '',
         to_date: $('#filter_to_date').val() || '',
+        date_basis: ORDER_DATE_FILTER_BASIS,
         created_from: $('#filter_created_from').val() || '',
         created_to: $('#filter_created_to').val() || '',
         text: ($('#filter_text').val() || '').trim()
@@ -6756,7 +6762,7 @@ function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
     if($('#filter_from_date').val() || $('#filter_to_date').val()){
         chips.push({
             key:'date',
-            label:'Ngày đặt',
+            label:ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt',
             value:($('#filter_from_date').val() || '...') + ' - ' + ($('#filter_to_date').val() || '...')
         });
     }
@@ -7007,6 +7013,9 @@ function clearOpenOrderListFilter(){
 // Clear all filters
 $('#btn_clear_filter').click(function(){
     clearOpenOrderListFilter();
+    ORDER_DATE_FILTER_BASIS = 'order';
+    $('#filter_from_date').attr({'title':'Ngày đặt từ','aria-label':'Ngày đặt từ'});
+    $('#filter_to_date').attr({'title':'Ngày đặt đến','aria-label':'Ngày đặt đến'});
     $('#filter_text').val('');
     $('#filter_customer').val('').trigger('change.select2');
     $('#filter_export_status').val('');
@@ -8182,6 +8191,7 @@ $('#btn_save_filter').click(function(){
         product: $('#filter_product').val(),
         from_date: $('#filter_from_date').val(),
         to_date: $('#filter_to_date').val(),
+        date_basis: ORDER_DATE_FILTER_BASIS,
         created_from: $('#filter_created_from').val(),
         created_to: $('#filter_created_to').val(),
         text: $('#filter_text').val()
@@ -8208,6 +8218,10 @@ $(document).on('click', '.filter-load-btn', function(){
     $('#filter_payment_method').val(f.payment_method || '').trigger('change.select2');
     $('#filter_creator').val(f.creator || '').trigger('change.select2');
     $('#filter_product').val(f.product || '');
+    ORDER_DATE_FILTER_BASIS = f.date_basis === 'exported' ? 'exported' : 'order';
+    var savedDateTitle = ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt';
+    $('#filter_from_date').attr({'title':savedDateTitle+' từ','aria-label':savedDateTitle+' từ'});
+    $('#filter_to_date').attr({'title':savedDateTitle+' đến','aria-label':savedDateTitle+' đến'});
     $('#filter_from_date').val(f.from_date || '');
     $('#filter_to_date').val(f.to_date || '');
     $('#filter_created_from').val(f.created_from || '');

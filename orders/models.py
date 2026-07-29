@@ -163,6 +163,12 @@ class Order(SoftDeleteModel):
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
     order_date = models.DateField(verbose_name='Ngày đặt hàng')
     delivery_date = models.DateField(blank=True, null=True, verbose_name='Ngày giao hàng')
+    exported_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name='Thời điểm xuất kho',
+    )
 
     # Cảnh báo bán dưới giá niêm yết
     below_listed_price_warning = models.BooleanField(default=False, verbose_name='Cảnh báo dưới giá niêm yết')

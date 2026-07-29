@@ -742,7 +742,7 @@ DETAILED_OPERATION_GUIDES = [
         'steps': [
             'Đăng nhập bằng tài khoản Chủ thương hiệu, Giám đốc hoặc Kế toán. Đây là các vai trò được phép xem Báo cáo bán hàng.',
             'Trên thanh menu bên trái, vào Báo cáo và chọn BC Bán hàng.',
-            'Tại Bộ lọc, nhập Từ ngày và Đến ngày. Ví dụ muốn kiểm tra ngày 11 và 12/07 thì chọn Từ ngày 11/07, Đến ngày 12/07.',
+            'Tại Bộ lọc, nhập Từ ngày xuất kho và Đến ngày xuất kho. Ví dụ muốn kiểm tra doanh thu được ghi nhận ngày 11 và 12/07 thì chọn Từ ngày 11/07, Đến ngày 12/07.',
             'Giữ Phạm vi đơn là "Đã xuất kho + Hoàn thành" để xem doanh thu đã thực hiện. Nếu cần kiểm tra cả đơn đang xử lý nhưng chưa hủy, chọn "Tất cả đơn chưa hủy".',
             'Để xem toàn bộ kết quả, giữ bộ lọc Lợi nhuận là "Tất cả". Để chỉ xem đơn lỗ, chọn "Báo lỗ" rồi nhấn "Xem báo cáo".',
             'Mở tab Tổng quan để xem tổng số đơn, doanh thu, giá vốn thuần, lợi nhuận gộp, công nợ và số đơn báo lỗ trong khoảng ngày đã chọn.',
@@ -754,7 +754,7 @@ DETAILED_OPERATION_GUIDES = [
             'Bấm vào mã đơn hoặc nút "Mở đơn lỗ" để kiểm tra chi tiết đơn hàng. Có thể nhấn "Xuất Excel" nếu cần gửi hoặc lưu báo cáo.',
         ],
         'checks': [
-            'Khoảng ngày trên BC Bán hàng hiện được lọc theo Ngày đặt hàng, không phải ngày khách chuyển khoản, ngày ghi phiếu thu hoặc ngày hoàn thành đơn.',
+            'Với phạm vi "Đã xuất kho + Hoàn thành", doanh thu được lọc và gom theo thời điểm xuất kho lần đầu (exported_at), tức lúc trừ tồn thành công. Khi chọn "Tất cả đơn chưa hủy", khoảng ngày dùng Ngày đặt hàng để phục vụ theo dõi vận hành.',
             'Doanh thu của đơn được tính từ tiền hàng sau chiết khấu, cộng phí vận chuyển và chi phí khác; lợi nhuận bằng doanh thu trừ giá vốn.',
             'Muốn số liệu lãi/lỗ chính xác, sản phẩm phải có giá vốn hoặc giá nhập đúng và đơn hàng phải ghi nhận đủ số lượng, chiết khấu, phí phát sinh và trả hàng.',
             'Đơn đã hoàn đủ toàn bộ số lượng hàng bán bằng phiếu hoàn Hoàn thành không còn được đánh dấu là đơn lỗ, không cộng vào số Đơn báo lỗ và không xuất hiện khi lọc Báo lỗ.',

@@ -1120,6 +1120,7 @@ def _order_workflow_payload(order):
         'paid_amount': float(order.paid_amount or 0),
         'final_amount': float(order.final_amount or 0),
         'remaining_amount': float(remaining),
+        'exported_at': order.exported_at.strftime('%d/%m/%Y %H:%M:%S') if order.exported_at else '',
     }
 
 
@@ -1769,6 +1770,8 @@ def _sync_exchange_order_for_return(order_return, actor, due_receipt=None):
     exchange_order.warehouse = order_return.warehouse or source_order.warehouse
     exchange_order.order_date = order_return.return_date or date.today()
     exchange_order.status = 4
+    if not exchange_order.exported_at:
+        exchange_order.exported_at = timezone.now()
     exchange_order.total_amount = _to_decimal(order_return.exchange_amount)
     exchange_order.discount_amount = offset_amount
     exchange_order.shipping_fee = Decimal('0')
@@ -2807,6 +2810,7 @@ def _get_order_list_filters(request):
         'product': (params.get('product') or '').strip(),
         'from_date': (params.get('from_date') or params.get('date_from') or '').strip(),
         'to_date': (params.get('to_date') or params.get('date_to') or '').strip(),
+        'date_basis': (params.get('date_basis') or 'order').strip(),
         'created_from': (params.get('created_from') or '').strip(),
         'created_to': (params.get('created_to') or '').strip(),
         'text': (params.get('text') or '').strip(),
@@ -2822,10 +2826,16 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
         else:
             queryset = queryset.none()
 
-    if filters.get('from_date'):
-        queryset = queryset.filter(order_date__gte=filters['from_date'])
-    if filters.get('to_date'):
-        queryset = queryset.filter(order_date__lte=filters['to_date'])
+    if filters.get('date_basis') == 'exported':
+        if filters.get('from_date'):
+            queryset = queryset.filter(exported_at__date__gte=filters['from_date'])
+        if filters.get('to_date'):
+            queryset = queryset.filter(exported_at__date__lte=filters['to_date'])
+    else:
+        if filters.get('from_date'):
+            queryset = queryset.filter(order_date__gte=filters['from_date'])
+        if filters.get('to_date'):
+            queryset = queryset.filter(order_date__lte=filters['to_date'])
     if filters.get('created_from'):
         queryset = queryset.filter(created_at__date__gte=filters['created_from'])
     if filters.get('created_to'):
@@ -2983,6 +2993,7 @@ def _serialize_order_list(orders):
             'warehouse': o.warehouse.name if o.warehouse else '',
             'warehouse_id': o.warehouse_id,
             'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
+            'exported_at': o.exported_at.strftime('%d/%m/%Y %H:%M:%S') if o.exported_at else '',
             'created_date': _local_date_iso(o.created_at),
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M:%S') if o.created_at else '',
             'total_amount': float(o.total_amount),
@@ -3188,6 +3199,7 @@ def api_get_order_detail(request):
                 'warehouse_id': o.warehouse_id,
                 'order_date': o.order_date.strftime('%Y-%m-%d') if o.order_date else '',
                 'delivery_date': o.delivery_date.strftime('%Y-%m-%d') if o.delivery_date else '',
+                'exported_at': o.exported_at.strftime('%d/%m/%Y %H:%M:%S') if o.exported_at else '',
                 'created_date': _local_date_iso(o.created_at),
                 'total_amount': float(o.total_amount),
                 'discount_amount': float(o.discount_amount),
@@ -3407,6 +3419,11 @@ def api_save_order(request):
                         'message': 'Vui lòng dùng nút Hủy đơn để hệ thống hoàn tồn kho và xử lý phiếu thu đúng quy trình.'
                     })
             o.status = new_status
+            if _order_exports_stock_status(o.status) and not o.warehouse_id:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Vui lòng chọn kho xuất trước khi chuyển đơn sang Đã xuất kho.',
+                })
             if 'note' in data or not oid:
                 o.note = data.get('note', '')
 
@@ -3642,6 +3659,9 @@ def api_save_order(request):
                     # Savepoint riêng để thiếu tồn không làm rollback luôn đơn hàng mới.
                     with transaction.atomic():
                         _apply_order_stock_adjustment(o, direction=-1)
+                    if not o.exported_at:
+                        o.exported_at = timezone.now()
+                        o.save(update_fields=['exported_at'])
                 except ValueError as stock_error:
                     if oid or not str(stock_error).startswith('Tồn kho không đủ'):
                         raise
@@ -4370,7 +4390,9 @@ def api_export_order_stock(request):
                 allow_negative_override=True,
             )
             order.status = 4
-            order.save(update_fields=['status'])
+            if not order.exported_at:
+                order.exported_at = timezone.now()
+            order.save(update_fields=['status', 'exported_at'])
             _refresh_order_payment(order)
             _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
             exported_items = _summarize_order_items_for_history(
@@ -5684,6 +5706,9 @@ def api_pos_checkout(request):
                             -_to_decimal(item_data.get('quantity', 1)),
                             allow_negative=allow_negative_stock,
                         )
+
+            order.exported_at = timezone.now()
+            order.save(update_fields=['exported_at'])
 
             if paid_amount > 0:
                 _create_completed_receipt_for_order(

@@ -2,7 +2,7 @@ import json
 import logging
 import unicodedata
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from functools import wraps
 from django.conf import settings
@@ -841,17 +841,38 @@ def _build_slow_moving_inventory_payload(request, filters):
         }
 
     today = datetime.now().date()
-    last_sale_by_product = {
-        row['product_id']: row['last_sale_date']
-        for row in OrderItem.objects.filter(
+    last_sale_by_product = {}
+    last_sale_rows = OrderItem.objects.filter(
             product_id__in=stocked_product_ids,
             quantity__gt=0,
             order__store_id__in=scoped_store_ids,
             order__status__in=[4, 5],
             order__is_deleted=False,
-            order__order_date__lte=today,
-        ).values('product_id').annotate(last_sale_date=Max('order__order_date'))
-    }
+        ).filter(
+            Q(order__exported_at__date__lte=today)
+            | Q(order__exported_at__isnull=True, order__order_date__lte=today)
+        ).values('product_id').annotate(
+            last_sale_at=Max('order__exported_at'),
+            legacy_last_sale_date=Max(
+                'order__order_date',
+                filter=Q(order__exported_at__isnull=True),
+            ),
+        )
+    for row in last_sale_rows:
+        last_sale_at = row['last_sale_at']
+        exported_date = None
+        if last_sale_at:
+            if settings.USE_TZ and timezone.is_aware(last_sale_at):
+                last_sale_at = timezone.localtime(last_sale_at)
+            exported_date = last_sale_at.date()
+        last_sale_by_product[row['product_id']] = max(
+            (
+                value
+                for value in (exported_date, row['legacy_last_sale_date'])
+                if value
+            ),
+            default=None,
+        )
 
     rows = []
     stocked_product_id_set = set(stocked_product_ids)
@@ -1163,6 +1184,50 @@ def _get_sales_report_filters(request):
     }
 
 
+def _report_date_value(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if hasattr(value, 'year') and hasattr(value, 'month') and hasattr(value, 'day'):
+        return value
+    return parse_date(str(value or ''))
+
+
+def _exported_at_period_q(from_date, to_date, field_prefix=''):
+    """Lọc doanh thu theo thời điểm xuất kho, gồm trọn ngày kết thúc."""
+    start_date = _report_date_value(from_date)
+    end_date = _report_date_value(to_date)
+    if not start_date or not end_date:
+        return Q(pk__in=[])
+
+    start_at = datetime.combine(start_date, time.min)
+    end_at = datetime.combine(end_date + timedelta(days=1), time.min)
+    if settings.USE_TZ:
+        current_timezone = timezone.get_current_timezone()
+        start_at = timezone.make_aware(start_at, current_timezone)
+        end_at = timezone.make_aware(end_at, current_timezone)
+    exported_q = Q(**{
+        f'{field_prefix}exported_at__gte': start_at,
+        f'{field_prefix}exported_at__lt': end_at,
+    })
+    # Migration 0029 đã backfill đơn cũ. Nhánh này chỉ bảo vệ dữ liệu
+    # legacy/import thủ công chưa có exported_at khỏi biến mất báo cáo.
+    legacy_q = Q(**{
+        f'{field_prefix}exported_at__isnull': True,
+        f'{field_prefix}order_date__gte': start_date,
+        f'{field_prefix}order_date__lte': end_date,
+    })
+    return exported_q | legacy_q
+
+
+def _order_revenue_date(order):
+    exported_at = order.exported_at
+    if not exported_at:
+        return order.order_date
+    if timezone.is_aware(exported_at):
+        exported_at = timezone.localtime(exported_at)
+    return exported_at.date()
+
+
 def _get_sales_report_time_group_meta(time_group):
     """Trả metadata gom nhóm thời gian cho báo cáo bán hàng."""
     if time_group == 'month':
@@ -1192,6 +1257,11 @@ def _get_sales_report_filter_labels(filters):
     }.get(filters.get('order_scope'))
     if order_scope_label:
         filter_labels.append(f"Phạm vi đơn: {order_scope_label}")
+    filter_labels.append(
+        'Mốc ngày: Ngày đặt hàng'
+        if filters.get('order_scope') == 'all_active'
+        else 'Mốc ghi nhận doanh thu: Ngày xuất kho'
+    )
     if filters.get('store_id'):
         filter_labels.append(f"Cửa hàng: {_lookup_name(Store, filters['store_id'])}")
     if filters.get('customer_kind'):
@@ -1418,14 +1488,16 @@ def _build_sales_report_payload(request, include_filter_options=True):
                 return value
         return _effective_product_unit_cost(item.product if item.product_id else None)
 
-    orders_qs = Order.objects.filter(
-        order_date__gte=filters['from_date'],
-        order_date__lte=filters['to_date'],
-    )
     if filters['order_scope'] == 'all_active':
-        orders_qs = orders_qs.exclude(status=6)
+        orders_qs = Order.objects.filter(
+            order_date__gte=filters['from_date'],
+            order_date__lte=filters['to_date'],
+        ).exclude(status=6)
     else:
-        orders_qs = orders_qs.filter(status__in=[4, 5])
+        orders_qs = Order.objects.filter(
+            _exported_at_period_q(filters['from_date'], filters['to_date']),
+            status__in=[4, 5],
+        )
     orders_qs = orders_qs.select_related(
         'customer', 'customer__group', 'warehouse', 'store', 'created_by'
     )
@@ -1459,7 +1531,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
         )
     orders_qs = orders_qs.distinct()
 
-    orders_list = list(orders_qs.order_by('-order_date', '-id'))
+    order_by_date = '-order_date' if filters['order_scope'] == 'all_active' else '-exported_at'
+    orders_list = list(orders_qs.order_by(order_by_date, '-id'))
     if filters['salesperson']:
         selected_salesperson = filters['salesperson'].strip().casefold()
         orders_list = [
@@ -1500,12 +1573,17 @@ def _build_sales_report_payload(request, include_filter_options=True):
         product_type = category if category and category.parent_id else None
         line_profit = adjusted_revenue - line_cost
         salesperson = _get_order_revenue_staff_name(order)
+        revenue_date = (
+            order.order_date
+            if filters['order_scope'] == 'all_active'
+            else _order_revenue_date(order)
+        )
         adjusted_item_rows.append({
             'id': item.id,
             'order_id': item.order_id,
             'order_code': order.code,
-            'date': order.order_date.strftime('%d/%m/%Y') if order.order_date else '',
-            'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
+            'date': revenue_date.strftime('%d/%m/%Y') if revenue_date else '',
+            'date_raw': revenue_date.strftime('%Y-%m-%d') if revenue_date else '',
             'customer_name': order.customer.name if order.customer else '',
             'salesperson': salesperson,
             'product_id': item.product_id,
@@ -1574,11 +1652,16 @@ def _build_sales_report_payload(request, include_filter_options=True):
         loss_products = loss_items_by_order.get(order.id, [])
         customer_kind, customer_kind_label = _classify_sales_report_customer_kind(order.customer)
         loss_products_for_order = [] if order.id in fully_returned_order_ids else loss_products
+        revenue_date = (
+            order.order_date
+            if filters['order_scope'] == 'all_active'
+            else _order_revenue_date(order)
+        )
         order_rows.append({
             'id': order.id,
             'code': order.code,
-            'date': order.order_date.strftime('%d/%m/%Y') if order.order_date else '',
-            'date_raw': order.order_date.strftime('%Y-%m-%d') if order.order_date else '',
+            'date': revenue_date.strftime('%d/%m/%Y') if revenue_date else '',
+            'date_raw': revenue_date.strftime('%Y-%m-%d') if revenue_date else '',
             'customer': order.customer.name if order.customer else '',
             'customer_id': order.customer_id,
             'customer_kind': customer_kind,
@@ -3690,10 +3773,11 @@ def api_report_staff_sales(request):
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
-    # Base queryset: đơn hàng không bị hủy
+    # Doanh thu chỉ được ghi nhận khi đơn đã xuất kho, theo exported_at.
     orders = Order.objects.filter(
-        order_date__gte=from_date, order_date__lte=to_date
-    ).exclude(status=6)
+        _exported_at_period_q(from_date, to_date),
+        status__in=[4, 5],
+    )
     orders = filter_by_store(orders, request)
     if store_id:
         orders = orders.filter(store_id=store_id)
@@ -3750,14 +3834,17 @@ def api_report_staff_sales(request):
         # Đơn hàng chi tiết (cho phần mở rộng)
         order_details = [{
             'code': o.code,
-            'date': o.order_date.strftime('%d/%m/%Y') if o.order_date else '',
+            'date': (
+                _order_revenue_date(o).strftime('%d/%m/%Y')
+                if _order_revenue_date(o) else ''
+            ),
             'customer': o.customer.name if o.customer else 'N/A',
             'final_amount': float(o.final_amount),
             'paid_amount': float(o.paid_amount),
             'bonus_amount': float(o.bonus_amount),
             'status': o.status,
             'status_display': o.get_status_display(),
-        } for o in staff_orders.select_related('customer').order_by('-order_date')[:50]]
+        } for o in staff_orders.select_related('customer').order_by('-exported_at', '-id')[:50]]
 
         return {
             'salesperson': name,
@@ -3852,8 +3939,9 @@ def export_staff_sales_excel(request):
 
     # Lấy dữ liệu (tái sử dụng logic)
     orders = Order.objects.filter(
-        order_date__gte=from_date, order_date__lte=to_date
-    ).exclude(status=6)
+        _exported_at_period_q(from_date, to_date),
+        status__in=[4, 5],
+    )
     orders = filter_by_store(orders, request)
     if store_id:
         orders = orders.filter(store_id=store_id)
@@ -3886,7 +3974,7 @@ def export_staff_sales_excel(request):
     ws['A1'].alignment = Alignment(horizontal='center')
 
     ws.merge_cells('A2:L2')
-    ws['A2'] = f'Từ ngày {from_date} đến ngày {to_date}'
+    ws['A2'] = f'Từ ngày xuất kho {from_date} đến ngày xuất kho {to_date}'
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 

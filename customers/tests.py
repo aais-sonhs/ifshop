@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time, timedelta
 import json
 from decimal import Decimal
 
@@ -92,6 +92,38 @@ class CustomerScopeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['kpi']['debt'], 700.0)
+
+    def test_dashboard_revenue_uses_exported_at_instead_of_order_date(self):
+        today = date.today()
+        previous_month_day = today.replace(day=1) - timedelta(days=1)
+        Order.objects.create(
+            code='DH-DASHBOARD-EXPORTED-TODAY',
+            store=self.store,
+            customer=self.customer,
+            status=4,
+            final_amount=1000,
+            paid_amount=0,
+            order_date=previous_month_day,
+            exported_at=datetime.combine(today, time(9, 30)),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-DASHBOARD-ORDER-TODAY',
+            store=self.store,
+            customer=self.customer,
+            status=5,
+            final_amount=500,
+            paid_amount=0,
+            order_date=today,
+            exported_at=datetime.combine(previous_month_day, time(16, 0)),
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_dashboard_data'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['kpi']['revenue'], 1000.0)
+        self.assertEqual(response.json()['kpi']['orders'], 1)
 
     def test_save_customer_assigns_default_store(self):
         response = self.client.post(

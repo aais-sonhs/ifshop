@@ -807,6 +807,72 @@ class SalesReportTests(TestCase):
         )
         self.assertEqual(payload['filters_applied']['order_scope'], 'realized')
 
+    def test_api_report_sales_filters_and_groups_revenue_by_exported_at(self):
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        exported_today = Order.objects.create(
+            code='DH-RP-EXPORTED-TODAY',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=4,
+            total_amount=100,
+            final_amount=100,
+            order_date=yesterday,
+            exported_at=datetime.combine(today, time(15, 30)),
+            created_by=self.user,
+        )
+        order_date_today_but_exported_yesterday = Order.objects.create(
+            code='DH-RP-ORDER-TODAY-EXPORT-YESTERDAY',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=200,
+            final_amount=200,
+            order_date=today,
+            exported_at=datetime.combine(yesterday, time(16, 0)),
+            created_by=self.user,
+        )
+        for order, amount in (
+            (exported_today, 100),
+            (order_date_today_but_exported_yesterday, 200),
+        ):
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=amount,
+                cost_price=60,
+                total_price=amount,
+            )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['total_orders'], 1)
+        self.assertEqual(payload['order_details'][0]['code'], exported_today.code)
+        self.assertEqual(payload['order_details'][0]['date_raw'], today.isoformat())
+        self.assertEqual(payload['timeline'][0]['period_key'], today.isoformat())
+
+        staff_response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(staff_response.status_code, 200)
+        staff_payload = staff_response.json()
+        self.assertEqual(staff_payload['summary']['grand_revenue'], 100.0)
+        self.assertEqual(staff_payload['summary']['grand_orders'], 1)
+        self.assertEqual(staff_payload['staff_data'][0]['orders'][0]['code'], exported_today.code)
+        self.assertEqual(
+            staff_payload['staff_data'][0]['orders'][0]['date'],
+            today.strftime('%d/%m/%Y'),
+        )
+
     def test_sales_report_slow_moving_inventory_uses_latest_realized_sale_across_history(self):
         today = date.today()
         slow_product = Product.objects.create(
@@ -2383,7 +2449,7 @@ class SalesReportTests(TestCase):
         self.assertIn('Chi tiết đơn hàng', workbook.sheetnames)
         self.assertEqual(
             workbook.active['A3'].value,
-            'Bộ lọc: Xem theo: Ngày | Phạm vi đơn: Đã xuất kho + Hoàn thành | Kiểu khách: Khách buôn / sỉ | Nhóm mặt hàng: Đồ uống | Lợi nhuận: Báo lỗ',
+            'Bộ lọc: Xem theo: Ngày | Phạm vi đơn: Đã xuất kho + Hoàn thành | Mốc ghi nhận doanh thu: Ngày xuất kho | Kiểu khách: Khách buôn / sỉ | Nhóm mặt hàng: Đồ uống | Lợi nhuận: Báo lỗ',
         )
 
         order_sheet = workbook['Chi tiết đơn hàng']
@@ -2589,6 +2655,24 @@ class QuotationProfitReportTests(TestCase):
         self.assertContains(response, 'target="_blank"')
         self.assertContains(response, 'Thử CK CTV')
         self.assertContains(response, 'không sửa hoặc lưu vào báo giá')
+
+    def test_report_page_has_pagination_and_persistent_column_visibility(self):
+        response = self.client.get(reverse('report_quotation_profit'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="qp_column_config"')
+        self.assertContains(response, 'id="qp_page_size"')
+        self.assertContains(response, 'id="qp_pagination_summary"')
+        self.assertContains(response, 'id="qp_pagination"')
+        self.assertContains(response, '/static/js/column_config.js')
+        self.assertContains(response, 'ifshop_report_quotation_profit_columns_v1')
+        self.assertContains(response, 'ifshop_report_quotation_profit_page_size')
+        self.assertContains(response, 'function renderQuotationProfitPage()')
+        self.assertContains(response, 'quotationProfitRows.slice(start, end)')
+        self.assertContains(response, 'function buildPaginationButtons(currentPage, totalPages)')
+        self.assertContains(response, 'data-col="code"')
+        self.assertContains(response, 'data-col="remaining_profit"')
+        self.assertContains(response, 'renderFooterTotals(quotationProfitRows)')
 
     def test_regular_salesperson_cannot_view_quotation_profit_report(self):
         self.client.force_login(self.salesperson)
@@ -3094,6 +3178,7 @@ class DailyEmailReportSettingTests(TestCase):
             final_amount=150,
             paid_amount=100,
             order_date=report_date,
+            exported_at=datetime.combine(report_date, time(10, 0)),
             created_by=self.owner,
         )
         OrderItem.objects.create(
@@ -3208,6 +3293,48 @@ class DailyEmailReportSettingTests(TestCase):
                 },
             ],
         )
+
+    def test_daily_email_revenue_uses_exported_at_instead_of_order_date(self):
+        report_date = date.today()
+        previous_date = report_date - timedelta(days=1)
+        included = Order.objects.create(
+            code='DH-DLY-EXPORT-TODAY',
+            store=self.store,
+            warehouse=self.warehouse,
+            customer=self.customer,
+            status=4,
+            total_amount=120,
+            final_amount=120,
+            order_date=previous_date,
+            exported_at=datetime.combine(report_date, time(9, 0)),
+            created_by=self.owner,
+        )
+        Order.objects.create(
+            code='DH-DLY-ORDER-TODAY',
+            store=self.store,
+            warehouse=self.warehouse,
+            customer=self.customer,
+            status=5,
+            total_amount=300,
+            final_amount=300,
+            order_date=report_date,
+            exported_at=datetime.combine(previous_date, time(16, 0)),
+            created_by=self.owner,
+        )
+        OrderItem.objects.create(
+            order=included,
+            product=self.product,
+            quantity=1,
+            unit_price=120,
+            cost_price=40,
+            total_price=120,
+        )
+        config = DailyEmailReport.objects.create(brand=self.brand)
+
+        metrics = collect_daily_email_report_metrics(config, report_date=report_date)
+
+        self.assertEqual(metrics['revenue'], 120)
+        self.assertEqual(metrics['sales_cost'], 40)
 
     def test_metrics_show_completed_receipts_without_a_cash_book_separately(self):
         Receipt.objects.create(

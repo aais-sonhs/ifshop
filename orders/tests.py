@@ -1760,6 +1760,53 @@ class OrderRiskFlowTests(TestCase):
         expected_ids = [order.id for order in list(reversed(created_orders))[10:12]]
         self.assertEqual([row['id'] for row in payload['data']], expected_ids)
 
+    def test_get_orders_can_filter_by_exported_date_for_sales_report_drilldown(self):
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        exported_today = Order.objects.create(
+            code='DH-LIST-EXPORTED-TODAY',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=4,
+            total_amount=100,
+            final_amount=100,
+            order_date=yesterday,
+            exported_at=datetime(today.year, today.month, today.day, 10, 0),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-LIST-ORDER-TODAY',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            total_amount=100,
+            final_amount=100,
+            order_date=today,
+            exported_at=datetime(
+                yesterday.year,
+                yesterday.month,
+                yesterday.day,
+                10,
+                0,
+            ),
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_get_orders'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'date_basis': 'exported',
+            'export_status': 'exported',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row['id'] for row in response.json()['data']],
+            [exported_today.id],
+        )
+
     def test_get_orders_finds_order_code_without_separators(self):
         matching_order = self._create_order(code='DH-CODE-045', status=1)
         self._create_order(code='DH-CODE-046', status=1)
@@ -3150,8 +3197,19 @@ class OrderRiskFlowTests(TestCase):
         stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
         self.assertEqual(order.status, 4)
         self.assertEqual(order.payment_status, 0)
+        self.assertIsNotNone(order.exported_at)
         self.assertEqual(float(stock.quantity), 3.0)
         self.assertFalse(Receipt.objects.filter(order=order).exists())
+
+        first_exported_at = order.exported_at
+        repeated_response = self.client.post(
+            reverse('api_export_order_stock'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(repeated_response.json()['status'], 'ok')
+        order.refresh_from_db()
+        self.assertEqual(order.exported_at, first_exported_at)
 
     def test_export_order_stock_persists_warehouse_selected_in_form(self):
         ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
@@ -3528,6 +3586,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('Tồn kho không đủ', payload['stock_export_warning'])
         order = Order.objects.get(code='DH-NEG-STOCK')
         self.assertEqual(order.status, 3)
+        self.assertIsNone(order.exported_at)
         stock = ProductStock.objects.get(product=self.product, warehouse=self.warehouse)
         self.assertEqual(float(stock.quantity), 0.0)
 
@@ -3563,6 +3622,8 @@ class OrderRiskFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        order = Order.objects.get(code='DH-ALLOW-NEG-STOCK')
+        self.assertIsNotNone(order.exported_at)
         stock.refresh_from_db()
         self.assertEqual(float(stock.quantity), -1.0)
 
@@ -3661,6 +3722,7 @@ class OrderRiskFlowTests(TestCase):
 
         order = Order.objects.get(id=payload['order_id'])
         self.assertEqual(order.status, 4)
+        self.assertIsNotNone(order.exported_at)
         self.assertEqual(order.payment_status, 0)
         self.assertEqual(float(order.paid_amount), 0.0)
         self.assertEqual(order.receipts.count(), 0)
@@ -3948,6 +4010,7 @@ class OrderRiskFlowTests(TestCase):
         exchange_order = order_return.exchange_order
         self.assertEqual(exchange_order.customer_id, order.customer_id)
         self.assertEqual(exchange_order.warehouse_id, order.warehouse_id)
+        self.assertIsNotNone(exchange_order.exported_at)
         self.assertEqual(float(exchange_order.total_amount), 70.0)
         self.assertEqual(float(exchange_order.discount_amount), 45.0)
         self.assertEqual(float(exchange_order.final_amount), 25.0)

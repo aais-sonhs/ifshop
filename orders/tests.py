@@ -1349,7 +1349,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            '<th style="width:40%" class="order-product-column">Sản phẩm</th>',
+            '<th style="width:37%" class="order-product-column">Sản phẩm</th>',
             html=True,
         )
         self.assertContains(
@@ -1359,7 +1359,7 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            '<th style="width:3%" class="order-unit-column">ĐVT</th>',
+            '<th style="width:5%" class="order-unit-column">ĐVT</th>',
             html=True,
         )
         self.assertContains(
@@ -1369,7 +1369,7 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            '<th style="width:6%" class="order-quantity-column">SL</th>',
+            '<th style="width:7%" class="order-quantity-column">SL</th>',
             html=True,
         )
         self.assertContains(
@@ -1389,6 +1389,9 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(response, '#items_tbl .order-line-discount-group')
         self.assertContains(response, 'min-width: 0;')
+        self.assertContains(response, '#items_tbl .order-unit-column,')
+        self.assertContains(response, 'white-space: nowrap;')
+        self.assertContains(response, 'overflow-wrap: anywhere;')
         self.assertContains(response, '#items_tbl .order-item-img')
         self.assertContains(response, 'width: 56px;')
         self.assertContains(response, '#items_tbl .stock-breakdown-row > span:last-child')

@@ -1076,7 +1076,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, '<option value="amount">Số tiền</option>', html=True)
         self.assertContains(response, '<option value="percent">Phần trăm</option>', html=True)
         self.assertContains(response, 'id="lbl_discount_conversion"')
-        self.assertContains(response, 'CK (% hoặc tiền)')
+        self.assertContains(response, 'CK (% / tiền)')
         self.assertContains(response, 'class="order-summary-value-column"')
         self.assertContains(response, 'order-discount-input-group')
         self.assertContains(response, 'Chiết khấu (% hoặc tiền)')
@@ -1461,6 +1461,38 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, 'renderOrderProductSpecification')
         self.assertContains(response, 'data-specification')
         self.assertContains(response, 'specification: product.specification ||')
+
+    def test_order_form_keeps_retail_and_cost_reference_visible_for_authorized_roles(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var CAN_VIEW_ORDER_COSTS = true;')
+        self.assertContains(response, 'function renderOrderItemReferencePrices(retailPrice, costPrice)')
+        self.assertContains(response, 'function updateOrderRowReferencePrices($row)')
+        self.assertContains(response, 'class="order-item-reference-prices"')
+        self.assertContains(response, 'Bán lẻ: ')
+        self.assertContains(response, 'Giá vốn: ')
+        self.assertContains(response, 'updateOrderRowReferencePrices($row);')
+        self.assertContains(response, '#items_tbl .order-item-reference-prices')
+
+        self.client.force_login(self.user)
+        unauthorized_response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(unauthorized_response.status_code, 200)
+        self.assertContains(unauthorized_response, 'var CAN_VIEW_ORDER_COSTS = false;')
+        self.assertContains(unauthorized_response, "if(!CAN_VIEW_ORDER_COSTS){")
+
+        self.user.profile.position = 'Giám đốc'
+        self.user.profile.save(update_fields=['position'])
+        director_response = self.client.get(reverse('order_tbl'))
+        self.assertContains(director_response, 'var CAN_VIEW_ORDER_COSTS = true;')
+
+        self.user.profile.position = 'Kế toán'
+        self.user.profile.save(update_fields=['position'])
+        accountant_response = self.client.get(reverse('order_tbl'))
+        self.assertContains(accountant_response, 'var CAN_VIEW_ORDER_COSTS = true;')
 
     def test_order_product_pulldowns_display_product_specification(self):
         self.client.force_login(self.owner)
@@ -2228,6 +2260,9 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(print_response, '150đ')
 
     def test_save_quotation_line_accepts_amount_discount_and_preserves_mode(self):
+        self.product.cost_price = 125
+        self.product.save(update_fields=['cost_price'])
+
         response = self.client.post(
             reverse('api_save_quotation'),
             data=json.dumps({
@@ -2263,6 +2298,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(item.discount_amount), 120.0)
         self.assertEqual(float(item.discount_percent), 20.0)
         self.assertEqual(float(item.total_price), 480.0)
+        self.assertEqual(float(item.cost_price), 125.0)
 
         self.product.specification = 'Thùng 24 chai - 330ml'
         self.product.save(update_fields=['specification'])

@@ -1,0 +1,605 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.quotation-profit-kpi {
+    min-height: 116px;
+    border: 0;
+    border-radius: 12px;
+    color: #fff;
+    overflow: hidden;
+    box-shadow: 0 5px 15px rgba(15, 23, 42, .12);
+}
+.quotation-profit-kpi .inner { padding: 16px 18px; position: relative; z-index: 2; }
+.quotation-profit-kpi h4 { margin: 0 0 4px; font-size: 22px; font-weight: 800; }
+.quotation-profit-kpi p {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .35px;
+    opacity: .9;
+    text-transform: uppercase;
+}
+.quotation-profit-kpi .icon { color: rgba(255,255,255,.2); font-size: 46px; right: 14px; top: 16px; }
+.quotation-profit-kpi.bg-profit-blue { background: linear-gradient(135deg,#1565c0,#42a5f5); }
+.quotation-profit-kpi.bg-profit-indigo { background: linear-gradient(135deg,#3949ab,#7e57c2); }
+.quotation-profit-kpi.bg-profit-orange { background: linear-gradient(135deg,#ef6c00,#ffb74d); }
+.quotation-profit-kpi.bg-profit-green { background: linear-gradient(135deg,#00897b,#43a047); }
+.quotation-profit-kpi.bg-profit-purple { background: linear-gradient(135deg,#6a1b9a,#ab47bc); }
+.quotation-profit-kpi.bg-profit-red { background: linear-gradient(135deg,#c62828,#ef5350); }
+.quotation-profit-table-wrap {
+    max-height: 590px;
+    overflow: auto;
+    border: 1px solid #dce3ea;
+    border-radius: 6px;
+}
+#quotation_profit_tbl { min-width: 2520px; }
+#quotation_profit_tbl thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #eef4ff;
+    border-bottom: 2px solid #90caf9;
+    white-space: nowrap;
+}
+#quotation_profit_tbl tfoot td {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: #f8fafc;
+    border-top: 2px solid #90caf9;
+}
+#quotation_profit_tbl td { vertical-align: middle; }
+#quotation_profit_tbl .quotation-product-cell {
+    min-width: 270px;
+    max-width: 340px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.quotation-code-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border: 1px solid #90caf9;
+    border-radius: 5px;
+    background: #eaf4ff;
+    color: #0756a3 !important;
+    font-weight: 800;
+    white-space: nowrap;
+    text-decoration: none !important;
+}
+.quotation-code-link:hover,
+.quotation-code-link:focus {
+    background: #d5eaff;
+    border-color: #42a5f5;
+    color: #003f7d !important;
+    box-shadow: 0 0 0 2px rgba(33,150,243,.12);
+}
+.quotation-profit-loss-row { background: #fff1f2; }
+.quotation-profit-missing-row { box-shadow: inset 4px 0 0 #ff9800; }
+.quotation-profit-positive { color: #087f5b; font-weight: 800; }
+.quotation-profit-negative { color: #c62828; font-weight: 800; }
+.quotation-cost-badge { white-space: nowrap; }
+.ctv-simulator { width: 190px; }
+.ctv-simulator .input-group { flex-wrap: nowrap; }
+.ctv-simulator .ctv-mode {
+    flex: 0 0 62px;
+    max-width: 62px;
+    padding-left: 5px;
+    padding-right: 20px;
+}
+.ctv-simulator .ctv-value { min-width: 95px; }
+.quotation-profit-help {
+    border-left: 4px solid #2196f3;
+    background: #eef7ff;
+    color: #334155;
+}
+@media (max-width: 767.98px) {
+    .quotation-profit-kpi { min-height: 102px; }
+    .quotation-profit-kpi h4 { font-size: 18px; }
+}
+</style>
+
+<div class="card card-outline card-primary">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-chart-line mr-2"></i>Báo cáo lợi nhuận dự kiến từ báo giá
+        </h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-sm btn-success" id="btn_export_quotation_profit">
+                <i class="fas fa-file-excel mr-1"></i>Xuất Excel
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="quotation-profit-help rounded px-3 py-2 mb-3 small">
+            <strong>LN dự kiến = Doanh thu báo giá − Giá vốn.</strong>
+            Doanh thu đã tính chiết khấu toàn báo giá, phí vận chuyển và chi phí khác.
+            Ô “Thử CK CTV” chỉ mô phỏng phần lợi nhuận còn lại, không sửa hoặc lưu vào báo giá.
+        </div>
+
+        <div class="row align-items-end" id="quotation_profit_filters">
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Từ ngày báo giá</label>
+                <input type="date" class="form-control form-control-sm" id="qp_from_date">
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Đến ngày báo giá</label>
+                <input type="date" class="form-control form-control-sm" id="qp_to_date">
+            </div>
+            <div class="col-xl-3 col-md-6 mb-2">
+                <label class="small text-muted mb-1">Trạng thái báo giá</label>
+                <select class="form-control form-control-sm" id="qp_status">
+                    <option value="active">Đang chào khách (Nháp/Đã gửi/Đã duyệt)</option>
+                    <option value="non_cancelled">Tất cả trừ đã hủy</option>
+                    <option value="all">Tất cả trạng thái</option>
+                    <option value="0">Nháp</option>
+                    <option value="1">Đã gửi</option>
+                    <option value="2">Đã duyệt</option>
+                    <option value="3">Đã tạo đơn hàng</option>
+                    <option value="4">Hủy</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2" id="qp_store_wrap" style="display:none;">
+                <label class="small text-muted mb-1">Cửa hàng</label>
+                <select class="form-control form-control-sm" id="qp_store">
+                    <option value="">Tất cả cửa hàng</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Hiệu lực</label>
+                <select class="form-control form-control-sm" id="qp_validity">
+                    <option value="all">Tất cả</option>
+                    <option value="current">Còn hạn / không đặt hạn</option>
+                    <option value="expired">Đã hết hạn</option>
+                    <option value="no_expiry">Không đặt hạn</option>
+                </select>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-2">
+                <label class="small text-muted mb-1">Khách hàng</label>
+                <select class="form-control form-control-sm" id="qp_customer">
+                    <option value="">Tất cả khách hàng</option>
+                </select>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-2">
+                <label class="small text-muted mb-1">Sản phẩm</label>
+                <select class="form-control form-control-sm" id="qp_product">
+                    <option value="">Tất cả sản phẩm</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Người báo giá</label>
+                <select class="form-control form-control-sm" id="qp_salesperson">
+                    <option value="">Tất cả</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Tình trạng LN</label>
+                <select class="form-control form-control-sm" id="qp_profit_filter">
+                    <option value="">Tất cả</option>
+                    <option value="profit">Có lãi và đủ giá vốn</option>
+                    <option value="loss">Báo lỗ</option>
+                    <option value="missing_cost">Thiếu giá vốn</option>
+                    <option value="estimated_cost">Giá vốn tạm tính</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Sắp xếp</label>
+                <select class="form-control form-control-sm" id="qp_sort">
+                    <option value="date_desc">Ngày mới nhất</option>
+                    <option value="profit_asc">LN thấp nhất</option>
+                    <option value="profit_desc">LN cao nhất</option>
+                    <option value="margin_asc">Biên LN thấp nhất</option>
+                    <option value="revenue_desc">Giá trị BG cao nhất</option>
+                </select>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-2">
+                <label class="small text-muted mb-1">Tìm nhanh</label>
+                <input
+                    type="search"
+                    class="form-control form-control-sm"
+                    id="qp_search"
+                    placeholder="Mã BG, khách hàng, sản phẩm..."
+                >
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2 d-flex" style="gap:6px;">
+                <button type="button" class="btn btn-sm btn-info flex-grow-1" id="btn_load_quotation_profit">
+                    <i class="fas fa-search mr-1"></i>Xem
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_reset_quotation_profit" title="Xóa bộ lọc">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <small class="text-muted">
+                Mặc định chỉ tính báo giá đang chào khách; có thể chọn thêm báo giá đã tạo đơn hoặc đã hủy.
+            </small>
+            <small class="text-muted">Cập nhật lúc: <span id="qp_refreshed_at">--</span></small>
+        </div>
+
+        <div class="row">
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-blue">
+                    <div class="inner"><h4 id="qp_count">0</h4><p>Số báo giá</p></div>
+                    <div class="icon"><i class="fas fa-file-alt"></i></div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-indigo">
+                    <div class="inner"><h4 id="qp_revenue">0đ</h4><p>Doanh thu dự kiến</p></div>
+                    <div class="icon"><i class="fas fa-coins"></i></div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-orange">
+                    <div class="inner"><h4 id="qp_cost">0đ</h4><p>Giá vốn dự kiến</p></div>
+                    <div class="icon"><i class="fas fa-boxes"></i></div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-green">
+                    <div class="inner"><h4 id="qp_profit">0đ</h4><p>LN dự kiến</p></div>
+                    <div class="icon"><i class="fas fa-chart-line"></i></div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-purple">
+                    <div class="inner"><h4 id="qp_margin">0%</h4><p>Biên LN dự kiến</p></div>
+                    <div class="icon"><i class="fas fa-percentage"></i></div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6 mb-3">
+                <div class="small-box quotation-profit-kpi bg-profit-red">
+                    <div class="inner"><h4 id="qp_warnings">0</h4><p>BG cần chú ý</p></div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-warning py-2 px-3 small" id="qp_cost_warning" style="display:none;"></div>
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <h5 class="mb-0"><i class="fas fa-list-alt text-primary mr-1"></i>Chi tiết theo báo giá</h5>
+            <small class="text-muted">
+                Bấm <strong>Mã BG</strong> để mở đúng báo giá trong tab mới.
+            </small>
+        </div>
+        <div class="quotation-profit-table-wrap">
+            <table class="table table-bordered table-sm table-hover mb-0" id="quotation_profit_tbl">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Mã BG</th>
+                        <th>Ngày BG</th>
+                        <th>Hiệu lực</th>
+                        <th>Trạng thái</th>
+                        <th>Cửa hàng</th>
+                        <th>Khách hàng</th>
+                        <th>Người BG</th>
+                        <th>Sản phẩm</th>
+                        <th class="text-right">Tiền hàng</th>
+                        <th class="text-right">Chiết khấu</th>
+                        <th class="text-right">Phí VC</th>
+                        <th class="text-right">Phí khác</th>
+                        <th class="text-right">DT dự kiến</th>
+                        <th class="text-right">GV dự kiến</th>
+                        <th class="text-right">LN dự kiến</th>
+                        <th class="text-right">Biên LN</th>
+                        <th>Nguồn giá vốn</th>
+                        <th>Thử CK CTV</th>
+                        <th class="text-right">LN còn lại</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="20" class="text-center text-muted py-4">Đang tải dữ liệu...</td></tr>
+                </tbody>
+                <tfoot class="font-weight-bold">
+                    <tr>
+                        <td colspan="9">TỔNG</td>
+                        <td class="text-right" id="qp_ft_goods">0đ</td>
+                        <td class="text-right text-danger" id="qp_ft_discount">0đ</td>
+                        <td class="text-right" id="qp_ft_shipping">0đ</td>
+                        <td class="text-right" id="qp_ft_other">0đ</td>
+                        <td class="text-right" id="qp_ft_revenue">0đ</td>
+                        <td class="text-right" id="qp_ft_cost">0đ</td>
+                        <td class="text-right" id="qp_ft_profit">0đ</td>
+                        <td class="text-right" id="qp_ft_margin">0%</td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+    var optionsLoaded = false;
+
+    function escapeHtml(value){
+        return $('<div>').text(value == null ? '' : String(value)).html();
+    }
+    function formatNumber(value){
+        return Number(value || 0).toLocaleString('vi-VN', {maximumFractionDigits: 2});
+    }
+    function formatMoney(value){
+        return Number(value || 0).toLocaleString('vi-VN', {maximumFractionDigits: 0}) + 'đ';
+    }
+    function formatPercent(value){
+        return Number(value || 0).toLocaleString('vi-VN', {maximumFractionDigits: 2}) + '%';
+    }
+    function localDateValue(date){
+        var value = date || new Date();
+        var month = String(value.getMonth() + 1).padStart(2, '0');
+        var day = String(value.getDate()).padStart(2, '0');
+        return value.getFullYear() + '-' + month + '-' + day;
+    }
+    function firstDayOfMonth(){
+        var today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    function buildParams(){
+        var params = new URLSearchParams();
+        [
+            ['from_date', '#qp_from_date'],
+            ['to_date', '#qp_to_date'],
+            ['status', '#qp_status'],
+            ['validity', '#qp_validity'],
+            ['store_id', '#qp_store'],
+            ['customer_id', '#qp_customer'],
+            ['product_id', '#qp_product'],
+            ['salesperson', '#qp_salesperson'],
+            ['profit_filter', '#qp_profit_filter'],
+            ['sort', '#qp_sort'],
+            ['search', '#qp_search']
+        ].forEach(function(pair){
+            var value = $(pair[1]).val();
+            if(value !== null && value !== '') params.set(pair[0], value);
+        });
+        return params;
+    }
+    function replaceOptions(selector, rows, placeholder, valueKey, labelBuilder){
+        var $select = $(selector);
+        var selected = String($select.val() || '');
+        var html = '<option value="">' + escapeHtml(placeholder) + '</option>';
+        (rows || []).forEach(function(row){
+            var value = typeof row === 'object' ? row[valueKey] : row;
+            var label = labelBuilder ? labelBuilder(row) : value;
+            html += '<option value="' + escapeHtml(value) + '">' + escapeHtml(label) + '</option>';
+        });
+        $select.html(html);
+        if(selected) $select.val(selected);
+    }
+    function loadOptions(options){
+        if(optionsLoaded || !options) return;
+        replaceOptions('#qp_store', options.stores, 'Tất cả cửa hàng', 'id', function(row){ return row.name; });
+        replaceOptions('#qp_customer', options.customers, 'Tất cả khách hàng', 'id', function(row){ return row.name; });
+        replaceOptions('#qp_product', options.products, 'Tất cả sản phẩm', 'id', function(row){
+            return (row.code ? row.code + ' - ' : '') + row.name;
+        });
+        replaceOptions('#qp_salesperson', options.salespersons, 'Tất cả', null);
+        $('#qp_store_wrap').toggle(!!options.has_multiple_stores);
+        optionsLoaded = true;
+        if($.fn.select2){
+            $('#qp_customer,#qp_product').select2({
+                theme: 'bootstrap4',
+                width: '100%',
+                allowClear: true
+            });
+        }
+    }
+    function statusBadge(item){
+        var classes = {
+            0: 'badge-secondary',
+            1: 'badge-info',
+            2: 'badge-success',
+            3: 'badge-primary',
+            4: 'badge-dark'
+        };
+        return '<span class="badge ' + (classes[item.status] || 'badge-light') + '">' +
+            escapeHtml(item.status_display) + '</span>';
+    }
+    function validityBadge(item){
+        if(item.validity_status === 'expired'){
+            return '<span class="badge badge-danger">Hết hạn</span>' +
+                (item.valid_until ? '<div class="small text-muted mt-1">'+escapeHtml(item.valid_until)+'</div>' : '');
+        }
+        if(item.validity_status === 'current'){
+            return '<span class="badge badge-success">Còn hạn</span>' +
+                (item.valid_until ? '<div class="small text-muted mt-1">'+escapeHtml(item.valid_until)+'</div>' : '');
+        }
+        return '<span class="badge badge-light border">Không đặt hạn</span>';
+    }
+    function costBadge(item){
+        if(item.cost_status === 'missing'){
+            return '<span class="badge badge-warning quotation-cost-badge"><i class="fas fa-exclamation-triangle mr-1"></i>Thiếu giá vốn</span>' +
+                '<div class="small text-danger mt-1">'+formatNumber(item.missing_cost_lines)+' dòng</div>';
+        }
+        if(item.cost_status === 'estimated'){
+            return '<span class="badge badge-info quotation-cost-badge"><i class="fas fa-calculator mr-1"></i>Giá vốn hiện tại</span>' +
+                '<div class="small text-muted mt-1">Tạm tính '+formatNumber(item.estimated_cost_lines)+' dòng</div>';
+        }
+        return '<span class="badge badge-success quotation-cost-badge"><i class="fas fa-lock mr-1"></i>Đã chụp khi lưu</span>';
+    }
+    function productSummary(item){
+        var names = item.product_names || [];
+        if(!names.length) return '<span class="text-muted">Không có dòng hàng</span>';
+        var visible = names.slice(0, 2).map(function(name){
+            return '<div>' + escapeHtml(name) + '</div>';
+        }).join('');
+        if(names.length > 2){
+            visible += '<small class="text-primary">+' + (names.length - 2) + ' sản phẩm khác</small>';
+        }
+        return visible + '<small class="text-muted d-block mt-1">' + formatNumber(item.item_count) + ' dòng</small>';
+    }
+    function renderRows(rows){
+        var html = '';
+        var totals = {
+            goods: 0, discount: 0, shipping: 0, other: 0,
+            revenue: 0, cost: 0, profit: 0
+        };
+        (rows || []).forEach(function(item, index){
+            var rowClasses = [];
+            if(item.is_loss) rowClasses.push('quotation-profit-loss-row');
+            if(item.missing_cost_lines) rowClasses.push('quotation-profit-missing-row');
+            var profitClass = item.expected_profit < 0 ? 'quotation-profit-negative' : 'quotation-profit-positive';
+            var warning = item.is_loss
+                ? '<div class="badge badge-danger mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Báo lỗ</div>'
+                : '';
+            var ctvCapacity = item.ctv_discount_capacity == null
+                ? '<span class="text-warning">Chưa xác định do thiếu GV</span>'
+                : formatMoney(item.ctv_discount_capacity);
+            html += '<tr class="' + rowClasses.join(' ') + '" data-quotation-id="' + item.id + '">' +
+                '<td class="text-center">' + (index + 1) + '</td>' +
+                '<td><a class="quotation-code-link" href="' + escapeHtml(item.quotation_url) + '" target="_blank" rel="noopener" title="Mở báo giá ' + escapeHtml(item.code) + ' trong tab mới">' +
+                    '<i class="fas fa-file-alt"></i>' + escapeHtml(item.code) +
+                    '<i class="fas fa-external-link-alt small"></i></a>' + warning + '</td>' +
+                '<td class="text-center">' + escapeHtml(item.date) + '</td>' +
+                '<td class="text-center">' + validityBadge(item) + '</td>' +
+                '<td class="text-center">' + statusBadge(item) + '</td>' +
+                '<td>' + escapeHtml(item.store_name || '—') + '</td>' +
+                '<td>' + escapeHtml(item.customer_name || 'Khách lẻ') + '</td>' +
+                '<td>' + escapeHtml(item.salesperson || '—') + '</td>' +
+                '<td class="quotation-product-cell">' + productSummary(item) + '</td>' +
+                '<td class="text-right">' + formatMoney(item.goods_amount) + '</td>' +
+                '<td class="text-right text-danger">' + formatMoney(item.discount_amount) + '</td>' +
+                '<td class="text-right">' + formatMoney(item.shipping_fee) + '</td>' +
+                '<td class="text-right">' + formatMoney(item.other_fee) + '</td>' +
+                '<td class="text-right font-weight-bold">' + formatMoney(item.expected_revenue) + '</td>' +
+                '<td class="text-right">' + formatMoney(item.expected_cost) + '</td>' +
+                '<td class="text-right ' + profitClass + '">' + formatMoney(item.expected_profit) + '</td>' +
+                '<td class="text-right ' + profitClass + '">' + formatPercent(item.expected_margin) + '</td>' +
+                '<td>' + costBadge(item) + '</td>' +
+                '<td><div class="ctv-simulator" data-revenue="' + Number(item.expected_revenue || 0) + '" data-profit="' + Number(item.expected_profit || 0) + '">' +
+                    '<div class="input-group input-group-sm">' +
+                        '<select class="custom-select ctv-mode" aria-label="Cách tính chiết khấu cộng tác viên">' +
+                            '<option value="amount">Tiền</option><option value="percent">%</option>' +
+                        '</select>' +
+                        '<input type="number" min="0" step="1" value="0" class="form-control text-right ctv-value" aria-label="Chiết khấu cộng tác viên">' +
+                    '</div>' +
+                    '<small class="text-muted d-block mt-1">Tối đa không lỗ: ' + ctvCapacity + '</small>' +
+                '</div></td>' +
+                '<td class="text-right"><span class="ctv-profit ' + profitClass + '">' + formatMoney(item.expected_profit) + '</span>' +
+                    '<small class="ctv-margin text-muted d-block">' + formatPercent(item.expected_margin) + '</small></td>' +
+                '</tr>';
+            totals.goods += Number(item.goods_amount || 0);
+            totals.discount += Number(item.discount_amount || 0);
+            totals.shipping += Number(item.shipping_fee || 0);
+            totals.other += Number(item.other_fee || 0);
+            totals.revenue += Number(item.expected_revenue || 0);
+            totals.cost += Number(item.expected_cost || 0);
+            totals.profit += Number(item.expected_profit || 0);
+        });
+        if(!html){
+            html = '<tr><td colspan="20" class="text-center text-muted py-4"><i class="fas fa-inbox mr-1"></i>Không có báo giá phù hợp bộ lọc</td></tr>';
+        }
+        $('#quotation_profit_tbl tbody').html(html);
+        $('#qp_ft_goods').text(formatMoney(totals.goods));
+        $('#qp_ft_discount').text(formatMoney(totals.discount));
+        $('#qp_ft_shipping').text(formatMoney(totals.shipping));
+        $('#qp_ft_other').text(formatMoney(totals.other));
+        $('#qp_ft_revenue').text(formatMoney(totals.revenue));
+        $('#qp_ft_cost').text(formatMoney(totals.cost));
+        $('#qp_ft_profit').text(formatMoney(totals.profit))
+            .toggleClass('text-danger', totals.profit < 0)
+            .toggleClass('text-success', totals.profit >= 0);
+        $('#qp_ft_margin').text(formatPercent(totals.revenue > 0 ? totals.profit / totals.revenue * 100 : 0));
+    }
+    function renderSummary(summary){
+        $('#qp_count').text(formatNumber(summary.quotation_count));
+        $('#qp_revenue').text(formatMoney(summary.total_revenue));
+        $('#qp_cost').text(formatMoney(summary.total_cost));
+        $('#qp_profit').text(formatMoney(summary.total_profit));
+        $('#qp_margin').text(formatPercent(summary.profit_margin));
+        $('#qp_warnings').text(formatNumber(summary.warning_count || 0));
+        $('#qp_refreshed_at').text(summary.refreshed_at || '--');
+        var warnings = [];
+        if(summary.missing_cost_count){
+            warnings.push('<strong>' + formatNumber(summary.missing_cost_count) + ' báo giá thiếu giá vốn.</strong> LN dự kiến có thể đang cao hơn thực tế.');
+        }
+        if(summary.estimated_cost_count){
+            warnings.push(formatNumber(summary.estimated_cost_count) + ' báo giá cũ đang tạm tính theo giá vốn hiện tại.');
+        }
+        $('#qp_cost_warning').html(warnings.join(' ')).toggle(!!warnings.length);
+    }
+    function loadReport(){
+        var params = buildParams();
+        params.set('_ts', Date.now());
+        $('#quotation_profit_tbl tbody').html('<tr><td colspan="20" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin mr-1"></i>Đang tải dữ liệu...</td></tr>');
+        $.ajax({
+            url: '{% url "api_report_quotation_profit" %}?' + params.toString(),
+            method: 'GET',
+            dataType: 'json'
+        }).done(function(response){
+            if(response.status !== 'ok'){
+                alert(response.message || 'Không tải được báo cáo.');
+                return;
+            }
+            loadOptions(response.options);
+            renderSummary(response.summary || {});
+            renderRows(response.data || []);
+        }).fail(function(xhr){
+            var message = xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error);
+            $('#quotation_profit_tbl tbody').html('<tr><td colspan="20" class="text-center text-danger py-4">' + escapeHtml(message || 'Không tải được báo cáo.') + '</td></tr>');
+        });
+    }
+    function updateCtvSimulation($simulator){
+        var revenue = Number($simulator.data('revenue') || 0);
+        var baseProfit = Number($simulator.data('profit') || 0);
+        var mode = $simulator.find('.ctv-mode').val();
+        var rawValue = Math.max(Number($simulator.find('.ctv-value').val() || 0), 0);
+        var discount = mode === 'percent' ? revenue * Math.min(rawValue, 100) / 100 : rawValue;
+        var remainingProfit = baseProfit - discount;
+        var remainingMargin = revenue > 0 ? remainingProfit / revenue * 100 : 0;
+        var $row = $simulator.closest('tr');
+        $row.find('.ctv-profit')
+            .text(formatMoney(remainingProfit))
+            .toggleClass('quotation-profit-negative', remainingProfit < 0)
+            .toggleClass('quotation-profit-positive', remainingProfit >= 0);
+        $row.find('.ctv-margin').text(formatPercent(remainingMargin));
+    }
+    function resetFilters(){
+        $('#qp_from_date').val(localDateValue(firstDayOfMonth()));
+        $('#qp_to_date').val(localDateValue(new Date()));
+        $('#qp_status').val('active');
+        $('#qp_validity').val('all');
+        $('#qp_store,#qp_customer,#qp_product,#qp_salesperson,#qp_profit_filter').val('');
+        $('#qp_sort').val('date_desc');
+        $('#qp_search').val('');
+        if($('#qp_customer').hasClass('select2-hidden-accessible')) $('#qp_customer').trigger('change.select2');
+        if($('#qp_product').hasClass('select2-hidden-accessible')) $('#qp_product').trigger('change.select2');
+        loadReport();
+    }
+
+    $(function(){
+        $('#qp_from_date').val(localDateValue(firstDayOfMonth()));
+        $('#qp_to_date').val(localDateValue(new Date()));
+        loadReport();
+        $('#btn_load_quotation_profit').on('click', loadReport);
+        $('#btn_reset_quotation_profit').on('click', resetFilters);
+        $('#quotation_profit_filters select').on('change', function(){
+            if(this.id === 'qp_customer' || this.id === 'qp_product') return;
+        });
+        $('#qp_search').on('keydown', function(event){
+            if(event.key === 'Enter'){
+                event.preventDefault();
+                loadReport();
+            }
+        });
+        $(document).on('input change', '.ctv-simulator .ctv-value,.ctv-simulator .ctv-mode', function(){
+            updateCtvSimulation($(this).closest('.ctv-simulator'));
+        });
+        $('#btn_export_quotation_profit').on('click', function(){
+            window.location.href = '{% url "export_quotation_profit_excel" %}?' + buildParams().toString();
+        });
+        $(window).on('pageshow', function(event){
+            if(event.originalEvent && event.originalEvent.persisted) loadReport();
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -601,8 +601,8 @@ $(document).ready(function(){
                 {% endif %}
 
                 {% if not biz or biz.mod_reports %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'report_sales' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}menu-open{% endif %}" data-menu-key="reports">
-                    <a href="#" class="nav-link {% if active_tab == 'report_sales' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'report_sales' or active_tab == 'report_quotation_profit' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}menu-open{% endif %}" data-menu-key="reports">
+                    <a href="#" class="nav-link {% if active_tab == 'report_sales' or active_tab == 'report_quotation_profit' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}active{% endif %}">
                         <i class="nav-icon fas fa-chart-line"></i>
                         <p>Báo cáo <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -612,6 +612,14 @@ $(document).ready(function(){
                             <a href="{% url 'report_sales' %}" class="nav-link {% if active_tab == 'report_sales' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC Bán hàng</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if can_view_quotation_profit_report %}
+                        <li class="nav-item">
+                            <a href="{% url 'report_quotation_profit' %}" class="nav-link {% if active_tab == 'report_quotation_profit' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>BC LN dự kiến</p>
                             </a>
                         </li>
                         {% endif %}

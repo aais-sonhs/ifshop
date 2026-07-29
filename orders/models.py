@@ -79,6 +79,13 @@ class QuotationItem(models.Model):
     discount_amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Chiết khấu dòng')
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name='Chiết khấu (%)')
     total_price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Thành tiền')
+    cost_price = models.DecimalField(
+        max_digits=15,
+        decimal_places=0,
+        null=True,
+        blank=True,
+        verbose_name='Giá vốn tại thời điểm báo giá',
+    )
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
 
     class Meta:

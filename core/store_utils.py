@@ -230,3 +230,45 @@ def can_view_sales_report(user):
         if any(keyword in normalized or keyword.replace(' ', '') in compact for keyword in keywords):
             return True
     return False
+
+
+def can_view_quotation_profit_report(user):
+    """
+    Báo cáo lợi nhuận dự kiến của báo giá dành cho cấp quản lý có quyền xem
+    giá vốn: Chủ thương hiệu, Giám đốc, Kế toán và Quản lý cửa hàng.
+
+    Phạm vi dữ liệu vẫn do ``filter_by_store`` quyết định, vì vậy Quản lý cửa
+    hàng chỉ thấy cửa hàng được gán trên hồ sơ.
+    """
+    if not user or not user.is_authenticated or user.is_superuser:
+        return False
+
+    if is_brand_owner(user):
+        return True
+
+    labels = list(user.groups.values_list('name', flat=True))
+    try:
+        if user.profile.position:
+            labels.append(user.profile.position)
+    except Exception:
+        pass
+
+    keywords = (
+        'giam doc',
+        'giamdoc',
+        'ke toan',
+        'ketoan',
+        'quan ly cua hang',
+        'quanlycuahang',
+        'director',
+        'accountant',
+        'store manager',
+        'storemanager',
+    )
+
+    for label in labels:
+        normalized = _normalize_role_text(label)
+        compact = normalized.replace(' ', '')
+        if any(keyword in normalized or keyword.replace(' ', '') in compact for keyword in keywords):
+            return True
+    return False

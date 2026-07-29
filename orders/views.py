@@ -4926,8 +4926,11 @@ def api_save_quotation(request):
                     it.get('discount_percent', 0),
                 )
                 variant_id = variant.id if variant else None
+                snapshot_cost = None
                 if product:
                     compare_cost = _effective_unit_cost(product, variant)
+                    if compare_cost > 0:
+                        snapshot_cost = compare_cost
                     unit_after_line_discount = line_total / qty if qty > 0 else Decimal('0')
                     effective_unit_price = unit_after_line_discount * (Decimal('1') - quotation_discount_ratio)
                     if compare_cost > 0 and effective_unit_price < compare_cost:
@@ -4947,6 +4950,7 @@ def api_save_quotation(request):
                     discount_amount=line_discount_amount,
                     discount_percent=disc,
                     total_price=line_total,
+                    cost_price=snapshot_cost,
                     note=_payload_item_note(it, product),
                 )
 

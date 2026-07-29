@@ -10,7 +10,14 @@ from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
 from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
-from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
+from orders.models import (
+    Order,
+    OrderItem,
+    OrderReturn,
+    OrderReturnItem,
+    Quotation,
+    QuotationItem,
+)
 from products.models import (
     GoodsReceipt,
     Product,
@@ -2464,6 +2471,322 @@ class SalesReportTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['status'], 'ok')
         self.assertIn('Minh Tran', payload['salespersons'])
+
+
+class QuotationProfitReportTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(
+            username='quotation_profit_owner',
+            password='pass123',
+        )
+        cls.brand = Brand.objects.create(
+            name='Brand LN báo giá',
+            owner=cls.owner,
+        )
+        cls.store = Store.objects.create(
+            brand=cls.brand,
+            name='Cửa hàng LN báo giá',
+            code='QLN',
+        )
+        cls.other_store = Store.objects.create(
+            brand=cls.brand,
+            name='Cửa hàng LN khác',
+            code='QLN2',
+        )
+        cls.manager = User.objects.create_user(
+            username='quotation_profit_manager',
+            password='pass123',
+        )
+        UserProfile.objects.create(
+            user=cls.manager,
+            store=cls.store,
+            position='Quản lý cửa hàng',
+        )
+        cls.accountant = User.objects.create_user(
+            username='quotation_profit_accountant',
+            password='pass123',
+        )
+        UserProfile.objects.create(
+            user=cls.accountant,
+            store=cls.store,
+            position='Kế toán',
+        )
+        cls.salesperson = User.objects.create_user(
+            username='quotation_profit_salesperson',
+            password='pass123',
+        )
+        UserProfile.objects.create(
+            user=cls.salesperson,
+            store=cls.store,
+            position='Nhân viên bán hàng',
+        )
+        cls.customer = Customer.objects.create(
+            store=cls.store,
+            code='KH-QLN',
+            name='Khách LN báo giá',
+            created_by=cls.manager,
+        )
+        cls.other_customer = Customer.objects.create(
+            store=cls.other_store,
+            code='KH-QLN2',
+            name='Khách LN cửa hàng khác',
+            created_by=cls.owner,
+        )
+        cls.product = Product.objects.create(
+            store=cls.store,
+            code='SP-QLN',
+            name='Sản phẩm LN báo giá',
+            cost_price=900,
+            created_by=cls.manager,
+        )
+        cls.other_product = Product.objects.create(
+            store=cls.other_store,
+            code='SP-QLN2',
+            name='Sản phẩm LN cửa hàng khác',
+            cost_price=400,
+            created_by=cls.owner,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.manager)
+
+    def _create_quotation(
+        self,
+        code,
+        *,
+        store=None,
+        customer=None,
+        status=1,
+        total_amount=2000,
+        discount_amount=200,
+        shipping_fee=100,
+        other_fee=50,
+        created_by=None,
+    ):
+        return Quotation.objects.create(
+            code=code,
+            store=store or self.store,
+            customer=customer or self.customer,
+            status=status,
+            total_amount=total_amount,
+            discount_amount=discount_amount,
+            shipping_fee=shipping_fee,
+            other_fee=other_fee,
+            final_amount=total_amount - discount_amount + shipping_fee + other_fee,
+            quotation_date=date.today(),
+            salesperson='Nguyễn Quản lý',
+            created_by=created_by or self.manager,
+        )
+
+    def test_manager_can_view_report_menu_and_open_quotation_link_in_new_tab(self):
+        response = self.client.get(reverse('report_quotation_profit'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'BC LN dự kiến')
+        self.assertContains(response, 'Báo cáo lợi nhuận dự kiến từ báo giá')
+        self.assertContains(response, 'class="quotation-code-link"')
+        self.assertContains(response, 'target="_blank"')
+        self.assertContains(response, 'Thử CK CTV')
+        self.assertContains(response, 'không sửa hoặc lưu vào báo giá')
+
+    def test_regular_salesperson_cannot_view_quotation_profit_report(self):
+        self.client.force_login(self.salesperson)
+
+        api_response = self.client.get(reverse('api_report_quotation_profit'))
+        page_response = self.client.get(reverse('report_quotation_profit'))
+
+        self.assertEqual(api_response.status_code, 403)
+        self.assertEqual(api_response.json()['status'], 'error')
+        self.assertEqual(page_response.status_code, 302)
+
+    def test_accountant_and_brand_owner_can_view_quotation_profit_report(self):
+        for user in (self.accountant, self.owner):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(reverse('api_report_quotation_profit'))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['status'], 'ok')
+
+    def test_report_uses_snapshot_cost_and_calculates_expected_profit(self):
+        quotation = self._create_quotation('BG-QLN-SNAPSHOT')
+        QuotationItem.objects.create(
+            quotation=quotation,
+            product=self.product,
+            quantity=2,
+            unit_price=1000,
+            total_price=2000,
+            cost_price=600,
+        )
+
+        response = self.client.get(reverse('api_report_quotation_profit'), {
+            'from_date': date.today().isoformat(),
+            'to_date': date.today().isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['summary']['quotation_count'], 1)
+        self.assertEqual(payload['summary']['total_revenue'], 1950)
+        self.assertEqual(payload['summary']['total_cost'], 1200)
+        self.assertEqual(payload['summary']['total_profit'], 750)
+        self.assertAlmostEqual(payload['summary']['profit_margin'], 38.46, places=2)
+        row = payload['data'][0]
+        self.assertEqual(row['cost_status'], 'snapshot')
+        self.assertEqual(row['ctv_discount_capacity'], 750)
+        self.assertEqual(
+            row['quotation_url'],
+            f'/order-tbl/?edit_quotation={quotation.id}',
+        )
+
+    def test_report_marks_legacy_and_missing_cost_lines(self):
+        legacy = self._create_quotation(
+            'BG-QLN-LEGACY',
+            total_amount=1000,
+            discount_amount=0,
+            shipping_fee=0,
+            other_fee=0,
+        )
+        QuotationItem.objects.create(
+            quotation=legacy,
+            product=self.product,
+            quantity=1,
+            unit_price=1000,
+            total_price=1000,
+            cost_price=None,
+        )
+        missing = self._create_quotation(
+            'BG-QLN-MISSING',
+            total_amount=500,
+            discount_amount=0,
+            shipping_fee=0,
+            other_fee=0,
+        )
+        QuotationItem.objects.create(
+            quotation=missing,
+            item_name='Dịch vụ chưa khai báo giá vốn',
+            is_service_line=True,
+            quantity=1,
+            unit_price=500,
+            total_price=500,
+            cost_price=None,
+        )
+
+        payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {'from_date': date.today().isoformat(), 'to_date': date.today().isoformat()},
+        ).json()
+        rows = {row['code']: row for row in payload['data']}
+
+        self.assertEqual(rows[legacy.code]['expected_cost'], 900)
+        self.assertEqual(rows[legacy.code]['estimated_cost_lines'], 1)
+        self.assertEqual(rows[legacy.code]['cost_status'], 'estimated')
+        self.assertEqual(rows[missing.code]['missing_cost_lines'], 1)
+        self.assertEqual(rows[missing.code]['cost_status'], 'missing')
+        self.assertIsNone(rows[missing.code]['ctv_discount_capacity'])
+        self.assertEqual(payload['summary']['estimated_cost_count'], 1)
+        self.assertEqual(payload['summary']['missing_cost_count'], 1)
+
+        missing_only = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {
+                'from_date': date.today().isoformat(),
+                'to_date': date.today().isoformat(),
+                'profit_filter': 'missing_cost',
+            },
+        ).json()
+        self.assertEqual([row['code'] for row in missing_only['data']], [missing.code])
+
+    def test_manager_scope_and_default_status_do_not_leak_other_store_or_converted_quotes(self):
+        own_active = self._create_quotation('BG-QLN-OWN')
+        QuotationItem.objects.create(
+            quotation=own_active,
+            product=self.product,
+            quantity=1,
+            unit_price=1000,
+            total_price=1000,
+            cost_price=500,
+        )
+        own_converted = self._create_quotation('BG-QLN-CONVERTED', status=3)
+        QuotationItem.objects.create(
+            quotation=own_converted,
+            product=self.product,
+            quantity=1,
+            unit_price=1000,
+            total_price=1000,
+            cost_price=500,
+        )
+        other_active = self._create_quotation(
+            'BG-QLN-OTHER',
+            store=self.other_store,
+            customer=self.other_customer,
+            created_by=self.owner,
+        )
+        QuotationItem.objects.create(
+            quotation=other_active,
+            product=self.other_product,
+            quantity=1,
+            unit_price=1000,
+            total_price=1000,
+            cost_price=400,
+        )
+
+        default_payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {'from_date': date.today().isoformat(), 'to_date': date.today().isoformat()},
+        ).json()
+        self.assertEqual([row['code'] for row in default_payload['data']], [own_active.code])
+
+        converted_payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {
+                'from_date': date.today().isoformat(),
+                'to_date': date.today().isoformat(),
+                'status': '3',
+            },
+        ).json()
+        self.assertEqual(
+            [row['code'] for row in converted_payload['data']],
+            [own_converted.code],
+        )
+
+        self.client.force_login(self.owner)
+        owner_payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {'from_date': date.today().isoformat(), 'to_date': date.today().isoformat()},
+        ).json()
+        self.assertEqual(
+            {row['code'] for row in owner_payload['data']},
+            {own_active.code, other_active.code},
+        )
+
+    def test_export_quotation_profit_excel_contains_calculated_values(self):
+        quotation = self._create_quotation('BG-QLN-EXPORT')
+        QuotationItem.objects.create(
+            quotation=quotation,
+            product=self.product,
+            quantity=2,
+            unit_price=1000,
+            total_price=2000,
+            cost_price=600,
+        )
+
+        response = self.client.get(reverse('export_quotation_profit_excel'), {
+            'from_date': date.today().isoformat(),
+            'to_date': date.today().isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            response['Content-Type'],
+        )
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook['LN dự kiến báo giá']
+        self.assertEqual(sheet['B6'].value, quotation.code)
+        self.assertEqual(sheet['O6'].value, 1950)
+        self.assertEqual(sheet['P6'].value, 1200)
+        self.assertEqual(sheet['Q6'].value, 750)
 
 
 class StockAlertEmailSettingTests(TestCase):

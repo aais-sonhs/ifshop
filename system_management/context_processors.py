@@ -1,5 +1,10 @@
 from .models import BusinessConfig
-from core.store_utils import can_view_sales_report, get_company_brand_for_user, is_brand_owner
+from core.store_utils import (
+    can_view_quotation_profit_report,
+    can_view_sales_report,
+    get_company_brand_for_user,
+    is_brand_owner,
+)
 
 
 def business_config(request):
@@ -22,6 +27,7 @@ def business_config(request):
             # Check brand owner — if user owns a brand, use that brand
             ctx['is_brand_owner'] = is_brand_owner(request.user)
             ctx['can_view_sales_report'] = can_view_sales_report(request.user)
+            ctx['can_view_quotation_profit_report'] = can_view_quotation_profit_report(request.user)
             if not brand and ctx['is_brand_owner']:
                 brand = get_company_brand_for_user(request.user)
 
@@ -58,9 +64,17 @@ def business_config(request):
             ctx['user_store_id'] = None
             ctx['is_brand_owner'] = False
             ctx['can_view_sales_report'] = False
+            ctx['can_view_quotation_profit_report'] = False
             ctx['warehouse_count'] = 0
             ctx['user_brand'] = None
 
         return ctx
     except Exception:
-        return {'biz': None, 'user_store': None, 'user_store_id': None, 'is_brand_owner': False, 'can_view_sales_report': False}
+        return {
+            'biz': None,
+            'user_store': None,
+            'user_store_id': None,
+            'is_brand_owner': False,
+            'can_view_sales_report': False,
+            'can_view_quotation_profit_report': False,
+        }

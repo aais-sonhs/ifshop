@@ -16,8 +16,15 @@ from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, Sum, Count, Max, Q, F
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
-from orders.models import Order, OrderItem, OrderReturn, OrderReturnItem
+from orders.models import (
+    Order,
+    OrderItem,
+    OrderReturn,
+    OrderReturnItem,
+    Quotation,
+)
 from core.store_utils import (
+    can_view_quotation_profit_report,
     filter_by_store,
     brand_owner_required,
     report_permission_required,
@@ -1099,6 +1106,23 @@ def sales_report_privileged_required(view_func):
             return JsonResponse({'status': 'error', 'message': message}, status=403)
         messages.error(request, message)
         from django.shortcuts import redirect
+        return redirect('/dashboard/')
+    return wrapper
+
+
+def quotation_profit_report_privileged_required(view_func):
+    """BC LN dự kiến: Chủ thương hiệu / Giám đốc / Kế toán / Quản lý cửa hàng."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if can_view_quotation_profit_report(request.user):
+            return view_func(request, *args, **kwargs)
+        message = (
+            'Chỉ tài khoản Chủ thương hiệu, Giám đốc, Kế toán hoặc '
+            'Quản lý cửa hàng mới được xem báo cáo lợi nhuận dự kiến.'
+        )
+        if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'status': 'error', 'message': message}, status=403)
+        messages.error(request, message)
         return redirect('/dashboard/')
     return wrapper
 
@@ -2532,6 +2556,499 @@ def _build_sales_report_payload(request, include_filter_options=True):
         }
 
     return payload
+
+
+def _get_quotation_profit_filters(request):
+    today = datetime.now().date()
+    default_from = today.replace(day=1)
+    from_date = parse_date(request.GET.get('from_date') or '') or default_from
+    to_date = parse_date(request.GET.get('to_date') or '') or today
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    status = (request.GET.get('status') or 'active').strip().lower()
+    allowed_statuses = {'active', 'non_cancelled', 'all', '0', '1', '2', '3', '4'}
+    if status not in allowed_statuses:
+        status = 'active'
+
+    validity = (request.GET.get('validity') or 'all').strip().lower()
+    if validity not in {'all', 'current', 'expired', 'no_expiry'}:
+        validity = 'all'
+
+    profit_filter = (request.GET.get('profit_filter') or '').strip().lower()
+    if profit_filter not in {'', 'profit', 'loss', 'missing_cost', 'estimated_cost'}:
+        profit_filter = ''
+
+    sort = (request.GET.get('sort') or 'date_desc').strip().lower()
+    if sort not in {'date_desc', 'revenue_desc', 'profit_asc', 'profit_desc', 'margin_asc'}:
+        sort = 'date_desc'
+
+    return {
+        'from_date': from_date,
+        'to_date': to_date,
+        'status': status,
+        'validity': validity,
+        'profit_filter': profit_filter,
+        'sort': sort,
+        'store_id': _parse_filter_int(request.GET.get('store_id')),
+        'customer_id': _parse_filter_int(request.GET.get('customer_id')),
+        'product_id': _parse_filter_int(request.GET.get('product_id')),
+        'salesperson': (request.GET.get('salesperson') or '').strip(),
+        'search': (request.GET.get('search') or '').strip(),
+    }
+
+
+def _quotation_product_unit_cost(product, visited_product_ids=None):
+    if not product:
+        return Decimal('0')
+    for candidate in (product.cost_price, product.import_price):
+        value = Decimal(str(candidate or 0))
+        if value > 0:
+            return value
+    if not product.is_combo:
+        return Decimal('0')
+
+    visited_product_ids = set(visited_product_ids or ())
+    if product.id in visited_product_ids:
+        return Decimal('0')
+    visited_product_ids.add(product.id)
+
+    combo_cost = Decimal('0')
+    for combo_item in product.combo_items.all():
+        combo_cost += (
+            _quotation_product_unit_cost(combo_item.product, visited_product_ids)
+            * Decimal(str(combo_item.quantity or 0))
+        )
+    return combo_cost
+
+
+def _quotation_item_current_unit_cost(item):
+    if item.variant_id:
+        for candidate in (item.variant.cost_price, item.variant.import_price):
+            value = Decimal(str(candidate or 0))
+            if value > 0:
+                return value
+    return _quotation_product_unit_cost(item.product if item.product_id else None)
+
+
+def _build_quotation_profit_payload(request, include_filter_options=True):
+    from customers.models import Customer
+    from products.models import Product
+    from system_management.models import Store
+
+    filters = _get_quotation_profit_filters(request)
+    today = datetime.now().date()
+
+    scoped_quotations = filter_by_store(
+        Quotation.objects.filter(is_deleted=False),
+        request,
+    )
+    quotations = scoped_quotations.filter(
+        quotation_date__gte=filters['from_date'],
+        quotation_date__lte=filters['to_date'],
+    )
+
+    if filters['status'] == 'active':
+        quotations = quotations.filter(status__in=(0, 1, 2))
+    elif filters['status'] == 'non_cancelled':
+        quotations = quotations.exclude(status=4)
+    elif filters['status'] != 'all':
+        quotations = quotations.filter(status=int(filters['status']))
+
+    if filters['validity'] == 'current':
+        quotations = quotations.filter(Q(valid_until__isnull=True) | Q(valid_until__gte=today))
+    elif filters['validity'] == 'expired':
+        quotations = quotations.filter(valid_until__lt=today)
+    elif filters['validity'] == 'no_expiry':
+        quotations = quotations.filter(valid_until__isnull=True)
+
+    if filters['store_id']:
+        quotations = quotations.filter(store_id=filters['store_id'])
+    if filters['customer_id']:
+        quotations = quotations.filter(customer_id=filters['customer_id'])
+    if filters['product_id']:
+        quotations = quotations.filter(items__product_id=filters['product_id'])
+    if filters['salesperson']:
+        quotations = quotations.filter(salesperson=filters['salesperson'])
+    if filters['search']:
+        search = filters['search']
+        quotations = quotations.filter(
+            Q(code__icontains=search)
+            | Q(customer__name__icontains=search)
+            | Q(customer__phone__icontains=search)
+            | Q(salesperson__icontains=search)
+            | Q(tags__icontains=search)
+            | Q(note__icontains=search)
+            | Q(items__product__code__icontains=search)
+            | Q(items__product__name__icontains=search)
+            | Q(items__item_name__icontains=search)
+        )
+
+    quotations = (
+        quotations.select_related('customer', 'store', 'created_by')
+        .prefetch_related(
+            'items__variant',
+            'items__product',
+            'items__product__combo_items__product',
+        )
+        .distinct()
+    )
+
+    rows = []
+    for quotation in quotations:
+        items = list(quotation.items.all())
+        expected_cost = Decimal('0')
+        missing_cost_lines = 0
+        estimated_cost_lines = 0
+        product_names = []
+
+        for item in items:
+            if item.product_id:
+                product_label = f'{item.product.code} - {item.product.name}'
+            else:
+                product_label = item.item_name or 'Dịch vụ'
+            if product_label not in product_names:
+                product_names.append(product_label)
+
+            if item.cost_price is not None and Decimal(str(item.cost_price or 0)) > 0:
+                unit_cost = Decimal(str(item.cost_price))
+            else:
+                unit_cost = _quotation_item_current_unit_cost(item)
+                if unit_cost > 0:
+                    estimated_cost_lines += 1
+                else:
+                    missing_cost_lines += 1
+            expected_cost += unit_cost * Decimal(str(item.quantity or 0))
+
+        expected_revenue = Decimal(str(quotation.final_amount or 0))
+        expected_profit = expected_revenue - expected_cost
+        expected_margin = (
+            expected_profit / expected_revenue * Decimal('100')
+            if expected_revenue > 0
+            else Decimal('0')
+        )
+        validity_status = 'no_expiry'
+        validity_display = 'Không đặt hạn'
+        if quotation.valid_until:
+            if quotation.valid_until < today:
+                validity_status = 'expired'
+                validity_display = 'Hết hạn'
+            else:
+                validity_status = 'current'
+                validity_display = 'Còn hạn'
+
+        if missing_cost_lines:
+            cost_status = 'missing'
+            cost_status_display = 'Thiếu giá vốn'
+        elif estimated_cost_lines:
+            cost_status = 'estimated'
+            cost_status_display = 'Giá vốn hiện tại'
+        else:
+            cost_status = 'snapshot'
+            cost_status_display = 'Giá vốn đã chụp'
+
+        creator_display = ''
+        if quotation.created_by:
+            creator_display = (
+                quotation.created_by.get_full_name()
+                or quotation.created_by.username
+            )
+
+        row = {
+            'id': quotation.id,
+            'code': quotation.code,
+            'quotation_url': f'/order-tbl/?edit_quotation={quotation.id}',
+            'date': quotation.quotation_date.strftime('%d/%m/%Y') if quotation.quotation_date else '',
+            'date_raw': quotation.quotation_date.isoformat() if quotation.quotation_date else '',
+            'valid_until': quotation.valid_until.strftime('%d/%m/%Y') if quotation.valid_until else '',
+            'valid_until_raw': quotation.valid_until.isoformat() if quotation.valid_until else '',
+            'validity_status': validity_status,
+            'validity_display': validity_display,
+            'status': quotation.status,
+            'status_display': quotation.get_status_display(),
+            'store_id': quotation.store_id,
+            'store_name': quotation.store.name if quotation.store else '',
+            'customer_id': quotation.customer_id,
+            'customer_name': quotation.customer.name if quotation.customer else '',
+            'salesperson': quotation.salesperson or creator_display,
+            'item_count': len(items),
+            'product_names': product_names,
+            'product_summary': ', '.join(product_names),
+            'goods_amount': float(quotation.total_amount or 0),
+            'discount_amount': float(quotation.discount_amount or 0),
+            'shipping_fee': float(quotation.shipping_fee or 0),
+            'other_fee': float(quotation.other_fee or 0),
+            'expected_revenue': float(expected_revenue),
+            'expected_cost': float(expected_cost),
+            'expected_profit': float(expected_profit),
+            'expected_margin': round(float(expected_margin), 2),
+            'ctv_discount_capacity': (
+                None
+                if missing_cost_lines
+                else float(max(expected_profit, Decimal('0')))
+            ),
+            'is_loss': expected_profit < 0,
+            'missing_cost_lines': missing_cost_lines,
+            'estimated_cost_lines': estimated_cost_lines,
+            'cost_status': cost_status,
+            'cost_status_display': cost_status_display,
+        }
+        rows.append(row)
+
+    if filters['profit_filter'] == 'profit':
+        rows = [row for row in rows if row['expected_profit'] >= 0 and not row['missing_cost_lines']]
+    elif filters['profit_filter'] == 'loss':
+        rows = [row for row in rows if row['expected_profit'] < 0]
+    elif filters['profit_filter'] == 'missing_cost':
+        rows = [row for row in rows if row['missing_cost_lines']]
+    elif filters['profit_filter'] == 'estimated_cost':
+        rows = [row for row in rows if row['estimated_cost_lines']]
+
+    sorters = {
+        'date_desc': lambda row: (row['date_raw'], row['id']),
+        'revenue_desc': lambda row: (row['expected_revenue'], row['id']),
+        'profit_asc': lambda row: (row['expected_profit'], row['id']),
+        'profit_desc': lambda row: (row['expected_profit'], row['id']),
+        'margin_asc': lambda row: (row['expected_margin'], row['id']),
+    }
+    reverse = filters['sort'] in {'date_desc', 'revenue_desc', 'profit_desc'}
+    rows.sort(key=sorters[filters['sort']], reverse=reverse)
+
+    total_revenue = sum(row['expected_revenue'] for row in rows)
+    total_cost = sum(row['expected_cost'] for row in rows)
+    total_profit = total_revenue - total_cost
+    summary = {
+        'quotation_count': len(rows),
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_profit': total_profit,
+        'profit_margin': round(total_profit / total_revenue * 100, 2) if total_revenue > 0 else 0,
+        'loss_count': sum(1 for row in rows if row['is_loss']),
+        'missing_cost_count': sum(1 for row in rows if row['missing_cost_lines']),
+        'estimated_cost_count': sum(1 for row in rows if row['estimated_cost_lines']),
+        'warning_count': sum(
+            1 for row in rows if row['is_loss'] or row['missing_cost_lines']
+        ),
+        'refreshed_at': datetime.now().strftime('%d/%m/%Y %H:%M'),
+    }
+
+    payload = {
+        'filters': {
+            **filters,
+            'from_date': filters['from_date'].isoformat(),
+            'to_date': filters['to_date'].isoformat(),
+        },
+        'summary': summary,
+        'data': rows,
+    }
+
+    if include_filter_options:
+        managed_store_ids = get_managed_store_ids(request.user)
+        stores = list(
+            Store.objects.filter(id__in=managed_store_ids)
+            .order_by('name')
+            .values('id', 'name')
+        )
+        customers = list(
+            Customer.objects.filter(
+                quotations__in=scoped_quotations,
+            )
+            .distinct()
+            .order_by('name')
+            .values('id', 'name')
+        )
+        products = list(
+            Product.objects.filter(
+                quotation_items__quotation__in=scoped_quotations,
+            )
+            .distinct()
+            .order_by('name')
+            .values('id', 'code', 'name')
+        )
+        salespersons = list(
+            scoped_quotations.exclude(salesperson__isnull=True)
+            .exclude(salesperson='')
+            .order_by('salesperson')
+            .values_list('salesperson', flat=True)
+            .distinct()
+        )
+        payload['options'] = {
+            'stores': stores,
+            'has_multiple_stores': len(stores) > 1,
+            'customers': customers,
+            'products': products,
+            'salespersons': salespersons,
+            'statuses': [
+                {'value': 'active', 'label': 'Đang chào khách (Nháp/Đã gửi/Đã duyệt)'},
+                {'value': 'non_cancelled', 'label': 'Tất cả trừ đã hủy'},
+                {'value': 'all', 'label': 'Tất cả trạng thái'},
+                *[
+                    {'value': str(value), 'label': label}
+                    for value, label in Quotation.STATUS_CHOICES
+                ],
+            ],
+        }
+    return payload
+
+
+@login_required(login_url="/login/")
+@report_permission_required
+@quotation_profit_report_privileged_required
+def report_quotation_profit(request):
+    return render(
+        request,
+        'reports/report_quotation_profit.html',
+        {'active_tab': 'report_quotation_profit'},
+    )
+
+
+@login_required(login_url="/login/")
+@report_permission_required
+@quotation_profit_report_privileged_required
+def api_report_quotation_profit(request):
+    return JsonResponse({
+        'status': 'ok',
+        **_build_quotation_profit_payload(request, include_filter_options=True),
+    })
+
+
+@login_required(login_url="/login/")
+@report_permission_required
+@quotation_profit_report_privileged_required
+def export_quotation_profit_excel(request):
+    import openpyxl
+    from django.http import HttpResponse
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    payload = _build_quotation_profit_payload(request, include_filter_options=False)
+    filters = payload['filters']
+    summary = payload['summary']
+    rows = payload['data']
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = 'LN dự kiến báo giá'
+
+    title_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    warning_fill = PatternFill(start_color='FCE4EC', end_color='FCE4EC', fill_type='solid')
+    thin = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin'),
+    )
+    money_format = '#,##0'
+
+    sheet.merge_cells('A1:T1')
+    sheet['A1'] = 'BÁO CÁO LỢI NHUẬN DỰ KIẾN TỪ BÁO GIÁ'
+    sheet['A1'].font = Font(bold=True, size=14, color='FFFFFF')
+    sheet['A1'].fill = title_fill
+    sheet['A1'].alignment = Alignment(horizontal='center')
+    sheet.merge_cells('A2:T2')
+    sheet['A2'] = f"Từ {filters['from_date']} đến {filters['to_date']}"
+    sheet['A2'].font = Font(italic=True)
+    sheet['A2'].alignment = Alignment(horizontal='center')
+    sheet.merge_cells('A3:T3')
+    sheet['A3'] = (
+        f"Số báo giá: {summary['quotation_count']} | "
+        f"Doanh thu dự kiến: {summary['total_revenue']:,.0f}đ | "
+        f"Giá vốn dự kiến: {summary['total_cost']:,.0f}đ | "
+        f"LN dự kiến: {summary['total_profit']:,.0f}đ | "
+        f"Biên LN: {summary['profit_margin']:.2f}%"
+    )
+    sheet['A3'].font = Font(bold=True)
+    sheet['A3'].alignment = Alignment(horizontal='center')
+
+    headers = [
+        'STT', 'Mã BG', 'Ngày BG', 'Hiệu lực đến', 'Trạng thái', 'Cửa hàng',
+        'Khách hàng', 'Người báo giá', 'Sản phẩm', 'Số dòng', 'Tiền hàng',
+        'Chiết khấu', 'Phí vận chuyển', 'Chi phí khác', 'Doanh thu dự kiến',
+        'Giá vốn dự kiến', 'LN dự kiến', 'Biên LN (%)', 'Nguồn giá vốn', 'Cảnh báo',
+    ]
+    for column, heading in enumerate(headers, 1):
+        cell = sheet.cell(row=5, column=column, value=heading)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = header_fill
+        cell.border = thin
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    for index, item in enumerate(rows, 1):
+        warnings = []
+        if item['is_loss']:
+            warnings.append('Báo lỗ')
+        if item['missing_cost_lines']:
+            warnings.append(f"Thiếu GV {item['missing_cost_lines']} dòng")
+        if item['estimated_cost_lines']:
+            warnings.append(f"GV tạm tính {item['estimated_cost_lines']} dòng")
+        values = [
+            index,
+            item['code'],
+            item['date'],
+            item['valid_until'] or 'Không đặt hạn',
+            item['status_display'],
+            item['store_name'],
+            item['customer_name'],
+            item['salesperson'],
+            item['product_summary'],
+            item['item_count'],
+            item['goods_amount'],
+            item['discount_amount'],
+            item['shipping_fee'],
+            item['other_fee'],
+            item['expected_revenue'],
+            item['expected_cost'],
+            item['expected_profit'],
+            item['expected_margin'],
+            item['cost_status_display'],
+            '; '.join(warnings),
+        ]
+        row_number = index + 5
+        for column, value in enumerate(values, 1):
+            cell = sheet.cell(row=row_number, column=column, value=value)
+            cell.border = thin
+            cell.alignment = Alignment(vertical='top', wrap_text=column in (7, 8, 9, 19, 20))
+            if 11 <= column <= 17:
+                cell.number_format = money_format
+            if column == 18:
+                cell.number_format = '0.00'
+            if item['is_loss'] or item['missing_cost_lines']:
+                cell.fill = warning_fill
+
+    total_row = len(rows) + 6
+    sheet.cell(row=total_row, column=1, value='TỔNG')
+    sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=10)
+    totals = [
+        summary['total_revenue'],
+        summary['total_cost'],
+        summary['total_profit'],
+        summary['profit_margin'],
+    ]
+    for column in range(1, 21):
+        cell = sheet.cell(row=total_row, column=column)
+        cell.fill = total_fill
+        cell.font = Font(bold=True)
+        cell.border = thin
+    for column, value in zip((15, 16, 17, 18), totals):
+        sheet.cell(row=total_row, column=column, value=value)
+        sheet.cell(row=total_row, column=column).number_format = (
+            '0.00' if column == 18 else money_format
+        )
+
+    sheet.freeze_panes = 'A6'
+    widths = [6, 17, 13, 15, 18, 22, 28, 24, 45, 10, 16, 16, 16, 16, 20, 18, 18, 13, 20, 24]
+    for column, width in enumerate(widths, 1):
+        sheet.column_dimensions[openpyxl.utils.get_column_letter(column)].width = width
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = (
+        f"attachment; filename=\"BC_LN_du_kien_BG_{filters['from_date']}_{filters['to_date']}.xlsx\""
+    )
+    workbook.save(response)
+    return response
 
 
 @login_required(login_url="/login/")

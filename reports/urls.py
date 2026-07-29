@@ -15,6 +15,21 @@ urlpatterns = [
     path('api/daily-email-report/test/', views.api_test_daily_email_report, name='api_test_daily_email_report'),
     path('report-sales/', views.report_sales, name='report_sales'),
     path('api/report-sales/', views.api_report_sales, name='api_report_sales'),
+    path(
+        'report-quotation-profit/',
+        views.report_quotation_profit,
+        name='report_quotation_profit',
+    ),
+    path(
+        'api/report-quotation-profit/',
+        views.api_report_quotation_profit,
+        name='api_report_quotation_profit',
+    ),
+    path(
+        'api/export-quotation-profit-excel/',
+        views.export_quotation_profit_excel,
+        name='export_quotation_profit_excel',
+    ),
     path('report-purchases/', views.report_purchases, name='report_purchases'),
     path('api/report-purchases/', views.api_report_purchases, name='api_report_purchases'),
     path('report-inventory/', views.report_inventory, name='report_inventory'),

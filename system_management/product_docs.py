@@ -764,6 +764,27 @@ DETAILED_OPERATION_GUIDES = [
         ],
     },
     {
+        'title': 'Xem lợi nhuận dự kiến và thử chiết khấu cộng tác viên trên báo giá',
+        'goal': 'Biết báo giá còn bao nhiêu lợi nhuận trước khi quyết định mức chiết khấu hoặc hoa hồng cho cộng tác viên.',
+        'steps': [
+            'Đăng nhập bằng tài khoản Chủ thương hiệu, Giám đốc, Kế toán hoặc Quản lý cửa hàng. Quản lý cửa hàng chỉ xem dữ liệu của cửa hàng được gán.',
+            'Trên thanh menu bên trái, vào Báo cáo và chọn BC LN dự kiến.',
+            'Chọn khoảng Ngày báo giá, trạng thái, cửa hàng, khách hàng, sản phẩm hoặc người báo giá rồi bấm Xem.',
+            'Đọc Doanh thu dự kiến, Giá vốn dự kiến, LN dự kiến và Biên LN trên các thẻ tổng quan.',
+            'Trong bảng chi tiết, bấm Mã BG được làm nổi bật để mở đúng báo giá trong một tab mới.',
+            'Tại cột Thử CK CTV, chọn Tiền hoặc %, nhập mức dự kiến để xem ngay LN còn lại. Giá trị thử chỉ mô phỏng trên trình duyệt, không sửa báo giá.',
+            'Dùng bộ lọc Báo lỗ hoặc Thiếu giá vốn để ưu tiên kiểm tra các báo giá có rủi ro trước khi chốt.',
+            'Bấm Xuất Excel nếu cần gửi cấp quản lý hoặc lưu kết quả theo bộ lọc hiện tại.',
+        ],
+        'checks': [
+            'Doanh thu dự kiến bằng tiền hàng sau chiết khấu, cộng phí vận chuyển và chi phí khác; LN dự kiến bằng doanh thu dự kiến trừ giá vốn dự kiến.',
+            'Báo giá mới lưu giá vốn tại thời điểm lưu để giữ ổn định số liệu. Báo giá cũ chưa có bản chụp dùng giá vốn hiện tại và được đánh dấu Giá vốn hiện tại.',
+            'Báo giá có dòng thiếu giá vốn được cảnh báo; mức CK CTV tối đa không được xác định cho đến khi bổ sung giá vốn.',
+            'Mặc định báo cáo chỉ xem trạng thái Nháp, Đã gửi và Đã duyệt. Có thể chọn riêng báo giá Đã tạo đơn hàng hoặc Hủy khi cần đối chiếu.',
+            'Đây là lợi nhuận gộp dự kiến của báo giá, không phải lợi nhuận thực tế đã phát sinh và không ghi nhận thanh toán hoặc xuất kho.',
+        ],
+    },
+    {
         'title': 'Xem báo cáo và ra quyết định',
         'goal': 'Biến dữ liệu bán hàng, kho, khách hàng và tài chính thành thông tin quản trị dễ hiểu.',
         'steps': [

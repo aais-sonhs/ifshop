@@ -1203,6 +1203,9 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'Tỷ suất lợi nhuận')
         self.assertContains(response, 'id="ft_profit_margin"')
         self.assertContains(response, 'id="supplier_sales_filter"')
+        self.assertContains(response, 'Phần giảm giá chung của đơn tính vào sản phẩm này')
+        self.assertContains(response, 'Đây là lần gửi lại/đổi hàng')
+        self.assertContains(response, 'Không nên kết luận nhân viên bán dưới giá vốn')
         self.assertContains(response, 'id="btn_clear_supplier_filter"')
         self.assertContains(response, 'id="supplier_col_config_container"')
         self.assertContains(response, '/static/js/column_config.js')
@@ -2526,10 +2529,100 @@ class SalesReportTests(TestCase):
         self.assertEqual(len(payload['order_details'][0]['loss_products']), 1)
         loss_product = payload['order_details'][0]['loss_products'][0]
         self.assertEqual(loss_product['product_name'], self.product.name)
+        self.assertEqual(loss_product['unit_price'], 100.0)
+        self.assertEqual(loss_product['gross_line_amount'], 100.0)
+        self.assertEqual(loss_product['line_discount_amount'], 0.0)
+        self.assertEqual(loss_product['order_discount_allocated'], 0.0)
+        self.assertEqual(loss_product['shipping_fee_allocated'], 0.0)
+        self.assertEqual(loss_product['other_fee_allocated'], 0.0)
+        self.assertEqual(loss_product['net_revenue'], 100.0)
         self.assertEqual(loss_product['unit_revenue'], 100.0)
         self.assertEqual(loss_product['unit_cost'], 130.0)
+        self.assertEqual(loss_product['total_cost'], 130.0)
+        self.assertEqual(loss_product['line_profit'], -30.0)
         self.assertEqual(loss_product['loss_amount'], 30.0)
+        self.assertFalse(loss_product['is_exchange_order'])
         self.assertEqual(payload['summary']['loss_count'], 1)
+
+    def test_api_report_sales_explains_loss_warning_for_exchange_order(self):
+        today = date.today()
+        source_order = Order.objects.create(
+            code='DH-RP-EXCHANGE-SOURCE',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            final_amount=100,
+            paid_amount=100,
+            order_date=today,
+            created_by=self.user,
+        )
+        exchange_order = Order.objects.create(
+            code='DH-RP-EXCHANGE-LOSS',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=100,
+            discount_amount=100,
+            final_amount=0,
+            paid_amount=0,
+            order_date=today,
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=exchange_order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            cost_price=130,
+            total_price=100,
+        )
+        order_return = OrderReturn.objects.create(
+            code='TH-RP-EXCHANGE-LOSS',
+            order=source_order,
+            exchange_order=exchange_order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            return_amount=100,
+            exchange_amount=100,
+            total_refund=0,
+            amount_due=0,
+            reason='Giao sai địa chỉ, gửi lại hàng',
+            exchange_note='Đóng lại và gửi khách',
+            return_date=today,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'search': exchange_order.code,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = payload['order_details'][0]
+        self.assertEqual(row['code'], exchange_order.code)
+        self.assertTrue(row['is_loss'])
+        warning = row['loss_products'][0]
+        self.assertTrue(warning['is_exchange_order'])
+        self.assertEqual(warning['return_code'], order_return.code)
+        self.assertEqual(warning['source_order_code'], source_order.code)
+        self.assertEqual(warning['return_amount'], 100.0)
+        self.assertEqual(warning['exchange_amount'], 100.0)
+        self.assertEqual(warning['exchange_offset_amount'], 100.0)
+        self.assertEqual(warning['amount_due'], 0.0)
+        self.assertEqual(warning['return_reason'], order_return.reason)
+        self.assertEqual(warning['exchange_note'], order_return.exchange_note)
+        self.assertEqual(warning['order_discount_allocated'], 100.0)
+        self.assertEqual(warning['net_revenue'], 0.0)
+        self.assertEqual(warning['unit_cost'], 130.0)
+        self.assertEqual(warning['loss_amount'], 130.0)
 
     def test_export_sales_excel_respects_filters_and_uses_readable_labels(self):
         today = date.today()

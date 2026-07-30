@@ -440,7 +440,10 @@
                             <i class="fas fa-exclamation-triangle fa-lg mr-2 mt-1"></i>
                             <div class="flex-grow-1">
                                 <strong>Cảnh báo bán dưới giá vốn</strong>
-                                <div class="small">Đây chỉ là cảnh báo, không chặn lưu đơn. Hàng tặng/khuyến mãi vẫn có thể để giá 0.</div>
+                                <div class="small">
+                                    Sau khi trừ tất cả khoản giảm giá, số tiền khách trả cho sản phẩm đang thấp hơn
+                                    tiền vốn cửa hàng bỏ ra. Đây là cảnh báo để kiểm tra, không chặn lưu đơn.
+                                </div>
                                 <div id="cost_warning_details" class="mt-1"></div>
                             </div>
                         </div>
@@ -518,7 +521,7 @@
                                 <tr><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Chi phí khác:</td><td><input type="text" class="form-control form-control-sm text-right money-format" id="inp_other_fee" value="0"></td></tr>
                                 <tr class="font-weight-bold order-final-total-row"><td colspan="8" class="text-right order-total-label" data-stock-colspan="8" data-compact-colspan="7">Thành tiền:</td><td class="text-right order-final-total-amount" id="lbl_final">0</td></tr>
                                 <tr id="duplicate_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><span class="badge badge-warning py-1 px-3 text-dark"><i class="fas fa-exclamation-triangle mr-1"></i> Có sản phẩm đang bị nhập trùng trong cùng đơn hàng.</span></td></tr>
-	                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><div class="loss-warning-banner">Có sản phẩm đang bán dưới giá vốn. Đây chỉ là cảnh báo; hàng tặng giá 0 vẫn được lưu đơn.</div></td></tr>
+	                                <tr id="cost_warning_row" style="display:none;"><td colspan="9" class="text-center order-wide-message" data-stock-colspan="9" data-compact-colspan="8"><div class="loss-warning-banner">Sau giảm giá, khách đang trả thấp hơn tiền vốn của một số sản phẩm. Hãy xem giải thích phía trên trước khi lưu đơn.</div></td></tr>
                             </tfoot>
                             </table>
                         </div>
@@ -1982,6 +1985,7 @@ var ORDER_ITEM_SORT_DIRECTION = 'asc';
 var ORDER_LOSS_WARNINGS = [];
 // Đơn đã hoàn đủ hàng vật lý không còn là giao dịch bán thực tế để cảnh báo.
 var ORDER_FULLY_RETURNED = false;
+var ORDER_EXCHANGE_CONTEXT = null;
 var ALLOW_NEGATIVE_STOCK = {{ allow_negative_stock|yesno:"true,false" }};
 var CAN_VIEW_ORDER_COSTS = {{ can_view_sales_report|yesno:"true,false" }};
 var QUICK_SEARCH_FILTER_STORAGE_KEY = 'ifshop_order_quick_search_stock_filter';
@@ -5747,9 +5751,29 @@ $(document).ready(function(){
             return;
         }
         if(ORDER_LOSS_WARNINGS.length){
-            var lossConfirm='⚠️ CẢNH BÁO BÁN DƯỚI GIÁ VỐN\n\n'+ORDER_LOSS_WARNINGS.map(function(item){
-                return '• '+item.label;
-            }).join('\n')+'\n\nĐây chỉ là cảnh báo, không chặn bán. Nếu là hàng tặng/khuyến mãi, nhấn OK để vẫn lưu '+(isQuotation?'báo giá':'đơn hàng')+'.';
+            var exchangeWarningText=getOrderExchangeWarningText();
+            var lossConfirm='⚠️ CẢNH BÁO: KHÁCH TRẢ THẤP HƠN TIỀN VỐN\n\n'+
+                (exchangeWarningText?exchangeWarningText+'\n\n':'')+
+                ORDER_LOSS_WARNINGS.map(function(item){
+                var lines=[
+                    '• '+item.label,
+                    '  Giá bán ban đầu: '+fmt(item.unit_price)+'đ × '+fmt(item.quantity)+' = '+fmt(item.gross_amount)+'đ'
+                ];
+                if(Number(item.line_discount_amount||0)>0){
+                    lines.push('  Giảm riêng cho sản phẩm: -'+fmt(item.line_discount_amount)+'đ');
+                }
+                if(Number(item.order_discount_allocated||0)>0){
+                    lines.push('  Phần giảm giá chung của đơn tính vào sản phẩm: -'+fmt(item.order_discount_allocated)+'đ');
+                }
+                lines.push(
+                    '  Sau giảm giá, khách trả: '+fmt(item.net_line_revenue)+'đ ('+fmt(item.effective_price)+'đ / sản phẩm)',
+                    '  Tiền vốn cửa hàng bỏ ra: '+fmt(item.cost_price)+'đ × '+fmt(item.quantity)+' = '+fmt(item.total_cost)+'đ',
+                    '  Nếu nhìn riêng đơn này, cửa hàng đang thiếu: '+fmt(item.loss_amount)+'đ'
+                );
+                return lines.join('\n');
+            }).join('\n\n')+
+                '\n\nNếu là hàng tặng, khuyến mãi hoặc đơn gửi lại/đổi hàng, hãy xem chứng từ liên quan trước khi kết luận nhân viên bán lỗ.'+
+                '\n\nĐây chỉ là cảnh báo, không chặn bán. Nhấn OK để vẫn lưu '+(isQuotation?'báo giá':'đơn hàng')+'.';
             if(!confirm(lossConfirm)) return;
         }
         if(stockWarning){
@@ -6465,6 +6489,16 @@ function getOrderRowCostPrice($row){
 }
 
 function setCurrentOrderReturnState(order, items){
+    ORDER_EXCHANGE_CONTEXT = order && order.is_exchange_order ? {
+        return_code: order.exchange_source_return_code || '',
+        original_order_code: order.exchange_original_order_code || '',
+        return_amount: Number(order.exchange_return_amount || 0),
+        exchange_amount: Number(order.exchange_amount || 0),
+        offset_amount: Number(order.exchange_offset_amount || 0),
+        amount_due: Number(order.exchange_amount_due || 0),
+        reason: order.exchange_return_reason || '',
+        note: order.exchange_note || ''
+    } : null;
     var soldByProduct = {};
     var soldAmount = 0;
     var returnedByProduct = {};
@@ -6503,6 +6537,7 @@ function setCurrentOrderReturnState(order, items){
 
 function resetCurrentOrderReturnState(){
     ORDER_FULLY_RETURNED = false;
+    ORDER_EXCHANGE_CONTEXT = null;
 }
 
 function getOrderRowProductLabel($row){
@@ -6514,6 +6549,38 @@ function getOrderRowProductLabel($row){
     return $.trim($select.find('option:selected').text())||'Sản phẩm';
 }
 
+function getOrderExchangeWarningHtml(){
+    var exchange=ORDER_EXCHANGE_CONTEXT;
+    if(!exchange) return '';
+    return '<div class="border rounded bg-light py-2 px-2 mb-2 text-left text-dark">'+
+        '<div class="font-weight-bold"><i class="fas fa-exchange-alt mr-1"></i>Đây là đơn gửi lại/đổi hàng, không phải một lần bán mới độc lập.</div>'+
+        '<div>Phiếu <strong>'+escapeHtml(exchange.return_code||'')+'</strong>'+
+            (exchange.original_order_code?' của đơn gốc <strong>'+escapeHtml(exchange.original_order_code)+'</strong>':'')+
+            ' nhận lại hàng trị giá <strong>'+fmt(exchange.return_amount)+'đ</strong> và gửi hàng đổi trị giá '+
+            '<strong>'+fmt(exchange.exchange_amount)+'đ</strong>.</div>'+
+        '<div>Hệ thống dùng <strong>'+fmt(exchange.offset_amount)+'đ</strong> giá trị hàng trả để trừ vào đơn gửi lại, '+
+            'nên khách chỉ phải trả thêm <strong>'+fmt(exchange.amount_due)+'đ</strong>.</div>'+
+        '<div class="mt-1"><strong>Vì vậy, “khách trả 0đ” ở cảnh báo bên dưới chỉ có nghĩa khách không trả thêm cho lần gửi lại; '+
+            'không có nghĩa sản phẩm được bán với giá 0đ hay nhân viên cố ý bán dưới giá vốn.</strong></div>'+
+        (exchange.reason?'<div><strong>Lý do:</strong> '+escapeHtml(exchange.reason)+'</div>':'')+
+        (exchange.note?'<div><strong>Ghi chú gửi lại:</strong> '+escapeHtml(exchange.note)+'</div>':'')+
+        '</div>';
+}
+
+function getOrderExchangeWarningText(){
+    var exchange=ORDER_EXCHANGE_CONTEXT;
+    if(!exchange) return '';
+    return 'ĐÂY LÀ ĐƠN GỬI LẠI/ĐỔI HÀNG, KHÔNG PHẢI MỘT LẦN BÁN MỚI.'+
+        '\nPhiếu '+(exchange.return_code||'')+
+        (exchange.original_order_code?' của đơn gốc '+exchange.original_order_code:'')+
+        ' nhận lại hàng '+fmt(exchange.return_amount)+'đ và gửi hàng đổi '+fmt(exchange.exchange_amount)+'đ.'+
+        '\nHệ thống dùng '+fmt(exchange.offset_amount)+'đ giá trị hàng trả để trừ vào đơn gửi lại; khách chỉ trả thêm '+
+        fmt(exchange.amount_due)+'đ.'+
+        '\nSố 0đ bên dưới là số tiền khách trả thêm, không phải giá bán của sản phẩm.'+
+        (exchange.reason?'\nLý do: '+exchange.reason:'')+
+        (exchange.note?'\nGhi chú gửi lại: '+exchange.note:'');
+}
+
 function renderOrderCostWarnings(warnings){
     ORDER_LOSS_WARNINGS=warnings||[];
     if(!ORDER_LOSS_WARNINGS.length){
@@ -6522,12 +6589,36 @@ function renderOrderCostWarnings(warnings){
         return;
     }
     var details=ORDER_LOSS_WARNINGS.map(function(item){
-        return '<div><i class="fas fa-exclamation-circle mr-1"></i><strong>'+escapeHtml(item.label)+'</strong></div>';
+        var discountDetails='';
+        if(Number(item.line_discount_amount||0)>0){
+            discountDetails+='<div>Giảm riêng cho sản phẩm này: <strong>-'+fmt(item.line_discount_amount)+'đ</strong></div>';
+        }
+        if(Number(item.order_discount_allocated||0)>0){
+            discountDetails+='<div>Phần giảm giá chung của đơn tính vào sản phẩm này: <strong>-'+
+                fmt(item.order_discount_allocated)+'đ</strong></div>';
+        }
+        return '<div class="border rounded bg-white p-2 mb-2">'+
+            '<div class="text-danger"><i class="fas fa-exclamation-circle mr-1"></i><strong>'+escapeHtml(item.label)+'</strong></div>'+
+            '<div class="small mt-1">'+
+                '<div>Giá bán ban đầu: <strong>'+fmt(item.unit_price)+'đ</strong> × '+fmt(item.quantity)+
+                    ' = '+fmt(item.gross_amount)+'đ</div>'+
+                discountDetails+
+                '<div>Sau khi giảm giá, khách trả cho sản phẩm này: <strong>'+fmt(item.net_line_revenue)+'đ</strong> — '+
+                    fmt(item.effective_price)+'đ / sản phẩm</div>'+
+                '<div>Tiền vốn cửa hàng bỏ ra: <strong>'+fmt(item.cost_price)+'đ</strong> × '+fmt(item.quantity)+
+                    ' = '+fmt(item.total_cost)+'đ</div>'+
+                '<div class="text-danger font-weight-bold">Nếu chỉ nhìn riêng đơn này: cửa hàng thu '+
+                    fmt(item.net_line_revenue)+'đ nhưng bỏ vốn '+fmt(item.total_cost)+'đ, đang thiếu '+
+                    fmt(item.loss_amount)+'đ.</div>'+
+            '</div></div>';
     }).join('');
-    $('#cost_warning_details').html(details);
+    $('#cost_warning_details').html(getOrderExchangeWarningHtml()+details);
     $('#cost_warning_row .loss-warning-banner').html(
         '<i class="fas fa-exclamation-triangle mr-1"></i> Có '+ORDER_LOSS_WARNINGS.length+
-        ' sản phẩm đang bán dưới giá vốn. Hệ thống vẫn cho lưu; hàng tặng có thể để giá 0.'
+        ' sản phẩm mà sau giảm giá, số tiền khách trả đang thấp hơn tiền vốn. '+
+        (ORDER_EXCHANGE_CONTEXT
+            ? 'Đây là đơn gửi lại/đổi hàng; số tiền khách trả thêm có thể bằng 0đ. Xem giải thích phía trên.'
+            : 'Hãy kiểm tra lại giá bán và các khoản giảm giá trước khi lưu.')
     );
     $('#cost_warning_box,#cost_warning_row').show();
 }
@@ -6605,17 +6696,27 @@ function calcTotal(options){
         var costPrice=getOrderRowCostPrice($row);
         var effectivePrice=(qty>0?lineDiscount.lineTotal/qty:0)*(1-orderDiscountRatio);
         if(!ORDER_FULLY_RETURNED && costPrice>0 && effectivePrice<costPrice){
+            var orderDiscountAllocated=lineDiscount.lineTotal*orderDiscountRatio;
+            var netLineRevenue=effectivePrice*qty;
             var warning={
                 label:getOrderRowProductLabel($row),
+                unit_price:qty>0?lineDiscount.gross/qty:0,
                 effective_price:Math.round(effectivePrice),
                 cost_price:Math.round(costPrice),
                 quantity:qty,
+                gross_amount:Math.round(lineDiscount.gross),
+                line_discount_amount:Math.round(lineDiscount.amount),
+                order_discount_allocated:Math.round(orderDiscountAllocated),
+                net_line_revenue:Math.round(netLineRevenue),
+                total_cost:Math.round(costPrice*qty),
                 loss_amount:Math.round((costPrice-effectivePrice)*qty)
             };
             lossWarnings.push(warning);
             $row.addClass('loss-sale-row');
             $row.find('.order-item-product-cell').append(
-                '<div class="order-item-loss-warning"><i class="fas fa-exclamation-triangle mr-1"></i>Sản phẩm đang bán dưới giá vốn</div>'
+                '<div class="order-item-loss-warning"><i class="fas fa-exclamation-triangle mr-1"></i>'+
+                'Khách trả '+fmt(warning.effective_price)+'đ / sản phẩm, vốn '+fmt(warning.cost_price)+
+                'đ; đang thiếu '+fmt(warning.loss_amount)+'đ</div>'
             );
         }
     });

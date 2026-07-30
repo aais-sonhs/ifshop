@@ -1499,7 +1499,13 @@ def _build_sales_report_payload(request, include_filter_options=True):
             status__in=[4, 5],
         )
     orders_qs = orders_qs.select_related(
-        'customer', 'customer__group', 'warehouse', 'store', 'created_by'
+        'customer',
+        'customer__group',
+        'warehouse',
+        'store',
+        'created_by',
+        'source_return_exchange',
+        'source_return_exchange__order',
     )
     orders_qs = filter_by_store(orders_qs, request)
 
@@ -1542,7 +1548,8 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
     order_items_qs = OrderItem.objects.filter(order__in=orders_qs).select_related(
         'product', 'product__supplier', 'product__category', 'product__category__parent', 'variant',
-        'order', 'order__customer', 'order__customer__group', 'order__created_by'
+        'order', 'order__customer', 'order__customer__group', 'order__created_by',
+        'order__source_return_exchange', 'order__source_return_exchange__order',
     )
     if filters['category_id']:
         order_items_qs = order_items_qs.filter(_get_product_category_scope_q(filters['category_id'], 'product__'))
@@ -1559,8 +1566,17 @@ def _build_sales_report_payload(request, include_filter_options=True):
     for item in order_items:
         base_total = float(item.order.total_amount or 0)
         final_total = max(float(item.order.final_amount or 0), 0)
+        quantity = float(item.quantity or 0)
+        unit_price = float(item.unit_price or 0)
+        gross_line_amount = unit_price * quantity
         line_revenue = float(item.total_price or 0)
-        line_cost = _effective_item_unit_cost(item) * float(item.quantity or 0)
+        line_discount_amount = max(gross_line_amount - line_revenue, 0)
+        unit_cost = _effective_item_unit_cost(item)
+        line_cost = unit_cost * quantity
+        line_share = line_revenue / base_total if base_total > 0 else 0
+        order_discount_allocated = float(item.order.discount_amount or 0) * line_share
+        shipping_fee_allocated = float(item.order.shipping_fee or 0) * line_share
+        other_fee_allocated = float(item.order.other_fee or 0) * line_share
         if base_total > 0:
             adjusted_revenue = line_revenue * final_total / base_total
         else:
@@ -1568,6 +1584,7 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
         product = item.product
         order = item.order
+        source_return = getattr(order, 'source_return_exchange', None)
         category = product.category if product else None
         root_category = category.parent if category and category.parent_id else category
         product_type = category if category and category.parent_id else None
@@ -1593,11 +1610,32 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'supplier_name': product.supplier.name if product and product.supplier else '',
             'category_name': root_category.name if root_category else '',
             'product_type_name': product_type.name if product_type else '',
-            'quantity': float(item.quantity or 0),
+            'quantity': quantity,
+            'unit_price': unit_price,
+            'listed_unit_price': float(product.selling_price or 0) if product else 0,
+            'gross_line_amount': gross_line_amount,
+            'line_discount_amount': line_discount_amount,
+            'order_discount_allocated': order_discount_allocated,
+            'shipping_fee_allocated': shipping_fee_allocated,
+            'other_fee_allocated': other_fee_allocated,
             'goods_amount': line_revenue,
             'revenue': adjusted_revenue,
+            'unit_cost': unit_cost,
             'cost': line_cost,
             'line_profit': line_profit,
+            'is_exchange_order': bool(source_return),
+            'return_code': source_return.code if source_return else '',
+            'source_order_code': (
+                source_return.order.code
+                if source_return and source_return.order
+                else ''
+            ),
+            'return_amount': float(source_return.return_amount or 0) if source_return else 0,
+            'exchange_amount': float(source_return.exchange_amount or 0) if source_return else 0,
+            'exchange_offset_amount': float(order.discount_amount or 0) if source_return else 0,
+            'amount_due': float(source_return.amount_due or 0) if source_return else 0,
+            'return_reason': source_return.reason or '' if source_return else '',
+            'exchange_note': source_return.exchange_note or '' if source_return else '',
         })
 
     loss_items_by_order = defaultdict(list)
@@ -1611,9 +1649,29 @@ def _build_sales_report_payload(request, include_filter_options=True):
             'product_name': item_row['product_name'],
             'sku': item_row['sku'],
             'quantity': quantity,
+            'unit_price': item_row['unit_price'],
+            'listed_unit_price': item_row['listed_unit_price'],
+            'gross_line_amount': item_row['gross_line_amount'],
+            'line_discount_amount': item_row['line_discount_amount'],
+            'order_discount_allocated': item_row['order_discount_allocated'],
+            'shipping_fee_allocated': item_row['shipping_fee_allocated'],
+            'other_fee_allocated': item_row['other_fee_allocated'],
+            'goods_amount': item_row['goods_amount'],
+            'net_revenue': item_row['revenue'],
             'unit_revenue': unit_revenue,
             'unit_cost': unit_cost,
+            'total_cost': item_row['cost'],
+            'line_profit': item_row['line_profit'],
             'loss_amount': abs(item_row['line_profit']),
+            'is_exchange_order': item_row['is_exchange_order'],
+            'return_code': item_row['return_code'],
+            'source_order_code': item_row['source_order_code'],
+            'return_amount': item_row['return_amount'],
+            'exchange_amount': item_row['exchange_amount'],
+            'exchange_offset_amount': item_row['exchange_offset_amount'],
+            'amount_due': item_row['amount_due'],
+            'return_reason': item_row['return_reason'],
+            'exchange_note': item_row['exchange_note'],
         })
 
     if line_profit_scope:

@@ -519,12 +519,81 @@ function renderLossProducts(order){
     var html='<div class="small">';
     if(rows.length){
         rows.forEach(function(item){
-            html+='<div class="text-danger mb-1"><i class="fas fa-exclamation-triangle mr-1"></i><strong>'+escapeHtml(item.product_name||item.sku||'Sản phẩm')+'</strong></div>';
+            var quantity=Number(item.quantity||0);
+            var unitPrice=Number(item.unit_price||0);
+            var listedPrice=Number(item.listed_unit_price||0);
+            var grossAmount=Number(item.gross_line_amount||0);
+            var lineDiscount=Number(item.line_discount_amount||0);
+            var orderDiscount=Number(item.order_discount_allocated||0);
+            var shippingFee=Number(item.shipping_fee_allocated||0);
+            var otherFee=Number(item.other_fee_allocated||0);
+            var netRevenue=Number(item.net_revenue||0);
+            var unitRevenue=Number(item.unit_revenue||0);
+            var unitCost=Number(item.unit_cost||0);
+            var totalCost=Number(item.total_cost||0);
+            var lossAmount=Number(item.loss_amount||0);
+            var productLabel=escapeHtml(item.product_name||item.sku||'Sản phẩm');
+            var skuLabel=item.sku?' <span class="text-muted">('+escapeHtml(item.sku)+')</span>':'';
+            html+='<details class="border border-danger rounded p-2 mb-2 bg-white" style="min-width:280px;max-width:420px;">';
+            html+='<summary class="text-danger" style="cursor:pointer;">'+
+                '<i class="fas fa-exclamation-triangle mr-1"></i><strong>'+productLabel+'</strong>'+skuLabel+
+                '<br><span>'+(item.is_exchange_order?'Đơn gửi lại đang bị báo thiếu: ':'Khách trả thấp hơn tiền vốn, đang thiếu: ')+
+                '<strong>'+fmtD(lossAmount)+'</strong></span>'+
+                '</summary>';
+            html+='<div class="mt-2">';
+            if(item.is_exchange_order){
+                html+='<div class="border rounded bg-light text-dark py-2 px-2 mb-2">';
+                html+='<div class="font-weight-bold"><i class="fas fa-exchange-alt mr-1"></i>Đây là lần gửi lại/đổi hàng, không phải một lần bán mới độc lập.</div>';
+                html+='<div>Phiếu <strong>'+escapeHtml(item.return_code||'')+'</strong>'+
+                    (item.source_order_code?' của đơn gốc <strong>'+escapeHtml(item.source_order_code)+'</strong>':'')+
+                    ' nhận lại hàng trị giá <strong>'+fmtD(item.return_amount||0)+'</strong> và gửi hàng đổi trị giá '+
+                    '<strong>'+fmtD(item.exchange_amount||0)+'</strong>.</div>';
+                html+='<div>Hệ thống dùng <strong>'+fmtD(item.exchange_offset_amount||0)+'</strong> giá trị hàng trả để trừ vào lần gửi lại, '+
+                    'nên khách chỉ phải trả thêm <strong>'+fmtD(item.amount_due||0)+'</strong>.</div>';
+                html+='<div class="mt-1"><strong>Số tiền khách trả thêm bằng 0đ không có nghĩa sản phẩm được bán với giá 0đ. '+
+                    'Không nên kết luận nhân viên bán dưới giá vốn từ riêng đơn gửi lại này.</strong></div>';
+                if(item.return_reason){
+                    html+='<div><strong>Lý do:</strong> '+escapeHtml(item.return_reason)+'</div>';
+                }
+                if(item.exchange_note){
+                    html+='<div><strong>Ghi chú gửi lại:</strong> '+escapeHtml(item.exchange_note)+'</div>';
+                }
+                html+='</div>';
+            }
+            html+='<div><strong>Số lượng:</strong> '+fmt(quantity)+'</div>';
+            html+='<div><strong>Giá bán ban đầu:</strong> '+fmtD(unitPrice)+' × '+fmt(quantity)+' = '+fmtD(grossAmount)+'</div>';
+            if(listedPrice>0){
+                html+='<div><strong>Giá bán lẻ hiện tại:</strong> '+fmtD(listedPrice)+' / sản phẩm</div>';
+            }
+            if(lineDiscount>0){
+                html+='<div><strong>Giảm riêng cho sản phẩm này:</strong> -'+fmtD(lineDiscount)+'</div>';
+            }
+            if(orderDiscount>0){
+                html+='<div><strong>Phần giảm giá chung của đơn tính vào sản phẩm này:</strong> -'+fmtD(orderDiscount)+'</div>';
+            }
+            if(shippingFee>0){
+                html+='<div><strong>Phần phí giao hàng khách trả tính cho sản phẩm này:</strong> +'+fmtD(shippingFee)+'</div>';
+            }
+            if(otherFee>0){
+                html+='<div><strong>Khoản thu thêm tính cho sản phẩm này:</strong> +'+fmtD(otherFee)+'</div>';
+            }
+            html+='<div class="mt-1 pt-1 border-top"><strong>Sau giảm giá, khách trả cho sản phẩm này:</strong> '+fmtD(netRevenue)+
+                ' — <strong>'+fmtD(unitRevenue)+'</strong> / sản phẩm</div>';
+            html+='<div><strong>Tiền vốn cửa hàng bỏ ra:</strong> '+fmtD(unitCost)+' × '+fmt(quantity)+' = '+fmtD(totalCost)+'</div>';
+            html+='<div class="text-danger font-weight-bold">'+
+                (item.is_exchange_order
+                    ? 'Nếu báo cáo chỉ nhìn riêng lần gửi lại: khách trả thêm '+fmtD(netRevenue)+
+                        ', trong khi tiền vốn là '+fmtD(totalCost)+', nên hệ thống báo thiếu '+fmtD(lossAmount)+'.'
+                    : 'Kết quả: cửa hàng thu '+fmtD(netRevenue)+' nhưng bỏ vốn '+fmtD(totalCost)+
+                        ', đang thiếu '+fmtD(lossAmount)+'.')+
+                '</div>';
+            html+='</div></details>';
         });
     }else{
-        html+='<div class="text-danger mb-1">Đơn đang lỗ nhưng chưa xác định được dòng sản phẩm.</div>';
+        html+='<div class="alert alert-danger py-2 px-2 mb-1">Tổng tiền cửa hàng thu đang thấp hơn tổng tiền vốn, nhưng chưa xác định được sản phẩm nào gây ra. '+
+            'Hãy mở đơn để kiểm tra giá bán, các khoản giảm giá và lịch sử gửi lại/đổi hàng.</div>';
     }
-    html+='<a class="btn btn-xs btn-outline-danger mt-1" target="_blank" href="'+getOrderOpenUrl(order)+'"><i class="fas fa-external-link-alt mr-1"></i>Mở đơn lỗ</a></div>';
+    html+='<a class="btn btn-xs btn-outline-danger mt-1" target="_blank" href="'+getOrderOpenUrl(order)+'"><i class="fas fa-external-link-alt mr-1"></i>Mở đơn để đối chiếu</a></div>';
     return html;
 }
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}

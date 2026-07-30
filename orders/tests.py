@@ -2720,6 +2720,19 @@ class OrderRiskFlowTests(TestCase):
         self.assertTrue(order.below_listed_price_warning)
         self.assertTrue(order.items.first().is_below_listed)
 
+    def test_order_page_explains_below_cost_warning_calculation(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Phần giảm giá chung của đơn tính vào sản phẩm')
+        self.assertContains(response, 'Sau giảm giá, khách trả')
+        self.assertContains(response, 'Tiền vốn cửa hàng bỏ ra')
+        self.assertContains(response, 'cửa hàng đang thiếu')
+        self.assertContains(
+            response,
+            'Nếu là hàng tặng, khuyến mãi hoặc đơn gửi lại/đổi hàng, hãy xem chứng từ liên quan',
+        )
+
     def test_save_order_allows_zero_price_gift_with_below_cost_warning(self):
         self.product.cost_price = 150
         self.product.import_price = 150
@@ -4124,6 +4137,19 @@ class OrderRiskFlowTests(TestCase):
         self.assertTrue(exchange_row['is_exchange_order'])
         self.assertEqual(exchange_row['exchange_source_return_code'], order_return.code)
         self.assertEqual(exchange_row['exchange_original_order_code'], order.code)
+
+        exchange_detail = self.client.get(
+            reverse('api_get_order_detail'),
+            {'id': exchange_order.id},
+        ).json()['order']
+        self.assertTrue(exchange_detail['is_exchange_order'])
+        self.assertEqual(exchange_detail['exchange_source_return_code'], order_return.code)
+        self.assertEqual(exchange_detail['exchange_original_order_code'], order.code)
+        self.assertEqual(exchange_detail['exchange_return_amount'], 45.0)
+        self.assertEqual(exchange_detail['exchange_amount'], 70.0)
+        self.assertEqual(exchange_detail['exchange_offset_amount'], 45.0)
+        self.assertEqual(exchange_detail['exchange_amount_due'], 25.0)
+        self.assertEqual(exchange_detail['exchange_return_reason'], 'Khách đổi sang mẫu khác')
 
         detail_payload = self.client.get(reverse('api_get_order_detail'), {'id': order.id}).json()
         self.assertEqual(detail_payload['status'], 'ok')

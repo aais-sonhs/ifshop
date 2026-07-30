@@ -1206,6 +1206,31 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'Phần giảm giá chung của đơn tính vào sản phẩm này')
         self.assertContains(response, 'Đây là lần gửi lại/đổi hàng')
         self.assertContains(response, 'Không nên kết luận nhân viên bán dưới giá vốn')
+        self.assertContains(
+            response,
+            'id="profit_margin_badge" class="ml-1 font-weight-bold"',
+        )
+        self.assertContains(response, 'id="gp_margin" class="ml-1 font-weight-bold"')
+        self.assertNotContains(response, 'id="profit_margin_badge" class="badge')
+        self.assertNotContains(response, 'id="gp_margin" class="badge')
+        self.assertContains(response, 'class="loss-box-action-row"')
+        self.assertContains(response, 'row mb-3 overview-info-row')
+        self.assertContains(response, 'id="loss_box_col"')
+        self.assertContains(
+            response,
+            '.loss-box-action-row{display:flex;align-items:baseline;gap:.45rem;white-space:nowrap;}',
+        )
+        self.assertContains(response, "$('#loss_box_col').removeClass('d-none')")
+        self.assertContains(response, "$('#loss_box_col').addClass('d-none')")
+        self.assertContains(response, 'row mb-3 sales-metric-row', count=2)
+        self.assertContains(
+            response,
+            '.sales-metric-row .small-box{display:flex;width:100%;height:100%;min-height:90px;',
+        )
+        self.assertContains(
+            response,
+            'justify-content:center;width:100%;padding:9px 10px 4px;',
+        )
         self.assertContains(response, 'id="btn_clear_supplier_filter"')
         self.assertContains(response, 'id="supplier_col_config_container"')
         self.assertContains(response, '/static/js/column_config.js')

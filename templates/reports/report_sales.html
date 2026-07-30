@@ -121,20 +121,18 @@
         <div class="tab-content sales-report-tab-content">
             <!-- TAB 1: TỔNG QUAN -->
             <div class="tab-pane fade show active" id="tab_overview">
-                <div class="row mb-3">
+                <div class="row mb-3 sales-metric-row">
                     <div class="col-lg-3 col-6"><div class="small-box bg-info"><div class="inner"><h4 id="total_orders">0</h4><p>Đơn hàng</p></div><div class="icon"><i class="fas fa-shopping-cart"></i></div></div></div>
                     <div class="col-lg-3 col-6"><div class="small-box bg-success"><div class="inner"><h4 id="total_revenue">0</h4><p>Doanh thu</p></div><div class="icon"><i class="fas fa-dollar-sign"></i></div></div></div>
-                    <div class="col-lg-3 col-6"><div class="small-box bg-warning" id="profit_box"><div class="inner"><h4 id="total_profit">0</h4><p>Lợi nhuận gộp <small id="profit_margin_badge" class="badge badge-light ml-1"></small></p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
+                    <div class="col-lg-3 col-6"><div class="small-box bg-warning" id="profit_box"><div class="inner"><h4 id="total_profit">0</h4><p class="mb-0 text-nowrap">Lợi nhuận gộp <span id="profit_margin_badge" class="ml-1 font-weight-bold"></span></p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
                     <div class="col-lg-3 col-6"><div class="small-box bg-danger"><div class="inner"><h4 id="total_debt">0</h4><p>Công nợ</p></div><div class="icon"><i class="fas fa-exclamation-triangle"></i></div></div></div>
                 </div>
-                <div class="row mb-3">
-                    <div class="col-lg-3 col-6"><div class="info-box"><span class="info-box-icon bg-secondary"><i class="fas fa-truck-loading"></i></span><div class="info-box-content"><span class="info-box-text">Nhập hàng</span><span class="info-box-number" id="total_purchases">0</span></div></div></div>
-                    <div class="col-lg-3 col-6"><div class="info-box"><span class="info-box-icon bg-primary"><i class="fas fa-receipt"></i></span><div class="info-box-content"><span class="info-box-text">Giá vốn thuần <small>(đã trừ hàng hoàn)</small></span><span class="info-box-number" id="total_cost">0</span></div></div></div>
-                    <div class="col-lg-3 col-6"><div class="info-box"><span class="info-box-icon bg-danger"><i class="fas fa-undo"></i></span><div class="info-box-content"><span class="info-box-text">Trả hàng (<span id="returns_count">0</span> phiếu)</span><span class="info-box-number" id="total_returns">0</span></div></div></div>
-                    <div class="col-lg-3 col-6">
-                        <div class="info-box" id="loss_box" style="display:none;"><span class="info-box-icon bg-danger"><i class="fas fa-exclamation-circle"></i></span><div class="info-box-content"><span class="info-box-text text-danger font-weight-bold">⚠️ Đơn báo lỗ</span><span class="info-box-number text-danger" id="loss_count">0</span><a href="#" class="small text-danger" id="btn_view_loss" style="text-decoration:underline;">Xem chi tiết →</a></div></div>
-                        <div class="info-box" id="paid_box"><span class="info-box-icon bg-success"><i class="fas fa-hand-holding-usd"></i></span><div class="info-box-content"><span class="info-box-text">Đã thu</span><span class="info-box-number" id="total_paid">0</span></div></div>
-                    </div>
+                <div class="row mb-3 overview-info-row">
+                    <div class="col-lg col-6 overview-info-col"><div class="info-box"><span class="info-box-icon bg-secondary"><i class="fas fa-truck-loading"></i></span><div class="info-box-content"><span class="info-box-text">Nhập hàng</span><span class="info-box-number" id="total_purchases">0</span></div></div></div>
+                    <div class="col-lg col-6 overview-info-col"><div class="info-box"><span class="info-box-icon bg-primary"><i class="fas fa-receipt"></i></span><div class="info-box-content"><span class="info-box-text">Giá vốn thuần <small>(đã trừ hàng hoàn)</small></span><span class="info-box-number" id="total_cost">0</span></div></div></div>
+                    <div class="col-lg col-6 overview-info-col"><div class="info-box"><span class="info-box-icon bg-danger"><i class="fas fa-undo"></i></span><div class="info-box-content"><span class="info-box-text">Trả hàng (<span id="returns_count">0</span> phiếu)</span><span class="info-box-number" id="total_returns">0</span></div></div></div>
+                    <div class="col-lg col-6 overview-info-col d-none" id="loss_box_col"><div class="info-box" id="loss_box"><span class="info-box-icon bg-danger"><i class="fas fa-exclamation-circle"></i></span><div class="info-box-content"><span class="info-box-text text-danger font-weight-bold">⚠️ Đơn báo lỗ</span><div class="loss-box-action-row"><span class="info-box-number text-danger" id="loss_count">0</span><a href="#" class="small text-danger" id="btn_view_loss">Xem chi tiết →</a></div></div></div></div>
+                    <div class="col-lg col-6 overview-info-col"><div class="info-box" id="paid_box"><span class="info-box-icon bg-success"><i class="fas fa-hand-holding-usd"></i></span><div class="info-box-content"><span class="info-box-text">Đã thu</span><span class="info-box-number" id="total_paid">0</span></div></div></div>
                 </div>
                 <!-- Biểu đồ doanh thu theo ngày -->
                 <div class="row mb-3">
@@ -382,10 +380,10 @@
 
             <!-- TAB 7: LỢI NHUẬN GỘP -->
             <div class="tab-pane fade" id="tab_profit">
-                <div class="row mb-3">
+                <div class="row mb-3 sales-metric-row">
                     <div class="col-lg-4 col-6"><div class="small-box bg-success"><div class="inner"><h4 id="gp_revenue">0</h4><p>Doanh thu thuần</p></div><div class="icon"><i class="fas fa-dollar-sign"></i></div></div></div>
                     <div class="col-lg-4 col-6"><div class="small-box bg-primary"><div class="inner"><h4 id="gp_cost">0</h4><p>Giá vốn thuần</p></div><div class="icon"><i class="fas fa-receipt"></i></div></div></div>
-                    <div class="col-lg-4 col-6"><div class="small-box bg-warning" id="gp_profit_box"><div class="inner"><h4 id="gp_profit">0</h4><p>Lợi nhuận gộp <small id="gp_margin" class="badge badge-light ml-1"></small></p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
+                    <div class="col-lg-4 col-6"><div class="small-box bg-warning" id="gp_profit_box"><div class="inner"><h4 id="gp_profit">0</h4><p class="mb-0 text-nowrap">Lợi nhuận gộp <span id="gp_margin" class="ml-1 font-weight-bold"></span></p></div><div class="icon"><i class="fas fa-coins"></i></div></div></div>
                 </div>
                 <div class="row mb-3">
                     <div class="col-md-8"><div class="card card-outline card-success"><div class="card-header py-2"><h6 class="card-title mb-0" id="profit_trend_title"><i class="fas fa-chart-area mr-1"></i>Xu hướng lợi nhuận gộp theo ngày</h6></div><div class="card-body" style="height:350px;"><canvas id="chart_profit_trend"></canvas></div></div></div>
@@ -490,6 +488,17 @@
 .sales-tab-config-dropdown .sales-tab-config-menu{top:calc(100% + 4px)!important;left:auto!important;right:0!important;transform:none!important;}
 .sales-tab-config-dropdown .cc-footer .btn{flex:1 1 auto!important;}
 .sales-report-tab-content{order:3;flex:0 0 100%;min-width:0;margin-top:1rem;}
+.sales-metric-row>[class*="col-"]{display:flex;}
+.sales-metric-row .small-box{display:flex;width:100%;height:100%;min-height:90px;margin-bottom:0;}
+.sales-metric-row .small-box>.inner{display:flex;flex-direction:column;justify-content:center;width:100%;padding:9px 10px 4px;}
+.sales-metric-row .small-box>.inner h4{margin:0 0 3px;line-height:1.2;}
+.sales-metric-row .small-box>.inner p{display:flex;align-items:center;min-height:22px;margin:0;line-height:1.2;}
+.overview-info-col{display:flex;}
+.overview-info-row .info-box{width:100%;height:100%;margin-bottom:0;}
+.overview-info-row .info-box-icon{width:58px;flex:0 0 58px;}
+.overview-info-row .info-box-content{min-width:0;padding:5px 7px;}
+.loss-box-action-row{display:flex;align-items:baseline;gap:.45rem;white-space:nowrap;}
+.loss-box-action-row #btn_view_loss{text-decoration:underline;}
 @media (max-width:575.98px){.supplier-chart-help-popover{left:auto;right:-12px;transform:none;}.supplier-chart-help-popover::before{left:auto;right:12px;transform:none;}}
 </style>
 <script src="/static/js/column_config.js"></script>
@@ -1310,7 +1319,7 @@ function loadReport(){
         $('#total_orders').text(s.total_orders);$('#total_revenue').text(fmtD(s.total_revenue));$('#total_profit').text(fmtD(s.total_profit));$('#profit_margin_badge').text(s.profit_margin+'%');
         var pB=$('#profit_box').removeClass('bg-warning bg-danger bg-success');if(s.total_profit<0)pB.addClass('bg-danger');else if(s.total_profit>0)pB.addClass('bg-success');else pB.addClass('bg-warning');
         $('#total_debt').text(fmtD(s.total_debt));$('#total_cost').text(fmtD(s.total_cost));$('#total_returns').text(fmtD(s.total_returns));$('#returns_count').text(s.returns_count);$('#total_purchases').text(fmtD(s.total_purchases));$('#total_paid').text(fmtD(s.total_revenue-s.total_debt));
-        if(s.loss_count>0){$('#loss_box').show();$('#loss_count').text(s.loss_count+' đơn');}else{$('#loss_box').hide();}
+        if(s.loss_count>0){$('#loss_box_col').removeClass('d-none');$('#loss_count').text(s.loss_count+' đơn');}else{$('#loss_box_col').addClass('d-none');}
         var timeline=res.timeline||res.daily||[];
 
         _overviewProductRows=res.product_breakdown||res.top_products||[];

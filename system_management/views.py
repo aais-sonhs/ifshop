@@ -549,7 +549,7 @@ def system_log_tbl(request):
         pass
 
     page_number = request.GET.get('page') or 1
-    logs_page = Paginator(logs, 50).get_page(page_number)
+    logs_page = Paginator(logs, 25).get_page(page_number)
 
     return render(request, 'system/system_log.html', {
         'active_tab': 'system_log_tbl',

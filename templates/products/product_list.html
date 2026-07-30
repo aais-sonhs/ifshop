@@ -714,8 +714,8 @@ var PRODUCT_PAGE_SIZE_KEY = 'ifshop_product_page_size';
 var PRODUCT_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(PRODUCT_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(PRODUCT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })(),
     meta: null
 };
@@ -810,7 +810,7 @@ function getProductRequestParams(){
     var filters = getCurrentProductFilters();
     var params = {
         page: PRODUCT_PAGE_STATE.page || 1,
-        page_size: PRODUCT_PAGE_STATE.page_size || 50
+        page_size: PRODUCT_PAGE_STATE.page_size || 25
     };
     Object.keys(filters).forEach(function(key){
         if(filters[key] !== '' && filters[key] !== null && filters[key] !== undefined){
@@ -1790,7 +1790,7 @@ function loadData(done, requestOverrides){
         PRODUCT_ALL_DATA = res.data || [];
         PRODUCT_PAGE_STATE.meta = res.meta || {};
         PRODUCT_PAGE_STATE.page = Number((res.meta && res.meta.page) || PRODUCT_PAGE_STATE.page || 1);
-        PRODUCT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PRODUCT_PAGE_STATE.page_size || 50);
+        PRODUCT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PRODUCT_PAGE_STATE.page_size || 25);
         $('#product_page_size').val(String(PRODUCT_PAGE_STATE.page_size));
 
         PRODUCT_ALL_DATA.forEach(function(d){
@@ -2086,7 +2086,7 @@ $(document).on('click', '#btn_clear_product_filter_summary', function(){
     $('#btn_clear_product_filters').trigger('click');
 });
 $('#product_page_size').change(function(){
-    PRODUCT_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+    PRODUCT_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
     localStorage.setItem(PRODUCT_PAGE_SIZE_KEY, String(PRODUCT_PAGE_STATE.page_size));
     resetProductPage();
     loadData();

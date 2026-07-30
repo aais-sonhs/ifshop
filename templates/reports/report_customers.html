@@ -60,13 +60,48 @@
         </div>
 
         <!-- BẢNG CHI TIẾT -->
+        <div class="d-flex align-items-center justify-content-between flex-wrap mb-2" style="gap:8px;">
+            <div id="customer_report_pagination_summary" class="small text-muted">Chưa có dữ liệu.</div>
+            <div class="d-flex align-items-center" style="gap:6px;">
+                <label for="customer_report_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="customer_report_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
                     <tr>
                         <th>STT</th><th>Mã KH</th><th>Tên khách hàng</th><th>SĐT</th><th>Email</th>
                         <th id="col_store_header">Cửa hàng</th>
-                        <th>Nhóm</th><th>Số ĐH</th><th>Tổng mua</th><th>Công nợ</th><th>Lần mua cuối</th>
+                        <th>Nhóm</th><th>Số ĐH</th>
+                        <th class="app-sortable-heading" id="customer_total_purchase_heading"
+                            style="cursor:pointer;" aria-sort="none"
+                            title="Bấm để sắp xếp tổng mua giảm dần">
+                            Tổng mua
+                            <button type="button" class="app-sort-toggle-btn" id="customer_total_purchase_sort"
+                                    data-direction=""
+                                    title="Bấm để sắp xếp tổng mua giảm dần"
+                                    aria-label="Bấm để sắp xếp tổng mua giảm dần">
+                                <i class="fas fa-sort" aria-hidden="true"></i>
+                            </button>
+                        </th>
+                        <th class="app-sortable-heading" id="customer_total_debt_heading"
+                            style="cursor:pointer;" aria-sort="descending"
+                            title="Đang sắp xếp công nợ giảm dần. Bấm để chuyển sang tăng dần">
+                            Công nợ
+                            <button type="button" class="app-sort-toggle-btn active" id="customer_total_debt_sort"
+                                    data-direction="desc"
+                                    title="Đang sắp xếp công nợ giảm dần. Bấm để chuyển sang tăng dần"
+                                    aria-label="Đang sắp xếp công nợ giảm dần. Bấm để chuyển sang tăng dần">
+                                <i class="fas fa-sort-amount-down" aria-hidden="true"></i>
+                            </button>
+                        </th>
+                        <th>Lần mua cuối</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -75,6 +110,7 @@
                 </tfoot>
             </table>
         </div>
+        <div id="customer_report_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 {% endblock %}
@@ -86,11 +122,69 @@ function fmtD(n){ return fmt(n) + 'đ'; }
 
 var allReportData = [];
 var reportMeta = {};
+var customerReportSortField = 'total_debt';
+var customerReportTotalPurchaseSortDirection = 'desc';
+var customerReportTotalDebtSortDirection = 'desc';
+var CUSTOMER_REPORT_PAGE_SIZE_KEY = 'ifshop_report_customers_page_size';
+var customerReportPageState = {
+    page: 1,
+    pageSize: (function(){
+        var saved = parseInt(localStorage.getItem(CUSTOMER_REPORT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
+    })()
+};
 
 $(document).ready(function(){
+    $('#customer_report_page_size').val(String(customerReportPageState.pageSize));
+    syncCustomerReportTotalPurchaseSort();
+    syncCustomerReportTotalDebtSort();
     loadReport();
     $('#filter_store_id').change(function(){ loadReport(); });
-    $('#filter_search').on('input', function(){ renderTable(); });
+    $('#filter_search').on('input', function(){
+        customerReportPageState.page = 1;
+        renderTable();
+    });
+    $('#customer_report_page_size').on('change', function(){
+        customerReportPageState.pageSize = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(CUSTOMER_REPORT_PAGE_SIZE_KEY, String(customerReportPageState.pageSize));
+        customerReportPageState.page = 1;
+        renderTable();
+    });
+    $(document).on('click', '.customer-report-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === customerReportPageState.page) return;
+        customerReportPageState.page = page;
+        renderTable();
+        var reportTable = document.getElementById('report_tbl');
+        if(reportTable) reportTable.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+    $('#customer_total_purchase_heading').on('click', function(){
+        if(customerReportSortField === 'total_purchased'){
+            customerReportTotalPurchaseSortDirection =
+                customerReportTotalPurchaseSortDirection === 'desc' ? 'asc' : 'desc';
+        } else {
+            customerReportSortField = 'total_purchased';
+            customerReportTotalPurchaseSortDirection = 'desc';
+        }
+        customerReportPageState.page = 1;
+        syncCustomerReportTotalPurchaseSort();
+        syncCustomerReportTotalDebtSort();
+        renderTable();
+    });
+    $('#customer_total_debt_heading').on('click', function(){
+        if(customerReportSortField === 'total_debt'){
+            customerReportTotalDebtSortDirection =
+                customerReportTotalDebtSortDirection === 'desc' ? 'asc' : 'desc';
+        } else {
+            customerReportSortField = 'total_debt';
+            customerReportTotalDebtSortDirection = 'desc';
+        }
+        customerReportPageState.page = 1;
+        syncCustomerReportTotalPurchaseSort();
+        syncCustomerReportTotalDebtSort();
+        renderTable();
+    });
 });
 
 function loadReport(){
@@ -98,8 +192,18 @@ function loadReport(){
     var url = '/api/report-customers/';
     if(storeId) url += '?store_id='+storeId;
 
-    $.get(url, function(res){
-        if(res.status !== 'ok') return;
+    $('#customer_report_pagination_summary').text('Đang tải dữ liệu khách hàng...');
+    $('#report_tbl tbody').html(
+        '<tr><td colspan="11" class="text-center text-muted py-4">' +
+        '<i class="fas fa-spinner fa-spin mr-1"></i>Đang tổng hợp dữ liệu...</td></tr>'
+    );
+    $('#btn_export').prop('disabled', true);
+
+    $.get(url).done(function(res){
+        if(res.status !== 'ok'){
+            showCustomerReportError(res.message || 'Không thể tải báo cáo khách hàng.');
+            return;
+        }
         allReportData = res.data;
         reportMeta = res;
 
@@ -150,8 +254,132 @@ function loadReport(){
             $('#store_breakdown_wrap').hide();
         }
 
+        customerReportPageState.page = 1;
         renderTable();
+    }).fail(function(xhr){
+        var message = 'Không thể tải báo cáo khách hàng. Vui lòng thử lại.';
+        if(xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)){
+            message = xhr.responseJSON.message || xhr.responseJSON.error;
+        }
+        showCustomerReportError(message);
+    }).always(function(){
+        $('#btn_export').prop('disabled', false);
     });
+}
+
+function showCustomerReportError(message){
+    allReportData = [];
+    reportMeta = {};
+    $('#total_customers').text('0');
+    $('#total_revenue,#total_debt').text('0đ');
+    $('#store_breakdown_wrap').hide();
+    $('#customer_report_pagination_summary').text(message);
+    $('#customer_report_pagination').empty();
+    var $errorCell = $('<td>', {
+        colspan: 11,
+        'class': 'text-center text-danger py-4'
+    });
+    $errorCell.append('<i class="fas fa-exclamation-triangle mr-1"></i>');
+    $errorCell.append(document.createTextNode(message));
+    $('#report_tbl tbody').empty().append($('<tr>').append($errorCell));
+    if(typeof toastr !== 'undefined') toastr.error(message);
+}
+
+function buildCustomerReportPaginationButtons(currentPage, totalPages){
+    if(totalPages <= 1) return '';
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary customer-report-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' customer-report-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary customer-report-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    return html;
+}
+
+function sortCustomerReportRows(rows){
+    var sortField = customerReportSortField;
+    var sortDirection = sortField === 'total_debt'
+        ? customerReportTotalDebtSortDirection
+        : customerReportTotalPurchaseSortDirection;
+    var direction = sortDirection === 'asc' ? 1 : -1;
+    return (rows || []).map(function(row, index){
+        return {row: row, index: index};
+    }).sort(function(left, right){
+        var difference =
+            Number(left.row[sortField] || 0) - Number(right.row[sortField] || 0);
+        if(difference !== 0) return difference * direction;
+        var nameDifference = String(left.row.name || '').localeCompare(
+            String(right.row.name || ''),
+            'vi'
+        );
+        return nameDifference || left.index - right.index;
+    }).map(function(item){
+        return item.row;
+    });
+}
+
+function syncCustomerReportTotalPurchaseSort(){
+    var direction = customerReportTotalPurchaseSortDirection;
+    var active = customerReportSortField === 'total_purchased';
+    var descending = direction === 'desc';
+    var nextDirection = descending ? 'tăng dần' : 'giảm dần';
+    var title = active
+        ? 'Đang sắp xếp tổng mua ' + (descending ? 'giảm dần' : 'tăng dần') +
+            '. Bấm để chuyển sang ' + nextDirection
+        : 'Bấm để sắp xếp tổng mua giảm dần';
+    $('#customer_total_purchase_heading').attr(
+        'aria-sort',
+        active ? (descending ? 'descending' : 'ascending') : 'none'
+    );
+    $('#customer_total_purchase_sort')
+        .toggleClass('active', active)
+        .attr('data-direction', active ? direction : '')
+        .attr('title', title)
+        .attr('aria-label', title)
+        .find('i')
+        .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+        .addClass(active ? (descending ? 'fa-sort-amount-down' : 'fa-sort-amount-up') : 'fa-sort');
+}
+
+function syncCustomerReportTotalDebtSort(){
+    var direction = customerReportTotalDebtSortDirection;
+    var active = customerReportSortField === 'total_debt';
+    var descending = direction === 'desc';
+    var nextDirection = descending ? 'tăng dần' : 'giảm dần';
+    var title = active
+        ? 'Đang sắp xếp công nợ ' + (descending ? 'giảm dần' : 'tăng dần') +
+            '. Bấm để chuyển sang ' + nextDirection
+        : 'Bấm để sắp xếp công nợ giảm dần';
+    $('#customer_total_debt_heading').attr(
+        'aria-sort',
+        active ? (descending ? 'descending' : 'ascending') : 'none'
+    );
+    $('#customer_total_debt_sort')
+        .toggleClass('active', active)
+        .attr('data-direction', active ? direction : '')
+        .attr('title', title)
+        .attr('aria-label', title)
+        .find('i')
+        .removeClass('fa-sort fa-sort-amount-up fa-sort-amount-down')
+        .addClass(active ? (descending ? 'fa-sort-amount-down' : 'fa-sort-amount-up') : 'fa-sort');
 }
 
 function renderTable(){
@@ -166,17 +394,28 @@ function renderTable(){
                 || (d.email||'').toLowerCase().indexOf(keyword) >= 0;
         });
     }
+    filtered = sortCustomerReportRows(filtered);
+
+    var totalRows = filtered.length;
+    var pageSize = customerReportPageState.pageSize || 25;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    customerReportPageState.page = Math.min(Math.max(customerReportPageState.page, 1), totalPages);
+    var start = (customerReportPageState.page - 1) * pageSize;
+    var end = Math.min(start + pageSize, totalRows);
+    var pageRows = filtered.slice(start, end);
 
     var h = '', tOrders=0, tRevenue=0, tDebt=0;
-    filtered.forEach(function(d, i){
+    filtered.forEach(function(d){
         tOrders += d.order_count;
         tRevenue += d.total_purchased;
         tDebt += d.total_debt;
+    });
+    pageRows.forEach(function(d, i){
         var debtValue = Number(d.total_debt || 0);
         var debtStyle = debtValue > 0 ? 'color:#dc3545;font-weight:bold;' : (debtValue < 0 ? 'color:#28a745;font-weight:bold;' : '');
         var rowStyle = debtValue > 0 ? ' style="background:#fff3e0;"' : '';
         h += '<tr'+rowStyle+'>';
-        h += '<td>'+(i+1)+'</td>';
+        h += '<td>'+(start+i+1)+'</td>';
         h += '<td>'+d.code+'</td>';
         h += '<td><strong>'+d.name+'</strong></td>';
         h += '<td>'+d.phone+'</td>';
@@ -197,6 +436,20 @@ function renderTable(){
     // Footer
     var footColspan = showStore ? 7 : 6;
     $('#report_tbl tfoot tr').html('<td colspan="'+footColspan+'">TỔNG ('+filtered.length+' KH)</td><td id="ft_orders">'+tOrders+'</td><td id="ft_revenue" class="text-right">'+fmtD(tRevenue)+'</td><td id="ft_debt" class="text-right"><span class="'+(tDebt>0?'text-danger':'')+'">'+fmtD(tDebt)+'</span></td><td></td>');
+
+    $('#customer_report_page_size').val(String(pageSize));
+    if(totalRows){
+        $('#customer_report_pagination_summary').html(
+            'Hiển thị <strong>' + fmt(start + 1) + '-' + fmt(end) + '</strong> / <strong>' +
+            fmt(totalRows) + '</strong> khách hàng · Trang <strong>' +
+            customerReportPageState.page + '/' + totalPages + '</strong>'
+        );
+    } else {
+        $('#customer_report_pagination_summary').text('Không có khách hàng phù hợp.');
+    }
+    $('#customer_report_pagination').html(
+        buildCustomerReportPaginationButtons(customerReportPageState.page, totalPages)
+    );
 }
 
 function viewStore(storeId){

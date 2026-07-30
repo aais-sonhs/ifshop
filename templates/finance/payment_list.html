@@ -183,8 +183,8 @@ var PAYMENT_PAGE_SIZE_KEY = 'ifshop_payment_page_size';
 var PAYMENT_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(PAYMENT_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(PAYMENT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })(),
     meta: null
 };
@@ -242,7 +242,7 @@ function getPaymentRequestParams(includePagination){
     params.payment_date_order = PAYMENT_DATE_SORT_DIRECTION;
     if(includePagination){
         params.page = PAYMENT_PAGE_STATE.page || 1;
-        params.page_size = PAYMENT_PAGE_STATE.page_size || 50;
+        params.page_size = PAYMENT_PAGE_STATE.page_size || 25;
     }
     return params;
 }
@@ -324,7 +324,7 @@ $(document).ready(function(){
     });
 
     $('#payment_page_size').change(function(){
-        PAYMENT_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        PAYMENT_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
         localStorage.setItem(PAYMENT_PAGE_SIZE_KEY, String(PAYMENT_PAGE_STATE.page_size));
         resetPaymentPage();
         loadData();
@@ -484,7 +484,7 @@ function loadData(){
     $.get('/api/payments/', getPaymentRequestParams(true), function(res){
         PAYMENT_PAGE_STATE.meta = res.meta || {};
         PAYMENT_PAGE_STATE.page = Number((res.meta && res.meta.page) || PAYMENT_PAGE_STATE.page || 1);
-        PAYMENT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PAYMENT_PAGE_STATE.page_size || 50);
+        PAYMENT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || PAYMENT_PAGE_STATE.page_size || 25);
         PAYMENT_NEXT_CODE = (res.meta && res.meta.next_code) || res.next_code || PAYMENT_NEXT_CODE || '';
         $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
         var h='';

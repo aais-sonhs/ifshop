@@ -3450,7 +3450,7 @@ def report_finance_order_debt(request):
         totals[key] = totals[key] or Decimal('0')
 
     debt_descending = (F('final_amount') - F('paid_amount')).desc()
-    paginator = Paginator(orders.order_by(debt_descending, '-order_date', '-id'), 30)
+    paginator = Paginator(orders.order_by(debt_descending, '-order_date', '-id'), 25)
     page_obj = paginator.get_page(request.GET.get('page'))
 
     from system_management.models import Store
@@ -3669,46 +3669,110 @@ def report_customers(request):
 @login_required(login_url="/login/")
 @report_permission_required
 def api_report_customers(request):
-    """API báo cáo khách hàng — hỗ trợ filter theo store"""
+    """API báo cáo khách hàng — tổng hợp theo lô, không truy vấn từng khách."""
     from customers.models import Customer
-    store_id = request.GET.get('store_id')
+    from system_management.models import Store
 
-    customers = Customer.objects.filter(is_active=True).select_related('group', 'store')
-    customers = filter_by_store(customers, request)
+    store_id = request.GET.get('store_id')
+    managed_ids = get_managed_store_ids(request.user)
+    scoped_store_ids = list(managed_ids)
     if store_id:
-        customers = customers.filter(store_id=store_id)
+        selected_store_id = _parse_filter_int(store_id)
+        if selected_store_id is None or selected_store_id not in managed_ids:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Cửa hàng không thuộc phạm vi được phép xem.',
+            }, status=403)
+        scoped_store_ids = [selected_store_id]
+
+    customers = list(
+        Customer.objects.filter(
+            is_active=True,
+            store_id__in=scoped_store_ids,
+        ).select_related('group', 'store').order_by('id')
+    )
+    customer_ids = [customer.id for customer in customers]
+
+    # Doanh thu/tổng mua chỉ lấy đơn đã xuất kho hoặc hoàn thành. Công nợ và
+    # số đơn vẫn lấy mọi đơn chưa hủy để không bỏ sót khoản khách còn phải trả.
+    realized_metrics = {
+        row['customer_id']: row
+        for row in Order.objects.filter(
+            customer_id__in=customer_ids,
+            status__in=[4, 5],
+        ).values('customer_id').annotate(
+            total_purchased=Sum('final_amount'),
+            last_exported_at=Max('exported_at'),
+            legacy_last_order_date=Max('order_date'),
+        )
+    }
+    active_metrics = {
+        row['customer_id']: row
+        for row in Order.objects.filter(
+            customer_id__in=customer_ids,
+        ).exclude(status=6).values('customer_id').annotate(
+            total_amount=Sum('final_amount'),
+            total_paid=Sum('paid_amount'),
+            order_count=Count('id'),
+        )
+    }
 
     data = []
-    for c in customers:
-        orders = Order.objects.filter(customer=c).exclude(status=6)
-        order_count = orders.count()
-        total = float(orders.aggregate(s=Sum('final_amount'))['s'] or 0)
-        paid = float(orders.aggregate(s=Sum('paid_amount'))['s'] or 0)
-        debt = total - paid
-        last_order = orders.order_by('-order_date').first()
-        last_date = last_order.order_date.strftime('%d/%m/%Y') if last_order else ''
+    for customer in customers:
+        realized = realized_metrics.get(customer.id)
+        active = active_metrics.get(customer.id)
+        live_total = float(realized['total_purchased'] or 0) if realized else 0
+        live_debt = max(
+            float(active['total_amount'] or 0) - float(active['total_paid'] or 0),
+            0,
+        ) if active else 0
+        live_order_count = int(active['order_count'] or 0) if active else 0
+
+        cached_total = float(customer.total_purchased or 0)
+        cached_debt = float(customer.total_debt or 0)
+        cached_order_count = int(customer.order_count or 0)
+        if customer.imported_legacy_metrics:
+            total = cached_total + live_total
+            debt = cached_debt + live_debt
+            order_count = cached_order_count + live_order_count
+        else:
+            total = live_total if realized else cached_total
+            debt = live_debt if active else cached_debt
+            order_count = live_order_count if active else cached_order_count
+
+        last_date_value = None
+        if realized:
+            last_exported_at = realized['last_exported_at']
+            if last_exported_at:
+                if timezone.is_aware(last_exported_at):
+                    last_exported_at = timezone.localtime(last_exported_at)
+                last_date_value = last_exported_at.date()
+            else:
+                last_date_value = realized['legacy_last_order_date']
+        if last_date_value is None and customer.last_purchase_at:
+            last_purchase_at = customer.last_purchase_at
+            if timezone.is_aware(last_purchase_at):
+                last_purchase_at = timezone.localtime(last_purchase_at)
+            last_date_value = last_purchase_at.date()
 
         data.append({
-            'code': c.code, 'name': c.name,
-            'group': c.group.name if c.group else '',
-            'phone': c.phone or '',
-            'email': c.email or '',
-            'store_id': c.store_id,
-            'store_name': c.store.name if c.store else '',
+            'code': customer.code,
+            'name': customer.name,
+            'group': customer.group.name if customer.group else '',
+            'phone': customer.phone or '',
+            'email': customer.email or '',
+            'store_id': customer.store_id,
+            'store_name': customer.store.name if customer.store else '',
             'order_count': order_count,
             'total_purchased': total,
             'total_debt': debt,
-            'last_order_date': last_date,
+            'last_order_date': last_date_value.strftime('%d/%m/%Y') if last_date_value else '',
         })
 
     data.sort(key=lambda x: -x['total_purchased'])
     total_revenue = sum(d['total_purchased'] for d in data)
     total_debt = sum(d['total_debt'] for d in data)
 
-    # Store breakdown
-    from core.store_utils import get_managed_store_ids
-    from system_management.models import Store
-    managed_ids = get_managed_store_ids(request.user)
     managed_stores = Store.objects.filter(id__in=managed_ids).select_related('brand')
     has_multiple = managed_stores.count() > 1
     stores_list = [{'id': s.id, 'name': s.name, 'brand': s.brand.name if s.brand else ''} for s in managed_stores]

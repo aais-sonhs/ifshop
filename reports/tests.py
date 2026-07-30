@@ -4,7 +4,9 @@ from io import BytesIO
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.management import call_command
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from openpyxl import load_workbook
 
@@ -354,6 +356,185 @@ class SalesReportTests(TestCase):
         self.assertContains(response, "params.set('status', '1')")
         self.assertContains(response, 'updatePaymentExpenseLink()')
 
+    def test_customer_report_page_has_pagination(self):
+        response = self.client.get(reverse('report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="customer_report_page_size"')
+        self.assertContains(response, '<option value="25">25 dòng</option>', html=True)
+        self.assertContains(response, '<option value="200">200 dòng</option>', html=True)
+        self.assertContains(response, 'id="customer_report_pagination_summary"')
+        self.assertContains(response, 'id="customer_report_pagination"')
+        self.assertContains(response, 'ifshop_report_customers_page_size')
+        self.assertContains(response, 'function buildCustomerReportPaginationButtons(currentPage, totalPages)')
+        self.assertContains(response, 'var pageRows = filtered.slice(start, end);')
+        self.assertContains(response, 'customer-report-page-btn')
+
+    def test_customer_report_total_purchase_column_has_sort_toggle(self):
+        response = self.client.get(reverse('report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="customer_total_purchase_heading"')
+        self.assertContains(response, 'style="cursor:pointer;" aria-sort="none"')
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn" id="customer_total_purchase_sort"',
+        )
+        self.assertContains(response, 'fas fa-sort-amount-down')
+        self.assertContains(response, "customerReportTotalPurchaseSortDirection = 'desc'")
+        self.assertContains(response, 'function sortCustomerReportRows(rows)')
+        self.assertContains(response, 'function syncCustomerReportTotalPurchaseSort()')
+        self.assertContains(response, 'filtered = sortCustomerReportRows(filtered);')
+        self.assertContains(response, "customerReportTotalPurchaseSortDirection === 'desc' ? 'asc' : 'desc'")
+
+    def test_customer_report_total_debt_column_has_sort_toggle(self):
+        response = self.client.get(reverse('report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="customer_total_debt_heading"')
+        self.assertContains(response, 'style="cursor:pointer;" aria-sort="descending"')
+        self.assertContains(
+            response,
+            'class="app-sort-toggle-btn active" id="customer_total_debt_sort"',
+        )
+        self.assertContains(response, "customerReportSortField = 'total_debt'")
+        self.assertContains(response, "customerReportTotalDebtSortDirection = 'desc'")
+        self.assertContains(response, "customerReportSortField === 'total_debt'")
+        self.assertContains(response, "customerReportTotalDebtSortDirection === 'desc' ? 'asc' : 'desc'")
+        self.assertContains(response, 'function syncCustomerReportTotalDebtSort()')
+        self.assertContains(response, 'Number(left.row[sortField] || 0)')
+
+    def test_customer_report_api_combines_legacy_metrics_and_live_orders(self):
+        today = date.today()
+        legacy_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-LEGACY-METRICS',
+            name='Khách có dữ liệu lịch sử',
+            total_purchased=1000,
+            total_debt=100,
+            order_count=2,
+            imported_legacy_metrics=True,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-RP-CUSTOMER-REALIZED',
+            store=self.store,
+            customer=legacy_customer,
+            warehouse=self.warehouse,
+            status=4,
+            total_amount=500,
+            final_amount=500,
+            paid_amount=200,
+            order_date=today - timedelta(days=2),
+            exported_at=datetime.combine(today, time(9, 30)),
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-RP-CUSTOMER-PENDING',
+            store=self.store,
+            customer=legacy_customer,
+            warehouse=self.warehouse,
+            status=1,
+            total_amount=300,
+            final_amount=300,
+            paid_amount=0,
+            order_date=today,
+            created_by=self.user,
+        )
+        Order.objects.create(
+            code='DH-RP-CUSTOMER-CANCELED',
+            store=self.store,
+            customer=legacy_customer,
+            warehouse=self.warehouse,
+            status=6,
+            total_amount=900,
+            final_amount=900,
+            paid_amount=0,
+            order_date=today,
+            created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload['data'] if item['code'] == legacy_customer.code)
+        self.assertEqual(row['total_purchased'], 1500.0)
+        self.assertEqual(row['total_debt'], 700.0)
+        self.assertEqual(row['order_count'], 4)
+        self.assertEqual(row['last_order_date'], today.strftime('%d/%m/%Y'))
+
+    def test_customer_report_api_query_count_does_not_grow_per_customer(self):
+        today = date.today()
+        customers = [
+            Customer.objects.create(
+                store=self.store,
+                code=f'KH-RP-BATCH-{index:02d}',
+                name=f'Khách tổng hợp {index:02d}',
+                created_by=self.user,
+            )
+            for index in range(12)
+        ]
+        Order.objects.bulk_create([
+            Order(
+                code=f'DH-RP-BATCH-{index:02d}',
+                store=self.store,
+                customer=customer,
+                warehouse=self.warehouse,
+                status=5,
+                total_amount=100,
+                final_amount=100,
+                paid_amount=100,
+                order_date=today,
+                exported_at=datetime.combine(today, time(10, 0)),
+                created_by=self.user,
+            )
+            for index, customer in enumerate(customers)
+        ])
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse('api_report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(captured), 15)
+        self.assertEqual(len(response.json()['data']), len(customers) + 1)
+
+    def test_customer_report_page_shows_loading_and_api_errors(self):
+        response = self.client.get(reverse('report_customers'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Đang tải dữ liệu khách hàng')
+        self.assertContains(response, 'function showCustomerReportError(message)')
+        self.assertContains(response, '.fail(function(xhr)')
+
+    def test_purchase_supplier_summary_has_pagination(self):
+        response = self.client.get(reverse('report_purchases'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="purchase_supplier_page_size"')
+        self.assertContains(response, '<option value="25">25 dòng</option>', html=True)
+        self.assertContains(response, '<option value="200">200 dòng</option>', html=True)
+        self.assertContains(response, 'id="purchase_supplier_pagination_summary"')
+        self.assertContains(response, 'id="purchase_supplier_pagination"')
+        self.assertContains(response, 'ifshop_report_purchases_supplier_page_size')
+        self.assertContains(response, 'function renderPurchaseSupplierSummary()')
+        self.assertContains(response, 'purchaseSupplierSummaryRows.slice(start, end)')
+        self.assertContains(response, 'purchase-supplier-page-btn')
+
+    def test_purchase_details_have_independent_pagination(self):
+        response = self.client.get(reverse('report_purchases'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="purchase_detail_page_size"')
+        self.assertContains(response, '<option value="25">25 dòng</option>', html=True)
+        self.assertContains(response, '<option value="200">200 dòng</option>', html=True)
+        self.assertContains(response, 'id="purchase_detail_pagination_summary"')
+        self.assertContains(response, 'id="purchase_detail_pagination"')
+        self.assertContains(response, 'ifshop_report_purchases_detail_page_size')
+        self.assertContains(response, 'function renderPurchaseDetails()')
+        self.assertContains(response, 'purchaseDetailRows.slice(start, end)')
+        self.assertContains(response, 'purchase-detail-page-btn')
+
     def test_finance_order_debt_page_only_lists_positive_debt_and_matches_card(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
@@ -478,7 +659,8 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['page_obj'].paginator.count, 31)
-        self.assertEqual(len(response.context['page_obj']), 1)
+        self.assertEqual(response.context['page_obj'].paginator.per_page, 25)
+        self.assertEqual(len(response.context['page_obj']), 6)
         self.assertContains(response, 'Trang 2/2')
         self.assertContains(response, 'sort=debt_desc')
 
@@ -578,7 +760,7 @@ class SalesReportTests(TestCase):
         )
         self.assertContains(response, "row.products[String(item.product_id)] = true;")
         self.assertContains(response, 'id="inventory_product_page_size"')
-        self.assertContains(response, '<option value="25">25 dòng</option>', html=True)
+        self.assertContains(response, '<option value="25" selected>25 dòng</option>', html=True)
         self.assertContains(response, '<option value="200">200 dòng</option>', html=True)
         self.assertContains(response, 'id="inventory_product_pagination_summary"')
         self.assertContains(response, 'id="inventory_product_pagination"')

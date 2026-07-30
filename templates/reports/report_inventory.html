@@ -103,8 +103,8 @@
                     <div class="d-flex align-items-center" style="gap:6px;">
                         <label for="inventory_product_page_size" class="small text-muted mb-0">Hiển thị</label>
                         <select id="inventory_product_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
-                            <option value="25">25 dòng</option>
-                            <option value="50" selected>50 dòng</option>
+                            <option value="25" selected>25 dòng</option>
+                            <option value="50">50 dòng</option>
                             <option value="100">100 dòng</option>
                             <option value="200">200 dòng</option>
                         </select>
@@ -286,8 +286,8 @@ var INVENTORY_REPORT_PAGE_SIZE_KEY = 'ifshop_report_inventory_page_size';
 var _inventoryProductPageState = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(INVENTORY_REPORT_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(INVENTORY_REPORT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })()
 };
 
@@ -341,7 +341,7 @@ $(document).ready(function(){
         syncInventoryReportModeSummary();
     });
     $('#inventory_product_page_size').on('change', function(){
-        _inventoryProductPageState.page_size = parseInt($(this).val() || '50', 10) || 50;
+        _inventoryProductPageState.page_size = parseInt($(this).val() || '25', 10) || 25;
         localStorage.setItem(INVENTORY_REPORT_PAGE_SIZE_KEY, String(_inventoryProductPageState.page_size));
         _inventoryProductPageState.page = 1;
         renderInventoryProductTable();
@@ -659,7 +659,7 @@ function renderInventoryProductPagination(meta){
 
 function renderInventoryProductTable(){
     var totalRows = _inventoryProductRows.length;
-    var pageSize = _inventoryProductPageState.page_size || 50;
+    var pageSize = _inventoryProductPageState.page_size || 25;
     var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
     if(_inventoryProductPageState.page > totalPages) _inventoryProductPageState.page = totalPages;
     if(_inventoryProductPageState.page < 1) _inventoryProductPageState.page = 1;

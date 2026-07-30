@@ -1124,7 +1124,11 @@ function editItem(receipt){
     $('#inp_amount').val(receipt.amount);
     $('#inp_receipt_date').val(receipt.receipt_date);
     $('#inp_status').val(receipt.status);
-    $('#inp_payment_method').val(receipt.payment_method_option_id || '');
+    // Select này có thể được Select2 tự động khởi tạo khi danh sách phương thức dài.
+    // Cập nhật cả giá trị gốc lẫn phần hiển thị để không giữ tên của phiếu vừa sửa trước đó.
+    $('#inp_payment_method')
+        .val(receipt.payment_method_option_id || '')
+        .trigger('change.select2');
     $('#inp_description').val(receipt.description);
     $('#inp_note').val(receipt.note);
 

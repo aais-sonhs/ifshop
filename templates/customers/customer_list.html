@@ -88,7 +88,7 @@
             <div class="d-flex align-items-center flex-wrap" style="gap:8px;">
                 <label class="mb-0 small text-muted" for="customer_page_size">Hiển thị</label>
                 <select class="form-control form-control-sm" id="customer_page_size" style="width:auto;">
-                    <option value="20">20</option>
+                    <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                     <option value="200">200</option>
@@ -460,7 +460,7 @@ var CUSTOMER_FORM_CLOSE_BASELINE = null;
 var CUSTOMER_FORM_CLOSE_TRACKING_TOKEN = 0;
 var customerListState = {
     page: 1,
-    pageSize: 50,
+    pageSize: 25,
     pageButtonCount: 5,
     sortKey: '',
     sortDirection: 'asc',
@@ -468,7 +468,7 @@ var customerListState = {
 
 function getStoredCustomerPageSize(){
     var stored = parseInt(localStorage.getItem(CUSTOMER_PAGE_SIZE_KEY), 10);
-    return [20, 50, 100, 200].indexOf(stored) >= 0 ? stored : 50;
+    return [25, 50, 100, 200].indexOf(stored) >= 0 ? stored : 25;
 }
 
 function resetCustomerPagination(){
@@ -476,7 +476,7 @@ function resetCustomerPagination(){
 }
 
 function getCustomerPaginationMeta(filteredCount){
-    var pageSize = Math.max(parseInt(customerListState.pageSize, 10) || 50, 1);
+    var pageSize = Math.max(parseInt(customerListState.pageSize, 10) || 25, 1);
     var totalPages = filteredCount > 0 ? Math.ceil(filteredCount / pageSize) : 1;
     var page = Math.min(Math.max(customerListState.page || 1, 1), totalPages);
     var startIndex = filteredCount > 0 ? ((page - 1) * pageSize) : 0;
@@ -1229,7 +1229,7 @@ $(document).ready(function(){
         }
     });
     $('#customer_page_size').on('change', function(){
-        customerListState.pageSize = parseInt($(this).val(), 10) || 50;
+        customerListState.pageSize = parseInt($(this).val(), 10) || 25;
         localStorage.setItem(CUSTOMER_PAGE_SIZE_KEY, String(customerListState.pageSize));
         resetCustomerPagination();
         renderTable();

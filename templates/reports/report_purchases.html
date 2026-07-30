@@ -46,8 +46,20 @@
                 </div>
             </div>
         </div>
-        <h5 class="mb-2"><i class="fas fa-truck mr-1 text-info"></i>Tổng hợp theo nhà cung cấp</h5>
-        <div class="table-responsive mb-4">
+        <div class="d-flex align-items-center justify-content-between flex-wrap mb-2" style="gap:8px;">
+            <h5 class="mb-0"><i class="fas fa-truck mr-1 text-info"></i>Tổng hợp theo nhà cung cấp</h5>
+            <div class="d-flex align-items-center" style="gap:6px;">
+                <label for="purchase_supplier_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="purchase_supplier_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
+        <div id="purchase_supplier_pagination_summary" class="small text-muted mb-2">Chưa có dữ liệu.</div>
+        <div class="table-responsive">
             <table id="supplier_summary_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-info text-white">
                     <tr><th style="width:60px">STT</th><th>Nhà cung cấp</th><th class="text-center">Số phiếu hoàn thành</th><th class="text-right">Tổng tiền hàng</th></tr>
@@ -58,7 +70,20 @@
                 </tfoot>
             </table>
         </div>
-        <h5 class="mb-2"><i class="fas fa-list mr-1 text-secondary"></i>Chi tiết phiếu nhập</h5>
+        <div id="purchase_supplier_pagination" class="d-flex justify-content-end flex-wrap mt-2 mb-4" style="gap:6px;"></div>
+        <div class="d-flex align-items-center justify-content-between flex-wrap mb-2" style="gap:8px;">
+            <h5 class="mb-0"><i class="fas fa-list mr-1 text-secondary"></i>Chi tiết phiếu nhập</h5>
+            <div class="d-flex align-items-center" style="gap:6px;">
+                <label for="purchase_detail_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="purchase_detail_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
+        <div id="purchase_detail_pagination_summary" class="small text-muted mb-2">Chưa có dữ liệu.</div>
         <div class="table-responsive">
             <table id="report_tbl" class="table table-bordered table-striped table-sm">
                 <thead class="bg-light">
@@ -70,6 +95,7 @@
                 </tfoot>
             </table>
         </div>
+        <div id="purchase_detail_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
     </div>
 </div>
 {% endblock %}
@@ -79,6 +105,25 @@
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
 function esc(value){ return $('<div>').text(value==null?'':String(value)).html(); }
+var purchaseSupplierSummaryRows = [];
+var purchaseReportSummary = {};
+var purchaseDetailRows = [];
+var PURCHASE_SUPPLIER_PAGE_SIZE_KEY = 'ifshop_report_purchases_supplier_page_size';
+var PURCHASE_DETAIL_PAGE_SIZE_KEY = 'ifshop_report_purchases_detail_page_size';
+var purchaseSupplierPageState = {
+    page: 1,
+    pageSize: (function(){
+        var saved = parseInt(localStorage.getItem(PURCHASE_SUPPLIER_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
+    })()
+};
+var purchaseDetailPageState = {
+    page: 1,
+    pageSize: (function(){
+        var saved = parseInt(localStorage.getItem(PURCHASE_DETAIL_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
+    })()
+};
 function localDateInputValue(date){
     var d = date || new Date();
     var month = String(d.getMonth() + 1).padStart(2, '0');
@@ -90,8 +135,40 @@ $(document).ready(function(){
     var first = new Date(today.getFullYear(), today.getMonth(), 1);
     $('#filter_from_date').val(localDateInputValue(first));
     $('#filter_to_date').val(localDateInputValue(today));
+    $('#purchase_supplier_page_size').val(String(purchaseSupplierPageState.pageSize));
+    $('#purchase_detail_page_size').val(String(purchaseDetailPageState.pageSize));
     loadReport();
     $('#btn_search').click(function(){ loadReport(); });
+    $('#purchase_supplier_page_size').on('change', function(){
+        purchaseSupplierPageState.pageSize = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(PURCHASE_SUPPLIER_PAGE_SIZE_KEY, String(purchaseSupplierPageState.pageSize));
+        purchaseSupplierPageState.page = 1;
+        renderPurchaseSupplierSummary();
+    });
+    $(document).on('click', '.purchase-supplier-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === purchaseSupplierPageState.page) return;
+        purchaseSupplierPageState.page = page;
+        renderPurchaseSupplierSummary();
+        var summaryTable = document.getElementById('supplier_summary_tbl');
+        if(summaryTable) summaryTable.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+    $('#purchase_detail_page_size').on('change', function(){
+        purchaseDetailPageState.pageSize = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(PURCHASE_DETAIL_PAGE_SIZE_KEY, String(purchaseDetailPageState.pageSize));
+        purchaseDetailPageState.page = 1;
+        renderPurchaseDetails();
+    });
+    $(document).on('click', '.purchase-detail-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === purchaseDetailPageState.page) return;
+        purchaseDetailPageState.page = page;
+        renderPurchaseDetails();
+        var detailTable = document.getElementById('report_tbl');
+        if(detailTable) detailTable.scrollIntoView({behavior:'smooth', block:'start'});
+    });
     $(window).on('pageshow', function(event){
         if(event.originalEvent && event.originalEvent.persisted){
             loadReport();
@@ -106,29 +183,150 @@ function loadReport(){
         $('#total_amount').text(fmtD(res.summary.total_amount));
         $('#total_suppliers').text(res.summary.total_suppliers||0);
         $('#report_refreshed_at').text(res.summary.refreshed_at || '--');
-        var supplierRows='', supplierCount=0;
-        (res.supplier_summary||[]).forEach(function(item,i){
-            supplierRows += '<tr><td>'+(i+1)+'</td><td><strong>'+esc(item.supplier)+'</strong></td><td class="text-center">'+fmt(item.receipt_count)+'</td><td class="text-right font-weight-bold">'+fmtD(item.total_amount)+'</td></tr>';
-            supplierCount += Number(item.receipt_count||0);
-        });
-        if(!supplierRows) supplierRows = '<tr><td colspan="4" class="text-center text-muted py-3">Không có phiếu nhập hoàn thành trong kỳ</td></tr>';
-        $('#supplier_summary_tbl tbody').html(supplierRows);
-        $('#supplier_ft_count').text(fmt(supplierCount));
-        $('#supplier_ft_total').text(fmtD(res.summary.total_amount));
-        var h='', total=0;
-        res.data.forEach(function(d,i){
-            var badge = d.status===2 ? '<span class="badge badge-dark">Hủy</span>' :
-                        d.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' :
-                        '<span class="badge badge-info">'+d.status_display+'</span>';
-            h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(i+1)+'</td><td><strong>'+esc(d.code)+'</strong></td><td>'+esc(d.date)+'</td>'+
-                '<td>'+esc(d.supplier)+'</td><td>'+esc(d.warehouse)+'</td>'+
-                '<td class="text-right">'+fmtD(d.total_amount)+'</td><td class="text-center">'+badge+'</td></tr>';
-            if(d.status === 1) total += d.total_amount;
-        });
-        if(!h) h = '<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
-        $('#report_tbl tbody').html(h);
-        $('#ft_total').text(fmtD(total));
+        purchaseSupplierSummaryRows = res.supplier_summary || [];
+        purchaseReportSummary = res.summary || {};
+        purchaseSupplierPageState.page = 1;
+        renderPurchaseSupplierSummary();
+        purchaseDetailRows = res.data || [];
+        purchaseDetailPageState.page = 1;
+        renderPurchaseDetails();
     });
+}
+
+function buildPurchaseSupplierPaginationButtons(currentPage, totalPages){
+    if(totalPages <= 1) return '';
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary purchase-supplier-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' purchase-supplier-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary purchase-supplier-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    return html;
+}
+
+function renderPurchaseSupplierSummary(){
+    var totalRows = purchaseSupplierSummaryRows.length;
+    var pageSize = purchaseSupplierPageState.pageSize || 25;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    purchaseSupplierPageState.page = Math.min(Math.max(purchaseSupplierPageState.page, 1), totalPages);
+    var start = (purchaseSupplierPageState.page - 1) * pageSize;
+    var end = Math.min(start + pageSize, totalRows);
+    var pageRows = purchaseSupplierSummaryRows.slice(start, end);
+
+    var supplierRows = '';
+    pageRows.forEach(function(item, i){
+        supplierRows += '<tr><td>'+(start+i+1)+'</td><td><strong>'+esc(item.supplier)+'</strong></td><td class="text-center">'+fmt(item.receipt_count)+'</td><td class="text-right font-weight-bold">'+fmtD(item.total_amount)+'</td></tr>';
+    });
+    if(!supplierRows) supplierRows = '<tr><td colspan="4" class="text-center text-muted py-3">Không có phiếu nhập hoàn thành trong kỳ</td></tr>';
+    $('#supplier_summary_tbl tbody').html(supplierRows);
+
+    var supplierCount = purchaseSupplierSummaryRows.reduce(function(total, item){
+        return total + Number(item.receipt_count || 0);
+    }, 0);
+    $('#supplier_ft_count').text(fmt(supplierCount));
+    $('#supplier_ft_total').text(fmtD(purchaseReportSummary.total_amount));
+    $('#purchase_supplier_page_size').val(String(pageSize));
+
+    if(totalRows){
+        $('#purchase_supplier_pagination_summary').html(
+            'Hiển thị <strong>' + fmt(start + 1) + '-' + fmt(end) + '</strong> / <strong>' +
+            fmt(totalRows) + '</strong> nhà cung cấp · Trang <strong>' +
+            purchaseSupplierPageState.page + '/' + totalPages + '</strong>'
+        );
+    } else {
+        $('#purchase_supplier_pagination_summary').text('Không có nhà cung cấp phù hợp.');
+    }
+    $('#purchase_supplier_pagination').html(
+        buildPurchaseSupplierPaginationButtons(purchaseSupplierPageState.page, totalPages)
+    );
+}
+
+function buildPurchaseDetailPaginationButtons(currentPage, totalPages){
+    if(totalPages <= 1) return '';
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary purchase-detail-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' purchase-detail-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary purchase-detail-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    return html;
+}
+
+function renderPurchaseDetails(){
+    var totalRows = purchaseDetailRows.length;
+    var pageSize = purchaseDetailPageState.pageSize || 25;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    purchaseDetailPageState.page = Math.min(Math.max(purchaseDetailPageState.page, 1), totalPages);
+    var start = (purchaseDetailPageState.page - 1) * pageSize;
+    var end = Math.min(start + pageSize, totalRows);
+    var pageRows = purchaseDetailRows.slice(start, end);
+
+    var h = '';
+    pageRows.forEach(function(d, i){
+        var badge = d.status===2 ? '<span class="badge badge-dark">Hủy</span>' :
+                    d.status===1 ? '<span class="badge badge-success">Hoàn thành</span>' :
+                    '<span class="badge badge-info">'+esc(d.status_display)+'</span>';
+        h += '<tr'+(d.status===2 ? ' style="background:#fce4ec;opacity:0.7;"' : '')+'><td>'+(start+i+1)+'</td><td><strong>'+esc(d.code)+'</strong></td><td>'+esc(d.date)+'</td>'+
+            '<td>'+esc(d.supplier)+'</td><td>'+esc(d.warehouse)+'</td>'+
+            '<td class="text-right">'+fmtD(d.total_amount)+'</td><td class="text-center">'+badge+'</td></tr>';
+    });
+    if(!h) h = '<tr><td colspan="7" class="text-center text-muted py-3">Không có dữ liệu</td></tr>';
+    $('#report_tbl tbody').html(h);
+
+    var total = purchaseDetailRows.reduce(function(sum, item){
+        return item.status === 1 ? sum + Number(item.total_amount || 0) : sum;
+    }, 0);
+    $('#ft_total').text(fmtD(total));
+    $('#purchase_detail_page_size').val(String(pageSize));
+
+    if(totalRows){
+        $('#purchase_detail_pagination_summary').html(
+            'Hiển thị <strong>' + fmt(start + 1) + '-' + fmt(end) + '</strong> / <strong>' +
+            fmt(totalRows) + '</strong> phiếu nhập · Trang <strong>' +
+            purchaseDetailPageState.page + '/' + totalPages + '</strong>'
+        );
+    } else {
+        $('#purchase_detail_pagination_summary').text('Không có phiếu nhập phù hợp.');
+    }
+    $('#purchase_detail_pagination').html(
+        buildPurchaseDetailPaginationButtons(purchaseDetailPageState.page, totalPages)
+    );
 }
 
 $('#btn_export').click(function(){

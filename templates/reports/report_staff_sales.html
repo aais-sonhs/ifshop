@@ -179,47 +179,64 @@
                     <i class="fas fa-trophy mr-1 text-warning"></i>
                     Bảng xếp hạng doanh thu nhân viên
                 </h6>
+                <div class="card-tools">
+                    <span id="staff_sales_column_config"></span>
+                </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm mb-0" id="staff_tbl">
                         <thead class="bg-light">
                             <tr>
-                                <th class="text-center" style="width:50px">Hạng</th>
-                                <th>Nhân viên</th>
-                                <th class="text-center">Số ĐH</th>
-                                <th class="text-right">Doanh thu</th>
-                                <th class="text-right">Giá vốn</th>
-                                <th class="text-right">Lợi nhuận</th>
-                                <th class="text-right">Trả hàng</th>
-                                <th class="text-right">DT ròng</th>
-                                <th class="text-right">Bonus</th>
-                                <th class="text-right">Công nợ</th>
-                                <th class="text-right">Đã thu</th>
-                                <th class="text-center" style="width:120px">Tỷ lệ đóng góp</th>
-                                <th class="text-right">TB/Đơn</th>
-                                <th class="text-center" style="width:40px"></th>
+                                <th data-col="rank" class="text-center" style="width:50px">Hạng</th>
+                                <th data-col="salesperson">Nhân viên</th>
+                                <th data-col="orders" class="text-center">Số ĐH</th>
+                                <th data-col="revenue" class="text-right">Doanh thu</th>
+                                <th data-col="cost" class="text-right">Giá vốn</th>
+                                <th data-col="profit" class="text-right">Lợi nhuận</th>
+                                <th data-col="returns" class="text-right">Trả hàng</th>
+                                <th data-col="net_revenue" class="text-right">DT ròng</th>
+                                <th data-col="bonus" class="text-right">Bonus</th>
+                                <th data-col="debt" class="text-right">Công nợ</th>
+                                <th data-col="paid" class="text-right">Đã thu</th>
+                                <th data-col="contribution" class="text-center" style="width:120px">Tỷ lệ đóng góp</th>
+                                <th data-col="average" class="text-right">TB/Đơn</th>
+                                <th data-col="actions" class="text-center" style="width:40px"></th>
                             </tr>
                         </thead>
                         <tbody id="staff_tbody"></tbody>
                         <tfoot class="font-weight-bold bg-light">
                             <tr>
-                                <td colspan="2">TỔNG CỘNG</td>
-                                <td class="text-center" id="ft_orders">0</td>
-                                <td class="text-right" id="ft_revenue">0</td>
-                                <td class="text-right" id="ft_cost">0</td>
-                                <td class="text-right" id="ft_profit">0</td>
-                                <td class="text-right" id="ft_returns">0</td>
-                                <td class="text-right" id="ft_net">0</td>
-                                <td class="text-right" id="ft_bonus">0</td>
-                                <td class="text-right" id="ft_debt">0</td>
-                                <td class="text-right" id="ft_paid">0</td>
-                                <td class="text-center">100%</td>
-                                <td class="text-right" id="ft_avg">0</td>
-                                <td></td>
+                                <td data-col="rank"></td>
+                                <td data-col="salesperson">TỔNG CỘNG</td>
+                                <td data-col="orders" class="text-center" id="ft_orders">0</td>
+                                <td data-col="revenue" class="text-right" id="ft_revenue">0</td>
+                                <td data-col="cost" class="text-right" id="ft_cost">0</td>
+                                <td data-col="profit" class="text-right" id="ft_profit">0</td>
+                                <td data-col="returns" class="text-right" id="ft_returns">0</td>
+                                <td data-col="net_revenue" class="text-right" id="ft_net">0</td>
+                                <td data-col="bonus" class="text-right" id="ft_bonus">0</td>
+                                <td data-col="debt" class="text-right" id="ft_debt">0</td>
+                                <td data-col="paid" class="text-right" id="ft_paid">0</td>
+                                <td data-col="contribution" class="text-center">100%</td>
+                                <td data-col="average" class="text-right" id="ft_avg">0</td>
+                                <td data-col="actions"></td>
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+                <div class="d-flex align-items-center justify-content-between flex-wrap px-3 py-2 border-top" style="gap:8px;">
+                    <div id="staff_sales_pagination_summary" class="small text-muted">Chưa có dữ liệu.</div>
+                    <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
+                        <label for="staff_sales_page_size" class="small text-muted mb-0">Hiển thị</label>
+                        <select id="staff_sales_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                            <option value="25">25 dòng</option>
+                            <option value="50">50 dòng</option>
+                            <option value="100">100 dòng</option>
+                            <option value="200">200 dòng</option>
+                        </select>
+                        <div id="staff_sales_pagination" class="d-flex flex-wrap" style="gap:6px;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -280,11 +297,38 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="/static/js/column_config.js"></script>
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
 
 var _staffData = []; // cache for modal
+var staffSalesColumnConfig = null;
+var STAFF_SALES_COLUMNS = [
+    {key:'rank', label:'Hạng', default:true},
+    {key:'salesperson', label:'Nhân viên', default:true, alwaysOn:true},
+    {key:'orders', label:'Số đơn hàng', default:true},
+    {key:'revenue', label:'Doanh thu', default:true},
+    {key:'cost', label:'Giá vốn', default:true},
+    {key:'profit', label:'Lợi nhuận', default:true},
+    {key:'returns', label:'Trả hàng', default:true},
+    {key:'net_revenue', label:'Doanh thu ròng', default:true},
+    {key:'bonus', label:'Bonus', default:true},
+    {key:'debt', label:'Công nợ', default:true},
+    {key:'paid', label:'Đã thu', default:true},
+    {key:'contribution', label:'Tỷ lệ đóng góp', default:true},
+    {key:'average', label:'Trung bình/đơn', default:true},
+    {key:'actions', label:'Xem chi tiết', default:true}
+];
+var STAFF_SALES_PAGE_SIZE_KEY = 'ifshop_report_staff_sales_page_size';
+var STAFF_SALES_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+var staffSalesPageState = {
+    page: 1,
+    pageSize: (function(){
+        var saved = parseInt(localStorage.getItem(STAFF_SALES_PAGE_SIZE_KEY) || '25', 10);
+        return STAFF_SALES_PAGE_SIZE_OPTIONS.indexOf(saved) >= 0 ? saved : 25;
+    })()
+};
 
 $(document).ready(function(){
     var today = new Date();
@@ -292,11 +336,31 @@ $(document).ready(function(){
     $('#filter_from_date').val(firstDay.toISOString().split('T')[0]);
     $('#filter_to_date').val(today.toISOString().split('T')[0]);
 
+    initStaffSalesColumnConfig();
     loadReport();
 
     $('#btn_search').click(function(){ loadReport(); });
     $('#filter_store_id').change(function(){ loadReport(); });
     $('#filter_salesperson').change(function(){ loadReport(); });
+    $('#staff_sales_page_size').val(String(staffSalesPageState.pageSize));
+    $('#staff_sales_page_size').on('change', function(){
+        var pageSize = parseInt($(this).val() || '25', 10);
+        staffSalesPageState.pageSize = STAFF_SALES_PAGE_SIZE_OPTIONS.indexOf(pageSize) >= 0
+            ? pageSize
+            : 25;
+        staffSalesPageState.page = 1;
+        localStorage.setItem(STAFF_SALES_PAGE_SIZE_KEY, String(staffSalesPageState.pageSize));
+        renderStaffTable();
+    });
+    $(document).on('click', '.staff-sales-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === staffSalesPageState.page) return;
+        staffSalesPageState.page = page;
+        renderStaffTable();
+        var staffTable = document.getElementById('staff_tbl');
+        if(staffTable) staffTable.scrollIntoView({behavior:'smooth', block:'start'});
+    });
 
     // Export Excel
     $('#btn_export').click(function(){
@@ -308,6 +372,16 @@ $(document).ready(function(){
         window.location.href = url;
     });
 });
+
+function initStaffSalesColumnConfig(){
+    if(typeof ColumnConfig !== 'function') return;
+    staffSalesColumnConfig = new ColumnConfig({
+        storageKey: 'ifshop_report_staff_sales_columns_v1_user_{{ request.user.id|default:"anonymous" }}',
+        tableSelector: '#staff_tbl',
+        buttonContainer: '#staff_sales_column_config',
+        columns: STAFF_SALES_COLUMNS
+    });
+}
 
 function loadReport(){
     var from = $('#filter_from_date').val();
@@ -321,7 +395,8 @@ function loadReport(){
     $.get(url, function(res){
         if(res.status !== 'ok') return;
 
-        _staffData = res.staff_data;
+        _staffData = res.staff_data || [];
+        staffSalesPageState.page = 1;
 
         // Store filter
         if(res.has_multiple_stores && res.stores && res.stores.length > 1){
@@ -357,84 +432,136 @@ function loadReport(){
         $('#kpi_paid').text(fmtD(s.grand_paid));
         $('#kpi_debt').text(fmtD(s.grand_debt));
 
-        // Staff table
-        if(!res.staff_data || res.staff_data.length === 0){
-            $('#staff_tbody').html('');
-            $('#empty_state').show();
-            $('#staff_tbl').closest('.card').hide();
-            return;
-        }
-        $('#empty_state').hide();
-        $('#staff_tbl').closest('.card').show();
-
-        var html = '';
-        var maxRevenue = Math.max.apply(null, res.staff_data.map(function(d){ return d.revenue; })) || 1;
-        var tOrders=0, tRevenue=0, tCost=0, tProfit=0, tReturns=0, tNet=0, tBonus=0, tDebt=0, tPaid=0;
-
-        res.staff_data.forEach(function(d, i){
-            var rank = d.rank;
-            var rankClass = rank <= 3 ? 'rank-'+rank : 'rank-other';
-            var rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-            var profitCls = d.profit >= 0 ? 'text-success' : 'text-danger';
-            var barWidth = Math.round((d.revenue / maxRevenue) * 100);
-
-            html += '<tr class="staff-row" data-idx="'+i+'">';
-            html += '<td class="text-center"><span class="rank-badge '+rankClass+'">'+rankIcon+'</span></td>';
-            html += '<td><strong>'+d.salesperson+'</strong>';
-            // Top products as pills
-            if(d.top_products && d.top_products.length > 0){
-                html += '<br>';
-                d.top_products.forEach(function(p){
-                    html += '<span class="top-pill">'+p.name+' ('+fmt(p.qty)+')</span>';
-                });
-            }
-            html += '</td>';
-            html += '<td class="text-center"><strong>'+d.order_count+'</strong></td>';
-            html += '<td class="text-right"><strong>'+fmtD(d.revenue)+'</strong></td>';
-            html += '<td class="text-right">'+fmtD(d.cost)+'</td>';
-            html += '<td class="text-right '+profitCls+'"><strong>'+fmtD(d.profit)+'</strong></td>';
-            html += '<td class="text-right">'+(d.returns_amount > 0 ? '<span class="text-danger">'+fmtD(d.returns_amount)+'</span>' : '-')+'</td>';
-            html += '<td class="text-right"><strong>'+fmtD(d.net_revenue)+'</strong></td>';
-            html += '<td class="text-right">'+(d.bonus > 0 ? '<span class="text-info">'+fmtD(d.bonus)+'</span>' : '-')+'</td>';
-            html += '<td class="text-right">'+(d.debt !== 0 ? '<span class="'+(d.debt > 0 ? 'text-danger' : 'text-success')+'">'+fmtD(d.debt)+'</span>' : '<span class="text-muted">0đ</span>')+'</td>';
-            html += '<td class="text-right">'+fmtD(d.paid)+'</td>';
-            // Contribution bar
-            html += '<td class="text-center">';
-            html += '<div class="contrib-bar-wrap">';
-            html += '<div class="contrib-bar" style="width:'+barWidth+'%"></div>';
-            html += '<div class="contrib-bar-text">'+d.contribution+'%</div>';
-            html += '</div></td>';
-            html += '<td class="text-right"><small class="text-muted">'+fmtD(d.avg_per_order)+'</small></td>';
-            html += '<td class="text-center"><button class="btn btn-xs btn-outline-primary" title="Xem chi tiết" onclick="showStaffOrders('+i+')"><i class="fas fa-eye"></i></button></td>';
-            html += '</tr>';
-
-            tOrders += d.order_count;
-            tRevenue += d.revenue;
-            tCost += d.cost;
-            tProfit += d.profit;
-            tReturns += d.returns_amount;
-            tNet += d.net_revenue;
-            tBonus += d.bonus;
-            tDebt += d.debt;
-            tPaid += d.paid;
-        });
-
-        $('#staff_tbody').html(html);
-
-        // Footer totals
-        $('#ft_orders').text(fmt(tOrders));
-        $('#ft_revenue').text(fmtD(tRevenue));
-        $('#ft_cost').text(fmtD(tCost));
-        var ftProfitCls = tProfit >= 0 ? 'text-success' : 'text-danger';
-        $('#ft_profit').html('<span class="'+ftProfitCls+'">'+fmtD(tProfit)+'</span>');
-        $('#ft_returns').text(fmtD(tReturns));
-        $('#ft_net').text(fmtD(tNet));
-        $('#ft_bonus').text(fmtD(tBonus));
-        $('#ft_debt').text(fmtD(tDebt));
-        $('#ft_paid').text(fmtD(tPaid));
-        var avgAll = tOrders > 0 ? Math.round(tRevenue / tOrders) : 0;
-        $('#ft_avg').text(fmtD(avgAll));
+        renderStaffTable();
     });
+}
+
+function buildStaffSalesPaginationButtons(currentPage, totalPages){
+    if(totalPages <= 1) return '';
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){
+        return values.indexOf(page) === index;
+    }).sort(function(a, b){ return a - b; });
+
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary staff-sales-page-btn" data-page="' +
+        (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') +
+            ' staff-sales-page-btn" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary staff-sales-page-btn" data-page="' +
+        (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    return html;
+}
+
+function renderStaffTable(){
+    var totalRows = _staffData.length;
+    if(!totalRows){
+        $('#staff_tbody').html('');
+        $('#staff_sales_pagination_summary').text('Không có nhân viên phù hợp.');
+        $('#staff_sales_pagination').empty();
+        $('#empty_state').show();
+        $('#staff_tbl').closest('.card').hide();
+        return;
+    }
+
+    $('#empty_state').hide();
+    $('#staff_tbl').closest('.card').show();
+
+    var pageSize = staffSalesPageState.pageSize;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    staffSalesPageState.page = Math.min(Math.max(staffSalesPageState.page, 1), totalPages);
+    var start = (staffSalesPageState.page - 1) * pageSize;
+    var end = Math.min(start + pageSize, totalRows);
+    var pageRows = _staffData.slice(start, end);
+    var maxRevenue = Math.max.apply(null, _staffData.map(function(d){ return d.revenue; })) || 1;
+    var html = '';
+    var tOrders=0, tRevenue=0, tCost=0, tProfit=0, tReturns=0, tNet=0, tBonus=0, tDebt=0, tPaid=0;
+
+    _staffData.forEach(function(d){
+        tOrders += d.order_count;
+        tRevenue += d.revenue;
+        tCost += d.cost;
+        tProfit += d.profit;
+        tReturns += d.returns_amount;
+        tNet += d.net_revenue;
+        tBonus += d.bonus;
+        tDebt += d.debt;
+        tPaid += d.paid;
+    });
+
+    pageRows.forEach(function(d, i){
+        var dataIndex = start + i;
+        var rank = d.rank;
+        var rankClass = rank <= 3 ? 'rank-'+rank : 'rank-other';
+        var rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+        var profitCls = d.profit >= 0 ? 'text-success' : 'text-danger';
+        var barWidth = Math.round((d.revenue / maxRevenue) * 100);
+
+        html += '<tr class="staff-row" data-idx="'+dataIndex+'">';
+        html += '<td data-col="rank" class="text-center"><span class="rank-badge '+rankClass+'">'+rankIcon+'</span></td>';
+        html += '<td data-col="salesperson"><strong>'+d.salesperson+'</strong>';
+        if(d.top_products && d.top_products.length > 0){
+            html += '<br>';
+            d.top_products.forEach(function(p){
+                html += '<span class="top-pill">'+p.name+' ('+fmt(p.qty)+')</span>';
+            });
+        }
+        html += '</td>';
+        html += '<td data-col="orders" class="text-center"><strong>'+d.order_count+'</strong></td>';
+        html += '<td data-col="revenue" class="text-right"><strong>'+fmtD(d.revenue)+'</strong></td>';
+        html += '<td data-col="cost" class="text-right">'+fmtD(d.cost)+'</td>';
+        html += '<td data-col="profit" class="text-right '+profitCls+'"><strong>'+fmtD(d.profit)+'</strong></td>';
+        html += '<td data-col="returns" class="text-right">'+(d.returns_amount > 0 ? '<span class="text-danger">'+fmtD(d.returns_amount)+'</span>' : '-')+'</td>';
+        html += '<td data-col="net_revenue" class="text-right"><strong>'+fmtD(d.net_revenue)+'</strong></td>';
+        html += '<td data-col="bonus" class="text-right">'+(d.bonus > 0 ? '<span class="text-info">'+fmtD(d.bonus)+'</span>' : '-')+'</td>';
+        html += '<td data-col="debt" class="text-right">'+(d.debt !== 0 ? '<span class="'+(d.debt > 0 ? 'text-danger' : 'text-success')+'">'+fmtD(d.debt)+'</span>' : '<span class="text-muted">0đ</span>')+'</td>';
+        html += '<td data-col="paid" class="text-right">'+fmtD(d.paid)+'</td>';
+        html += '<td data-col="contribution" class="text-center">';
+        html += '<div class="contrib-bar-wrap">';
+        html += '<div class="contrib-bar" style="width:'+barWidth+'%"></div>';
+        html += '<div class="contrib-bar-text">'+d.contribution+'%</div>';
+        html += '</div></td>';
+        html += '<td data-col="average" class="text-right"><small class="text-muted">'+fmtD(d.avg_per_order)+'</small></td>';
+        html += '<td data-col="actions" class="text-center"><button class="btn btn-xs btn-outline-primary" title="Xem chi tiết" onclick="showStaffOrders('+dataIndex+')"><i class="fas fa-eye"></i></button></td>';
+        html += '</tr>';
+    });
+
+    $('#staff_tbody').html(html);
+    if(staffSalesColumnConfig) staffSalesColumnConfig.apply();
+    $('#ft_orders').text(fmt(tOrders));
+    $('#ft_revenue').text(fmtD(tRevenue));
+    $('#ft_cost').text(fmtD(tCost));
+    var ftProfitCls = tProfit >= 0 ? 'text-success' : 'text-danger';
+    $('#ft_profit').html('<span class="'+ftProfitCls+'">'+fmtD(tProfit)+'</span>');
+    $('#ft_returns').text(fmtD(tReturns));
+    $('#ft_net').text(fmtD(tNet));
+    $('#ft_bonus').text(fmtD(tBonus));
+    $('#ft_debt').text(fmtD(tDebt));
+    $('#ft_paid').text(fmtD(tPaid));
+    var avgAll = tOrders > 0 ? Math.round(tRevenue / tOrders) : 0;
+    $('#ft_avg').text(fmtD(avgAll));
+
+    $('#staff_sales_page_size').val(String(pageSize));
+    $('#staff_sales_pagination_summary').html(
+        'Hiển thị <strong>' + fmt(start + 1) + '-' + fmt(end) + '</strong> / <strong>' +
+        fmt(totalRows) + '</strong> nhân viên · Trang <strong>' +
+        staffSalesPageState.page + '/' + totalPages + '</strong>'
+    );
+    $('#staff_sales_pagination').html(
+        buildStaffSalesPaginationButtons(staffSalesPageState.page, totalPages)
+    );
 }
 
 function showStaffOrders(idx){

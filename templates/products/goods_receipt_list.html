@@ -246,8 +246,8 @@ var GOODS_RECEIPT_OPENED = false;
 var GOODS_RECEIPT_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(GOODS_RECEIPT_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(GOODS_RECEIPT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })(),
     meta: null
 };
@@ -450,7 +450,7 @@ $(document).ready(function(){
     });
 
     $('#goods_receipt_page_size').change(function(){
-        GOODS_RECEIPT_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        GOODS_RECEIPT_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
         localStorage.setItem(GOODS_RECEIPT_PAGE_SIZE_KEY, String(GOODS_RECEIPT_PAGE_STATE.page_size));
         resetGoodsReceiptPage();
         loadData();
@@ -1138,14 +1138,14 @@ function loadData(){
     var params = $.extend({}, getGoodsReceiptFilters(), {
         receipt_id: GOODS_RECEIPT_OPEN_ID,
         page: GOODS_RECEIPT_PAGE_STATE.page || 1,
-        page_size: GOODS_RECEIPT_PAGE_STATE.page_size || 50
+        page_size: GOODS_RECEIPT_PAGE_STATE.page_size || 25
     });
     var request = $.get('/api/goods-receipts/', params);
     GOODS_RECEIPT_LIST_XHR = request;
     request.done(function(res){
         GOODS_RECEIPT_PAGE_STATE.meta = res.meta || {};
         GOODS_RECEIPT_PAGE_STATE.page = Number((res.meta && res.meta.page) || GOODS_RECEIPT_PAGE_STATE.page || 1);
-        GOODS_RECEIPT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || GOODS_RECEIPT_PAGE_STATE.page_size || 50);
+        GOODS_RECEIPT_PAGE_STATE.page_size = Number((res.meta && res.meta.page_size) || GOODS_RECEIPT_PAGE_STATE.page_size || 25);
         $('#goods_receipt_page_size').val(String(GOODS_RECEIPT_PAGE_STATE.page_size));
         var h = '';
         var startIndex = Number((res.meta && res.meta.start_index) || 1);

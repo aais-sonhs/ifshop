@@ -175,8 +175,8 @@ var STOCK_CHECK_OPENED = false;
 var STOCK_CHECK_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(STOCK_CHECK_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(STOCK_CHECK_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })(),
     meta: null
 };
@@ -334,7 +334,7 @@ $(document).ready(function(){
     });
 
     $('#stock_check_page_size').change(function(){
-        STOCK_CHECK_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        STOCK_CHECK_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
         localStorage.setItem(STOCK_CHECK_PAGE_SIZE_KEY, String(STOCK_CHECK_PAGE_STATE.page_size));
         STOCK_CHECK_PAGE_STATE.page = 1;
         loadData();
@@ -984,14 +984,14 @@ function loadData(){
         date_from: $('#stock_check_date_from').val() || '',
         date_to: $('#stock_check_date_to').val() || '',
         page: STOCK_CHECK_PAGE_STATE.page || 1,
-        page_size: STOCK_CHECK_PAGE_STATE.page_size || 50
+        page_size: STOCK_CHECK_PAGE_STATE.page_size || 25
     });
     STOCK_CHECK_LIST_XHR = request;
     request.done(function(res){
         var meta = res.meta || {};
         STOCK_CHECK_PAGE_STATE.meta = meta;
         STOCK_CHECK_PAGE_STATE.page = Number(meta.page || STOCK_CHECK_PAGE_STATE.page || 1);
-        STOCK_CHECK_PAGE_STATE.page_size = Number(meta.page_size || STOCK_CHECK_PAGE_STATE.page_size || 50);
+        STOCK_CHECK_PAGE_STATE.page_size = Number(meta.page_size || STOCK_CHECK_PAGE_STATE.page_size || 25);
         $('#stock_check_page_size').val(String(STOCK_CHECK_PAGE_STATE.page_size));
         var h = '';
         var startIndex = Number(meta.start_index || 1);

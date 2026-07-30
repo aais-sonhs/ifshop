@@ -1274,7 +1274,7 @@ def supplier_tbl(request):
 @login_required(login_url="/login/")
 def api_get_products(request):
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
 
     base_queryset = filter_by_store(Product.objects.all(), request)
     total_all_count = base_queryset.count()
@@ -1957,7 +1957,7 @@ def api_delete_warehouse(request):
 @login_required(login_url="/login/")
 def api_get_suppliers(request):
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     search = (request.GET.get('q') or '').strip()
     status = (request.GET.get('status') or '').strip().lower()
 
@@ -2289,7 +2289,7 @@ def _serialize_goods_receipt_list(receipts):
 def api_get_goods_receipts(request):
     """Trả về danh sách phiếu nhập trong phạm vi store mà user được phép xem."""
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     receipt_id = _to_optional_positive_int(request.GET.get('receipt_id') or request.GET.get('open_receipt'))
 
     receipts = (
@@ -2979,7 +2979,7 @@ def _reverse_applied_stock_check(stock_check):
 @login_required(login_url="/login/")
 def api_get_stock_checks(request):
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     search = (request.GET.get('q') or '').strip()
     status = (request.GET.get('status') or '').strip()
     warehouse_id = (request.GET.get('warehouse_id') or '').strip()

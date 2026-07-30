@@ -3063,7 +3063,7 @@ def _build_order_status_counts(queryset):
 @login_required(login_url="/login/")
 def api_get_orders(request):
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     filters = _get_order_list_filters(request)
 
     base_queryset = filter_by_store(Order.objects.all(), request).annotate(
@@ -5773,6 +5773,7 @@ def export_orders_excel(request):
         'customer', 'warehouse', 'created_by'
     ).prefetch_related(
         'items__product',
+        'items__variant',
         Prefetch('receipts', queryset=active_receipts, to_attr='active_receipts'),
     ).all().order_by('-order_date', '-id')
     orders = filter_by_store(orders, request)
@@ -5788,7 +5789,7 @@ def export_orders_excel(request):
         {'key': 'date', 'label': 'Ngày', 'width': 13},
         {'key': 'created_at', 'label': 'Ngày tạo', 'width': 18},
         {'key': 'customer', 'label': 'Khách hàng', 'width': 24},
-        {'key': 'products', 'label': 'Sản phẩm', 'width': 32},
+        {'key': 'product_count', 'label': 'Số dòng SP', 'width': 12},
         {'key': 'warehouse', 'label': 'Kho', 'width': 16},
         {'key': 'total', 'label': 'Tổng tiền hàng', 'width': 16},
         {'key': 'discount', 'label': 'Chiết khấu', 'width': 14},
@@ -5805,6 +5806,8 @@ def export_orders_excel(request):
     ]
 
     rows = []
+    product_detail_rows = []
+    product_detail_total = Decimal('0')
     total_final = 0
     total_paid = 0
     total_debt = 0
@@ -5817,10 +5820,7 @@ def export_orders_excel(request):
             for r in receipts
             if r.get_payment_method_label()
         })
-        products = [
-            ' - '.join(part for part in [_item_display_code(it), _item_display_name(it)] if part)
-            for it in o.items.all()
-        ]
+        order_items = list(o.items.all())
         goods_amount = o.total_amount or Decimal('0')
         debt = max(float(o.final_amount) - float(o.paid_amount), 0)
         total_goods += goods_amount
@@ -5846,7 +5846,7 @@ def export_orders_excel(request):
             'date': o.order_date,
             'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
             'customer': _order_customer_label(o),
-            'products': ', '.join(products),
+            'product_count': len(order_items),
             'warehouse': o.warehouse.name if o.warehouse else '',
             'total': float(goods_amount),
             'discount': float(o.discount_amount),
@@ -5861,6 +5861,26 @@ def export_orders_excel(request):
             'creator': _order_creator_display(o),
             'note': o.note or '',
         })
+
+        for item in order_items:
+            product_detail_total += item.total_price or Decimal('0')
+            product_detail_rows.append({
+                'stt': len(product_detail_rows) + 1,
+                'order_code': o.code,
+                'order_date': o.order_date,
+                'customer': _order_customer_label(o),
+                'product_code': _item_display_code(item),
+                'product_name': _item_display_name(item),
+                'variant': item.variant.size_name if item.variant else '',
+                'unit': _item_display_unit(item),
+                'quantity': item.quantity,
+                'unit_price': item.unit_price,
+                'discount_percent': item.discount_percent,
+                'discount_amount': item.discount_amount,
+                'total_price': item.total_price,
+                'warehouse': o.warehouse.name if o.warehouse else '',
+                'note': item.note or '',
+            })
 
     period = ''
     if date_from and date_to:
@@ -5886,6 +5906,23 @@ def export_orders_excel(request):
         {'key': 'order_count', 'label': 'Số đơn hàng', 'width': 16},
         {'key': 'goods_total', 'label': 'Tổng tiền hàng', 'width': 22},
     ]
+    product_detail_columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 8},
+        {'key': 'order_code', 'label': 'Mã ĐH', 'width': 16},
+        {'key': 'order_date', 'label': 'Ngày', 'width': 13},
+        {'key': 'customer', 'label': 'Khách hàng', 'width': 28},
+        {'key': 'product_code', 'label': 'Mã SP', 'width': 18},
+        {'key': 'product_name', 'label': 'Tên sản phẩm / dịch vụ', 'width': 36},
+        {'key': 'variant', 'label': 'Biến thể / quy cách', 'width': 20},
+        {'key': 'unit', 'label': 'ĐVT', 'width': 10},
+        {'key': 'quantity', 'label': 'Số lượng', 'width': 12},
+        {'key': 'unit_price', 'label': 'Đơn giá', 'width': 16},
+        {'key': 'discount_percent', 'label': 'CK (%)', 'width': 11},
+        {'key': 'discount_amount', 'label': 'CK (tiền)', 'width': 15},
+        {'key': 'total_price', 'label': 'Thành tiền', 'width': 18},
+        {'key': 'warehouse', 'label': 'Kho', 'width': 18},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 30},
+    ]
 
     return excel_response(
         title='DANH SÁCH ĐƠN HÀNG',
@@ -5894,8 +5931,27 @@ def export_orders_excel(request):
         rows=rows,
         filename=f'Don_hang_{datetime.now().strftime("%Y%m%d")}',
         money_cols=['total', 'discount', 'shipping', 'other_fee', 'final', 'paid', 'debt'],
-        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'final': total_final, 'paid': total_paid, 'debt': total_debt},
+        total_row={
+            'stt': '',
+            'code': 'TỔNG CỘNG',
+            'product_count': len(product_detail_rows),
+            'total': total_goods,
+            'final': total_final,
+            'paid': total_paid,
+            'debt': total_debt,
+        },
         extra_sheets=[{
+            'sheet_name': 'Chi tiết sản phẩm',
+            'title': 'CHI TIẾT SẢN PHẨM TRONG ĐƠN HÀNG',
+            'subtitle': f'{export_subtitle} · Mỗi sản phẩm là một dòng riêng',
+            'columns': product_detail_columns,
+            'rows': product_detail_rows,
+            'money_cols': ['unit_price', 'discount_amount', 'total_price'],
+            'total_row': {
+                'product_name': 'TỔNG CỘNG',
+                'total_price': product_detail_total,
+            },
+        }, {
             'sheet_name': 'Tổng tiền theo khách',
             'title': 'TỔNG TIỀN HÀNG THEO KHÁCH HÀNG',
             'subtitle': f'{export_subtitle} · Tổng hợp từ danh sách đơn hàng',

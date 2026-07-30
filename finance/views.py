@@ -865,7 +865,7 @@ def _serialize_finance_entries(rows):
 @login_required(login_url="/login/")
 def api_get_finance_entries(request):
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     entries = _get_finance_entry_queryset(request)
     paginator = Paginator(entries, page_size)
     page_obj = paginator.get_page(page)
@@ -923,7 +923,7 @@ def api_get_payments(request):
         })
 
     page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
-    page_size = _to_positive_int(request.GET.get('page_size'), default=50, minimum=10, maximum=200)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
     paginator = Paginator(payments, page_size)
     page_obj = paginator.get_page(page)
     data = _serialize_payment_list(page_obj.object_list)

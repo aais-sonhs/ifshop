@@ -1995,8 +1995,8 @@ var ORDER_DATE_FILTER_BASIS = 'order';
 var ORDER_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(ORDER_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(ORDER_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })(),
     meta: null
 };
@@ -6703,7 +6703,7 @@ function getOrderRequestParams(){
     var filters = getCurrentOrderFilters();
     var params = {
         page: ORDER_PAGE_STATE.page || 1,
-        page_size: ORDER_PAGE_STATE.page_size || 50
+        page_size: ORDER_PAGE_STATE.page_size || 25
     };
     Object.keys(filters).forEach(function(key){
         if(filters[key] !== '' && filters[key] !== null && filters[key] !== undefined){
@@ -6856,7 +6856,7 @@ function loadData(){
         }
         ORDER_PAGE_STATE.meta = meta;
         ORDER_PAGE_STATE.page = Number(meta.page || ORDER_PAGE_STATE.page || 1);
-        ORDER_PAGE_STATE.page_size = Number(meta.page_size || ORDER_PAGE_STATE.page_size || 50);
+        ORDER_PAGE_STATE.page_size = Number(meta.page_size || ORDER_PAGE_STATE.page_size || 25);
         $('#order_page_size').val(String(ORDER_PAGE_STATE.page_size));
         renderOrderStatusCounts(meta);
         renderOrderFilterSummary(
@@ -7094,7 +7094,7 @@ $('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to'
     loadData();
 });
 $('#order_page_size').change(function(){
-    ORDER_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+    ORDER_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
     localStorage.setItem(ORDER_PAGE_SIZE_KEY, String(ORDER_PAGE_STATE.page_size));
     resetOrderPage();
     loadData();

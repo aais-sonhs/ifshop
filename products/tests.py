@@ -1063,7 +1063,7 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(response, 'id="supplier_pagination_summary"')
         self.assertContains(response, 'id="supplier_pagination"')
         self.assertContains(response, "q: ($('#supplier_search').val() || '').trim()")
-        self.assertContains(response, 'page_size: SUPPLIER_PAGE_STATE.page_size || 50')
+        self.assertContains(response, 'page_size: SUPPLIER_PAGE_STATE.page_size || 25')
 
     def test_supplier_create_and_edit_only_confirm_close_when_form_changed(self):
         response = self.client.get(reverse('supplier_tbl'))

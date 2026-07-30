@@ -78,8 +78,8 @@
                 <div id="inventory_pagination_summary" class="text-muted small mr-2"></div>
                 <label for="inventory_page_size" class="small text-muted mb-0">Hiển thị</label>
                 <select id="inventory_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
-                    <option value="25">25 dòng</option>
-                    <option value="50" selected>50 dòng</option>
+                    <option value="25" selected>25 dòng</option>
+                    <option value="50">50 dòng</option>
                     <option value="100">100 dòng</option>
                     <option value="200">200 dòng</option>
                 </select>
@@ -269,8 +269,8 @@ var INVENTORY_PAGE_SIZE_KEY = 'ifshop_inventory_page_size';
 var INVENTORY_PAGE_STATE = {
     page: 1,
     page_size: (function(){
-        var saved = parseInt(localStorage.getItem(INVENTORY_PAGE_SIZE_KEY) || '50', 10);
-        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 50;
+        var saved = parseInt(localStorage.getItem(INVENTORY_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })()
 };
 
@@ -322,7 +322,7 @@ $(document).ready(function() {
 
     // Pagination controls
     $('#inventory_page_size').change(function() {
-        INVENTORY_PAGE_STATE.page_size = parseInt($(this).val() || '50', 10) || 50;
+        INVENTORY_PAGE_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
         localStorage.setItem(INVENTORY_PAGE_SIZE_KEY, String(INVENTORY_PAGE_STATE.page_size));
         INVENTORY_PAGE_STATE.page = 1;
         renderInventoryTable();
@@ -627,7 +627,7 @@ function renderInventoryTable() {
 
     // Pagination
     var totalRows = rows.length;
-    var pageSize = INVENTORY_PAGE_STATE.page_size || 50;
+    var pageSize = INVENTORY_PAGE_STATE.page_size || 25;
     var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
     if (INVENTORY_PAGE_STATE.page > totalPages) INVENTORY_PAGE_STATE.page = totalPages;
     if (INVENTORY_PAGE_STATE.page < 1) INVENTORY_PAGE_STATE.page = 1;

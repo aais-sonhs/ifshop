@@ -2051,6 +2051,89 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn(matching_order.code, exported_codes)
         self.assertNotIn(exported_order.code, exported_codes)
 
+    def test_export_orders_excel_adds_one_product_per_detail_row(self):
+        product = Product.objects.create(
+            store=self.store,
+            code='SP-EXCEL-DETAIL',
+            name='Sản phẩm chi tiết Excel',
+            unit='Cái',
+            created_by=self.user,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            size_name='Hộp 500ml',
+            sku='SKU-EXCEL-DETAIL',
+        )
+        order = self._create_order(code='DH-EXCEL-DETAIL', status=5)
+        order.total_amount = 32500
+        order.final_amount = 32500
+        order.save(update_fields=['total_amount', 'final_amount'])
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            variant=variant,
+            quantity=2,
+            unit_price=12500,
+            discount_mode='percent',
+            discount_percent=10,
+            discount_amount=2500,
+            total_price=22500,
+            note='Giao nguyên hộp',
+        )
+        OrderItem.objects.create(
+            order=order,
+            item_name='Phí đóng gói',
+            unit='Gói',
+            is_service_line=True,
+            quantity=1,
+            unit_price=10000,
+            total_price=10000,
+        )
+
+        response = self.client.get('/api/orders/export-excel/', {
+            'text': order.code,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        workbook = openpyxl.load_workbook(BytesIO(response.content), data_only=True)
+        self.assertEqual(
+            workbook.sheetnames,
+            ['DANH SÁCH ĐƠN HÀNG', 'Chi tiết sản phẩm', 'Tổng tiền theo khách'],
+        )
+
+        order_sheet = workbook['DANH SÁCH ĐƠN HÀNG']
+        order_headers = [cell.value for cell in order_sheet[4]]
+        self.assertIn('Số dòng SP', order_headers)
+        self.assertNotIn('Sản phẩm', order_headers)
+        product_count_col = order_headers.index('Số dòng SP') + 1
+        self.assertEqual(order_sheet.cell(row=5, column=product_count_col).value, 2)
+
+        detail_sheet = workbook['Chi tiết sản phẩm']
+        detail_headers = [cell.value for cell in detail_sheet[4]]
+        self.assertEqual(detail_headers, [
+            'STT', 'Mã ĐH', 'Ngày', 'Khách hàng', 'Mã SP',
+            'Tên sản phẩm / dịch vụ', 'Biến thể / quy cách', 'ĐVT',
+            'Số lượng', 'Đơn giá', 'CK (%)', 'CK (tiền)', 'Thành tiền',
+            'Kho', 'Ghi chú',
+        ])
+        self.assertNotIn('Giá vốn', detail_headers)
+        self.assertNotIn('Lợi nhuận', detail_headers)
+
+        product_row = [detail_sheet.cell(row=5, column=column).value for column in range(1, 16)]
+        self.assertEqual(product_row, [
+            1, order.code, date.today().strftime('%d/%m/%Y'), self.customer.name,
+            product.code, product.name, variant.size_name, product.unit,
+            2, 12500, 10, 2500, 22500, self.warehouse.name, 'Giao nguyên hộp',
+        ])
+        service_row = [detail_sheet.cell(row=6, column=column).value for column in range(1, 16)]
+        self.assertEqual(service_row[0:8], [
+            2, order.code, date.today().strftime('%d/%m/%Y'), self.customer.name,
+            'DV', 'Phí đóng gói', None, 'Gói',
+        ])
+        self.assertEqual(service_row[8:13], [1, 10000, 0, 0, 10000])
+        self.assertEqual(detail_sheet.cell(row=7, column=6).value, 'TỔNG CỘNG')
+        self.assertEqual(detail_sheet.cell(row=7, column=13).value, 32500)
+
     def test_export_orders_excel_adds_goods_totals_grouped_by_customer(self):
         customer_a = Customer.objects.create(
             store=self.store,
@@ -2084,7 +2167,7 @@ class OrderRiskFlowTests(TestCase):
         workbook = openpyxl.load_workbook(BytesIO(response.content), data_only=True)
         self.assertEqual(
             workbook.sheetnames,
-            ['DANH SÁCH ĐƠN HÀNG', 'Tổng tiền theo khách'],
+            ['DANH SÁCH ĐƠN HÀNG', 'Chi tiết sản phẩm', 'Tổng tiền theo khách'],
         )
 
         summary_sheet = workbook['Tổng tiền theo khách']

@@ -469,6 +469,19 @@ class FinanceFlowTests(TestCase):
             "receiptDateSortDirection = receiptDateSortDirection === 'desc' ? 'asc' : 'desc';",
         )
 
+    def test_receipt_edit_refreshes_payment_method_select2_display(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        response = self.client.get(reverse('receipt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            ".val(receipt.payment_method_option_id || '')\n"
+            "        .trigger('change.select2');",
+        )
+
     def test_save_payment_auto_generates_code_when_blank(self):
         response = self.client.post(
             reverse('api_save_payment'),

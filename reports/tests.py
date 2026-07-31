@@ -747,7 +747,9 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'id="inventory_category_tab"')
         self.assertContains(response, 'BC kho theo danh mục')
         self.assertContains(response, 'id="inventory_movement_tab"')
-        self.assertContains(response, 'BC nhập xuất tồn')
+        self.assertContains(response, 'BC nhập xuất tồn theo SP')
+        self.assertContains(response, 'id="inventory_movement_category_tab"')
+        self.assertContains(response, 'BC nhập xuất tồn theo danh mục')
         self.assertContains(response, 'id="inventory_movement_from_date"')
         self.assertContains(response, 'id="inventory_movement_to_date"')
         self.assertContains(response, 'SL nhập trong kỳ')
@@ -755,6 +757,22 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'SL xuất trong kỳ')
         self.assertContains(response, 'Giá trị xuất (giá vốn)')
         self.assertContains(response, 'id="inventory_movement_tbl"')
+        self.assertContains(response, 'id="inventory_movement_category_tbl"')
+        self.assertContains(response, 'id="inventory_movement_page_size"')
+        self.assertContains(response, 'id="inventory_movement_category_page_size"')
+        self.assertContains(response, 'id="inventory_movement_pagination_summary"')
+        self.assertContains(response, 'id="inventory_movement_category_pagination_summary"')
+        self.assertContains(response, 'id="inventory_movement_pagination"')
+        self.assertContains(response, 'id="inventory_movement_category_pagination"')
+        self.assertContains(response, 'ifshop_report_inventory_movement_page_size')
+        self.assertContains(response, 'ifshop_report_inventory_movement_category_page_size')
+        self.assertContains(response, 'function renderInventoryMovementPagination(meta, options)')
+        self.assertContains(response, 'function renderInventoryMovementProductTable()')
+        self.assertContains(response, 'function renderInventoryMovementCategoryTable()')
+        self.assertContains(response, '_inventoryMovementRows.slice(startOffset, endOffset)')
+        self.assertContains(response, '_inventoryMovementCategoryRows.slice(startOffset, endOffset)')
+        self.assertContains(response, 'inventory-movement-page-btn')
+        self.assertContains(response, 'inventory-movement-category-page-btn')
         self.assertContains(response, 'function loadInventoryMovementReport()')
         self.assertContains(response, reverse('api_report_inventory_movement'))
         self.assertContains(response, reverse('export_inventory_movement_excel'))
@@ -896,6 +914,12 @@ class SalesReportTests(TestCase):
         self.assertEqual(row['closing_quantity'], 14.0)
         self.assertEqual(row['opening_value'], 1200.0)
         self.assertEqual(row['closing_value'], 1680.0)
+        category_row = payload['category_data'][0]
+        self.assertEqual(category_row['category'], 'Chưa phân loại')
+        self.assertEqual(category_row['product_count'], 1)
+        self.assertEqual(category_row['warehouse_count'], 1)
+        self.assertEqual(category_row['import_quantity'], 7.0)
+        self.assertEqual(category_row['export_value'], 360.0)
 
     def test_inventory_movement_report_includes_returns_checks_and_transfers(self):
         self.product.cost_price = 100
@@ -1026,15 +1050,36 @@ class SalesReportTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('BC_Nhap_xuat_ton_20260701_20260731.xlsx', response['Content-Disposition'])
+        self.assertIn('BC_Nhap_xuat_ton_theo_SP_20260701_20260731.xlsx', response['Content-Disposition'])
         workbook = load_workbook(BytesIO(response.content))
         sheet = workbook.active
-        self.assertEqual(sheet['A1'].value, 'BÁO CÁO NHẬP XUẤT TỒN')
+        self.assertEqual(sheet['A1'].value, 'BÁO CÁO NHẬP XUẤT TỒN THEO SẢN PHẨM')
         self.assertEqual(sheet['A2'].value, 'Kỳ báo cáo: 01/07/2026 - 31/07/2026')
         self.assertEqual(sheet['G4'].value, 'Tồn đầu kỳ')
         self.assertEqual(sheet['I4'].value, 'Nhập trong kỳ')
         self.assertEqual(sheet['K4'].value, 'Xuất trong kỳ')
         self.assertEqual(sheet['M4'].value, 'Tồn cuối kỳ')
+
+        category_response = self.client.get(reverse('export_inventory_movement_excel'), {
+            'from_date': '2026-07-01',
+            'to_date': '2026-07-31',
+            'group_by': 'category',
+        })
+        self.assertEqual(category_response.status_code, 200)
+        self.assertIn(
+            'BC_Nhap_xuat_ton_theo_danh_muc_20260701_20260731.xlsx',
+            category_response['Content-Disposition'],
+        )
+        category_workbook = load_workbook(BytesIO(category_response.content))
+        category_sheet = category_workbook.active
+        self.assertEqual(
+            category_sheet['A1'].value,
+            'BÁO CÁO NHẬP XUẤT TỒN THEO DANH MỤC',
+        )
+        self.assertEqual(category_sheet['E4'].value, 'Tồn đầu kỳ')
+        self.assertEqual(category_sheet['G4'].value, 'Nhập trong kỳ')
+        self.assertEqual(category_sheet['I4'].value, 'Xuất trong kỳ')
+        self.assertEqual(category_sheet['K4'].value, 'Tồn cuối kỳ')
 
     def test_api_inventory_report_exposes_product_supplier(self):
         from products.models import Supplier

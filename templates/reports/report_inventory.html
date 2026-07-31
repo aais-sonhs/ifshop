@@ -23,7 +23,14 @@
                     <a class="nav-link" id="inventory_movement_tab" data-toggle="tab"
                        href="#inventory_movement_panel" role="tab" aria-controls="inventory_movement_panel"
                        aria-selected="false">
-                        <i class="fas fa-exchange-alt mr-1"></i>BC nhập xuất tồn
+                        <i class="fas fa-exchange-alt mr-1"></i>BC nhập xuất tồn theo SP
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="inventory_movement_category_tab" data-toggle="tab"
+                       href="#inventory_movement_category_panel" role="tab"
+                       aria-controls="inventory_movement_category_panel" aria-selected="false">
+                        <i class="fas fa-sitemap mr-1"></i>BC nhập xuất tồn theo danh mục
                     </a>
                 </li>
             </ul>
@@ -101,6 +108,59 @@
             <div class="d-flex align-items-center justify-content-between flex-wrap">
                 <span><i class="fas fa-filter mr-1"></i><strong id="inventory_alert_filter_text"></strong></span>
                 <button type="button" class="btn btn-xs btn-outline-danger" id="btn_clear_alert_filter"><i class="fas fa-times mr-1"></i>Bỏ lọc cảnh báo</button>
+            </div>
+        </div>
+        <div id="inventory_movement_shared" style="display:none;">
+            <div class="d-flex align-items-end justify-content-between flex-wrap mb-3 inventory-movement-toolbar">
+                <div class="d-flex align-items-end flex-wrap" style="gap:8px;">
+                    <div>
+                        <label for="inventory_movement_from_date" class="small text-muted mb-1">Từ ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="inventory_movement_from_date"
+                               value="{{ inventory_movement_from_date }}">
+                    </div>
+                    <div>
+                        <label for="inventory_movement_to_date" class="small text-muted mb-1">Đến ngày</label>
+                        <input type="date" class="form-control form-control-sm" id="inventory_movement_to_date"
+                               value="{{ inventory_movement_to_date }}">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-info" id="btn_inventory_movement_apply">
+                        <i class="fas fa-filter mr-1"></i>Xem báo cáo
+                    </button>
+                </div>
+                <small class="text-muted mt-2 mt-md-0">
+                    Giá trị xuất tính theo giá vốn tại giao dịch; tồn đầu/cuối định giá theo giá vốn hiện tại.
+                </small>
+            </div>
+
+            <div class="alert alert-danger py-2 px-3" id="inventory_movement_error" style="display:none;"></div>
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <div class="small-box bg-info inventory-movement-card">
+                        <div class="inner"><h4 id="movement_import_quantity">0</h4><p>SL nhập trong kỳ</p></div>
+                        <div class="icon"><i class="fas fa-arrow-circle-down"></i></div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="small-box bg-success inventory-movement-card">
+                        <div class="inner"><h4 id="movement_import_value">0đ</h4><p>Giá trị nhập trong kỳ</p></div>
+                        <div class="icon"><i class="fas fa-coins"></i></div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="small-box bg-warning inventory-movement-card">
+                        <div class="inner"><h4 id="movement_export_quantity">0</h4><p>SL xuất trong kỳ</p></div>
+                        <div class="icon"><i class="fas fa-arrow-circle-up"></i></div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="small-box bg-danger inventory-movement-card">
+                        <div class="inner"><h4 id="movement_export_value">0đ</h4><p>Giá trị xuất (giá vốn)</p></div>
+                        <div class="icon"><i class="fas fa-hand-holding-usd"></i></div>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-2">
+                <small class="text-muted" id="inventory_movement_period_summary"></small>
             </div>
         </div>
         <div class="tab-content">
@@ -186,58 +246,17 @@
                 </div>
             </div>
             <div class="tab-pane fade" id="inventory_movement_panel" role="tabpanel" aria-labelledby="inventory_movement_tab">
-                <div class="d-flex align-items-end justify-content-between flex-wrap mb-3 inventory-movement-toolbar">
-                    <div class="d-flex align-items-end flex-wrap" style="gap:8px;">
-                        <div>
-                            <label for="inventory_movement_from_date" class="small text-muted mb-1">Từ ngày</label>
-                            <input type="date" class="form-control form-control-sm" id="inventory_movement_from_date"
-                                   value="{{ inventory_movement_from_date }}">
-                        </div>
-                        <div>
-                            <label for="inventory_movement_to_date" class="small text-muted mb-1">Đến ngày</label>
-                            <input type="date" class="form-control form-control-sm" id="inventory_movement_to_date"
-                                   value="{{ inventory_movement_to_date }}">
-                        </div>
-                        <button type="button" class="btn btn-sm btn-info" id="btn_inventory_movement_apply">
-                            <i class="fas fa-filter mr-1"></i>Xem báo cáo
-                        </button>
-                    </div>
-                    <small class="text-muted mt-2 mt-md-0">
-                        Giá trị xuất tính theo giá vốn tại giao dịch; tồn đầu/cuối định giá theo giá vốn hiện tại.
-                    </small>
-                </div>
-
-                <div class="alert alert-danger py-2 px-3" id="inventory_movement_error" style="display:none;"></div>
-                <div class="row mb-3">
-                    <div class="col-md-3">
-                        <div class="small-box bg-info inventory-movement-card">
-                            <div class="inner"><h4 id="movement_import_quantity">0</h4><p>SL nhập trong kỳ</p></div>
-                            <div class="icon"><i class="fas fa-arrow-circle-down"></i></div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="small-box bg-success inventory-movement-card">
-                            <div class="inner"><h4 id="movement_import_value">0đ</h4><p>Giá trị nhập trong kỳ</p></div>
-                            <div class="icon"><i class="fas fa-coins"></i></div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="small-box bg-warning inventory-movement-card">
-                            <div class="inner"><h4 id="movement_export_quantity">0</h4><p>SL xuất trong kỳ</p></div>
-                            <div class="icon"><i class="fas fa-arrow-circle-up"></i></div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="small-box bg-danger inventory-movement-card">
-                            <div class="inner"><h4 id="movement_export_value">0đ</h4><p>Giá trị xuất (giá vốn)</p></div>
-                            <div class="icon"><i class="fas fa-hand-holding-usd"></i></div>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="d-flex align-items-center justify-content-between flex-wrap mb-2" style="gap:8px;">
-                    <small class="text-muted" id="inventory_movement_period_summary"></small>
-                    <div class="small text-muted" id="inventory_movement_row_summary"></div>
+                    <div class="small text-muted" id="inventory_movement_pagination_summary"></div>
+                    <div class="d-flex align-items-center" style="gap:6px;">
+                        <label for="inventory_movement_page_size" class="small text-muted mb-0">Hiển thị</label>
+                        <select id="inventory_movement_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                            <option value="25" selected>25 dòng</option>
+                            <option value="50">50 dòng</option>
+                            <option value="100">100 dòng</option>
+                            <option value="200">200 dòng</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table id="inventory_movement_tbl" class="table table-bordered table-striped table-sm inventory-movement-table">
@@ -266,6 +285,51 @@
                         <tfoot></tfoot>
                     </table>
                 </div>
+                <div id="inventory_movement_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
+            </div>
+            <div class="tab-pane fade" id="inventory_movement_category_panel" role="tabpanel"
+                 aria-labelledby="inventory_movement_category_tab">
+                <div class="d-flex align-items-center justify-content-between flex-wrap mb-2" style="gap:8px;">
+                    <div class="small text-muted" id="inventory_movement_category_pagination_summary"></div>
+                    <div class="d-flex align-items-center" style="gap:6px;">
+                        <label for="inventory_movement_category_page_size" class="small text-muted mb-0">Hiển thị</label>
+                        <select id="inventory_movement_category_page_size" class="form-control form-control-sm" style="width:auto;min-width:92px;">
+                            <option value="25" selected>25 dòng</option>
+                            <option value="50">50 dòng</option>
+                            <option value="100">100 dòng</option>
+                            <option value="200">200 dòng</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="inventory_movement_category_tbl"
+                           class="table table-bordered table-striped table-sm inventory-movement-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th rowspan="2" class="align-middle text-center">STT</th>
+                                <th rowspan="2" class="align-middle">Danh mục</th>
+                                <th rowspan="2" class="align-middle text-right">Số SP</th>
+                                <th rowspan="2" class="align-middle text-right">Số kho</th>
+                                <th colspan="2" class="text-center inventory-opening-heading">Tồn đầu kỳ</th>
+                                <th colspan="2" class="text-center inventory-import-heading">Nhập trong kỳ</th>
+                                <th colspan="2" class="text-center inventory-export-heading">Xuất trong kỳ</th>
+                                <th colspan="2" class="text-center inventory-closing-heading">Tồn cuối kỳ</th>
+                            </tr>
+                            <tr>
+                                <th class="text-right">Số lượng</th><th class="text-right">Giá trị</th>
+                                <th class="text-right">Số lượng</th><th class="text-right">Giá trị</th>
+                                <th class="text-right">Số lượng</th><th class="text-right">Giá trị vốn</th>
+                                <th class="text-right">Số lượng</th><th class="text-right">Giá trị</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="12" class="text-center text-muted py-3">Chọn kỳ để xem báo cáo</td></tr>
+                        </tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
+                <div id="inventory_movement_category_pagination"
+                     class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
             </div>
         </div>
     </div>
@@ -403,7 +467,11 @@ var _inventoryCategorySortField = 'stock_value';
 var _inventoryCategoryStockValueSortDirection = 'desc';
 var _inventoryCategoryQuantitySortDirection = 'desc';
 var _inventoryMovementLoaded = false;
+var _inventoryMovementRows = [];
+var _inventoryMovementCategoryRows = [];
 var INVENTORY_REPORT_PAGE_SIZE_KEY = 'ifshop_report_inventory_page_size';
+var INVENTORY_MOVEMENT_PAGE_SIZE_KEY = 'ifshop_report_inventory_movement_page_size';
+var INVENTORY_MOVEMENT_CATEGORY_PAGE_SIZE_KEY = 'ifshop_report_inventory_movement_category_page_size';
 var _inventoryProductPageState = {
     page: 1,
     page_size: (function(){
@@ -411,9 +479,23 @@ var _inventoryProductPageState = {
         return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })()
 };
+function inventorySavedPageSize(storageKey){
+    var saved = parseInt(localStorage.getItem(storageKey) || '25', 10);
+    return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
+}
+var _inventoryMovementPageState = {
+    page: 1,
+    page_size: inventorySavedPageSize(INVENTORY_MOVEMENT_PAGE_SIZE_KEY)
+};
+var _inventoryMovementCategoryPageState = {
+    page: 1,
+    page_size: inventorySavedPageSize(INVENTORY_MOVEMENT_CATEGORY_PAGE_SIZE_KEY)
+};
 
 $(document).ready(function(){
     $('#inventory_product_page_size').val(String(_inventoryProductPageState.page_size));
+    $('#inventory_movement_page_size').val(String(_inventoryMovementPageState.page_size));
+    $('#inventory_movement_category_page_size').val(String(_inventoryMovementCategoryPageState.page_size));
     syncInventoryProductSortButtons();
     syncInventoryCategorySortButtons();
     loadReport();
@@ -452,7 +534,7 @@ $(document).ready(function(){
         $('#filter_stock_status').val('');
         $('#filter_alert').val('');
         syncInventoryAlertCardState();
-        loadReport();
+        loadActiveInventoryReport();
     });
     $(document).on('click', '.inventory-product-edit-link', function(){
         _inventoryProductEditorOpened = true;
@@ -469,6 +551,39 @@ $(document).ready(function(){
     $('#btn_inventory_movement_apply').on('click', loadInventoryMovementReport);
     $('#inventory_movement_from_date, #inventory_movement_to_date').on('keydown', function(e){
         if(e.key === 'Enter') loadInventoryMovementReport();
+    });
+    $('#inventory_movement_page_size').on('change', function(){
+        _inventoryMovementPageState.page_size = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(INVENTORY_MOVEMENT_PAGE_SIZE_KEY, String(_inventoryMovementPageState.page_size));
+        _inventoryMovementPageState.page = 1;
+        renderInventoryMovementProductTable();
+    });
+    $('#inventory_movement_category_page_size').on('change', function(){
+        _inventoryMovementCategoryPageState.page_size = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(
+            INVENTORY_MOVEMENT_CATEGORY_PAGE_SIZE_KEY,
+            String(_inventoryMovementCategoryPageState.page_size)
+        );
+        _inventoryMovementCategoryPageState.page = 1;
+        renderInventoryMovementCategoryTable();
+    });
+    $(document).on('click', '.inventory-movement-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === _inventoryMovementPageState.page) return;
+        _inventoryMovementPageState.page = page;
+        renderInventoryMovementProductTable();
+        var table = document.getElementById('inventory_movement_tbl');
+        if(table) table.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+    $(document).on('click', '.inventory-movement-category-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === _inventoryMovementCategoryPageState.page) return;
+        _inventoryMovementCategoryPageState.page = page;
+        renderInventoryMovementCategoryTable();
+        var table = document.getElementById('inventory_movement_category_tbl');
+        if(table) table.scrollIntoView({behavior:'smooth', block:'start'});
     });
     $('#inventory_product_page_size').on('change', function(){
         _inventoryProductPageState.page_size = parseInt($(this).val() || '25', 10) || 25;
@@ -556,7 +671,11 @@ function renderInventoryProductTypes(selectedId){
 }
 
 function isInventoryMovementMode(){
-    return $('#inventory_movement_tab').hasClass('active');
+    return $('#inventory_movement_tab, #inventory_movement_category_tab').filter('.active').length > 0;
+}
+
+function isInventoryMovementCategoryMode(){
+    return $('#inventory_movement_category_tab').hasClass('active');
 }
 
 function loadActiveInventoryReport(){
@@ -701,6 +820,7 @@ function syncInventoryReportModeSummary(){
     var categoryMode = $('#inventory_category_tab').hasClass('active');
     var movementMode = isInventoryMovementMode();
     $('#inventory_current_summary').toggle(!movementMode);
+    $('#inventory_movement_shared').toggle(movementMode);
     $('#inventory_stock_status_filter, #inventory_alert_filter').toggle(!movementMode);
     $('#inventory_alert_filter_notice').toggle(!movementMode && !!$('#filter_alert').val());
     if(movementMode) return;
@@ -854,29 +974,125 @@ function formatInventoryMovementDate(value){
     return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : value;
 }
 
-function renderInventoryMovementTable(data, summary, fromDate, toDate){
-    data = data || [];
-    summary = summary || {};
-    $('#movement_import_quantity').text(fmt(summary.import_quantity));
-    $('#movement_import_value').text(fmtD(summary.import_value));
-    $('#movement_export_quantity').text(fmt(summary.export_quantity));
-    $('#movement_export_value').text(fmtD(summary.export_value));
-    $('#inventory_movement_period_summary').html(
-        'Kỳ <strong>' + formatInventoryMovementDate(fromDate) + '</strong> đến <strong>' +
-        formatInventoryMovementDate(toDate) + '</strong> · Tồn đầu <strong>' +
-        fmt(summary.opening_quantity) + '</strong> / <strong>' + fmtD(summary.opening_value) +
-        '</strong> → Tồn cuối <strong>' + fmt(summary.closing_quantity) + '</strong> / <strong>' +
-        fmtD(summary.closing_value) + '</strong>'
+function buildInventoryMovementCategoryRows(data){
+    var categoryMap = {};
+    (data || []).forEach(function(item){
+        var categoryId = item.category_id === null || item.category_id === undefined || item.category_id === ''
+            ? '' : String(item.category_id);
+        var key = categoryId || '__uncategorized__';
+        if(!categoryMap[key]){
+            categoryMap[key] = {
+                category_id: categoryId,
+                category: item.category_name || 'Chưa phân loại',
+                products: {},
+                warehouses: {},
+                opening_quantity: 0,
+                opening_value: 0,
+                import_quantity: 0,
+                import_value: 0,
+                export_quantity: 0,
+                export_value: 0,
+                closing_quantity: 0,
+                closing_value: 0
+            };
+        }
+        var row = categoryMap[key];
+        row.products[String(item.product_id)] = true;
+        row.warehouses[String(item.warehouse_id)] = true;
+        ['opening_quantity', 'opening_value', 'import_quantity', 'import_value',
+         'export_quantity', 'export_value', 'closing_quantity', 'closing_value'].forEach(function(field){
+            row[field] += Number(item[field] || 0);
+        });
+    });
+    return Object.keys(categoryMap).map(function(key){
+        var row = categoryMap[key];
+        row.product_count = Object.keys(row.products).length;
+        row.warehouse_count = Object.keys(row.warehouses).length;
+        return row;
+    }).sort(function(a, b){
+        if(!a.category_id && b.category_id) return 1;
+        if(a.category_id && !b.category_id) return -1;
+        return String(a.category || '').localeCompare(String(b.category || ''), 'vi');
+    });
+}
+
+function renderInventoryMovementPagination(meta, options){
+    var total = Number(meta.total || 0);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    var startIndex = Number(meta.start_index || 0);
+    var endIndex = Number(meta.end_index || 0);
+    var summarySelector = options.summary_selector;
+    var paginationSelector = options.pagination_selector;
+    if(!total){
+        $(summarySelector).text('Không có ' + options.empty_label + '.');
+        $(paginationSelector).html('');
+        return;
+    }
+    $(summarySelector).html(
+        'Hiển thị <strong>' + fmt(startIndex) + '-' + fmt(endIndex) + '</strong> / <strong>' +
+        fmt(total) + '</strong> ' + options.row_label + ' · Trang <strong>' +
+        currentPage + '/' + totalPages + '</strong>'
     );
-    $('#inventory_movement_row_summary').html('<strong>' + fmt(data.length) + '</strong> dòng sản phẩm/kho');
+    if(totalPages <= 1){
+        $(paginationSelector).html('');
+        return;
+    }
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++){
+        pages.push(page);
+    }
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, values){ return values.indexOf(page) === index; })
+        .sort(function(a, b){ return a - b; });
+    var buttonClass = options.button_class;
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary ' + buttonClass +
+        '" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1){
+            html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        }
+        html += '<button type="button" class="btn btn-sm ' +
+            (page === currentPage ? 'btn-primary active' : 'btn-outline-primary') + ' ' + buttonClass +
+            '" data-page="' + page + '">' + page + '</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary ' + buttonClass +
+        '" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>Sau</button>';
+    $(paginationSelector).html(html);
+}
+
+function renderInventoryMovementProductTable(){
+    var totalRows = _inventoryMovementRows.length;
+    var pageSize = _inventoryMovementPageState.page_size || 25;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    if(_inventoryMovementPageState.page > totalPages) _inventoryMovementPageState.page = totalPages;
+    if(_inventoryMovementPageState.page < 1) _inventoryMovementPageState.page = 1;
+    var startOffset = (_inventoryMovementPageState.page - 1) * pageSize;
+    var endOffset = Math.min(startOffset + pageSize, totalRows);
+    var pageRows = _inventoryMovementRows.slice(startOffset, endOffset);
+    renderInventoryMovementPagination({
+        total: totalRows,
+        page: _inventoryMovementPageState.page,
+        total_pages: totalPages,
+        start_index: totalRows ? startOffset + 1 : 0,
+        end_index: endOffset
+    }, {
+        summary_selector: '#inventory_movement_pagination_summary',
+        pagination_selector: '#inventory_movement_pagination',
+        button_class: 'inventory-movement-page-btn',
+        row_label: 'dòng sản phẩm/kho',
+        empty_label: 'dòng sản phẩm/kho'
+    });
 
     var html = '';
-    data.forEach(function(row, index){
+    pageRows.forEach(function(row, index){
         var productUrl = buildInventoryProductEditUrl(row.product_id);
         var openingClass = Number(row.opening_quantity || 0) < 0 ? ' text-danger font-weight-bold' : '';
         var closingClass = Number(row.closing_quantity || 0) < 0 ? ' text-danger font-weight-bold' : '';
         html += '<tr>' +
-            '<td class="text-center">' + (index + 1) + '</td>' +
+            '<td class="text-center">' + (startOffset + index + 1) + '</td>' +
             '<td><a href="' + productUrl + '" class="inventory-product-edit-link" target="_blank" rel="noopener">' +
                 '<strong class="d-block">' + escapeHtml(row.product_name) + '</strong>' +
                 '<small>' + escapeHtml(row.product_code) + ' <i class="fas fa-edit ml-1"></i></small></a></td>' +
@@ -897,8 +1113,57 @@ function renderInventoryMovementTable(data, summary, fromDate, toDate){
         html = '<tr><td colspan="13" class="text-center text-muted py-3">Không có dữ liệu nhập xuất tồn theo bộ lọc</td></tr>';
     }
     $('#inventory_movement_tbl tbody').html(html);
+}
 
-    var footer = '<tr><td colspan="5" class="text-right">TỔNG CỘNG</td>' +
+function renderInventoryMovementCategoryTable(){
+    var totalRows = _inventoryMovementCategoryRows.length;
+    var pageSize = _inventoryMovementCategoryPageState.page_size || 25;
+    var totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    if(_inventoryMovementCategoryPageState.page > totalPages) _inventoryMovementCategoryPageState.page = totalPages;
+    if(_inventoryMovementCategoryPageState.page < 1) _inventoryMovementCategoryPageState.page = 1;
+    var startOffset = (_inventoryMovementCategoryPageState.page - 1) * pageSize;
+    var endOffset = Math.min(startOffset + pageSize, totalRows);
+    var pageRows = _inventoryMovementCategoryRows.slice(startOffset, endOffset);
+    renderInventoryMovementPagination({
+        total: totalRows,
+        page: _inventoryMovementCategoryPageState.page,
+        total_pages: totalPages,
+        start_index: totalRows ? startOffset + 1 : 0,
+        end_index: endOffset
+    }, {
+        summary_selector: '#inventory_movement_category_pagination_summary',
+        pagination_selector: '#inventory_movement_category_pagination',
+        button_class: 'inventory-movement-category-page-btn',
+        row_label: 'danh mục',
+        empty_label: 'danh mục'
+    });
+
+    var html = '';
+    pageRows.forEach(function(row, index){
+        var openingClass = Number(row.opening_quantity || 0) < 0 ? ' text-danger font-weight-bold' : '';
+        var closingClass = Number(row.closing_quantity || 0) < 0 ? ' text-danger font-weight-bold' : '';
+        html += '<tr>' +
+            '<td class="text-center">' + (startOffset + index + 1) + '</td>' +
+            '<td><strong>' + escapeHtml(row.category || 'Chưa phân loại') + '</strong></td>' +
+            '<td class="text-right">' + fmt(row.product_count) + '</td>' +
+            '<td class="text-right">' + fmt(row.warehouse_count) + '</td>' +
+            '<td class="text-right' + openingClass + '">' + fmt(row.opening_quantity) + '</td>' +
+            '<td class="text-right">' + fmtD(row.opening_value) + '</td>' +
+            '<td class="text-right text-success font-weight-bold">' + fmt(row.import_quantity) + '</td>' +
+            '<td class="text-right text-success">' + fmtD(row.import_value) + '</td>' +
+            '<td class="text-right text-warning font-weight-bold">' + fmt(row.export_quantity) + '</td>' +
+            '<td class="text-right text-warning">' + fmtD(row.export_value) + '</td>' +
+            '<td class="text-right' + closingClass + '">' + fmt(row.closing_quantity) + '</td>' +
+            '<td class="text-right font-weight-bold">' + fmtD(row.closing_value) + '</td></tr>';
+    });
+    if(!html){
+        html = '<tr><td colspan="12" class="text-center text-muted py-3">Không có dữ liệu danh mục theo bộ lọc</td></tr>';
+    }
+    $('#inventory_movement_category_tbl tbody').html(html);
+}
+
+function inventoryMovementFooter(summary, identityColumnCount){
+    return '<tr><td colspan="' + identityColumnCount + '" class="text-right">TỔNG CỘNG</td>' +
         '<td class="text-right">' + fmt(summary.opening_quantity) + '</td>' +
         '<td class="text-right">' + fmtD(summary.opening_value) + '</td>' +
         '<td class="text-right text-success">' + fmt(summary.import_quantity) + '</td>' +
@@ -907,7 +1172,31 @@ function renderInventoryMovementTable(data, summary, fromDate, toDate){
         '<td class="text-right text-warning">' + fmtD(summary.export_value) + '</td>' +
         '<td class="text-right">' + fmt(summary.closing_quantity) + '</td>' +
         '<td class="text-right">' + fmtD(summary.closing_value) + '</td></tr>';
-    $('#inventory_movement_tbl tfoot').html(footer);
+}
+
+function renderInventoryMovementTable(data, categoryData, summary, fromDate, toDate){
+    summary = summary || {};
+    _inventoryMovementRows = (data || []).slice();
+    _inventoryMovementCategoryRows = Array.isArray(categoryData)
+        ? categoryData.slice()
+        : buildInventoryMovementCategoryRows(_inventoryMovementRows);
+    _inventoryMovementPageState.page = 1;
+    _inventoryMovementCategoryPageState.page = 1;
+    $('#movement_import_quantity').text(fmt(summary.import_quantity));
+    $('#movement_import_value').text(fmtD(summary.import_value));
+    $('#movement_export_quantity').text(fmt(summary.export_quantity));
+    $('#movement_export_value').text(fmtD(summary.export_value));
+    $('#inventory_movement_period_summary').html(
+        'Kỳ <strong>' + formatInventoryMovementDate(fromDate) + '</strong> đến <strong>' +
+        formatInventoryMovementDate(toDate) + '</strong> · Tồn đầu <strong>' +
+        fmt(summary.opening_quantity) + '</strong> / <strong>' + fmtD(summary.opening_value) +
+        '</strong> → Tồn cuối <strong>' + fmt(summary.closing_quantity) + '</strong> / <strong>' +
+        fmtD(summary.closing_value) + '</strong>'
+    );
+    renderInventoryMovementProductTable();
+    renderInventoryMovementCategoryTable();
+    $('#inventory_movement_tbl tfoot').html(inventoryMovementFooter(summary, 5));
+    $('#inventory_movement_category_tbl tfoot').html(inventoryMovementFooter(summary, 4));
 }
 
 function loadInventoryMovementReport(){
@@ -940,6 +1229,11 @@ function loadInventoryMovementReport(){
     $('#inventory_movement_tbl tbody').html(
         '<tr><td colspan="13" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Đang tổng hợp dữ liệu...</td></tr>'
     );
+    $('#inventory_movement_category_tbl tbody').html(
+        '<tr><td colspan="12" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Đang tổng hợp dữ liệu...</td></tr>'
+    );
+    $('#inventory_movement_tbl tfoot, #inventory_movement_category_tbl tfoot').html('');
+    $('#inventory_movement_pagination, #inventory_movement_category_pagination').html('');
     $.get("{% url 'api_report_inventory_movement' %}?" + params.join('&'))
         .done(function(res){
             if(res.status !== 'ok'){
@@ -947,13 +1241,18 @@ function loadInventoryMovementReport(){
                 return;
             }
             _inventoryMovementLoaded = true;
-            renderInventoryMovementTable(res.data, res.summary, res.from_date, res.to_date);
+            renderInventoryMovementTable(
+                res.data, res.category_data, res.summary, res.from_date, res.to_date
+            );
         })
         .fail(function(xhr){
             var response = xhr.responseJSON || {};
             errorBox.text(response.message || 'Không thể tải báo cáo nhập xuất tồn.').show();
             $('#inventory_movement_tbl tbody').html(
                 '<tr><td colspan="13" class="text-center text-danger py-3">Không tải được dữ liệu</td></tr>'
+            );
+            $('#inventory_movement_category_tbl tbody').html(
+                '<tr><td colspan="12" class="text-center text-danger py-3">Không tải được dữ liệu</td></tr>'
             );
         });
 }
@@ -1051,6 +1350,7 @@ $('#btn_export').click(function(){
         }
         params.push('from_date=' + encodeURIComponent(fromDate));
         params.push('to_date=' + encodeURIComponent(toDate));
+        if(isInventoryMovementCategoryMode()) params.push('group_by=category');
         url = "{% url 'export_inventory_movement_excel' %}";
     }
     if(params.length) url += '?' + params.join('&');

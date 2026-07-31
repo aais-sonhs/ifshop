@@ -3797,6 +3797,46 @@ def _build_inventory_movement_payload(request):
     }
 
 
+def _build_inventory_movement_category_rows(product_rows):
+    """Gộp các dòng nhập xuất tồn sản phẩm/kho theo danh mục gốc."""
+    numeric_fields = (
+        'opening_quantity', 'opening_value', 'import_quantity', 'import_value',
+        'export_quantity', 'export_value', 'closing_quantity', 'closing_value',
+    )
+    category_map = {}
+    for item in product_rows:
+        category_id = item.get('category_id')
+        key = str(category_id) if category_id not in (None, '') else '__uncategorized__'
+        row = category_map.setdefault(key, {
+            'category_id': category_id,
+            'category': item.get('category_name') or 'Chưa phân loại',
+            '_product_ids': set(),
+            '_warehouse_ids': set(),
+            **{field: Decimal('0') for field in numeric_fields},
+        })
+        row['_product_ids'].add(item.get('product_id'))
+        row['_warehouse_ids'].add(item.get('warehouse_id'))
+        for field in numeric_fields:
+            row[field] += Decimal(str(item.get(field) or 0))
+
+    data = []
+    for row in category_map.values():
+        data.append({
+            'category_id': row['category_id'],
+            'category': row['category'],
+            'product_count': len(row.pop('_product_ids')),
+            'warehouse_count': len(row.pop('_warehouse_ids')),
+            **{field: float(row[field]) for field in numeric_fields},
+        })
+    return sorted(
+        data,
+        key=lambda item: (
+            item['category_id'] is None,
+            str(item['category']).casefold(),
+        ),
+    )
+
+
 @login_required(login_url="/login/")
 @report_permission_required
 def api_report_inventory_movement(request):
@@ -3810,6 +3850,7 @@ def api_report_inventory_movement(request):
         'from_date': payload['from_date'].isoformat(),
         'to_date': payload['to_date'].isoformat(),
         'data': payload['data'],
+        'category_data': _build_inventory_movement_category_rows(payload['data']),
         'summary': payload['summary'],
     })
 
@@ -5320,9 +5361,27 @@ def export_inventory_movement_excel(request):
     except ValueError as exc:
         return HttpResponse(str(exc), status=400, content_type='text/plain; charset=utf-8')
 
+    group_by_category = (request.GET.get('group_by') or '').strip() == 'category'
+    report_rows = (
+        _build_inventory_movement_category_rows(payload['data'])
+        if group_by_category else payload['data']
+    )
+    if group_by_category:
+        identity_headers = ['STT', 'Danh mục', 'Số SP', 'Số kho']
+        identity_widths = (6, 30, 12, 12)
+        report_title = 'BÁO CÁO NHẬP XUẤT TỒN THEO DANH MỤC'
+    else:
+        identity_headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'Danh mục', 'ĐVT', 'Kho']
+        identity_widths = (6, 15, 32, 20, 10, 20)
+        report_title = 'BÁO CÁO NHẬP XUẤT TỒN THEO SẢN PHẨM'
+    identity_column_count = len(identity_headers)
+    movement_start_column = identity_column_count + 1
+    last_column = identity_column_count + 8
+    last_column_letter = openpyxl.utils.get_column_letter(last_column)
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = 'Nhập xuất tồn'
+    ws.title = 'NXT theo danh mục' if group_by_category else 'NXT theo sản phẩm'
     header_font = Font(bold=True, size=14, color='FFFFFF')
     header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
     group_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
@@ -5335,12 +5394,12 @@ def export_inventory_movement_excel(request):
     money_fmt = '#,##0'
     quantity_fmt = '#,##0.##'
 
-    ws.merge_cells('A1:N1')
-    ws['A1'] = 'BÁO CÁO NHẬP XUẤT TỒN'
+    ws.merge_cells(f'A1:{last_column_letter}1')
+    ws['A1'] = report_title
     ws['A1'].font = header_font
     ws['A1'].fill = header_fill
     ws['A1'].alignment = Alignment(horizontal='center')
-    ws.merge_cells('A2:N2')
+    ws.merge_cells(f'A2:{last_column_letter}2')
     ws['A2'] = (
         f"Kỳ báo cáo: {payload['from_date'].strftime('%d/%m/%Y')} - "
         f"{payload['to_date'].strftime('%d/%m/%Y')}"
@@ -5348,7 +5407,6 @@ def export_inventory_movement_excel(request):
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    identity_headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'Danh mục', 'ĐVT', 'Kho']
     for column, label in enumerate(identity_headers, 1):
         ws.merge_cells(start_row=4, start_column=column, end_row=5, end_column=column)
         cell = ws.cell(row=4, column=column, value=label)
@@ -5358,12 +5416,10 @@ def export_inventory_movement_excel(request):
         cell.border = thin
         ws.cell(row=5, column=column).border = thin
 
-    for start_column, label in (
-        (7, 'Tồn đầu kỳ'),
-        (9, 'Nhập trong kỳ'),
-        (11, 'Xuất trong kỳ'),
-        (13, 'Tồn cuối kỳ'),
-    ):
+    for pair_index, label in enumerate((
+        'Tồn đầu kỳ', 'Nhập trong kỳ', 'Xuất trong kỳ', 'Tồn cuối kỳ',
+    )):
+        start_column = movement_start_column + pair_index * 2
         ws.merge_cells(
             start_row=4,
             start_column=start_column,
@@ -5388,48 +5444,58 @@ def export_inventory_movement_excel(request):
         'export_quantity', 'export_value', 'closing_quantity', 'closing_value',
     )
     row_number = 6
-    for index, item in enumerate(payload['data'], 1):
-        values = [
-            index,
-            item['product_code'],
-            item['product_name'],
-            item['category'],
-            item['unit'],
-            item['warehouse'],
-            *[item[field] for field in field_names],
-        ]
+    for index, item in enumerate(report_rows, 1):
+        if group_by_category:
+            identity_values = [
+                index, item['category'], item['product_count'], item['warehouse_count'],
+            ]
+        else:
+            identity_values = [
+                index, item['product_code'], item['product_name'], item['category'],
+                item['unit'], item['warehouse'],
+            ]
+        values = [*identity_values, *[item[field] for field in field_names]]
         for column, value in enumerate(values, 1):
             cell = ws.cell(row=row_number, column=column, value=value)
             cell.border = thin
-            if column in (7, 9, 11, 13):
+            if column >= movement_start_column and (column - movement_start_column) % 2 == 0:
                 cell.number_format = quantity_fmt
-            elif column in (8, 10, 12, 14):
+            elif column >= movement_start_column:
                 cell.number_format = money_fmt
         row_number += 1
 
     summary = payload['summary']
-    ws.merge_cells(start_row=row_number, start_column=1, end_row=row_number, end_column=6)
+    ws.merge_cells(
+        start_row=row_number,
+        start_column=1,
+        end_row=row_number,
+        end_column=identity_column_count,
+    )
     total_cell = ws.cell(row=row_number, column=1, value='TỔNG CỘNG')
     total_cell.font = Font(bold=True)
     total_cell.alignment = Alignment(horizontal='right')
     total_cell.border = thin
-    for column in range(2, 7):
+    for column in range(2, identity_column_count + 1):
         ws.cell(row=row_number, column=column).border = thin
-    for offset, field in enumerate(field_names, 7):
+    for offset, field in enumerate(field_names, movement_start_column):
         cell = ws.cell(row=row_number, column=offset, value=summary[field])
         cell.font = Font(bold=True)
         cell.border = thin
-        cell.number_format = quantity_fmt if offset in (7, 9, 11, 13) else money_fmt
+        cell.number_format = (
+            quantity_fmt if (offset - movement_start_column) % 2 == 0 else money_fmt
+        )
 
-    for index, width in enumerate((6, 15, 32, 20, 10, 20, 14, 18, 14, 18, 14, 18, 14, 18), 1):
+    column_widths = (*identity_widths, 14, 18, 14, 18, 14, 18, 14, 18)
+    for index, width in enumerate(column_widths, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = width
     ws.freeze_panes = 'A6'
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+    filename_prefix = 'BC_Nhap_xuat_ton_theo_danh_muc' if group_by_category else 'BC_Nhap_xuat_ton_theo_SP'
     filename = (
-        f"BC_Nhap_xuat_ton_{payload['from_date'].strftime('%Y%m%d')}_"
+        f"{filename_prefix}_{payload['from_date'].strftime('%Y%m%d')}_"
         f"{payload['to_date'].strftime('%Y%m%d')}.xlsx"
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'

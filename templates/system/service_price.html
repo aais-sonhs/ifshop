@@ -2,15 +2,50 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title"><i class="fas fa-file-invoice-dollar mr-2"></i>Danh mục giá dịch vụ</h3>
+        <h3 class="card-title"><i class="fas fa-file-invoice-dollar mr-2"></i>Chi phí dịch vụ theo tháng</h3>
         <div class="card-tools">
-            <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Thêm dịch vụ</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn_add"{% if request.user.is_superuser %} disabled{% endif %}><i class="fas fa-plus"></i> Thêm chi phí tháng</button>
         </div>
     </div>
     <div class="card-body">
+        {% if request.user.is_superuser %}
+        <div class="row mb-3">
+            <div class="col-lg-6">
+                <label for="brand_selector">Thương hiệu <span class="text-danger">*</span></label>
+                <select class="form-control" id="brand_selector">
+                    <option value="">-- Chọn thương hiệu --</option>
+                    {% for brand in service_price_brands %}
+                    <option value="{{ brand.id }}">
+                        {{ brand.name }}{% if not brand.is_active %} (ngừng hoạt động){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <small class="form-text text-muted">
+                    Mỗi thương hiệu có một bảng giá dịch vụ độc lập.
+                </small>
+            </div>
+        </div>
+        <div class="alert alert-light border" id="brand_required_hint">
+            <i class="fas fa-building text-primary mr-1"></i>
+            Chọn thương hiệu để xem và cập nhật giá dịch vụ.
+        </div>
+        {% else %}
+        <div class="alert alert-light border py-2">
+            <i class="fas fa-building text-primary mr-1"></i>
+            Bảng giá của thương hiệu:
+            <strong>{{ service_price_brand.name|default:"Chưa xác định" }}</strong>
+        </div>
+        {% endif %}
+        <div class="row mb-3">
+            <div class="col-lg-4 col-md-6">
+                <label for="filter_month">Lọc theo tháng</label>
+                <input type="month" class="form-control" id="filter_month">
+                <small class="form-text text-muted">Để trống để xem toàn bộ lịch sử.</small>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Tên dịch vụ</th><th>Giá</th><th>Đơn vị</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>STT</th><th>Tháng áp dụng</th><th>Nội dung dịch vụ</th><th>Giá</th><th>Đơn vị</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -20,12 +55,13 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="modal_title">Thêm dịch vụ</h5>
+                <h5 class="modal-title" id="modal_title">Thêm chi phí tháng</h5>
                 <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
-                <div class="form-group"><label>Tên dịch vụ <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_name"></div>
+                <div class="form-group"><label>Tháng áp dụng <span class="text-danger">*</span></label><input type="month" class="form-control" id="inp_billing_month"></div>
+                <div class="form-group"><label>Nội dung dịch vụ <span class="text-danger">*</span></label><input type="text" class="form-control" id="inp_name"></div>
                 <div class="form-group"><label>Giá <span class="text-danger">*</span></label><input type="number" class="form-control" id="inp_price" value="0"></div>
                 <div class="form-group"><label>Đơn vị</label><input type="text" class="form-control" id="inp_unit"></div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="inp_description" rows="2"></textarea></div>
@@ -43,42 +79,95 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
+var fixedBrandId = '{{ service_price_brand.id|default:"" }}';
+
+function currentBrandId(){
+    return isSuperAdmin ? ($('#brand_selector').val() || '') : fixedBrandId;
+}
+
+function servicePriceApiUrl(){
+    var brandId = currentBrandId();
+    var url = '/api/service-prices/?brand_id=' + encodeURIComponent(brandId);
+    var billingMonth = $('#filter_month').val() || '';
+    if(billingMonth) url += '&billing_month=' + encodeURIComponent(billingMonth);
+    return url;
+}
+
+function currentMonth(){
+    var now = new Date();
+    return String(now.getFullYear()) + '-' + String(now.getMonth()+1).padStart(2,'0');
+}
+
+function monthLabel(value){
+    var parts = String(value || '').split('-');
+    return parts.length === 2 ? parts[1] + '/' + parts[0] : '';
+}
+
+function updateBrandState(){
+    var hasBrand = !!currentBrandId();
+    $('#btn_add').prop('disabled', !hasBrand);
+    $('#filter_month').prop('disabled', !hasBrand);
+    $('#brand_required_hint').toggle(!hasBrand);
+    if(!hasBrand) $('#data_tbl tbody').empty();
+    return hasBrand;
+}
+
 $(document).ready(function(){
-    loadData();
+    updateBrandState();
+    if(currentBrandId()) loadData();
+    $('#brand_selector').on('change', function(){
+        $('#modal_form').modal('hide');
+        if(updateBrandState()) loadData();
+    });
+    $('#filter_month').on('change', function(){
+        if(currentBrandId()) loadData();
+    });
     $('#btn_add').click(function(){
-        $('#edit_id').val('');$('#inp_name,#inp_unit,#inp_description').val('');$('#inp_price').val(0);$('#inp_is_active').val('true');
-        $('#modal_title').text('Thêm dịch vụ');$('#modal_form').modal('show');
+        if(!currentBrandId()){alert('Vui lòng chọn thương hiệu');return;}
+        var month = $('#filter_month').val() || currentMonth();
+        $('#edit_id').val('');$('#inp_name').val('Phí dịch vụ tháng '+monthLabel(month));$('#inp_description').val('');$('#inp_unit').val('tháng');$('#inp_price').val(0);$('#inp_is_active').val('true');
+        $('#inp_billing_month').val(month);
+        $('#modal_title').text('Thêm chi phí tháng');$('#modal_form').modal('show');
     });
     $('#btn_save').click(function(){
-        var data={id:$('#edit_id').val()||null,name:$('#inp_name').val(),price:$('#inp_price').val(),
+        var data={id:$('#edit_id').val()||null,billing_month:$('#inp_billing_month').val(),name:$('#inp_name').val(),price:$('#inp_price').val(),
             unit:$('#inp_unit').val(),description:$('#inp_description').val(),is_active:$('#inp_is_active').val()==='true'};
-        if(!data.name){alert('Vui lòng nhập tên dịch vụ');return;}
+        if(!data.billing_month){alert('Vui lòng chọn tháng áp dụng');return;}
+        if(!data.name){alert('Vui lòng nhập nội dung dịch vụ');return;}
+        data.brand_id=currentBrandId();
         $.ajax({url:'/api/service-prices/save/',type:'POST',contentType:'application/json',
-            headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
+            headers:{'X-CSRFToken':'{{csrf_token}}'},
+            data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');loadData();}alert(r.message);}
         });
     });
 });
 function loadData(){
-    $.get('/api/service-prices/',function(res){
+    if(!currentBrandId()) return;
+    $.get(servicePriceApiUrl(),function(res){
         var h='';res.data.forEach(function(d,i){
-            h+='<tr><td>'+(i+1)+'</td><td>'+d.name+'</td><td class="text-right">'+fmtD(d.price)+'</td><td>'+d.unit+'</td>'+
+            h+='<tr><td>'+(i+1)+'</td><td>'+d.billing_month_display+'</td><td>'+d.name+'</td><td class="text-right">'+fmtD(d.price)+'</td><td>'+d.unit+'</td>'+
                 '<td>'+d.description+'</td>'+
                 '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });$('#data_tbl tbody').html(h);
+    }).fail(function(xhr){
+        $('#data_tbl tbody').empty();
+        alert((xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'Không tải được bảng giá dịch vụ');
     });
 }
 function editItem(d){
-    $('#edit_id').val(d.id);$('#inp_name').val(d.name);$('#inp_price').val(d.price);$('#inp_unit').val(d.unit);
+    $('#edit_id').val(d.id);$('#inp_billing_month').val(d.billing_month);$('#inp_name').val(d.name);$('#inp_price').val(d.price);$('#inp_unit').val(d.unit);
     $('#inp_description').val(d.description);$('#inp_is_active').val(d.is_active?'true':'false');
-    $('#modal_title').text('Sửa dịch vụ');$('#modal_form').modal('show');
+    $('#modal_title').text('Sửa chi phí tháng');$('#modal_form').modal('show');
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;
     $.ajax({url:'/api/service-prices/delete/',type:'POST',contentType:'application/json',
-        headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify({id:id}),
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({id:id,brand_id:currentBrandId()}),
         success:function(r){loadData();alert(r.message);}
     });
 }

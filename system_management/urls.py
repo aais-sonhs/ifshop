@@ -48,6 +48,9 @@ urlpatterns = [
     path('api/business-config/save/', views.api_save_business_config, name='api_save_business_config'),
     # Brand & Store
     path('brand-tbl/', views.brand_tbl, name='brand_tbl'),
+    path('brand-menu-settings/', views.brand_menu_settings, name='brand_menu_settings'),
+    path('api/brand-menu-settings/', views.api_get_brand_menu_settings, name='api_get_brand_menu_settings'),
+    path('api/brand-menu-settings/save/', views.api_save_brand_menu_settings, name='api_save_brand_menu_settings'),
     path('api/brands/', views.api_get_brands, name='api_get_brands'),
     path('api/brands/save/', views.api_save_brand, name='api_save_brand'),
     path('api/brands/delete/', views.api_delete_brand, name='api_delete_brand'),

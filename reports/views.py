@@ -3927,6 +3927,7 @@ def api_report_staff_sales(request):
         )
         cost = float(cost_data['total_cost'] or 0)
         profit = revenue - cost
+        gross_margin = round(profit / revenue * 100, 1) if revenue > 0 else 0
 
         # Trả hàng liên quan (theo customer từ order)
         staff_order_ids = list(staff_orders.values_list('id', flat=True))
@@ -3974,6 +3975,7 @@ def api_report_staff_sales(request):
             'revenue': revenue,
             'cost': cost,
             'profit': profit,
+            'gross_margin': gross_margin,
             'discount': discount,
             'returns_amount': returns_amount,
             'returns_count': returns_count,
@@ -4089,20 +4091,23 @@ def export_staff_sales_excel(request):
     total_font = Font(bold=True, size=10)
 
     # Title
-    ws.merge_cells('A1:L1')
+    ws.merge_cells('A1:M1')
     ws['A1'] = 'BÁO CÁO DOANH THU NHÂN VIÊN BÁN HÀNG'
     ws['A1'].font = header_font
     ws['A1'].fill = header_fill
     ws['A1'].alignment = Alignment(horizontal='center')
 
-    ws.merge_cells('A2:L2')
+    ws.merge_cells('A2:M2')
     ws['A2'] = f'Từ ngày xuất kho {from_date} đến ngày xuất kho {to_date}'
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
     # Column headers
-    headers = ['STT', 'Nhân viên', 'Số đơn', 'Doanh thu', 'Giá vốn', 'Lợi nhuận',
-               'Trả hàng', 'DT ròng', 'Bonus', 'Công nợ', 'Đã thu', 'Tỷ lệ (%)']
+    headers = [
+        'STT', 'Nhân viên', 'Số đơn', 'Doanh thu', 'Giá vốn', 'Lợi nhuận gộp',
+        'Tỷ suất lợi nhuận gộp', 'Trả hàng', 'DT ròng', 'Bonus', 'Công nợ',
+        'Đã thu', 'Tỷ lệ (%)',
+    ]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=h)
         cell.font = sub_header_font
@@ -4131,6 +4136,7 @@ def export_staff_sales_excel(request):
         )
         cost = float(cost_data['c'] or 0)
         profit = revenue - cost
+        gross_margin = profit / revenue if revenue > 0 else 0
 
         sp_ids = list(sp_orders.values_list('id', flat=True))
         ret = OrderReturn.objects.filter(
@@ -4142,14 +4148,18 @@ def export_staff_sales_excel(request):
         debt = revenue - paid
         contribution = (revenue / grand_total_revenue * 100) if grand_total_revenue > 0 else 0
 
-        data_row = [idx, sp_name, count, revenue, cost, profit,
-                    returns_amt, net_revenue, bonus, debt, paid, round(contribution, 1)]
+        data_row = [
+            idx, sp_name, count, revenue, cost, profit, gross_margin,
+            returns_amt, net_revenue, bonus, debt, paid, round(contribution, 1),
+        ]
         for col, val in enumerate(data_row, 1):
             cell = ws.cell(row=row, column=col, value=val)
             cell.border = thin_border
-            if col >= 4 and col <= 11:
+            if col in (4, 5, 6, 8, 9, 10, 11, 12):
                 cell.number_format = money_format
-            if col == 12:
+            if col == 7:
+                cell.number_format = '0.0%'
+            if col == 13:
                 cell.number_format = '0.0'
             if col in (1, 3):
                 cell.alignment = Alignment(horizontal='center')
@@ -4166,23 +4176,28 @@ def export_staff_sales_excel(request):
         row += 1
 
     # Total row
+    grand_gross_margin = (
+        grand['profit'] / grand['revenue'] if grand['revenue'] > 0 else 0
+    )
     total_row = [
         '', 'TỔNG CỘNG', grand['orders'], grand['revenue'], grand['cost'],
-        grand['profit'], grand['returns'], grand['net'], grand['bonus'],
-        grand['debt'], grand['paid'], 100
+        grand['profit'], grand_gross_margin, grand['returns'], grand['net'],
+        grand['bonus'], grand['debt'], grand['paid'], 100,
     ]
     for col, val in enumerate(total_row, 1):
         cell = ws.cell(row=row, column=col, value=val)
         cell.font = total_font
         cell.fill = total_fill
         cell.border = thin_border
-        if col >= 4 and col <= 11:
+        if col in (4, 5, 6, 8, 9, 10, 11, 12):
             cell.number_format = money_format
-        if col == 12:
+        if col == 7:
+            cell.number_format = '0.0%'
+        if col == 13:
             cell.number_format = '0.0'
 
     # Column widths
-    col_widths = [6, 25, 10, 18, 18, 18, 15, 18, 15, 15, 15, 12]
+    col_widths = [6, 25, 10, 18, 18, 18, 24, 15, 18, 15, 15, 15, 12]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 

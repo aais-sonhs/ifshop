@@ -409,15 +409,17 @@ $(document).ready(function(){
             <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
 
                 {% if not request.user.is_superuser %}
+                {% if brand_menu.dashboard %}
                 <li class="nav-item">
                     <a href="{% url 'dashboard_page' %}" class="nav-link {% if active_tab == 'dashboard' %} active{% endif %}">
                         <i class="nav-icon fas fa-tachometer-alt"></i>
                         <p>Dashboard</p>
                     </a>
                 </li>
+                {% endif %}
 
                 <!-- POS -->
-                {% if biz and biz.mod_pos %}
+                {% if brand_menu.pos and biz and biz.mod_pos %}
                 <li class="nav-item">
                     <a href="{% url 'pos_page' %}" class="nav-link {% if active_tab == 'pos_page' %} active{% endif %}" style="background:linear-gradient(135deg,#10b981,#059669);border-radius:8px;margin:4px 8px;">
                         <i class="nav-icon fas fa-cash-register"></i>
@@ -426,6 +428,7 @@ $(document).ready(function(){
                 </li>
                 {% endif %}
 
+                {% if brand_menu_groups.sales %}
                 {% if not biz or biz.mod_orders %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'order_tbl' or active_tab == 'order_approvals' or active_tab == 'order_return_tbl' or active_tab == 'packaging_tbl' %}menu-open{% endif %}" data-menu-key="sales">
                     <a href="#" class="nav-link {% if active_tab == 'order_tbl' or active_tab == 'order_approvals' or active_tab == 'order_return_tbl' or active_tab == 'packaging_tbl' %}active{% endif %}">
@@ -434,12 +437,15 @@ $(document).ready(function(){
                     </a>
                     <ul class="nav nav-treeview">
                         {% comment %} Hidden menu item: dùng màn /order-tbl/ thay cho /quotation-tbl/ {% endcomment %}
+                        {% if brand_menu.orders %}
                         <li class="nav-item">
                             <a href="{% url 'order_tbl' %}" class="nav-link {% if active_tab == 'order_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Bán hàng / BG</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.order_approvals %}
                         {% if biz.opt_order_approver and pending_approval_count > 0 or active_tab == 'order_approvals' %}
                         <li class="nav-item">
                             <a href="{% url 'order_approvals' %}" class="nav-link {% if active_tab == 'order_approvals' %} active{% endif %}">
@@ -452,6 +458,8 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% endif %}
+                        {% if brand_menu.order_returns %}
                         {% if not biz or biz.mod_returns %}
                         <li class="nav-item">
                             <a href="{% url 'order_return_tbl' %}" class="nav-link {% if active_tab == 'order_return_tbl' %} active{% endif %}">
@@ -460,6 +468,8 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% endif %}
+                        {% if brand_menu.packaging %}
                         {% if not biz or biz.mod_packaging %}
                         <li class="nav-item">
                             <a href="{% url 'packaging_tbl' %}" class="nav-link {% if active_tab == 'packaging_tbl' %} active{% endif %}">
@@ -468,10 +478,13 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% endif %}
 
+                {% if brand_menu_groups.inventory %}
                 {% if not biz or biz.mod_products %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'purchase_return_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' %}menu-open{% endif %}" data-menu-key="inventory">
                     <a href="#" class="nav-link {% if active_tab == 'product_tbl' or active_tab == 'warehouse_tbl' or active_tab == 'purchase_order_tbl' or active_tab == 'goods_receipt_tbl' or active_tab == 'purchase_return_tbl' or active_tab == 'stock_check_tbl' or active_tab == 'stock_transfer_tbl' or active_tab == 'supplier_tbl' %}active{% endif %}">
@@ -479,42 +492,55 @@ $(document).ready(function(){
                         <p>Kho & Sản phẩm <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.products %}
                         <li class="nav-item">
                             <a href="{% url 'product_tbl' %}" class="nav-link {% if active_tab == 'product_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>DS sản phẩm</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.warehouses %}
                         <li class="nav-item">
                             <a href="{% url 'warehouse_tbl' %}" class="nav-link {% if active_tab == 'warehouse_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Quản lý kho</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.purchase_orders %}
                         <li class="nav-item">
                             <a href="{% url 'purchase_order_tbl' %}" class="nav-link {% if active_tab == 'purchase_order_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Đặt hàng nhập</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.goods_receipts %}
                         <li class="nav-item">
                             <a href="{% url 'goods_receipt_tbl' %}" class="nav-link {% if active_tab == 'goods_receipt_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhập hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.purchase_returns %}
                         <li class="nav-item">
                             <a href="/purchase-return-tbl/" class="nav-link {% if active_tab == 'purchase_return_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Trả hàng nhập</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.stock_checks %}
                         <li class="nav-item">
                             <a href="{% url 'stock_check_tbl' %}" class="nav-link {% if active_tab == 'stock_check_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Kiểm hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.stock_transfers %}
                         {% if warehouse_count > 1 %}
                         <li class="nav-item">
                             <a href="{% url 'stock_transfer_tbl' %}" class="nav-link {% if active_tab == 'stock_transfer_tbl' %} active{% endif %}">
@@ -523,16 +549,21 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% endif %}
+                        {% if brand_menu.suppliers %}
                         <li class="nav-item">
                             <a href="{% url 'supplier_tbl' %}" class="nav-link {% if active_tab == 'supplier_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhà cung cấp</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% endif %}
 
+                {% if brand_menu_groups.customers %}
                 {% if not biz or biz.mod_customers %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'customer_tbl' or active_tab == 'customer_group_tbl' %}menu-open{% endif %}" data-menu-key="customers">
                     <a href="#" class="nav-link {% if active_tab == 'customer_tbl' or active_tab == 'customer_group_tbl' %}active{% endif %}">
@@ -540,23 +571,28 @@ $(document).ready(function(){
                         <p>Khách hàng <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.customers %}
                         <li class="nav-item">
                             <a href="{% url 'customer_tbl' %}" class="nav-link {% if active_tab == 'customer_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>DS Khách hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.customer_groups %}
                         <li class="nav-item">
                             <a href="{% url 'customer_group_tbl' %}" class="nav-link {% if active_tab == 'customer_group_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhóm khách hàng</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% endif %}
 
-                {% if biz and biz.mod_cafe_tables %}
+                {% if brand_menu.cafe_tables and biz and biz.mod_cafe_tables %}
                 <li class="nav-item">
                     <a href="{% url 'cafe_table_tbl' %}" class="nav-link {% if active_tab == 'cafe_table_tbl' %} active{% endif %}">
                         <i class="nav-icon fas fa-th-large"></i>
@@ -565,6 +601,7 @@ $(document).ready(function(){
                 </li>
                 {% endif %}
 
+                {% if brand_menu_groups.finance %}
                 {% if not biz or biz.mod_finance %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}menu-open{% endif %}" data-menu-key="finance">
                     <a href="#" class="nav-link {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}active{% endif %}">
@@ -572,34 +609,44 @@ $(document).ready(function(){
                         <p>Tài chính <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.receipts %}
                         <li class="nav-item">
                             <a href="{% url 'receipt_tbl' %}" class="nav-link {% if active_tab == 'receipt_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phiếu thu</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.payments %}
                         <li class="nav-item">
                             <a href="{% url 'payment_tbl' %}" class="nav-link {% if active_tab == 'payment_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phiếu chi</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.finance_list %}
                         <li class="nav-item">
                             <a href="{% url 'finance_list_tbl' %}" class="nav-link {% if active_tab == 'finance_list_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>DS Thu chi</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.cashbooks %}
                         <li class="nav-item">
                             <a href="{% url 'cashbook_tbl' %}" class="nav-link {% if active_tab == 'cashbook_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Sổ quỹ</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% endif %}
 
+                {% if brand_menu_groups.reports %}
                 {% if not biz or biz.mod_reports %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'report_sales' or active_tab == 'report_quotation_profit' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}menu-open{% endif %}" data-menu-key="reports">
                     <a href="#" class="nav-link {% if active_tab == 'report_sales' or active_tab == 'report_quotation_profit' or active_tab == 'report_purchases' or active_tab == 'report_inventory' or active_tab == 'report_finance' or active_tab == 'report_customers' or active_tab == 'report_staff_sales' %}active{% endif %}">
@@ -607,7 +654,7 @@ $(document).ready(function(){
                         <p>Báo cáo <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
-                        {% if can_view_sales_report %}
+                        {% if brand_menu.report_sales and can_view_sales_report %}
                         <li class="nav-item">
                             <a href="{% url 'report_sales' %}" class="nav-link {% if active_tab == 'report_sales' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
@@ -615,7 +662,7 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
-                        {% if can_view_quotation_profit_report %}
+                        {% if brand_menu.report_quotation_profit and can_view_quotation_profit_report %}
                         <li class="nav-item">
                             <a href="{% url 'report_quotation_profit' %}" class="nav-link {% if active_tab == 'report_quotation_profit' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
@@ -623,30 +670,39 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% if brand_menu.report_purchases %}
                         <li class="nav-item">
                             <a href="{% url 'report_purchases' %}" class="nav-link {% if active_tab == 'report_purchases' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC Nhập hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.report_inventory %}
                         <li class="nav-item">
                             <a href="{% url 'report_inventory' %}" class="nav-link {% if active_tab == 'report_inventory' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC Kho</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.report_finance %}
                         <li class="nav-item">
                             <a href="{% url 'report_finance' %}" class="nav-link {% if active_tab == 'report_finance' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC Tài chính</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.report_customers %}
                         <li class="nav-item">
                             <a href="{% url 'report_customers' %}" class="nav-link {% if active_tab == 'report_customers' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC Khách hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.report_staff_sales %}
                         {% if not biz or biz.opt_order_salesperson %}
                         <li class="nav-item">
                             <a href="{% url 'report_staff_sales' %}" class="nav-link {% if active_tab == 'report_staff_sales' %} active{% endif %}">
@@ -655,170 +711,216 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
+                {% endif %}
 
-                {% if biz and biz.mod_spa %}
+                {% if brand_menu_groups.spa and biz and biz.mod_spa %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'spa_booking_calendar' or active_tab == 'spa_booking_tbl' or active_tab == 'spa_service_tbl' or active_tab == 'spa_staff_tbl' or active_tab == 'spa_room_tbl' %}menu-open{% endif %}" data-menu-key="spa">
                     <a href="#" class="nav-link {% if active_tab == 'spa_booking_calendar' or active_tab == 'spa_booking_tbl' or active_tab == 'spa_service_tbl' or active_tab == 'spa_staff_tbl' or active_tab == 'spa_room_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-spa"></i>
                         <p>Spa & Dịch vụ <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.spa_booking_calendar %}
                         <li class="nav-item">
                             <a href="{% url 'spa_booking_calendar' %}" class="nav-link {% if active_tab == 'spa_booking_calendar' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Lịch hẹn (Lịch)</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.spa_bookings %}
                         <li class="nav-item">
                             <a href="{% url 'spa_booking_tbl' %}" class="nav-link {% if active_tab == 'spa_booking_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Lịch hẹn (DS)</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.spa_services %}
                         <li class="nav-item">
                             <a href="{% url 'spa_service_tbl' %}" class="nav-link {% if active_tab == 'spa_service_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Dịch vụ</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.spa_staff %}
                         <li class="nav-item">
                             <a href="{% url 'spa_staff_tbl' %}" class="nav-link {% if active_tab == 'spa_staff_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhân viên / KTV</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.spa_rooms %}
                         <li class="nav-item">
                             <a href="{% url 'spa_room_tbl' %}" class="nav-link {% if active_tab == 'spa_room_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phòng</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
 
-                {% if is_brand_owner %}
+                {% if is_brand_owner and brand_menu_groups.administration %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'system_log_tbl' %}menu-open{% endif %}" data-menu-key="admin">
                     <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'system_log_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-tools"></i>
                         <p>Quản trị <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.users %}
                         <li class="nav-item">
                             <a href="{% url 'user_management_tbl' %}" class="nav-link {% if active_tab == 'user_management_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Quản lý người dùng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.system_logs %}
                         <li class="nav-item">
                             <a href="{% url 'system_log_tbl' %}" class="nav-link {% if active_tab == 'system_log_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Log hệ thống</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.role_groups %}
                         <li class="nav-item">
                             <a href="{% url 'role_group_tbl' %}" class="nav-link {% if active_tab == 'role_group_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhóm vai trò</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.permissions %}
                         <li class="nav-item">
                             <a href="{% url 'permission_tbl' %}" class="nav-link {% if active_tab == 'permission_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phân quyền</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.brand_info %}
                         <li class="nav-item">
                             <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Thông tin cty</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.business_config %}
                         <li class="nav-item">
                             <a href="{% url 'business_config_tbl' %}" class="nav-link {% if active_tab == 'business_config_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Mô hình kinh doanh</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.categories %}
                         <li class="nav-item">
                             <a href="{% url 'category_tbl' %}" class="nav-link {% if active_tab == 'category_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Danh mục</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
+                {% endif %}
+                {% if is_brand_owner and brand_menu_groups.settings %}
                 <li class="nav-item has-treeview nav-section {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}menu-open{% endif %}" data-menu-key="settings">
                     <a href="#" class="nav-link {% if active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'service_price_tbl' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.quotation_settings %}
                         <li class="nav-item">
                             <a href="{% url 'setting_quotation' %}" class="nav-link {% if active_tab == 'setting_quotation' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Cài đặt báo giá</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.order_settings %}
                         <li class="nav-item">
                             <a href="{% url 'setting_order' %}" class="nav-link {% if active_tab == 'setting_order' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Cài đặt đơn hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.stock_alert_email %}
                         <li class="nav-item">
                             <a href="{% url 'stock_alert_email_setting' %}" class="nav-link {% if active_tab == 'stock_alert_email_setting' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Báo email tồn kho</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.daily_email_report %}
                         <li class="nav-item">
                             <a href="{% url 'daily_email_report_setting' %}" class="nav-link {% if active_tab == 'daily_email_report_setting' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>BC email hàng ngày</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.payment_methods %}
                         <li class="nav-item">
                             <a href="{% url 'setting_payment_methods' %}" class="nav-link {% if active_tab == 'setting_payment_methods' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Phương thức TT</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.service_prices %}
                         <li class="nav-item">
                             <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Giá dịch vụ</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.printer_settings %}
                         <li class="nav-item">
                             <a href="{% url 'printer_setting_tbl' %}" class="nav-link {% if active_tab == 'printer_setting_tbl' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Cài đặt máy in</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.print_brands %}
                         <li class="nav-item">
                             <a href="{% url 'print_brand_tbl' %}" class="nav-link {% if active_tab == 'print_brand_tbl' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Nhãn hàng</p>
                             </a>
                         </li>
+                        {% endif %}
+                        {% if brand_menu.print_templates %}
                         <li class="nav-item">
                             <a href="{% url 'print_template_setting' %}" class="nav-link {% if active_tab == 'print_template_setting' %}active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Mẫu in</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
                 {% endif %}{# end not superuser #}
 
                 {% if request.user.is_superuser %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}menu-open{% endif %}" data-menu-key="superadmin_system">
-                    <a href="#" class="nav-link {% if active_tab == 'brand_tbl' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'brand_tbl' or active_tab == 'brand_menu_settings' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}menu-open{% endif %}" data-menu-key="superadmin_system">
+                    <a href="#" class="nav-link {% if active_tab == 'brand_tbl' or active_tab == 'brand_menu_settings' or active_tab == 'user_management_tbl' or active_tab == 'service_price_tbl' or active_tab == 'system_log_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-server"></i>
                         <p>Hệ thống <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -827,6 +929,12 @@ $(document).ready(function(){
                             <a href="{% url 'brand_tbl' %}" class="nav-link {% if active_tab == 'brand_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Thông tin cty</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{% url 'brand_menu_settings' %}" class="nav-link {% if active_tab == 'brand_menu_settings' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Cấu hình menu</p>
                             </a>
                         </li>
                         <li class="nav-item">

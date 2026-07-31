@@ -193,7 +193,8 @@
                                 <th data-col="orders" class="text-center">Số ĐH</th>
                                 <th data-col="revenue" class="text-right">Doanh thu</th>
                                 <th data-col="cost" class="text-right">Giá vốn</th>
-                                <th data-col="profit" class="text-right">Lợi nhuận</th>
+                                <th data-col="profit" class="text-right">Lợi nhuận gộp</th>
+                                <th data-col="gross_margin" class="text-right" title="Lợi nhuận gộp / Doanh thu">Tỷ suất lợi nhuận gộp</th>
                                 <th data-col="returns" class="text-right">Trả hàng</th>
                                 <th data-col="net_revenue" class="text-right">DT ròng</th>
                                 <th data-col="bonus" class="text-right">Bonus</th>
@@ -213,6 +214,7 @@
                                 <td data-col="revenue" class="text-right" id="ft_revenue">0</td>
                                 <td data-col="cost" class="text-right" id="ft_cost">0</td>
                                 <td data-col="profit" class="text-right" id="ft_profit">0</td>
+                                <td data-col="gross_margin" class="text-right" id="ft_gross_margin">0%</td>
                                 <td data-col="returns" class="text-right" id="ft_returns">0</td>
                                 <td data-col="net_revenue" class="text-right" id="ft_net">0</td>
                                 <td data-col="bonus" class="text-right" id="ft_bonus">0</td>
@@ -310,7 +312,8 @@ var STAFF_SALES_COLUMNS = [
     {key:'orders', label:'Số đơn hàng', default:true},
     {key:'revenue', label:'Doanh thu', default:true},
     {key:'cost', label:'Giá vốn', default:true},
-    {key:'profit', label:'Lợi nhuận', default:true},
+    {key:'profit', label:'Lợi nhuận gộp', default:true},
+    {key:'gross_margin', label:'Tỷ suất lợi nhuận gộp', default:true},
     {key:'returns', label:'Trả hàng', default:true},
     {key:'net_revenue', label:'Doanh thu ròng', default:true},
     {key:'bonus', label:'Bonus', default:true},
@@ -511,18 +514,12 @@ function renderStaffTable(){
 
         html += '<tr class="staff-row" data-idx="'+dataIndex+'">';
         html += '<td data-col="rank" class="text-center"><span class="rank-badge '+rankClass+'">'+rankIcon+'</span></td>';
-        html += '<td data-col="salesperson"><strong>'+d.salesperson+'</strong>';
-        if(d.top_products && d.top_products.length > 0){
-            html += '<br>';
-            d.top_products.forEach(function(p){
-                html += '<span class="top-pill">'+p.name+' ('+fmt(p.qty)+')</span>';
-            });
-        }
-        html += '</td>';
+        html += '<td data-col="salesperson"><strong>'+d.salesperson+'</strong></td>';
         html += '<td data-col="orders" class="text-center"><strong>'+d.order_count+'</strong></td>';
         html += '<td data-col="revenue" class="text-right"><strong>'+fmtD(d.revenue)+'</strong></td>';
         html += '<td data-col="cost" class="text-right">'+fmtD(d.cost)+'</td>';
         html += '<td data-col="profit" class="text-right '+profitCls+'"><strong>'+fmtD(d.profit)+'</strong></td>';
+        html += '<td data-col="gross_margin" class="text-right '+profitCls+'"><strong>'+Number(d.gross_margin||0).toFixed(1)+'%</strong></td>';
         html += '<td data-col="returns" class="text-right">'+(d.returns_amount > 0 ? '<span class="text-danger">'+fmtD(d.returns_amount)+'</span>' : '-')+'</td>';
         html += '<td data-col="net_revenue" class="text-right"><strong>'+fmtD(d.net_revenue)+'</strong></td>';
         html += '<td data-col="bonus" class="text-right">'+(d.bonus > 0 ? '<span class="text-info">'+fmtD(d.bonus)+'</span>' : '-')+'</td>';
@@ -545,6 +542,8 @@ function renderStaffTable(){
     $('#ft_cost').text(fmtD(tCost));
     var ftProfitCls = tProfit >= 0 ? 'text-success' : 'text-danger';
     $('#ft_profit').html('<span class="'+ftProfitCls+'">'+fmtD(tProfit)+'</span>');
+    var totalGrossMargin = tRevenue > 0 ? (tProfit / tRevenue * 100) : 0;
+    $('#ft_gross_margin').html('<span class="'+ftProfitCls+'">'+totalGrossMargin.toFixed(1)+'%</span>');
     $('#ft_returns').text(fmtD(tReturns));
     $('#ft_net').text(fmtD(tNet));
     $('#ft_bonus').text(fmtD(tBonus));
@@ -575,7 +574,7 @@ function showStaffOrders(idx){
     var summaryItems = [
         {label:'Đơn hàng', value:d.order_count, icon:'fa-shopping-cart', color:'#2193b0'},
         {label:'Doanh thu', value:fmtD(d.revenue), icon:'fa-chart-line', color:'#11998e'},
-        {label:'Lợi nhuận', value:fmtD(d.profit), icon:'fa-coins', color:d.profit>=0?'#27ae60':'#e74c3c'},
+        {label:'Lợi nhuận gộp', value:fmtD(d.profit), icon:'fa-coins', color:d.profit>=0?'#27ae60':'#e74c3c'},
         {label:'DT ròng', value:fmtD(d.net_revenue), icon:'fa-money-bill', color:'#3498db'},
         {label:'Bonus', value:fmtD(d.bonus), icon:'fa-gift', color:'#e67e22'},
         {label:'Đóng góp', value:d.contribution+'%', icon:'fa-percentage', color:'#8e44ad'},

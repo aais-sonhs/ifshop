@@ -9,7 +9,8 @@ from django.shortcuts import redirect
 class SuperadminAccessMiddleware:
     """Block superadmin from accessing business routes.
     Allowed paths for superadmin (platform management only):
-    - /brand-tbl/, /api/brands/*, /api/stores/*
+    - /brand-tbl/, /brand-menu-settings/, /api/brand-menu-settings/*
+    - /api/brands/*, /api/stores/*
     - /user-management-tbl/, /api/users/*, /system-log-tbl/
     - /service-price-tbl/, /api/service-prices/*
     - /business-config/, /api/business-config/*
@@ -22,6 +23,7 @@ class SuperadminAccessMiddleware:
     ALLOWED_PREFIXES = (
         '/login/', '/logout/', '/register/', '/admin/',
         '/brand-tbl/', '/api/brands/', '/api/stores/',
+        '/brand-menu-settings/', '/api/brand-menu-settings/',
         '/user-management-tbl/', '/api/users/', '/api/stores-for-user/',
         '/service-price-tbl/', '/api/service-prices/',
         '/system-log-tbl/',

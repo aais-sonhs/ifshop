@@ -15,6 +15,13 @@ from .models import (
     UserProfile, RoleGroup, ModulePermission, ServicePrice, PrinterSetting, PrintTemplate,
     PrintTemplateHistory, BusinessConfig, Brand, Store, SystemLog,
 )
+from .menu_config import (
+    BRAND_MENU_CATALOG,
+    BRAND_MENU_KEYS,
+    compact_brand_menu_visibility,
+    is_menu_visible_for_user,
+    resolve_brand_menu_visibility,
+)
 from .retail_docs import (
     RETAIL_DAILY_CHECKLIST,
     RETAIL_FAQS,
@@ -502,7 +509,26 @@ def category_tbl(request):
 def service_price_tbl(request):
     if not can_manage_users(request.user):
         return _redirect_no_system_access(request)
-    context = {'active_tab': 'service_price_tbl'}
+    if not is_menu_visible_for_user(request.user, 'service_prices'):
+        return _redirect_no_system_access(
+            request,
+            'Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này',
+        )
+    brands = []
+    current_brand = None
+    if request.user.is_superuser:
+        brands = list(
+            Brand.objects.filter(
+                brand_type=Brand.TYPE_COMPANY,
+            ).order_by('name', 'id')
+        )
+    else:
+        current_brand = _get_request_brand(request)
+    context = {
+        'active_tab': 'service_price_tbl',
+        'service_price_brands': brands,
+        'service_price_brand': current_brand,
+    }
     return render(request, "system/service_price.html", context)
 
 
@@ -894,20 +920,92 @@ def api_save_role_group_permissions(request):
 
 # ============ API: SERVICE PRICE ============
 
+def _get_service_price_brand(request, brand_id=None):
+    """Super Admin chọn brand; tài khoản thương hiệu luôn bị khóa trong brand của mình."""
+    if request.user.is_superuser:
+        if brand_id in (None, ''):
+            return None
+        try:
+            brand_id = int(brand_id)
+        except (TypeError, ValueError):
+            return None
+        return Brand.objects.filter(
+            id=brand_id,
+            brand_type=Brand.TYPE_COMPANY,
+        ).first()
+    return _get_request_brand(request)
+
+
+def _service_price_brand_error(request):
+    if request.user.is_superuser:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Vui lòng chọn thương hiệu'},
+            status=400,
+        )
+    return _forbid_json('Không xác định được thương hiệu của tài khoản')
+
+
+def _parse_service_price_month(value):
+    """Nhận YYYY-MM và chuẩn hóa về ngày đầu tháng."""
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split('-')
+    if len(parts) != 2:
+        return None
+    try:
+        year, month = (int(part) for part in parts)
+        return date(year, month, 1)
+    except (TypeError, ValueError):
+        return None
+
+
 @login_required(login_url="/login/")
 def api_get_service_prices(request):
     if not can_manage_users(request.user):
         return _forbid_json()
-    items = list(ServicePrice.objects.values('id', 'name', 'price', 'unit', 'description', 'is_active'))
+    if not is_menu_visible_for_user(request.user, 'service_prices'):
+        return _forbid_json('Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này')
+    brand = _get_service_price_brand(request, request.GET.get('brand_id'))
+    if not brand:
+        return _service_price_brand_error(request)
+    requested_month = (request.GET.get('billing_month') or '').strip()
+    billing_month = _parse_service_price_month(requested_month) if requested_month else None
+    if requested_month and not billing_month:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Tháng áp dụng không hợp lệ, cần đúng định dạng YYYY-MM'},
+            status=400,
+        )
+    queryset = ServicePrice.objects.filter(brand=brand)
+    if billing_month:
+        queryset = queryset.filter(billing_month=billing_month)
+    items = list(
+        queryset.order_by(
+            db_models.F('billing_month').desc(nulls_last=True),
+            '-id',
+        ).values(
+            'id',
+            'billing_month',
+            'name',
+            'price',
+            'unit',
+            'description',
+            'is_active',
+        )
+    )
     data = [{
         'id': row['id'],
+        'billing_month': row['billing_month'].strftime('%Y-%m') if row['billing_month'] else '',
+        'billing_month_display': row['billing_month'].strftime('%m/%Y') if row['billing_month'] else 'Chưa gán',
         'name': row['name'],
         'price': float(row['price']),
         'unit': row['unit'] or '',
         'description': row['description'] or '',
         'is_active': row['is_active'],
     } for row in items]
-    return JsonResponse({'data': data})
+    return JsonResponse({
+        'data': data,
+        'brand': {'id': brand.id, 'name': brand.name},
+    })
 
 
 @login_required(login_url="/login/")
@@ -916,20 +1014,62 @@ def api_save_service_price(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not is_menu_visible_for_user(request.user, 'service_prices'):
+        return _forbid_json('Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này')
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            raise ValueError('Dữ liệu không hợp lệ')
+        brand = _get_service_price_brand(request, data.get('brand_id'))
+        if not brand:
+            return _service_price_brand_error(request)
+        billing_month = _parse_service_price_month(data.get('billing_month'))
+        if not billing_month:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Vui lòng chọn Tháng áp dụng hợp lệ'},
+                status=400,
+            )
         sid = data.get('id')
         if sid:
-            s = ServicePrice.objects.get(id=sid)
+            s = ServicePrice.objects.filter(id=sid, brand=brand).first()
+            if not s:
+                return JsonResponse(
+                    {'status': 'error', 'message': 'Không tìm thấy giá dịch vụ trong thương hiệu này'},
+                    status=404,
+                )
         else:
-            s = ServicePrice()
+            s = ServicePrice(brand=brand)
+        duplicate_queryset = ServicePrice.objects.filter(
+            brand=brand,
+            billing_month=billing_month,
+        )
+        if s.id:
+            duplicate_queryset = duplicate_queryset.exclude(id=s.id)
+        if duplicate_queryset.exists():
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': (
+                        f'{brand.name} đã có một dòng giá dịch vụ cho '
+                        f'tháng {billing_month.strftime("%m/%Y")}'
+                    ),
+                },
+                status=400,
+            )
+        s.billing_month = billing_month
         s.name = data.get('name', '')
         s.price = data.get('price', 0) or 0
         s.unit = data.get('unit', '')
         s.description = data.get('description', '')
         s.is_active = data.get('is_active', True)
         s.save()
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        return JsonResponse({
+            'status': 'ok',
+            'message': (
+                f'Lưu giá dịch vụ tháng {billing_month.strftime("%m/%Y")} '
+                f'cho {brand.name} thành công'
+            ),
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -940,10 +1080,29 @@ def api_delete_service_price(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not is_menu_visible_for_user(request.user, 'service_prices'):
+        return _forbid_json('Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này')
     try:
         data = json.loads(request.body)
-        ServicePrice.objects.filter(id=data.get('id')).delete()
-        return JsonResponse({'status': 'ok', 'message': 'Xóa thành công'})
+        if not isinstance(data, dict):
+            raise ValueError('Dữ liệu không hợp lệ')
+        brand = _get_service_price_brand(request, data.get('brand_id'))
+        if not brand:
+            return _service_price_brand_error(request)
+        service = ServicePrice.objects.filter(
+            id=data.get('id'),
+            brand=brand,
+        ).first()
+        if not service:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Không tìm thấy giá dịch vụ trong thương hiệu này'},
+                status=404,
+            )
+        service.delete()
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Xóa giá dịch vụ của {brand.name} thành công',
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1839,6 +1998,124 @@ th{{background:#f0f0f0;font-weight:bold;text-align:center;}}
 
 
 # ============ BRAND & STORE ============
+
+@login_required(login_url="/login/")
+def brand_menu_settings(request):
+    """Màn hình Super Admin cấu hình menu cho từng thương hiệu."""
+    if not request.user.is_superuser:
+        return _redirect_no_system_access(
+            request,
+            'Chỉ Super Admin được cấu hình menu theo thương hiệu',
+        )
+    return render(
+        request,
+        'system/brand_menu_settings.html',
+        {
+            'active_tab': 'brand_menu_settings',
+            'menu_catalog': BRAND_MENU_CATALOG,
+        },
+    )
+
+
+@login_required(login_url="/login/")
+def api_get_brand_menu_settings(request):
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được cấu hình menu theo thương hiệu')
+
+    brands = Brand.objects.filter(
+        brand_type=Brand.TYPE_COMPANY,
+    ).select_related('owner').order_by('name', 'id')
+    data = [
+        {
+            'id': brand.id,
+            'name': brand.name,
+            'owner_name': (
+                brand.owner.get_full_name() or brand.owner.username
+                if brand.owner
+                else ''
+            ),
+            'is_active': brand.is_active,
+            'menu_visibility': resolve_brand_menu_visibility(brand),
+        }
+        for brand in brands
+    ]
+    return JsonResponse({'data': data})
+
+
+@login_required(login_url="/login/")
+def api_save_brand_menu_settings(request):
+    if request.method != 'POST':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Invalid method'},
+            status=405,
+        )
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được cấu hình menu theo thương hiệu')
+
+    try:
+        data = json.loads(request.body)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Dữ liệu gửi lên không hợp lệ'},
+            status=400,
+        )
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Dữ liệu gửi lên không hợp lệ'},
+            status=400,
+        )
+
+    try:
+        brand_id = int(data.get('brand_id'))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Thương hiệu không hợp lệ'},
+            status=400,
+        )
+
+    brand = Brand.objects.filter(
+        id=brand_id,
+        brand_type=Brand.TYPE_COMPANY,
+    ).first()
+    if not brand:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Không tìm thấy thương hiệu'},
+            status=404,
+        )
+
+    visibility = data.get('menu_visibility')
+    if not isinstance(visibility, dict):
+        return JsonResponse(
+            {'status': 'error', 'message': 'Cấu hình menu không hợp lệ'},
+            status=400,
+        )
+
+    unknown_keys = sorted(set(visibility) - BRAND_MENU_KEYS)
+    invalid_keys = sorted(
+        key for key, value in visibility.items()
+        if key in BRAND_MENU_KEYS and not isinstance(value, bool)
+    )
+    if unknown_keys or invalid_keys:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cấu hình menu chứa khóa hoặc giá trị không hợp lệ',
+            },
+            status=400,
+        )
+
+    resolved = {
+        key: visibility.get(key, True)
+        for key in BRAND_MENU_KEYS
+    }
+    brand.menu_visibility = compact_brand_menu_visibility(resolved)
+    brand.save(update_fields=['menu_visibility', 'updated_at'])
+    return JsonResponse({
+        'status': 'ok',
+        'message': f'Đã lưu cấu hình menu cho {brand.name}',
+        'menu_visibility': resolve_brand_menu_visibility(brand),
+    })
+
 
 @login_required(login_url="/login/")
 def brand_tbl(request):

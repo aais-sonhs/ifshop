@@ -104,6 +104,18 @@ class DataPermission(models.Model):
 
 class ServicePrice(models.Model):
     """Danh mục giá dịch vụ"""
+    brand = models.ForeignKey(
+        'Brand',
+        on_delete=models.CASCADE,
+        related_name='service_prices',
+        null=True,
+        verbose_name='Thương hiệu',
+    )
+    billing_month = models.DateField(
+        null=True,
+        verbose_name='Tháng áp dụng',
+        help_text='Lưu ngày đầu tháng, ví dụ 2026-07-01.',
+    )
     name = models.CharField(max_length=255, verbose_name='Tên dịch vụ')
     price = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name='Giá')
     unit = models.CharField(max_length=50, blank=True, null=True, verbose_name='Đơn vị')
@@ -117,9 +129,16 @@ class ServicePrice(models.Model):
         verbose_name = 'Giá dịch vụ'
         verbose_name_plural = 'Giá dịch vụ'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['brand', 'billing_month'],
+                name='uniq_service_price_brand_month',
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.name}: {self.price}"
+        brand_name = self.brand.name if self.brand_id else 'Chưa gán thương hiệu'
+        return f"{brand_name} - {self.name}: {self.price}"
 
 
 class SystemLog(models.Model):
@@ -365,6 +384,11 @@ class Brand(models.Model):
     print_priority = models.PositiveIntegerField(default=100, verbose_name='Thứ tự ưu tiên khi in')
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name='owned_brands', verbose_name='Chủ sở hữu')
+    menu_visibility = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Cấu hình hiển thị menu',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

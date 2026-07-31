@@ -1,4 +1,5 @@
 from .models import BusinessConfig
+from .menu_config import resolve_brand_menu_groups, resolve_brand_menu_visibility
 from core.store_utils import (
     can_view_quotation_profit_report,
     can_view_sales_report,
@@ -35,6 +36,8 @@ def business_config(request):
             config = BusinessConfig.get_config(brand=brand)
             ctx['biz'] = config
             ctx['user_brand'] = brand
+            ctx['brand_menu'] = resolve_brand_menu_visibility(brand)
+            ctx['brand_menu_groups'] = resolve_brand_menu_groups(ctx['brand_menu'])
 
             # Warehouse count for menu visibility
             from core.store_utils import get_managed_store_ids
@@ -67,9 +70,12 @@ def business_config(request):
             ctx['can_view_quotation_profit_report'] = False
             ctx['warehouse_count'] = 0
             ctx['user_brand'] = None
+            ctx['brand_menu'] = resolve_brand_menu_visibility()
+            ctx['brand_menu_groups'] = resolve_brand_menu_groups(ctx['brand_menu'])
 
         return ctx
     except Exception:
+        menu_visibility = resolve_brand_menu_visibility()
         return {
             'biz': None,
             'user_store': None,
@@ -77,4 +83,6 @@ def business_config(request):
             'is_brand_owner': False,
             'can_view_sales_report': False,
             'can_view_quotation_profit_report': False,
+            'brand_menu': menu_visibility,
+            'brand_menu_groups': resolve_brand_menu_groups(menu_visibility),
         }

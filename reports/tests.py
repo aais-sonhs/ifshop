@@ -2838,6 +2838,59 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['status'], 'ok')
         self.assertIn('Minh Tran', payload['salespersons'])
 
+    def test_staff_sales_report_includes_gross_margin_in_api_and_excel(self):
+        today = date.today()
+        order = Order.objects.create(
+            code='DH-RP-STAFF-MARGIN',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=5,
+            payment_status=2,
+            total_amount=200,
+            final_amount=200,
+            paid_amount=200,
+            order_date=today,
+            salesperson='Nhân viên biên gộp',
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=1,
+            unit_price=200,
+            cost_price=120,
+            total_price=200,
+        )
+
+        api_response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+
+        self.assertEqual(api_response.status_code, 200)
+        row = next(
+            item for item in api_response.json()['staff_data']
+            if item['salesperson'] == 'Nhân viên biên gộp'
+        )
+        self.assertEqual(row['profit'], 80.0)
+        self.assertEqual(row['gross_margin'], 40.0)
+
+        export_response = self.client.get(reverse('export_staff_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        })
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        sheet = workbook['BC Doanh thu NV']
+        self.assertEqual(sheet.cell(row=4, column=7).value, 'Tỷ suất lợi nhuận gộp')
+        exported_row = next(
+            row_number for row_number in range(5, sheet.max_row)
+            if sheet.cell(row=row_number, column=2).value == 'Nhân viên biên gộp'
+        )
+        self.assertEqual(sheet.cell(row=exported_row, column=7).value, 0.4)
+        self.assertEqual(sheet.cell(row=exported_row, column=7).number_format, '0.0%')
+
 
 class QuotationProfitReportTests(TestCase):
     @classmethod

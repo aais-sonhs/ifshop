@@ -6,7 +6,7 @@ RETAIL_GUIDE_META = {
         'Tài liệu thao tác từ lúc khai báo sản phẩm đến bán hàng, thu tiền, quản lý công nợ, '
         'nhập kho, trả hàng và đọc báo cáo.'
     ),
-    'revision_date': '25/07/2026',
+    'revision_date': '31/07/2026',
     'audience': 'Chủ cửa hàng, quản lý, nhân viên bán hàng, nhân viên kho và kế toán.',
     'scope': (
         'Tài liệu này chỉ trình bày quy trình bán lẻ. Các mô hình F&B, spa, thời trang chuyên sâu '
@@ -286,6 +286,141 @@ RETAIL_OPERATION_GUIDES = [
             'Phiếu nhập và phiếu chi mua hàng có thể cùng xuất hiện trong công thức quản trị của BC Tài chính; cần hiểu rõ trước khi kết luận.',
         ],
     },
+    {
+        'anchor': 'quotation-profit-report',
+        'icon': 'fas fa-chart-line',
+        'title': 'Báo cáo lợi nhuận dự kiến từ báo giá',
+        'intro': (
+            'Ước tính doanh thu, giá vốn và lợi nhuận của báo giá trước khi tạo đơn hoặc '
+            'quyết định mức chiết khấu cộng tác viên.'
+        ),
+        'path': 'Báo cáo → BC LN dự kiến (/report-quotation-profit/)',
+        'steps': [
+            'Chọn khoảng Ngày báo giá và trạng thái cần xem; mặc định chỉ lấy Nháp, Đã gửi và Đã duyệt.',
+            'Nếu cần, lọc thêm cửa hàng, hiệu lực, khách hàng, sản phẩm, người báo giá hoặc tình trạng lợi nhuận.',
+            'Đọc các thẻ Số báo giá, Doanh thu dự kiến, Giá vốn dự kiến, LN dự kiến, Biên LN dự kiến và BG cần chú ý.',
+            'Dùng Báo lỗ, Thiếu giá vốn hoặc Giá vốn tạm tính để ưu tiên các báo giá cần kiểm tra.',
+            'Bấm Mã BG để mở đúng báo giá trong tab mới và đối chiếu từng dòng sản phẩm.',
+            'Tại Thử CK CTV, chọn nhập theo tiền hoặc phần trăm để xem LN còn lại và mức tối đa không lỗ.',
+            'Bấm Xuất Excel để lưu kết quả theo các bộ lọc hiện tại.',
+        ],
+        'checks': [
+            'Doanh thu dự kiến = Tiền hàng − Chiết khấu + Phí vận chuyển + Phí khác.',
+            'LN dự kiến = Doanh thu dự kiến − Giá vốn dự kiến; Biên LN = LN dự kiến ÷ Doanh thu dự kiến × 100%.',
+            'Báo giá mới dùng giá vốn đã chụp tại thời điểm lưu. Dữ liệu cũ chưa có bản chụp dùng giá vốn hiện tại và được đánh dấu rõ.',
+            'Báo giá có dòng thiếu giá vốn không xác định được mức chiết khấu CTV tối đa không lỗ.',
+            'Thử CK CTV chỉ mô phỏng trên trình duyệt, không sửa hoặc lưu vào báo giá.',
+            'Đây là lợi nhuận gộp dự kiến, chưa phải kết quả bán hàng thực tế và không ghi nhận thanh toán hoặc xuất kho.',
+        ],
+    },
+    {
+        'anchor': 'stock-alert-email',
+        'icon': 'fas fa-envelope-open-text',
+        'title': 'Cảnh báo tồn kho qua email',
+        'intro': (
+            'Tự động kiểm tra sản phẩm dưới tồn tối thiểu theo từng kho và gửi đúng '
+            'phạm vi danh mục cho từng người nhận.'
+        ),
+        'path': 'Cài đặt → Báo email tồn kho (/setting/stock-alert-email/)',
+        'steps': [
+            'Đăng nhập bằng tài khoản Chủ thương hiệu; các vai trò khác không được thay đổi cấu hình gửi email.',
+            'Chọn giờ gửi hằng ngày theo múi giờ Asia/Ho_Chi_Minh và có thể lưu cấu hình ở trạng thái tắt để thử trước.',
+            'Bật tài khoản có email hoặc thêm địa chỉ email ngoài hệ thống; có thể tắt riêng từng người nhận mà vẫn giữ cấu hình.',
+            'Bấm từng người nhận rồi chọn ít nhất một danh mục sản phẩm dành riêng cho email đó.',
+            'Bật Tự động bao gồm toàn bộ danh mục con nếu người nhận cần theo dõi cả các nhóm nằm dưới danh mục đã chọn.',
+            'Bấm Lưu và gửi thử để kiểm tra địa chỉ nhận, nội dung và cấu hình máy chủ email.',
+            'Khi kết quả thử đúng, bật Gửi cảnh báo hằng ngày và bấm Lưu cài đặt.',
+            'Theo dõi Lần chạy lịch gần nhất, Lần gửi thành công, Lần gửi thử và thông báo lỗi ở cuối trang.',
+        ],
+        'checks': [
+            'Một sản phẩm được cảnh báo khi tồn tại từng kho thấp hơn Tồn tối thiểu đã khai báo trên sản phẩm.',
+            'Hệ thống chỉ xét cửa hàng, kho và sản phẩm đang hoạt động; không gửi cảnh báo cho dịch vụ hoặc combo.',
+            'Mỗi email chỉ nhận các sản phẩm thuộc danh mục được gán cho chính email đó.',
+            'Lịch tự động không gửi thư khi không có sản phẩm tồn thấp trong phạm vi của người nhận.',
+            'Mỗi người nhận đang bật phải có email hợp lệ và ít nhất một danh mục.',
+            'Nếu trang báo chưa cấu hình tài khoản gửi email, cần cấu hình máy chủ email trước khi gửi thử hoặc bật lịch.',
+        ],
+    },
+    {
+        'anchor': 'daily-email-report',
+        'icon': 'fas fa-mail-bulk',
+        'title': 'Báo cáo bán hàng qua email hằng ngày',
+        'intro': (
+            'Gửi tự động tổng hợp Doanh thu, Lợi nhuận gộp và Tổng tiền về của '
+            'toàn bộ cửa hàng thuộc thương hiệu.'
+        ),
+        'path': 'Cài đặt → BC email hàng ngày (/setting/daily-email-report/)',
+        'steps': [
+            'Đăng nhập bằng tài khoản Chủ thương hiệu; các vai trò khác không được thay đổi cấu hình.',
+            'Chọn giờ gửi hằng ngày theo múi giờ Asia/Ho_Chi_Minh.',
+            'Bật các tài khoản có email hoặc thêm địa chỉ email ngoài hệ thống; có thể tắt riêng từng người nhận.',
+            'Bấm Lưu và gửi thử để kiểm tra người nhận và số liệu của ngày hiện tại trước khi bật lịch.',
+            'Khi email thử chính xác, bật Gửi báo cáo hằng ngày và bấm Lưu cài đặt.',
+            'Đọc email theo thứ tự Doanh thu, Trả hàng, Doanh thu thuần, Giá vốn thuần, Lợi nhuận gộp, Tỷ suất lợi nhuận gộp và Tổng tiền về.',
+            'Đối chiếu phần Chi tiết theo tài khoản nhận với phương thức thanh toán và sổ quỹ.',
+            'Theo dõi Lần chạy lịch gần nhất, Lần gửi thành công, Lần gửi thử và thông báo lỗi ở cuối trang.',
+        ],
+        'checks': [
+            'Doanh thu lấy đơn Đã xuất kho/Hoàn thành theo ngày xuất kho; dữ liệu cũ chưa có ngày xuất kho dùng Ngày đặt hàng.',
+            'Lợi nhuận gộp = Doanh thu thuần − Giá vốn thuần và đã điều chỉnh hàng trả trong ngày.',
+            'Tổng tiền về lấy các phiếu thu Hoàn thành theo Ngày phiếu thu, gồm cả tiền thu công nợ của đơn cũ.',
+            'Chi tiết tiền về được tách theo tài khoản nhận, phương thức thanh toán và sổ quỹ.',
+            'Khác cảnh báo tồn kho, báo cáo ngày vẫn được gửi khi tất cả chỉ số bằng 0.',
+            'Khi bật lịch phải có ít nhất một người nhận đang hoạt động và máy chủ email phải được cấu hình.',
+        ],
+    },
+    {
+        'anchor': 'service-prices-by-brand',
+        'icon': 'fas fa-file-invoice-dollar',
+        'title': 'Thiết lập giá dịch vụ theo tháng và thương hiệu',
+        'intro': (
+            'Quản lý lịch sử chi phí dịch vụ theo từng tháng và từng thương hiệu, '
+            'tránh dùng chung một mức giá cho tất cả khách hàng hoặc mọi thời kỳ.'
+        ),
+        'path': 'Hệ thống → Giá dịch vụ (/service-price-tbl/)',
+        'steps': [
+            'Super Admin mở Giá dịch vụ và chọn đúng thương hiệu cần thiết lập.',
+            'Có thể chọn Lọc theo tháng để xem riêng một kỳ hoặc để trống để xem toàn bộ lịch sử.',
+            'Bấm Thêm dịch vụ, chọn Tháng áp dụng rồi nhập tên dịch vụ, giá, đơn vị tính, mô tả và trạng thái.',
+            'Bấm Lưu; danh sách chỉ tải lại dữ liệu của thương hiệu và tháng đang chọn.',
+            'Chủ thương hiệu khi mở màn này chỉ thấy và thao tác trên bảng giá của chính thương hiệu mình.',
+            'Nếu không muốn khách dùng màn này, Super Admin tắt menu Giá dịch vụ tại Cấu hình menu của thương hiệu đó.',
+        ],
+        'checks': [
+            'Mỗi thương hiệu chỉ có tối đa một dòng giá dịch vụ trong cùng một tháng.',
+            'Thương hiệu A và thương hiệu B vẫn được phép có các dòng riêng trong cùng một tháng.',
+            'Thêm, sửa hoặc xóa tại thương hiệu A không làm thay đổi bảng giá của thương hiệu B.',
+            'Super Admin phải chọn thương hiệu trước khi xem hoặc cập nhật dữ liệu.',
+            'Hệ thống chặn thao tác sửa hoặc xóa bằng ID thuộc một thương hiệu khác.',
+            'Khi nâng cấp, bảng giá chung cũ được sao chép cho từng thương hiệu và hiển thị Chưa gán tháng cho tới khi được cập nhật.',
+        ],
+    },
+    {
+        'anchor': 'brand-menu-settings',
+        'icon': 'fas fa-th-list',
+        'title': 'Cấu hình menu theo từng thương hiệu',
+        'intro': (
+            'Cho phép Super Admin chọn các chức năng xuất hiện trên thanh menu của '
+            'từng thương hiệu, phù hợp với gói dịch vụ khách đang sử dụng.'
+        ),
+        'path': 'Hệ thống → Cấu hình menu (/brand-menu-settings/)',
+        'steps': [
+            'Đăng nhập bằng tài khoản Super Admin; chủ thương hiệu và nhân viên không được mở hoặc thay đổi màn này.',
+            'Chọn đúng thương hiệu cần cấu hình.',
+            'Bật hoặc tắt từng menu; công tắc ở tên nhóm dùng để đổi toàn bộ menu con trong nhóm.',
+            'Dùng Bật tất cả hoặc Tắt tất cả khi cần cấu hình nhanh, sau đó kiểm tra lại từng nhóm.',
+            'Bấm Lưu cấu hình và đăng nhập bằng tài khoản thuộc thương hiệu đó để kiểm tra sidebar.',
+            'Với khách thu phí một lần, có thể tắt Cài đặt → Giá dịch vụ; khách thu phí hằng tháng thì bật lại mục này.',
+        ],
+        'checks': [
+            'Mỗi thương hiệu có cấu hình riêng; thay đổi thương hiệu A không làm đổi menu của thương hiệu B.',
+            'Menu chưa từng cấu hình hoặc menu mới được bổ sung sau này mặc định hiển thị.',
+            'Nhóm cha tự ẩn khi toàn bộ menu con trong nhóm đều bị tắt.',
+            'Điều kiện mô hình kinh doanh và phân quyền người dùng vẫn được áp dụng cùng cấu hình của Super Admin.',
+            'Khi Giá dịch vụ bị tắt, chủ thương hiệu không thể mở trực tiếp trang hoặc API Giá dịch vụ.',
+            'Menu hệ thống riêng của Super Admin không bị ảnh hưởng bởi cấu hình theo thương hiệu.',
+        ],
+    },
 ]
 
 
@@ -555,6 +690,13 @@ RETAIL_SALES_REPORT_SCOPE = [
         'name': 'Riêng tab Hàng bán chậm',
         'detail': 'Dùng toàn bộ lịch sử bán của đơn Đã xuất kho/Hoàn thành và chỉ lấy sản phẩm còn tồn; không bị giới hạn bởi khoảng ngày báo cáo.',
     },
+    {
+        'name': 'Riêng BC Nhân viên BH',
+        'detail': (
+            'Chỉ tính đơn Đã xuất kho/Hoàn thành theo ngày xuất kho, có thể lọc theo cửa hàng '
+            'và nhân viên. Bảng xếp hạng chỉ hiện tên nhân viên; Top 3 sản phẩm nằm trong nút Xem chi tiết.'
+        ),
+    },
 ]
 
 
@@ -686,6 +828,167 @@ RETAIL_SALES_REPORT_TABLES = [
             {'name': 'Tồn hiện tại', 'formula': 'Tổng tồn trong phạm vi', 'meaning': 'Lượng hàng đang còn.'},
             {'name': 'Giá tính tồn', 'formula': 'Ưu tiên Giá vốn, sau đó Giá nhập', 'meaning': 'Đơn giá ước tính vốn.'},
             {'name': 'Giá trị tồn', 'formula': 'Tồn × Giá tính tồn', 'meaning': 'Số vốn nằm ở hàng chậm.'},
+        ],
+    },
+    {
+        'title': '9. BC Nhân viên bán hàng',
+        'purpose': (
+            'Xếp hạng kết quả của từng nhân viên tại Báo cáo → BC Nhân viên BH; '
+            'dữ liệu được ghi nhận theo ngày xuất kho.'
+        ),
+        'columns': [
+            {
+                'name': 'Nhân viên',
+                'formula': 'Ưu tiên NV bán hàng trên đơn; nếu trống lấy tài khoản tạo đơn',
+                'meaning': 'Bảng xếp hạng chỉ hiển thị tên để giữ bảng gọn.',
+            },
+            {
+                'name': 'Số ĐH',
+                'formula': 'Đếm đơn Đã xuất kho/Hoàn thành của nhân viên',
+                'meaning': 'Khối lượng giao dịch trong phạm vi đang lọc.',
+            },
+            {
+                'name': 'Doanh thu',
+                'formula': 'Tổng doanh thu đơn của nhân viên',
+                'meaning': 'Giá trị bán trước khi trừ tiền trả hàng.',
+            },
+            {
+                'name': 'Giá vốn',
+                'formula': 'Tổng Số lượng × Giá vốn của các dòng hàng',
+                'meaning': 'Chi phí vốn của hàng đã bán.',
+            },
+            {
+                'name': 'Lợi nhuận gộp',
+                'formula': 'Doanh thu − Giá vốn',
+                'meaning': 'Lãi gộp trước trả hàng và chi phí vận hành.',
+            },
+            {
+                'name': 'Tỷ suất lợi nhuận gộp',
+                'formula': 'Lợi nhuận gộp ÷ Doanh thu × 100%',
+                'meaning': (
+                    'Cho biết 100 đồng doanh thu tạo ra bao nhiêu đồng lợi nhuận gộp; '
+                    'bằng 0% khi doanh thu không dương.'
+                ),
+            },
+            {
+                'name': 'Trả hàng',
+                'formula': 'Tổng tiền hoàn của các phiếu trả không Hủy',
+                'meaning': 'Giá trị hoàn trả gắn với đơn của nhân viên.',
+            },
+            {
+                'name': 'DT ròng',
+                'formula': 'Doanh thu − Trả hàng',
+                'meaning': 'Doanh thu còn lại sau hoàn trả.',
+            },
+            {
+                'name': 'Bonus',
+                'formula': 'Tổng Bonus lưu trên đơn',
+                'meaning': 'Khoản thưởng được ghi nhận cho nhân viên.',
+            },
+            {
+                'name': 'Công nợ',
+                'formula': 'Doanh thu − Đã thu',
+                'meaning': 'Chênh lệch giữa số phải thu và số đã thanh toán.',
+            },
+            {
+                'name': 'Tỷ lệ đóng góp',
+                'formula': 'Doanh thu nhân viên ÷ Tổng doanh thu × 100%',
+                'meaning': 'Mức đóng góp doanh thu của nhân viên.',
+            },
+            {
+                'name': 'TB/Đơn',
+                'formula': 'Doanh thu nhân viên ÷ Số ĐH',
+                'meaning': 'Giá trị doanh thu trung bình của một đơn.',
+            },
+            {
+                'name': 'Dòng TỔNG CỘNG',
+                'formula': 'Tổng lợi nhuận gộp ÷ Tổng doanh thu × 100%',
+                'meaning': 'Tỷ suất tổng được tính từ số tổng, không lấy trung bình tỷ suất từng nhân viên.',
+            },
+            {
+                'name': 'Xem chi tiết',
+                'formula': 'Nút hình con mắt ở cuối dòng',
+                'meaning': 'Mở danh sách đơn và Top 3 sản phẩm bán chạy của nhân viên.',
+            },
+            {
+                'name': 'Xuất Excel',
+                'formula': 'Giữ các chỉ tiêu của bảng, gồm Tỷ suất lợi nhuận gộp',
+                'meaning': 'Dùng để lưu hoặc đối chiếu báo cáo ngoài hệ thống.',
+            },
+        ],
+    },
+    {
+        'title': '10. BC Lợi nhuận dự kiến từ báo giá',
+        'purpose': (
+            'Đánh giá khả năng sinh lời của báo giá tại Báo cáo → BC LN dự kiến '
+            'trước khi tạo đơn hàng.'
+        ),
+        'columns': [
+            {
+                'name': 'Phạm vi mặc định',
+                'formula': 'Báo giá Nháp + Đã gửi + Đã duyệt trong khoảng Ngày báo giá',
+                'meaning': 'Tập trung vào các báo giá đang chào khách.',
+            },
+            {
+                'name': 'Hiệu lực',
+                'formula': 'So sánh ngày hết hạn với ngày hiện tại',
+                'meaning': 'Phân biệt Còn hạn, Hết hạn hoặc Không đặt hạn.',
+            },
+            {
+                'name': 'Tiền hàng',
+                'formula': 'Tổng thành tiền các dòng báo giá',
+                'meaning': 'Giá trị hàng trước chiết khấu chung và phí.',
+            },
+            {
+                'name': 'DT dự kiến',
+                'formula': 'Tiền hàng − Chiết khấu + Phí VC + Phí khác',
+                'meaning': 'Doanh thu dự kiến nếu báo giá được chấp nhận.',
+            },
+            {
+                'name': 'GV dự kiến',
+                'formula': 'Tổng Số lượng × Giá vốn đơn vị',
+                'meaning': 'Ưu tiên giá vốn đã chụp trên dòng báo giá.',
+            },
+            {
+                'name': 'LN dự kiến',
+                'formula': 'DT dự kiến − GV dự kiến',
+                'meaning': 'Lợi nhuận gộp dự kiến trước chi phí vận hành.',
+            },
+            {
+                'name': 'Biên LN',
+                'formula': 'LN dự kiến ÷ DT dự kiến × 100%',
+                'meaning': 'Tỷ lệ lợi nhuận dự kiến trên doanh thu; bằng 0% khi doanh thu không dương.',
+            },
+            {
+                'name': 'Nguồn giá vốn',
+                'formula': 'Giá vốn đã chụp / Giá vốn hiện tại / Thiếu giá vốn',
+                'meaning': 'Cho biết độ tin cậy của phép tính lợi nhuận.',
+            },
+            {
+                'name': 'Thử CK CTV',
+                'formula': 'LN còn lại = LN dự kiến − Chiết khấu CTV thử',
+                'meaning': 'Mô phỏng theo tiền hoặc phần trăm, không lưu vào báo giá.',
+            },
+            {
+                'name': 'Tối đa không lỗ',
+                'formula': 'max(LN dự kiến, 0)',
+                'meaning': 'Mức chiết khấu CTV tối đa khi tất cả dòng đã có giá vốn.',
+            },
+            {
+                'name': 'BG cần chú ý',
+                'formula': 'Đếm báo giá lỗ hoặc có dòng thiếu giá vốn',
+                'meaning': 'Số báo giá cần rà soát trước khi gửi hoặc duyệt.',
+            },
+            {
+                'name': 'Mã BG',
+                'formula': 'Liên kết tới báo giá gốc',
+                'meaning': 'Bấm để mở báo giá trong tab mới.',
+            },
+            {
+                'name': 'Xuất Excel',
+                'formula': 'Giữ dữ liệu và số tổng theo bộ lọc hiện tại',
+                'meaning': 'Dùng để trình duyệt, gửi quản lý hoặc lưu hồ sơ.',
+            },
         ],
     },
 ]

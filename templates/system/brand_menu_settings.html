@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-th-list mr-2"></i>Cấu hình menu theo thương hiệu
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle mr-1"></i>
+            Chỉ Super Admin thay đổi được cấu hình này. Menu chưa từng cấu hình sẽ mặc định hiển thị.
+            Tắt menu chỉ áp dụng cho tài khoản thuộc thương hiệu đã chọn.
+        </div>
+
+        <div class="row align-items-end mb-3">
+            <div class="col-lg-6">
+                <label for="brand_selector">Thương hiệu <span class="text-danger">*</span></label>
+                <select class="form-control" id="brand_selector">
+                    <option value="">-- Chọn thương hiệu --</option>
+                </select>
+                <small class="form-text text-muted" id="brand_owner"></small>
+            </div>
+            <div class="col-lg-6 text-lg-right mt-3 mt-lg-0">
+                <button type="button" class="btn btn-outline-success btn-sm" id="enable_all">
+                    <i class="fas fa-eye mr-1"></i>Bật tất cả
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="disable_all">
+                    <i class="fas fa-eye-slash mr-1"></i>Tắt tất cả
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="save_menu" disabled>
+                    <i class="fas fa-save mr-1"></i>Lưu cấu hình
+                </button>
+            </div>
+        </div>
+
+        <div id="empty_state" class="text-center text-muted py-5 border rounded">
+            <i class="fas fa-building fa-3x mb-3 d-block"></i>
+            Chọn một thương hiệu để cài đặt các menu được hiển thị.
+        </div>
+
+        <div id="menu_settings" class="row" style="display:none;">
+            {% for group in menu_catalog %}
+            <div class="col-xl-4 col-md-6 mb-3">
+                <div class="card h-100 border menu-group-card" data-group="{{ group.key }}">
+                    <div class="card-header py-2 d-flex align-items-center">
+                        <i class="{{ group.icon }} text-primary mr-2"></i>
+                        <strong class="flex-grow-1">{{ group.label }}</strong>
+                        <div class="custom-control custom-switch">
+                            <input
+                                type="checkbox"
+                                class="custom-control-input group-toggle"
+                                id="group_{{ group.key }}"
+                                data-group="{{ group.key }}"
+                            >
+                            <label class="custom-control-label" for="group_{{ group.key }}" title="Bật/tắt cả nhóm"></label>
+                        </div>
+                    </div>
+                    <div class="card-body py-2">
+                        {% for item in group.items %}
+                        <div class="menu-setting-row d-flex align-items-center py-2">
+                            <label class="mb-0 flex-grow-1" for="menu_{{ item.key }}">{{ item.label }}</label>
+                            <div class="custom-control custom-switch">
+                                <input
+                                    type="checkbox"
+                                    class="custom-control-input menu-toggle"
+                                    id="menu_{{ item.key }}"
+                                    data-menu-key="{{ item.key }}"
+                                    data-group="{{ group.key }}"
+                                >
+                                <label class="custom-control-label" for="menu_{{ item.key }}"></label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.menu-setting-row + .menu-setting-row { border-top: 1px solid #edf0f2; }
+.menu-group-card { transition: border-color .15s, opacity .15s; }
+.menu-group-card.group-disabled { opacity: .68; border-color: #ced4da !important; }
+</style>
+<script>
+(function(){
+    var allBrands = [];
+    var selectedBrand = null;
+
+    function escapeHtml(value){
+        return $('<div>').text(value == null ? '' : value).html();
+    }
+
+    function updateGroupState(groupKey){
+        var $items = $('.menu-toggle[data-group="'+groupKey+'"]');
+        var checkedCount = $items.filter(':checked').length;
+        var groupInput = $('.group-toggle[data-group="'+groupKey+'"]').get(0);
+        if(groupInput){
+            groupInput.checked = checkedCount === $items.length;
+            groupInput.indeterminate = checkedCount > 0 && checkedCount < $items.length;
+        }
+        $('.menu-group-card[data-group="'+groupKey+'"]')
+            .toggleClass('group-disabled', checkedCount === 0);
+    }
+
+    function updateAllGroups(){
+        $('.group-toggle').each(function(){ updateGroupState($(this).data('group')); });
+    }
+
+    function applyVisibility(visibility){
+        $('.menu-toggle').each(function(){
+            var key = $(this).data('menu-key');
+            $(this).prop('checked', visibility[key] !== false);
+        });
+        updateAllGroups();
+    }
+
+    function setAllMenus(enabled){
+        if(!selectedBrand) return;
+        $('.menu-toggle').prop('checked', enabled);
+        updateAllGroups();
+    }
+
+    function renderBrandOptions(){
+        var html = '<option value="">-- Chọn thương hiệu --</option>';
+        allBrands.forEach(function(brand){
+            html += '<option value="'+brand.id+'">'+escapeHtml(brand.name);
+            if(!brand.is_active) html += ' (ngừng hoạt động)';
+            html += '</option>';
+        });
+        $('#brand_selector').html(html);
+    }
+
+    function loadData(){
+        $('#brand_selector').prop('disabled', true);
+        $.get('{% url "api_get_brand_menu_settings" %}')
+            .done(function(response){
+                allBrands = response.data || [];
+                renderBrandOptions();
+            })
+            .fail(function(xhr){
+                alert((xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'Không tải được danh sách thương hiệu');
+            })
+            .always(function(){ $('#brand_selector').prop('disabled', false); });
+    }
+
+    $('#brand_selector').on('change', function(){
+        var id = String($(this).val() || '');
+        selectedBrand = allBrands.find(function(brand){ return String(brand.id) === id; }) || null;
+        $('#empty_state').toggle(!selectedBrand);
+        $('#menu_settings').toggle(!!selectedBrand);
+        $('#save_menu').prop('disabled', !selectedBrand);
+        if(!selectedBrand){
+            $('#brand_owner').text('');
+            return;
+        }
+        $('#brand_owner').text(selectedBrand.owner_name ? 'Chủ thương hiệu: '+selectedBrand.owner_name : 'Chưa gán chủ thương hiệu');
+        applyVisibility(selectedBrand.menu_visibility || {});
+    });
+
+    $('.menu-toggle').on('change', function(){
+        updateGroupState($(this).data('group'));
+    });
+
+    $('.group-toggle').on('change', function(){
+        var groupKey = $(this).data('group');
+        $('.menu-toggle[data-group="'+groupKey+'"]').prop('checked', this.checked);
+        updateGroupState(groupKey);
+    });
+
+    $('#enable_all').on('click', function(){ setAllMenus(true); });
+    $('#disable_all').on('click', function(){ setAllMenus(false); });
+
+    $('#save_menu').on('click', function(){
+        if(!selectedBrand) return;
+        var visibility = {};
+        $('.menu-toggle').each(function(){
+            visibility[$(this).data('menu-key')] = $(this).is(':checked');
+        });
+        var $button = $(this).prop('disabled', true);
+        $.ajax({
+            url: '{% url "api_save_brand_menu_settings" %}',
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            data: JSON.stringify({
+                brand_id: selectedBrand.id,
+                menu_visibility: visibility
+            })
+        }).done(function(response){
+            selectedBrand.menu_visibility = response.menu_visibility;
+            applyVisibility(response.menu_visibility);
+            alert(response.message);
+        }).fail(function(xhr){
+            alert((xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'Không lưu được cấu hình menu');
+        }).always(function(){
+            $button.prop('disabled', !selectedBrand);
+        });
+    });
+
+    loadData();
+})();
+</script>
+{% endblock %}

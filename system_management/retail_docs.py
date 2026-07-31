@@ -377,20 +377,21 @@ RETAIL_OPERATION_GUIDES = [
             'Quản lý lịch sử chi phí dịch vụ theo từng tháng và từng thương hiệu, '
             'tránh dùng chung một mức giá cho tất cả khách hàng hoặc mọi thời kỳ.'
         ),
-        'path': 'Hệ thống → Giá dịch vụ (/service-price-tbl/)',
+        'path': 'Super Admin: Hệ thống → Giá dịch vụ; Chủ thương hiệu: Quản trị → Giá dịch vụ hàng tháng (/service-price-tbl/)',
         'steps': [
             'Super Admin mở Giá dịch vụ và chọn đúng thương hiệu cần thiết lập.',
             'Có thể chọn Lọc theo tháng để xem riêng một kỳ hoặc để trống để xem toàn bộ lịch sử.',
             'Bấm Thêm dịch vụ, chọn Tháng áp dụng rồi nhập tên dịch vụ, giá, đơn vị tính, mô tả và trạng thái.',
             'Bấm Lưu; danh sách chỉ tải lại dữ liệu của thương hiệu và tháng đang chọn.',
-            'Chủ thương hiệu khi mở màn này chỉ thấy và thao tác trên bảng giá của chính thương hiệu mình.',
-            'Nếu không muốn khách dùng màn này, Super Admin tắt menu Giá dịch vụ tại Cấu hình menu của thương hiệu đó.',
+            'Chủ thương hiệu mở Quản trị → Giá dịch vụ hàng tháng để xem khoản phải trả và lọc lịch sử; không được thêm, sửa hoặc xóa.',
+            'Nếu không muốn khách xem màn này, Super Admin tắt menu Giá dịch vụ hàng tháng tại Cấu hình menu của thương hiệu đó.',
         ],
         'checks': [
             'Mỗi thương hiệu chỉ có tối đa một dòng giá dịch vụ trong cùng một tháng.',
             'Thương hiệu A và thương hiệu B vẫn được phép có các dòng riêng trong cùng một tháng.',
             'Thêm, sửa hoặc xóa tại thương hiệu A không làm thay đổi bảng giá của thương hiệu B.',
             'Super Admin phải chọn thương hiệu trước khi xem hoặc cập nhật dữ liệu.',
+            'Chỉ Super Admin được thêm, sửa hoặc xóa chi phí; Chủ thương hiệu chỉ có quyền xem.',
             'Hệ thống chặn thao tác sửa hoặc xóa bằng ID thuộc một thương hiệu khác.',
             'Khi nâng cấp, bảng giá chung cũ được sao chép cho từng thương hiệu và hiển thị Chưa gán tháng cho tới khi được cập nhật.',
         ],
@@ -410,7 +411,7 @@ RETAIL_OPERATION_GUIDES = [
             'Bật hoặc tắt từng menu; công tắc ở tên nhóm dùng để đổi toàn bộ menu con trong nhóm.',
             'Dùng Bật tất cả hoặc Tắt tất cả khi cần cấu hình nhanh, sau đó kiểm tra lại từng nhóm.',
             'Bấm Lưu cấu hình và đăng nhập bằng tài khoản thuộc thương hiệu đó để kiểm tra sidebar.',
-            'Với khách thu phí một lần, có thể tắt Cài đặt → Giá dịch vụ; khách thu phí hằng tháng thì bật lại mục này.',
+            'Với khách thu phí một lần, có thể tắt Quản trị → Giá dịch vụ hàng tháng; khách thu phí hằng tháng thì bật lại mục này.',
         ],
         'checks': [
             'Mỗi thương hiệu có cấu hình riêng; thay đổi thương hiệu A không làm đổi menu của thương hiệu B.',

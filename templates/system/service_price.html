@@ -3,9 +3,11 @@
 <div class="card">
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-file-invoice-dollar mr-2"></i>Chi phí dịch vụ theo tháng</h3>
+        {% if service_price_can_edit %}
         <div class="card-tools">
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"{% if request.user.is_superuser %} disabled{% endif %}><i class="fas fa-plus"></i> Thêm chi phí tháng</button>
         </div>
+        {% endif %}
     </div>
     <div class="card-body">
         {% if request.user.is_superuser %}
@@ -34,6 +36,9 @@
             <i class="fas fa-building text-primary mr-1"></i>
             Bảng giá của thương hiệu:
             <strong>{{ service_price_brand.name|default:"Chưa xác định" }}</strong>
+            <span class="d-block text-muted mt-1">
+                Đây là chi phí thương hiệu phải trả hàng tháng. Chỉ Super Admin được thay đổi.
+            </span>
         </div>
         {% endif %}
         <div class="row mb-3">
@@ -45,12 +50,13 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Tháng áp dụng</th><th>Nội dung dịch vụ</th><th>Giá</th><th>Đơn vị</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>STT</th><th>Tháng áp dụng</th><th>Nội dung dịch vụ</th><th>Giá</th><th>Đơn vị</th><th>Mô tả</th><th>Trạng thái</th>{% if service_price_can_edit %}<th>Thao tác</th>{% endif %}</tr></thead>
                 <tbody></tbody>
             </table>
         </div>
     </div>
 </div>
+{% if service_price_can_edit %}
 <div class="modal fade" id="modal_form" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -74,12 +80,14 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
 var isSuperAdmin = {{ request.user.is_superuser|yesno:"true,false" }};
+var canEditServicePrice = {{ service_price_can_edit|yesno:"true,false" }};
 var fixedBrandId = '{{ service_price_brand.id|default:"" }}';
 
 function currentBrandId(){
@@ -149,9 +157,12 @@ function loadData(){
         var h='';res.data.forEach(function(d,i){
             h+='<tr><td>'+(i+1)+'</td><td>'+d.billing_month_display+'</td><td>'+d.name+'</td><td class="text-right">'+fmtD(d.price)+'</td><td>'+d.unit+'</td>'+
                 '<td>'+d.description+'</td>'+
-                '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>'+
-                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
-                '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
+                '<td>'+(d.is_active?'<span class="badge badge-success">HĐ</span>':'<span class="badge badge-secondary">Ngừng</span>')+'</td>';
+            if(canEditServicePrice){
+                h+='<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
+                    '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td>';
+            }
+            h+='</tr>';
         });$('#data_tbl tbody').html(h);
     }).fail(function(xhr){
         $('#data_tbl tbody').empty();

@@ -528,6 +528,7 @@ def service_price_tbl(request):
         'active_tab': 'service_price_tbl',
         'service_price_brands': brands,
         'service_price_brand': current_brand,
+        'service_price_can_edit': request.user.is_superuser,
     }
     return render(request, "system/service_price.html", context)
 
@@ -1014,6 +1015,8 @@ def api_save_service_price(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được thay đổi giá dịch vụ hàng tháng')
     if not is_menu_visible_for_user(request.user, 'service_prices'):
         return _forbid_json('Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này')
     try:
@@ -1080,6 +1083,8 @@ def api_delete_service_price(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     if not can_manage_users(request.user):
         return _forbid_json()
+    if not request.user.is_superuser:
+        return _forbid_json('Chỉ Super Admin được xóa giá dịch vụ hàng tháng')
     if not is_menu_visible_for_user(request.user, 'service_prices'):
         return _forbid_json('Menu Giá dịch vụ đang bị Super Admin tắt cho thương hiệu này')
     try:

@@ -935,8 +935,22 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(owner_page, 'Bảng giá của thương hiệu')
         self.assertContains(owner_page, self.brand.name)
         self.assertNotContains(owner_page, 'id="brand_selector"')
+        self.assertNotContains(owner_page, 'id="btn_add"')
+        self.assertNotContains(owner_page, 'id="modal_form"')
+        self.assertNotContains(owner_page, '<th>Thao tác</th>', html=True)
+        self.assertContains(owner_page, 'Chỉ Super Admin được thay đổi')
         self.assertContains(owner_page, 'id="filter_month"')
-        self.assertContains(owner_page, 'id="inp_billing_month"')
+        self.assertNotContains(owner_page, 'id="inp_billing_month"')
+        owner_html = owner_page.content.decode()
+        self.assertIn('<p>Giá dịch vụ hàng tháng</p>', owner_html)
+        self.assertLess(
+            owner_html.index('data-menu-key="admin"'),
+            owner_html.index('<p>Giá dịch vụ hàng tháng</p>'),
+        )
+        self.assertLess(
+            owner_html.index('<p>Giá dịch vụ hàng tháng</p>'),
+            owner_html.index('data-menu-key="settings"'),
+        )
 
         owner_list = self.client.get(reverse('api_get_service_prices'))
         self.assertEqual(owner_list.status_code, 200)
@@ -975,7 +989,7 @@ class SystemManagementScopeTests(TestCase):
             }),
             content_type='application/json',
         )
-        self.assertEqual(cross_update.status_code, 404)
+        self.assertEqual(cross_update.status_code, 403)
         price_b.refresh_from_db()
         self.assertEqual(price_b.name, 'Phí Brand B')
 
@@ -987,7 +1001,7 @@ class SystemManagementScopeTests(TestCase):
             }),
             content_type='application/json',
         )
-        self.assertEqual(cross_delete.status_code, 404)
+        self.assertEqual(cross_delete.status_code, 403)
         self.assertTrue(ServicePrice.objects.filter(id=price_b.id).exists())
 
         create_response = self.client.post(
@@ -1001,7 +1015,34 @@ class SystemManagementScopeTests(TestCase):
             }),
             content_type='application/json',
         )
-        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(create_response.status_code, 403)
+        self.assertFalse(
+            ServicePrice.objects.filter(
+                brand=self.brand,
+                billing_month=date(2026, 8, 1),
+                name='Phí mới của A',
+            ).exists()
+        )
+
+        self.client.force_login(self.superuser)
+        super_page = self.client.get(reverse('service_price_tbl'))
+        self.assertContains(super_page, 'id="brand_selector"')
+        self.assertContains(super_page, 'id="btn_add"')
+        self.assertContains(super_page, self.brand.name)
+        self.assertContains(super_page, self.other_brand.name)
+
+        super_create_response = self.client.post(
+            reverse('api_save_service_price'),
+            data=json.dumps({
+                'brand_id': self.brand.id,
+                'billing_month': '2026-08',
+                'name': 'Phí mới của A',
+                'price': 300000,
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(super_create_response.status_code, 200)
         self.assertTrue(
             ServicePrice.objects.filter(
                 brand=self.brand,
@@ -1020,6 +1061,7 @@ class SystemManagementScopeTests(TestCase):
         duplicate_month = self.client.post(
             reverse('api_save_service_price'),
             data=json.dumps({
+                'brand_id': self.brand.id,
                 'billing_month': '2026-07',
                 'name': 'Dòng thứ hai cùng tháng',
                 'price': 400000,
@@ -1028,12 +1070,6 @@ class SystemManagementScopeTests(TestCase):
         )
         self.assertEqual(duplicate_month.status_code, 400)
         self.assertIn('đã có một dòng', duplicate_month.json()['message'])
-
-        self.client.force_login(self.superuser)
-        super_page = self.client.get(reverse('service_price_tbl'))
-        self.assertContains(super_page, 'id="brand_selector"')
-        self.assertContains(super_page, self.brand.name)
-        self.assertContains(super_page, self.other_brand.name)
 
         missing_brand = self.client.get(reverse('api_get_service_prices'))
         self.assertEqual(missing_brand.status_code, 400)
@@ -1109,7 +1145,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Báo cáo bán hàng qua email hằng ngày')
         self.assertContains(response, 'Cài đặt → BC email hàng ngày (/setting/daily-email-report/)')
         self.assertContains(response, 'Thiết lập giá dịch vụ theo tháng và thương hiệu')
-        self.assertContains(response, 'Hệ thống → Giá dịch vụ (/service-price-tbl/)')
+        self.assertContains(response, 'Quản trị → Giá dịch vụ hàng tháng (/service-price-tbl/)')
         self.assertContains(response, 'chỉ có tối đa một dòng giá dịch vụ trong cùng một tháng')
         self.assertContains(response, 'Cấu hình menu theo từng thương hiệu')
         self.assertContains(response, 'Hệ thống → Cấu hình menu (/brand-menu-settings/)')

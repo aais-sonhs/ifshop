@@ -98,6 +98,7 @@ BRAND_MENU_CATALOG = (
             {'key': 'brand_info', 'label': 'Thông tin công ty'},
             {'key': 'business_config', 'label': 'Mô hình kinh doanh'},
             {'key': 'categories', 'label': 'Danh mục'},
+            {'key': 'service_prices', 'label': 'Giá dịch vụ hàng tháng'},
         ),
     },
     {
@@ -110,7 +111,6 @@ BRAND_MENU_CATALOG = (
             {'key': 'stock_alert_email', 'label': 'Báo email tồn kho'},
             {'key': 'daily_email_report', 'label': 'Báo cáo email hàng ngày'},
             {'key': 'payment_methods', 'label': 'Phương thức thanh toán'},
-            {'key': 'service_prices', 'label': 'Giá dịch vụ'},
             {'key': 'printer_settings', 'label': 'Cài đặt máy in'},
             {'key': 'print_brands', 'label': 'Nhãn hàng'},
             {'key': 'print_templates', 'label': 'Mẫu in'},

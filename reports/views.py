@@ -3306,7 +3306,12 @@ def api_report_purchases(request):
 @brand_owner_required
 @report_permission_required
 def report_inventory(request):
-    context = {'active_tab': 'report_inventory'}
+    today = datetime.now().date()
+    context = {
+        'active_tab': 'report_inventory',
+        'inventory_movement_from_date': today.replace(day=1).isoformat(),
+        'inventory_movement_to_date': today.isoformat(),
+    }
     return render(request, "reports/report_inventory.html", context)
 
 
@@ -3438,6 +3443,374 @@ def api_report_inventory(request):
             'low_stock_count': low_stock_count,
             'high_stock_count': high_stock_count,
         }
+    })
+
+
+def _inventory_movement_date_range(request):
+    """Chuẩn hóa kỳ báo cáo nhập xuất tồn, mặc định từ đầu tháng đến hôm nay."""
+    today = datetime.now().date()
+    raw_from_date = (request.GET.get('from_date') or '').strip()
+    raw_to_date = (request.GET.get('to_date') or '').strip()
+    from_date = parse_date(raw_from_date) if raw_from_date else today.replace(day=1)
+    to_date = parse_date(raw_to_date) if raw_to_date else today
+    if raw_from_date and not from_date:
+        raise ValueError('Từ ngày không hợp lệ.')
+    if raw_to_date and not to_date:
+        raise ValueError('Đến ngày không hợp lệ.')
+    if from_date > to_date:
+        raise ValueError('Từ ngày phải nhỏ hơn hoặc bằng đến ngày.')
+    return from_date, to_date
+
+
+def _inventory_movement_filtered_stocks(request):
+    """Các dòng sản phẩm/kho thuộc phạm vi và bộ lọc chung của báo cáo kho."""
+    from products.models import ProductStock
+
+    stocks = ProductStock.objects.select_related(
+        'product', 'product__category', 'product__category__parent', 'warehouse',
+    ).filter(
+        product__is_deleted=False,
+        warehouse__is_deleted=False,
+    )
+    stocks = filter_by_store(stocks, request, field_name='warehouse__store')
+
+    warehouse_id = request.GET.get('warehouse_id')
+    search = (request.GET.get('search') or '').strip()
+    category_id = request.GET.get('category_id')
+    product_type_id = request.GET.get('product_type_id')
+    if warehouse_id:
+        stocks = stocks.filter(warehouse_id=warehouse_id)
+    if search:
+        stocks = stocks.filter(
+            Q(product__name__icontains=search)
+            | Q(product__code__icontains=search)
+            | Q(product__barcode__icontains=search)
+        )
+    if category_id:
+        stocks = stocks.filter(
+            Q(product__category_id=category_id)
+            | Q(product__category__parent_id=category_id)
+        )
+    if product_type_id:
+        stocks = stocks.filter(product__category_id=product_type_id)
+    return stocks.order_by('product__name', 'product_id', 'warehouse__name', 'warehouse_id')
+
+
+def _build_inventory_movement_payload(request):
+    """Tổng hợp nhập, xuất và tồn theo sản phẩm/kho từ các chứng từ đã áp dụng."""
+    from orders.models import OrderItem, OrderReturnItem
+    from products.models import (
+        ComboItem,
+        GoodsReceiptItem,
+        PurchaseReturnItem,
+        StockCheckItem,
+        StockTransferItem,
+    )
+
+    from_date, to_date = _inventory_movement_date_range(request)
+    stocks = list(_inventory_movement_filtered_stocks(request))
+    rows = {}
+    product_costs = {}
+    for stock in stocks:
+        product = stock.product
+        category = product.category
+        root_category = category.parent if category and category.parent_id else category
+        valuation_price, valuation_source = _inventory_valuation_unit_cost(product)
+        product_costs[product.id] = valuation_price
+        current_quantity = Decimal(str(stock.quantity or 0))
+        rows[(stock.product_id, stock.warehouse_id)] = {
+            'product_id': stock.product_id,
+            'product_code': product.code,
+            'product_name': product.name,
+            'category': category.name if category else '',
+            'category_id': root_category.id if root_category else None,
+            'category_name': root_category.name if root_category else '',
+            'unit': product.unit or '',
+            'warehouse_id': stock.warehouse_id,
+            'warehouse': stock.warehouse.name,
+            'valuation_price': valuation_price,
+            'valuation_source': valuation_source,
+            'opening_quantity': current_quantity,
+            'import_quantity': Decimal('0'),
+            'import_value': Decimal('0'),
+            'export_quantity': Decimal('0'),
+            'export_value': Decimal('0'),
+        }
+
+    if not rows:
+        return {
+            'from_date': from_date,
+            'to_date': to_date,
+            'data': [],
+            'summary': {
+                'opening_quantity': 0.0,
+                'opening_value': 0.0,
+                'import_quantity': 0.0,
+                'import_value': 0.0,
+                'export_quantity': 0.0,
+                'export_value': 0.0,
+                'closing_quantity': 0.0,
+                'closing_value': 0.0,
+            },
+        }
+
+    product_ids = {key[0] for key in rows}
+    warehouse_ids = {key[1] for key in rows}
+
+    def unit_cost(product_id, preferred_cost=None):
+        preferred_cost = Decimal(str(preferred_cost or 0))
+        if preferred_cost > 0:
+            return preferred_cost
+        return product_costs.get(product_id, Decimal('0'))
+
+    def apply_movement(product_id, warehouse_id, movement_date, signed_quantity, movement_value):
+        row = rows.get((product_id, warehouse_id))
+        if not row or not movement_date or movement_date < from_date:
+            return
+        signed_quantity = Decimal(str(signed_quantity or 0))
+        if signed_quantity == 0:
+            return
+        movement_value = abs(Decimal(str(movement_value or 0)))
+
+        # Lùi từ tồn hiện tại qua mọi chứng từ kể từ đầu kỳ để suy ra tồn đầu.
+        # Các chứng từ sau ngày cuối kỳ cũng được lùi, nhờ đó có thể xem kỳ cũ.
+        row['opening_quantity'] -= signed_quantity
+        if movement_date > to_date:
+            return
+        if signed_quantity > 0:
+            row['import_quantity'] += signed_quantity
+            row['import_value'] += movement_value
+        else:
+            row['export_quantity'] += abs(signed_quantity)
+            row['export_value'] += movement_value
+
+    receipt_items = GoodsReceiptItem.objects.filter(
+        product_id__in=product_ids,
+        goods_receipt__warehouse_id__in=warehouse_ids,
+        goods_receipt__status=1,
+        goods_receipt__is_deleted=False,
+        goods_receipt__receipt_date__gte=from_date,
+    ).select_related('goods_receipt')
+    for item in receipt_items:
+        quantity = Decimal(str(item.quantity or 0))
+        apply_movement(
+            item.product_id,
+            item.goods_receipt.warehouse_id,
+            item.goods_receipt.receipt_date,
+            quantity,
+            quantity * Decimal(str(item.unit_price or 0)),
+        )
+
+    check_items = StockCheckItem.objects.filter(
+        product_id__in=product_ids,
+        stock_check__warehouse_id__in=warehouse_ids,
+        stock_check__status=1,
+        stock_check__stock_applied=True,
+        stock_check__is_deleted=False,
+        stock_check__check_date__gte=from_date,
+    ).select_related('stock_check')
+    for item in check_items:
+        difference = Decimal(str(item.difference or 0))
+        apply_movement(
+            item.product_id,
+            item.stock_check.warehouse_id,
+            item.stock_check.check_date,
+            difference,
+            abs(difference) * unit_cost(item.product_id),
+        )
+
+    transfer_items = StockTransferItem.objects.filter(
+        Q(transfer__from_warehouse_id__in=warehouse_ids)
+        | Q(transfer__to_warehouse_id__in=warehouse_ids),
+        product_id__in=product_ids,
+        transfer__status=2,
+        transfer__is_deleted=False,
+        transfer__transfer_date__gte=from_date,
+    ).select_related('transfer')
+    for item in transfer_items:
+        quantity = Decimal(str(item.quantity or 0))
+        value = quantity * unit_cost(item.product_id)
+        apply_movement(
+            item.product_id,
+            item.transfer.from_warehouse_id,
+            item.transfer.transfer_date,
+            -quantity,
+            value,
+        )
+        apply_movement(
+            item.product_id,
+            item.transfer.to_warehouse_id,
+            item.transfer.transfer_date,
+            quantity,
+            value,
+        )
+
+    purchase_return_items = PurchaseReturnItem.objects.filter(
+        product_id__in=product_ids,
+        purchase_return__warehouse_id__in=warehouse_ids,
+        purchase_return__status=1,
+        purchase_return__stock_applied=True,
+        purchase_return__is_deleted=False,
+        purchase_return__return_date__gte=from_date,
+    ).select_related('purchase_return')
+    for item in purchase_return_items:
+        quantity = Decimal(str(item.quantity or 0))
+        apply_movement(
+            item.product_id,
+            item.purchase_return.warehouse_id,
+            item.purchase_return.return_date,
+            -quantity,
+            quantity * unit_cost(item.product_id, item.unit_price),
+        )
+
+    order_items = list(OrderItem.objects.filter(
+        Q(product_id__in=product_ids)
+        | Q(product__is_combo=True, product__combo_items__product_id__in=product_ids),
+        order__warehouse_id__in=warehouse_ids,
+        order__status__in=(4, 5),
+        order__is_deleted=False,
+    ).filter(
+        Q(order__exported_at__date__gte=from_date)
+        | Q(order__exported_at__isnull=True, order__order_date__gte=from_date)
+    ).select_related('order', 'product').distinct())
+
+    return_items = list(OrderReturnItem.objects.filter(
+        Q(product_id__in=product_ids)
+        | Q(product__is_combo=True, product__combo_items__product_id__in=product_ids),
+        order_return__warehouse_id__in=warehouse_ids,
+        order_return__status=2,
+        order_return__is_deleted=False,
+        order_return__return_date__gte=from_date,
+    ).select_related('order_return', 'order_return__order', 'product').distinct())
+
+    combo_ids = {
+        item.product_id
+        for item in [*order_items, *return_items]
+        if item.product and item.product.is_combo
+    }
+    combo_components = defaultdict(list)
+    if combo_ids:
+        for component in ComboItem.objects.filter(
+            combo_id__in=combo_ids,
+            product_id__in=product_ids,
+        ).select_related('product'):
+            if not component.product.is_service:
+                combo_components[component.combo_id].append(component)
+
+    def expanded_stock_movements(product, quantity, preferred_cost=None):
+        quantity = Decimal(str(quantity or 0))
+        if not product or product.is_service:
+            return []
+        if product.is_combo:
+            return [
+                (
+                    component.product_id,
+                    quantity * Decimal(str(component.quantity or 0)),
+                    unit_cost(component.product_id),
+                )
+                for component in combo_components.get(product.id, [])
+            ]
+        return [(product.id, quantity, unit_cost(product.id, preferred_cost))]
+
+    for item in order_items:
+        order = item.order
+        if order.exported_at:
+            exported_at = order.exported_at
+            if timezone.is_aware(exported_at):
+                exported_at = timezone.localtime(exported_at)
+            movement_date = exported_at.date()
+        else:
+            movement_date = order.order_date
+        for product_id, quantity, cost in expanded_stock_movements(
+            item.product, item.quantity, item.cost_price,
+        ):
+            apply_movement(
+                product_id,
+                order.warehouse_id,
+                movement_date,
+                -quantity,
+                quantity * cost,
+            )
+
+    original_order_costs = {}
+    original_order_ids = {
+        item.order_return.order_id
+        for item in return_items
+        if item.order_return.order_id
+    }
+    if original_order_ids:
+        cost_buckets = defaultdict(lambda: [Decimal('0'), Decimal('0')])
+        for quantity, cost_price, order_id, product_id in OrderItem.objects.filter(
+            order_id__in=original_order_ids,
+        ).values_list('quantity', 'cost_price', 'order_id', 'product_id'):
+            quantity = Decimal(str(quantity or 0))
+            cost = Decimal(str(cost_price or 0))
+            if product_id and quantity > 0 and cost > 0:
+                bucket = cost_buckets[(order_id, product_id)]
+                bucket[0] += quantity
+                bucket[1] += quantity * cost
+        for key, (quantity, value) in cost_buckets.items():
+            original_order_costs[key] = value / quantity if quantity > 0 else Decimal('0')
+
+    for item in return_items:
+        order_return = item.order_return
+        preferred_cost = original_order_costs.get(
+            (order_return.order_id, item.product_id),
+            Decimal('0'),
+        )
+        for product_id, quantity, cost in expanded_stock_movements(
+            item.product, item.quantity, preferred_cost,
+        ):
+            apply_movement(
+                product_id,
+                order_return.warehouse_id,
+                order_return.return_date,
+                quantity,
+                quantity * cost,
+            )
+
+    data = []
+    for row in rows.values():
+        row['closing_quantity'] = (
+            row['opening_quantity'] + row['import_quantity'] - row['export_quantity']
+        )
+        row['opening_value'] = max(row['opening_quantity'], Decimal('0')) * row['valuation_price']
+        row['closing_value'] = max(row['closing_quantity'], Decimal('0')) * row['valuation_price']
+        data.append({
+            key: float(value) if isinstance(value, Decimal) else value
+            for key, value in row.items()
+        })
+
+    summary_fields = (
+        'opening_quantity', 'opening_value', 'import_quantity', 'import_value',
+        'export_quantity', 'export_value', 'closing_quantity', 'closing_value',
+    )
+    summary = {
+        field: float(sum(Decimal(str(row[field] or 0)) for row in rows.values()))
+        for field in summary_fields
+    }
+    return {
+        'from_date': from_date,
+        'to_date': to_date,
+        'data': data,
+        'summary': summary,
+    }
+
+
+@login_required(login_url="/login/")
+@report_permission_required
+def api_report_inventory_movement(request):
+    """API báo cáo nhập xuất tồn theo kỳ."""
+    try:
+        payload = _build_inventory_movement_payload(request)
+    except ValueError as exc:
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=400)
+    return JsonResponse({
+        'status': 'ok',
+        'from_date': payload['from_date'].isoformat(),
+        'to_date': payload['to_date'].isoformat(),
+        'data': payload['data'],
+        'summary': payload['summary'],
     })
 
 
@@ -4929,6 +5302,136 @@ def export_inventory_excel(request):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     filename = f'BC_Ton_kho_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required(login_url="/login/")
+@report_permission_required
+def export_inventory_movement_excel(request):
+    """Xuất báo cáo nhập xuất tồn theo đúng kỳ và bộ lọc đang xem."""
+    import openpyxl
+    from django.http import HttpResponse
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    try:
+        payload = _build_inventory_movement_payload(request)
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=400, content_type='text/plain; charset=utf-8')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Nhập xuất tồn'
+    header_font = Font(bold=True, size=14, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    group_fill = PatternFill(start_color='2E75B6', end_color='2E75B6', fill_type='solid')
+    sub_fill = PatternFill(start_color='5B9BD5', end_color='5B9BD5', fill_type='solid')
+    white_bold_font = Font(bold=True, color='FFFFFF')
+    thin = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin'),
+    )
+    money_fmt = '#,##0'
+    quantity_fmt = '#,##0.##'
+
+    ws.merge_cells('A1:N1')
+    ws['A1'] = 'BÁO CÁO NHẬP XUẤT TỒN'
+    ws['A1'].font = header_font
+    ws['A1'].fill = header_fill
+    ws['A1'].alignment = Alignment(horizontal='center')
+    ws.merge_cells('A2:N2')
+    ws['A2'] = (
+        f"Kỳ báo cáo: {payload['from_date'].strftime('%d/%m/%Y')} - "
+        f"{payload['to_date'].strftime('%d/%m/%Y')}"
+    )
+    ws['A2'].font = Font(italic=True, size=10)
+    ws['A2'].alignment = Alignment(horizontal='center')
+
+    identity_headers = ['STT', 'Mã SP', 'Tên sản phẩm', 'Danh mục', 'ĐVT', 'Kho']
+    for column, label in enumerate(identity_headers, 1):
+        ws.merge_cells(start_row=4, start_column=column, end_row=5, end_column=column)
+        cell = ws.cell(row=4, column=column, value=label)
+        cell.fill = group_fill
+        cell.font = white_bold_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = thin
+        ws.cell(row=5, column=column).border = thin
+
+    for start_column, label in (
+        (7, 'Tồn đầu kỳ'),
+        (9, 'Nhập trong kỳ'),
+        (11, 'Xuất trong kỳ'),
+        (13, 'Tồn cuối kỳ'),
+    ):
+        ws.merge_cells(
+            start_row=4,
+            start_column=start_column,
+            end_row=4,
+            end_column=start_column + 1,
+        )
+        cell = ws.cell(row=4, column=start_column, value=label)
+        cell.fill = group_fill
+        cell.font = white_bold_font
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = thin
+        ws.cell(row=4, column=start_column + 1).border = thin
+        for offset, sub_label in enumerate(('Số lượng', 'Giá trị')):
+            sub_cell = ws.cell(row=5, column=start_column + offset, value=sub_label)
+            sub_cell.fill = sub_fill
+            sub_cell.font = white_bold_font
+            sub_cell.alignment = Alignment(horizontal='center')
+            sub_cell.border = thin
+
+    field_names = (
+        'opening_quantity', 'opening_value', 'import_quantity', 'import_value',
+        'export_quantity', 'export_value', 'closing_quantity', 'closing_value',
+    )
+    row_number = 6
+    for index, item in enumerate(payload['data'], 1):
+        values = [
+            index,
+            item['product_code'],
+            item['product_name'],
+            item['category'],
+            item['unit'],
+            item['warehouse'],
+            *[item[field] for field in field_names],
+        ]
+        for column, value in enumerate(values, 1):
+            cell = ws.cell(row=row_number, column=column, value=value)
+            cell.border = thin
+            if column in (7, 9, 11, 13):
+                cell.number_format = quantity_fmt
+            elif column in (8, 10, 12, 14):
+                cell.number_format = money_fmt
+        row_number += 1
+
+    summary = payload['summary']
+    ws.merge_cells(start_row=row_number, start_column=1, end_row=row_number, end_column=6)
+    total_cell = ws.cell(row=row_number, column=1, value='TỔNG CỘNG')
+    total_cell.font = Font(bold=True)
+    total_cell.alignment = Alignment(horizontal='right')
+    total_cell.border = thin
+    for column in range(2, 7):
+        ws.cell(row=row_number, column=column).border = thin
+    for offset, field in enumerate(field_names, 7):
+        cell = ws.cell(row=row_number, column=offset, value=summary[field])
+        cell.font = Font(bold=True)
+        cell.border = thin
+        cell.number_format = quantity_fmt if offset in (7, 9, 11, 13) else money_fmt
+
+    for index, width in enumerate((6, 15, 32, 20, 10, 20, 14, 18, 14, 18, 14, 18, 14, 18), 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(index)].width = width
+    ws.freeze_panes = 'A6'
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = (
+        f"BC_Nhap_xuat_ton_{payload['from_date'].strftime('%Y%m%d')}_"
+        f"{payload['to_date'].strftime('%Y%m%d')}.xlsx"
+    )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response

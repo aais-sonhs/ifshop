@@ -8,6 +8,7 @@ from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import load_workbook
 
 from customers.models import Customer, CustomerGroup
@@ -22,10 +23,17 @@ from orders.models import (
 )
 from products.models import (
     GoodsReceipt,
+    GoodsReceiptItem,
     Product,
     ProductCategory,
     ProductStock,
     ProductVariant,
+    PurchaseReturn,
+    PurchaseReturnItem,
+    StockCheck,
+    StockCheckItem,
+    StockTransfer,
+    StockTransferItem,
     Supplier,
     Warehouse,
 )
@@ -738,6 +746,18 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'BC kho theo sản phẩm')
         self.assertContains(response, 'id="inventory_category_tab"')
         self.assertContains(response, 'BC kho theo danh mục')
+        self.assertContains(response, 'id="inventory_movement_tab"')
+        self.assertContains(response, 'BC nhập xuất tồn')
+        self.assertContains(response, 'id="inventory_movement_from_date"')
+        self.assertContains(response, 'id="inventory_movement_to_date"')
+        self.assertContains(response, 'SL nhập trong kỳ')
+        self.assertContains(response, 'Giá trị nhập trong kỳ')
+        self.assertContains(response, 'SL xuất trong kỳ')
+        self.assertContains(response, 'Giá trị xuất (giá vốn)')
+        self.assertContains(response, 'id="inventory_movement_tbl"')
+        self.assertContains(response, 'function loadInventoryMovementReport()')
+        self.assertContains(response, reverse('api_report_inventory_movement'))
+        self.assertContains(response, reverse('export_inventory_movement_excel'))
         self.assertContains(response, 'id="inventory_category_tbl"')
         self.assertContains(response, 'function buildInventoryCategoryRows(data)')
         self.assertContains(response, 'function renderInventoryCategoryTable(data)')
@@ -786,6 +806,235 @@ class SalesReportTests(TestCase):
             response,
             "var difference = Number(a[_inventoryProductSortField] || 0) - Number(b[_inventoryProductSortField] || 0);",
         )
+
+    def test_inventory_movement_report_reconstructs_period_and_uses_transaction_costs(self):
+        self.product.cost_price = 120
+        self.product.import_price = 100
+        self.product.save(update_fields=['cost_price', 'import_price'])
+        from_date = date(2026, 7, 1)
+        to_date = date(2026, 7, 31)
+
+        receipt = GoodsReceipt.objects.create(
+            code='PN-XNT-IN-PERIOD',
+            supplier=None,
+            warehouse=self.warehouse,
+            status=1,
+            receipt_date=date(2026, 7, 5),
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=receipt,
+            product=self.product,
+            quantity=5,
+            unit_price=100,
+            total_price=500,
+        )
+        future_receipt = GoodsReceipt.objects.create(
+            code='PN-XNT-AFTER-PERIOD',
+            supplier=None,
+            warehouse=self.warehouse,
+            status=1,
+            receipt_date=date(2026, 8, 2),
+            created_by=self.user,
+        )
+        GoodsReceiptItem.objects.create(
+            goods_receipt=future_receipt,
+            product=self.product,
+            quantity=4,
+            unit_price=110,
+            total_price=440,
+        )
+        order = Order.objects.create(
+            code='DH-XNT-OUT-PERIOD',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=4,
+            order_date=date(2026, 7, 10),
+            exported_at=timezone.make_aware(datetime(2026, 7, 10, 12, 0)),
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=3,
+            cost_price=120,
+            unit_price=200,
+            total_price=600,
+        )
+        stock_check = StockCheck.objects.create(
+            code='KK-XNT-INCREASE',
+            warehouse=self.warehouse,
+            status=1,
+            stock_applied=True,
+            check_date=date(2026, 7, 15),
+            created_by=self.user,
+        )
+        StockCheckItem.objects.create(
+            stock_check=stock_check,
+            product=self.product,
+            system_quantity=12,
+            actual_quantity=14,
+            difference=2,
+        )
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=18)
+
+        response = self.client.get(reverse('api_report_inventory_movement'), {
+            'from_date': from_date.isoformat(),
+            'to_date': to_date.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        row = next(item for item in payload['data'] if item['product_id'] == self.product.id)
+        self.assertEqual(row['opening_quantity'], 10.0)
+        self.assertEqual(row['import_quantity'], 7.0)
+        self.assertEqual(row['import_value'], 740.0)
+        self.assertEqual(row['export_quantity'], 3.0)
+        self.assertEqual(row['export_value'], 360.0)
+        self.assertEqual(row['closing_quantity'], 14.0)
+        self.assertEqual(row['opening_value'], 1200.0)
+        self.assertEqual(row['closing_value'], 1680.0)
+
+    def test_inventory_movement_report_includes_returns_checks_and_transfers(self):
+        self.product.cost_price = 100
+        self.product.save(update_fields=['cost_price'])
+        other_warehouse = Warehouse.objects.create(
+            store=self.store,
+            code='KHO-RP-XNT-2',
+            name='Kho báo cáo XNT 2',
+        )
+        period_date = date(2026, 7, 12)
+
+        original_receipt = GoodsReceipt.objects.create(
+            code='PN-XNT-ORIGINAL',
+            warehouse=self.warehouse,
+            status=1,
+            receipt_date=date(2026, 6, 1),
+            created_by=self.user,
+        )
+        original_receipt_item = GoodsReceiptItem.objects.create(
+            goods_receipt=original_receipt,
+            product=self.product,
+            quantity=5,
+            unit_price=70,
+            total_price=350,
+        )
+        purchase_return = PurchaseReturn.objects.create(
+            code='THN-XNT-001',
+            goods_receipt=original_receipt,
+            warehouse=self.warehouse,
+            status=1,
+            stock_applied=True,
+            return_date=period_date,
+            created_by=self.user,
+        )
+        PurchaseReturnItem.objects.create(
+            purchase_return=purchase_return,
+            goods_receipt_item=original_receipt_item,
+            product=self.product,
+            quantity=1,
+            unit_price=70,
+            total_price=70,
+        )
+
+        original_order = Order.objects.create(
+            code='DH-XNT-RETURN-ORIGINAL',
+            store=self.store,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=4,
+            order_date=date(2026, 6, 10),
+            exported_at=timezone.make_aware(datetime(2026, 6, 10, 9, 0)),
+            created_by=self.user,
+        )
+        OrderItem.objects.create(
+            order=original_order,
+            product=self.product,
+            quantity=2,
+            cost_price=80,
+            unit_price=150,
+            total_price=300,
+        )
+        order_return = OrderReturn.objects.create(
+            code='TH-XNT-001',
+            order=original_order,
+            customer=self.customer,
+            warehouse=self.warehouse,
+            status=2,
+            return_date=period_date,
+            created_by=self.user,
+        )
+        OrderReturnItem.objects.create(
+            order_return=order_return,
+            product=self.product,
+            quantity=1,
+            unit_price=150,
+            total_price=150,
+        )
+
+        stock_check = StockCheck.objects.create(
+            code='KK-XNT-DECREASE',
+            warehouse=self.warehouse,
+            status=1,
+            stock_applied=True,
+            check_date=period_date,
+            created_by=self.user,
+        )
+        StockCheckItem.objects.create(
+            stock_check=stock_check,
+            product=self.product,
+            system_quantity=10,
+            actual_quantity=8,
+            difference=-2,
+        )
+        transfer = StockTransfer.objects.create(
+            code='CK-XNT-001',
+            from_warehouse=self.warehouse,
+            to_warehouse=other_warehouse,
+            status=2,
+            transfer_date=period_date,
+            created_by=self.user,
+        )
+        StockTransferItem.objects.create(transfer=transfer, product=self.product, quantity=3)
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=5)
+        ProductStock.objects.create(product=self.product, warehouse=other_warehouse, quantity=3)
+
+        response = self.client.get(reverse('api_report_inventory_movement'), {
+            'from_date': '2026-07-01',
+            'to_date': '2026-07-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()['summary']
+        self.assertEqual(summary['opening_quantity'], 10.0)
+        self.assertEqual(summary['import_quantity'], 4.0)
+        self.assertEqual(summary['import_value'], 380.0)
+        self.assertEqual(summary['export_quantity'], 6.0)
+        self.assertEqual(summary['export_value'], 570.0)
+        self.assertEqual(summary['closing_quantity'], 8.0)
+
+    def test_inventory_movement_excel_uses_selected_period(self):
+        self.product.cost_price = 100
+        self.product.save(update_fields=['cost_price'])
+        ProductStock.objects.create(product=self.product, warehouse=self.warehouse, quantity=2)
+
+        response = self.client.get(reverse('export_inventory_movement_excel'), {
+            'from_date': '2026-07-01',
+            'to_date': '2026-07-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('BC_Nhap_xuat_ton_20260701_20260731.xlsx', response['Content-Disposition'])
+        workbook = load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        self.assertEqual(sheet['A1'].value, 'BÁO CÁO NHẬP XUẤT TỒN')
+        self.assertEqual(sheet['A2'].value, 'Kỳ báo cáo: 01/07/2026 - 31/07/2026')
+        self.assertEqual(sheet['G4'].value, 'Tồn đầu kỳ')
+        self.assertEqual(sheet['I4'].value, 'Nhập trong kỳ')
+        self.assertEqual(sheet['K4'].value, 'Xuất trong kỳ')
+        self.assertEqual(sheet['M4'].value, 'Tồn cuối kỳ')
 
     def test_api_inventory_report_exposes_product_supplier(self):
         from products.models import Supplier

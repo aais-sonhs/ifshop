@@ -34,6 +34,11 @@ urlpatterns = [
     path('api/report-purchases/', views.api_report_purchases, name='api_report_purchases'),
     path('report-inventory/', views.report_inventory, name='report_inventory'),
     path('api/report-inventory/', views.api_report_inventory, name='api_report_inventory'),
+    path(
+        'api/report-inventory-movement/',
+        views.api_report_inventory_movement,
+        name='api_report_inventory_movement',
+    ),
     path('report-finance/', views.report_finance, name='report_finance'),
     path('report-finance/order-debt/', views.report_finance_order_debt, name='report_finance_order_debt'),
     path('api/report-finance/', views.api_report_finance, name='api_report_finance'),
@@ -44,6 +49,11 @@ urlpatterns = [
     path('api/export-staff-sales-excel/', views.export_staff_sales_excel, name='export_staff_sales_excel'),
     path('api/export-sales-excel/', views.export_sales_excel, name='export_sales_excel'),
     path('api/export-inventory-excel/', views.export_inventory_excel, name='export_inventory_excel'),
+    path(
+        'api/export-inventory-movement-excel/',
+        views.export_inventory_movement_excel,
+        name='export_inventory_movement_excel',
+    ),
     path('api/export-orders-excel/', views.export_orders_excel, name='export_orders_excel'),
     path('api/export-customers-excel/', views.export_customers_excel, name='export_customers_excel'),
     path('api/export-purchases-excel/', views.export_purchases_excel, name='export_purchases_excel'),

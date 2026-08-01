@@ -46,28 +46,44 @@
             <div class="col-lg-2 col-md-4 mb-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem</button></div>
         </div>
         <div class="row mb-3">
-            <div class="col-md-4">
+            <div class="col-md-4" id="total_receipt_summary_col">
                 <div class="info-box bg-success">
                     <span class="info-box-icon"><i class="fas fa-arrow-down"></i></span>
                     <div class="info-box-content"><span class="info-box-text">Tổng thu</span><span class="info-box-number" id="total_receipt">0</span></div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-4" id="total_payment_summary_col">
                 <div class="info-box bg-danger">
                     <span class="info-box-icon"><i class="fas fa-arrow-up"></i></span>
                     <div class="info-box-content"><span class="info-box-text">Tổng chi</span><span class="info-box-number" id="total_payment">0</span></div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-4" id="net_filter_summary_col">
                 <div class="info-box bg-info">
                     <span class="info-box-icon"><i class="fas fa-wallet"></i></span>
-                    <div class="info-box-content"><span class="info-box-text">Số dư</span><span class="info-box-number" id="balance">0</span></div>
+                    <div class="info-box-content"><span class="info-box-text">Thu − Chi theo bộ lọc</span><span class="info-box-number" id="balance">0</span></div>
                 </div>
+            </div>
+        </div>
+        <div class="card card-outline card-info mb-3">
+            <div class="card-header py-2">
+                <h3 class="card-title"><i class="fas fa-wallet mr-2"></i>Số dư hiện tại theo quỹ</h3>
+                <div class="card-tools">
+                    Tổng: <strong id="cashbook_balance_total">0đ</strong>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table id="cashbook_balance_tbl" class="table table-bordered table-sm mb-0">
+                    <thead>
+                        <tr><th style="width:60px;">STT</th><th>Quỹ</th><th>Mô tả</th><th class="text-right">Số dư hiện tại</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Ngày</th><th>Mã phiếu</th><th>Diễn giải</th><th class="text-right">Thu</th><th class="text-right">Chi</th><th class="text-right">Số dư</th></tr></thead>
+                <thead><tr><th>STT</th><th>Ngày</th><th>Mã phiếu</th><th>Diễn giải</th><th class="text-right">Thu</th><th class="text-right">Chi</th><th class="text-right" id="running_balance_header">Thu − Chi lũy kế</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -107,6 +123,7 @@
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n) + 'đ';}
+function escapeHtml(value){return $('<div>').text(value == null ? '' : String(value)).html();}
 $(document).ready(function(){
     {% if can_manage_cashbooks %}
     $('#btn_add_cashbook').click(function(){
@@ -183,15 +200,24 @@ function refreshCashbookFilter(){
 function loadData(){
     var code = $.trim($('#filter_code').val() || '').toLowerCase();
     var entryType = $('#filter_entry_type').val();
+    var showRunningBalance = !entryType;
     var cashbookId = $('#filter_cashbook').val();
     var fromDate = $('#filter_from_date').val();
     var toDate = $('#filter_to_date').val();
     var entries = [];
 
+    $('#running_balance_header').toggle(showRunningBalance);
+    $('#net_filter_summary_col').toggle(showRunningBalance);
+    $('#total_receipt_summary_col, #total_payment_summary_col')
+        .toggleClass('col-md-4', showRunningBalance)
+        .toggleClass('col-md-6', !showRunningBalance);
+
     $.when(
         $.get('/api/receipts/'),
-        $.get('/api/payments/')
-    ).done(function(r1, r2){
+        $.get('/api/payments/'),
+        $.get('/api/cashbooks/')
+    ).done(function(r1, r2, r3){
+        renderCashbookBalances(r3[0].data || []);
         r1[0].data.forEach(function(d){
             if(d.status !== 1) return;
             if(entryType === 'payment') return;
@@ -219,13 +245,38 @@ function loadData(){
             h += '<tr><td>'+(i+1)+'</td><td>'+d.date+'</td><td>'+d.code+'</td><td>'+d.desc+'</td>'+
                 '<td class="text-right">'+(d.thu?fmtD(d.thu):'')+'</td>'+
                 '<td class="text-right">'+(d.chi?fmtD(d.chi):'')+'</td>'+
-                '<td class="text-right">'+fmtD(running)+'</td></tr>';
+                (showRunningBalance ? '<td class="text-right">'+fmtD(running)+'</td>' : '')+
+                '</tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="7" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        var visibleColumnCount = showRunningBalance ? 7 : 6;
+        $('#data_tbl tbody').html(h || '<tr><td colspan="'+visibleColumnCount+'" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         $('#total_receipt').text(fmtD(totalThu));
         $('#total_payment').text(fmtD(totalChi));
         $('#balance').text(fmtD(totalThu - totalChi));
     });
+}
+
+function renderCashbookBalances(books){
+    var activeBooks = (books || []).filter(function(book){ return book.is_active; });
+    var totalBalance = 0;
+    var html = '';
+
+    activeBooks.forEach(function(book, index){
+        var bookBalance = Number(book.balance || 0);
+        var balanceClass = bookBalance < 0 ? 'text-danger' : (bookBalance > 0 ? 'text-success' : 'text-muted');
+        totalBalance += bookBalance;
+        html += '<tr>' +
+            '<td>'+(index + 1)+'</td>' +
+            '<td><strong>'+escapeHtml(book.name)+'</strong></td>' +
+            '<td>'+escapeHtml(book.description || '')+'</td>' +
+            '<td class="text-right font-weight-bold '+balanceClass+'">'+fmtD(bookBalance)+'</td>' +
+            '</tr>';
+    });
+
+    $('#cashbook_balance_tbl tbody').html(
+        html || '<tr><td colspan="4" class="text-center text-muted">Chưa có quỹ hoạt động</td></tr>'
+    );
+    $('#cashbook_balance_total').text(fmtD(totalBalance));
 }
 </script>
 {% endblock %}

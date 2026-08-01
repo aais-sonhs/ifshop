@@ -133,7 +133,7 @@
 <div class="card card-outline card-primary">
     <div class="card-header">
         <h3 class="card-title">
-            <i class="fas fa-chart-line mr-2"></i>Báo cáo lợi nhuận dự kiến từ báo giá
+            <i class="fas fa-chart-line mr-2"></i>Báo cáo lợi nhuận dự kiến từ báo giá và đơn chưa xuất kho
         </h3>
         <div class="card-tools">
             <button type="button" class="btn btn-sm btn-success" id="btn_export_quotation_profit">
@@ -143,31 +143,39 @@
     </div>
     <div class="card-body">
         <div class="quotation-profit-help rounded px-3 py-2 mb-3 small">
-            <strong>LN dự kiến = Doanh thu báo giá − Giá vốn.</strong>
-            Doanh thu đã tính chiết khấu toàn báo giá, phí vận chuyển và chi phí khác.
-            Ô “Thử CK CTV” chỉ mô phỏng phần lợi nhuận còn lại, không sửa hoặc lưu vào báo giá.
+            <strong>LN dự kiến = Doanh thu chứng từ − Giá vốn.</strong>
+            Báo cáo gồm báo giá đang chào khách và đơn chưa xuất kho; không tính đơn đã xuất kho, hoàn thành hoặc hủy.
+            Ô “Thử CK CTV” chỉ mô phỏng phần lợi nhuận còn lại, không sửa hoặc lưu vào báo giá/đơn hàng.
         </div>
 
         <div class="row align-items-end" id="quotation_profit_filters">
             <div class="col-xl-2 col-md-3 mb-2">
-                <label class="small text-muted mb-1">Từ ngày báo giá</label>
+                <label class="small text-muted mb-1">Từ ngày chứng từ</label>
                 <input type="date" class="form-control form-control-sm" id="qp_from_date">
             </div>
             <div class="col-xl-2 col-md-3 mb-2">
-                <label class="small text-muted mb-1">Đến ngày báo giá</label>
+                <label class="small text-muted mb-1">Đến ngày chứng từ</label>
                 <input type="date" class="form-control form-control-sm" id="qp_to_date">
             </div>
             <div class="col-xl-3 col-md-6 mb-2">
-                <label class="small text-muted mb-1">Trạng thái báo giá</label>
+                <label class="small text-muted mb-1">Phạm vi chứng từ</label>
                 <select class="form-control form-control-sm" id="qp_status">
-                    <option value="active">Đang chào khách (Nháp/Đã gửi/Đã duyệt)</option>
-                    <option value="non_cancelled">Tất cả trừ đã hủy</option>
-                    <option value="all">Tất cả trạng thái</option>
-                    <option value="0">Nháp</option>
-                    <option value="1">Đã gửi</option>
-                    <option value="2">Đã duyệt</option>
-                    <option value="3">Đã tạo đơn hàng</option>
-                    <option value="4">Hủy</option>
+                    <option value="active">BG đang chào + đơn chưa xuất kho</option>
+                    <option value="non_cancelled">Tất cả BG trừ hủy + đơn chưa xuất kho</option>
+                    <option value="all">Tất cả BG + đơn chưa xuất kho</option>
+                    <option value="0">Chỉ BG: Nháp</option>
+                    <option value="1">Chỉ BG: Đã gửi</option>
+                    <option value="2">Chỉ BG: Đã duyệt</option>
+                    <option value="3">Chỉ BG: Đã tạo đơn hàng</option>
+                    <option value="4">Chỉ BG: Hủy</option>
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 mb-2">
+                <label class="small text-muted mb-1">Loại chứng từ</label>
+                <select class="form-control form-control-sm" id="qp_source">
+                    <option value="all">Tất cả</option>
+                    <option value="quotation">Báo giá</option>
+                    <option value="order">Đơn chưa xuất kho</option>
                 </select>
             </div>
             <div class="col-xl-2 col-md-3 mb-2" id="qp_store_wrap" style="display:none;">
@@ -177,7 +185,7 @@
                 </select>
             </div>
             <div class="col-xl-2 col-md-3 mb-2">
-                <label class="small text-muted mb-1">Hiệu lực</label>
+                <label class="small text-muted mb-1">Hiệu lực báo giá</label>
                 <select class="form-control form-control-sm" id="qp_validity">
                     <option value="all">Tất cả</option>
                     <option value="current">Còn hạn / không đặt hạn</option>
@@ -198,7 +206,7 @@
                 </select>
             </div>
             <div class="col-xl-2 col-md-3 mb-2">
-                <label class="small text-muted mb-1">Người báo giá</label>
+                <label class="small text-muted mb-1">Nhân viên</label>
                 <select class="form-control form-control-sm" id="qp_salesperson">
                     <option value="">Tất cả</option>
                 </select>
@@ -220,7 +228,7 @@
                     <option value="profit_asc">LN thấp nhất</option>
                     <option value="profit_desc">LN cao nhất</option>
                     <option value="margin_asc">Biên LN thấp nhất</option>
-                    <option value="revenue_desc">Giá trị BG cao nhất</option>
+                    <option value="revenue_desc">Giá trị chứng từ cao nhất</option>
                 </select>
             </div>
             <div class="col-xl-3 col-md-6 mb-2">
@@ -229,7 +237,7 @@
                     type="search"
                     class="form-control form-control-sm"
                     id="qp_search"
-                    placeholder="Mã BG, khách hàng, sản phẩm..."
+                    placeholder="Mã chứng từ, khách hàng, sản phẩm..."
                 >
             </div>
             <div class="col-xl-2 col-md-3 mb-2 d-flex" style="gap:6px;">
@@ -244,7 +252,7 @@
 
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
             <small class="text-muted">
-                Mặc định chỉ tính báo giá đang chào khách; có thể chọn thêm báo giá đã tạo đơn hoặc đã hủy.
+                Mặc định tính báo giá đang chào khách và mọi đơn chưa xuất kho; báo giá đã chuyển thành đơn chỉ được tính một lần.
             </small>
             <small class="text-muted">Cập nhật lúc: <span id="qp_refreshed_at">--</span></small>
         </div>
@@ -252,7 +260,7 @@
         <div class="row">
             <div class="col-xl-2 col-md-4 col-6 mb-3">
                 <div class="small-box quotation-profit-kpi bg-profit-blue">
-                    <div class="inner"><h4 id="qp_count">0</h4><p>Số báo giá</p></div>
+                    <div class="inner"><h4 id="qp_count">0</h4><p id="qp_count_breakdown">0 BG + 0 đơn chưa XK</p></div>
                     <div class="icon"><i class="fas fa-file-alt"></i></div>
                 </div>
             </div>
@@ -282,7 +290,7 @@
             </div>
             <div class="col-xl-2 col-md-4 col-6 mb-3">
                 <div class="small-box quotation-profit-kpi bg-profit-red">
-                    <div class="inner"><h4 id="qp_warnings">0</h4><p>BG cần chú ý</p></div>
+                    <div class="inner"><h4 id="qp_warnings">0</h4><p>Chứng từ cần chú ý</p></div>
                     <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
                 </div>
             </div>
@@ -291,10 +299,10 @@
         <div class="alert alert-warning py-2 px-3 small" id="qp_cost_warning" style="display:none;"></div>
 
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
-            <h5 class="mb-0"><i class="fas fa-list-alt text-primary mr-1"></i>Chi tiết theo báo giá</h5>
+            <h5 class="mb-0"><i class="fas fa-list-alt text-primary mr-1"></i>Chi tiết chứng từ</h5>
             <div class="quotation-profit-table-toolbar">
                 <small class="text-muted mr-1">
-                    Bấm <strong>Mã BG</strong> để mở đúng báo giá trong tab mới.
+                    Bấm <strong>Mã chứng từ</strong> để mở báo giá hoặc đơn hàng trong tab mới.
                 </small>
                 <span id="qp_column_config"></span>
                 <label class="small text-muted mb-0" for="qp_page_size">Hiển thị</label>
@@ -311,13 +319,13 @@
                 <thead>
                     <tr>
                         <th data-col="stt">STT</th>
-                        <th data-col="code">Mã BG</th>
-                        <th data-col="date">Ngày BG</th>
-                        <th data-col="validity">Hiệu lực</th>
+                        <th data-col="code">Mã chứng từ</th>
+                        <th data-col="date">Ngày chứng từ</th>
+                        <th data-col="validity">Loại / Hiệu lực</th>
                         <th data-col="status">Trạng thái</th>
                         <th data-col="store">Cửa hàng</th>
                         <th data-col="customer">Khách hàng</th>
-                        <th data-col="salesperson">Người BG</th>
+                        <th data-col="salesperson">Nhân viên</th>
                         <th data-col="products">Sản phẩm</th>
                         <th data-col="goods" class="text-right">Tiền hàng</th>
                         <th data-col="discount" class="text-right">Chiết khấu</th>
@@ -389,13 +397,13 @@
     };
     var quotationProfitColumns = [
         {key:'stt', label:'STT', default:true, minWidth:55},
-        {key:'code', label:'Mã báo giá', default:true, alwaysOn:true, minWidth:135},
-        {key:'date', label:'Ngày báo giá', default:true, minWidth:100},
-        {key:'validity', label:'Hiệu lực', default:true, minWidth:115},
+        {key:'code', label:'Mã chứng từ', default:true, alwaysOn:true, minWidth:145},
+        {key:'date', label:'Ngày chứng từ', default:true, minWidth:110},
+        {key:'validity', label:'Loại / Hiệu lực', default:true, minWidth:135},
         {key:'status', label:'Trạng thái', default:true, minWidth:110},
         {key:'store', label:'Cửa hàng', default:true, minWidth:150},
         {key:'customer', label:'Khách hàng', default:true, minWidth:180},
-        {key:'salesperson', label:'Người báo giá', default:true, minWidth:155},
+        {key:'salesperson', label:'Nhân viên', default:true, minWidth:155},
         {key:'products', label:'Sản phẩm', default:true, minWidth:290},
         {key:'goods', label:'Tiền hàng', default:true, minWidth:125},
         {key:'discount', label:'Chiết khấu', default:true, minWidth:125},
@@ -438,6 +446,7 @@
             ['from_date', '#qp_from_date'],
             ['to_date', '#qp_to_date'],
             ['status', '#qp_status'],
+            ['source', '#qp_source'],
             ['validity', '#qp_validity'],
             ['store_id', '#qp_store'],
             ['customer_id', '#qp_customer'],
@@ -494,6 +503,9 @@
             escapeHtml(item.status_display) + '</span>';
     }
     function validityBadge(item){
+        if(item.validity_status === 'pending_order'){
+            return '<span class="badge badge-warning"><i class="fas fa-box mr-1"></i>Chưa xuất kho</span>';
+        }
         if(item.validity_status === 'expired'){
             return '<span class="badge badge-danger">Hết hạn</span>' +
                 (item.valid_until ? '<div class="small text-muted mt-1">'+escapeHtml(item.valid_until)+'</div>' : '');
@@ -503,6 +515,11 @@
                 (item.valid_until ? '<div class="small text-muted mt-1">'+escapeHtml(item.valid_until)+'</div>' : '');
         }
         return '<span class="badge badge-light border">Không đặt hạn</span>';
+    }
+    function sourceBadge(item){
+        var isOrder = item.source_type === 'order';
+        return '<small class="badge mt-1 ' + (isOrder ? 'badge-warning' : 'badge-light border') + '">' +
+            escapeHtml(item.source_display || (isOrder ? 'Đơn chưa xuất kho' : 'Báo giá')) + '</small>';
     }
     function costBadge(item){
         if(item.cost_status === 'missing'){
@@ -557,11 +574,14 @@
             var ctvCapacity = item.ctv_discount_capacity == null
                 ? '<span class="text-warning">Chưa xác định do thiếu GV</span>'
                 : formatMoney(item.ctv_discount_capacity);
-            html += '<tr class="' + rowClasses.join(' ') + '" data-quotation-id="' + item.id + '">' +
+            var documentUrl = item.document_url || item.quotation_url || '#';
+            var documentLabel = item.source_type === 'order' ? 'đơn hàng' : 'báo giá';
+            var documentIcon = item.source_type === 'order' ? 'fa-shopping-cart' : 'fa-file-alt';
+            html += '<tr class="' + rowClasses.join(' ') + '" data-document-type="' + escapeHtml(item.source_type) + '" data-document-id="' + item.id + '">' +
                 '<td data-col="stt" class="text-center">' + (startIndex + index + 1) + '</td>' +
-                '<td data-col="code"><a class="quotation-code-link" href="' + escapeHtml(item.quotation_url) + '" target="_blank" rel="noopener" title="Mở báo giá ' + escapeHtml(item.code) + ' trong tab mới">' +
-                    '<i class="fas fa-file-alt"></i>' + escapeHtml(item.code) +
-                    '<i class="fas fa-external-link-alt small"></i></a>' + warning + '</td>' +
+                '<td data-col="code"><a class="quotation-code-link" href="' + escapeHtml(documentUrl) + '" target="_blank" rel="noopener" title="Mở ' + documentLabel + ' ' + escapeHtml(item.code) + ' trong tab mới">' +
+                    '<i class="fas ' + documentIcon + '"></i>' + escapeHtml(item.code) +
+                    '<i class="fas fa-external-link-alt small"></i></a><div>' + sourceBadge(item) + '</div>' + warning + '</td>' +
                 '<td data-col="date" class="text-center">' + escapeHtml(item.date) + '</td>' +
                 '<td data-col="validity" class="text-center">' + validityBadge(item) + '</td>' +
                 '<td data-col="status" class="text-center">' + statusBadge(item) + '</td>' +
@@ -592,7 +612,7 @@
                 '</tr>';
         });
         if(!html){
-            html = '<tr><td colspan="20" class="text-center text-muted py-4"><i class="fas fa-inbox mr-1"></i>Không có báo giá phù hợp bộ lọc</td></tr>';
+            html = '<tr><td colspan="20" class="text-center text-muted py-4"><i class="fas fa-inbox mr-1"></i>Không có chứng từ phù hợp bộ lọc</td></tr>';
         }
         $('#quotation_profit_tbl tbody').html(html);
         if(quotationProfitColumnConfig) quotationProfitColumnConfig.apply();
@@ -664,16 +684,20 @@
         if(totalRows){
             $('#qp_pagination_summary').html(
                 'Hiển thị <strong>' + formatNumber(start + 1) + '-' + formatNumber(end) +
-                '</strong> / <strong>' + formatNumber(totalRows) + '</strong> báo giá · Trang <strong>' +
+                '</strong> / <strong>' + formatNumber(totalRows) + '</strong> chứng từ · Trang <strong>' +
                 quotationProfitPageState.page + '/' + totalPages + '</strong>'
             );
         } else {
-            $('#qp_pagination_summary').text('Không có báo giá phù hợp.');
+            $('#qp_pagination_summary').text('Không có chứng từ phù hợp.');
         }
         $('#qp_pagination').html(buildPaginationButtons(quotationProfitPageState.page, totalPages));
     }
     function renderSummary(summary){
-        $('#qp_count').text(formatNumber(summary.quotation_count));
+        $('#qp_count').text(formatNumber(summary.record_count == null ? summary.quotation_count : summary.record_count));
+        $('#qp_count_breakdown').text(
+            formatNumber(summary.quotation_count || 0) + ' BG + ' +
+            formatNumber(summary.pending_order_count || 0) + ' đơn chưa XK'
+        );
         $('#qp_revenue').text(formatMoney(summary.total_revenue));
         $('#qp_cost').text(formatMoney(summary.total_cost));
         $('#qp_profit').text(formatMoney(summary.total_profit));
@@ -682,10 +706,10 @@
         $('#qp_refreshed_at').text(summary.refreshed_at || '--');
         var warnings = [];
         if(summary.missing_cost_count){
-            warnings.push('<strong>' + formatNumber(summary.missing_cost_count) + ' báo giá thiếu giá vốn.</strong> LN dự kiến có thể đang cao hơn thực tế.');
+            warnings.push('<strong>' + formatNumber(summary.missing_cost_count) + ' chứng từ thiếu giá vốn.</strong> LN dự kiến có thể đang cao hơn thực tế.');
         }
         if(summary.estimated_cost_count){
-            warnings.push(formatNumber(summary.estimated_cost_count) + ' báo giá cũ đang tạm tính theo giá vốn hiện tại.');
+            warnings.push(formatNumber(summary.estimated_cost_count) + ' chứng từ đang tạm tính theo giá vốn hiện tại.');
         }
         $('#qp_cost_warning').html(warnings.join(' ')).toggle(!!warnings.length);
     }
@@ -736,6 +760,7 @@
         $('#qp_from_date').val(localDateValue(firstDayOfMonth()));
         $('#qp_to_date').val(localDateValue(new Date()));
         $('#qp_status').val('active');
+        $('#qp_source').val('all');
         $('#qp_validity').val('all');
         $('#qp_store,#qp_customer,#qp_product,#qp_salesperson,#qp_profit_filter').val('');
         $('#qp_sort').val('date_desc');

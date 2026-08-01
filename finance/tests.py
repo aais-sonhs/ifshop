@@ -1076,6 +1076,18 @@ class FinanceFlowTests(TestCase):
         self.assertNotContains(response, 'id="btn_add_cashbook"')
         self.assertNotContains(response, 'id="modal_cashbook"')
 
+    def test_cashbook_page_exposes_code_filter(self):
+        response = self.client.get(reverse('cashbook_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="filter_code"')
+        self.assertContains(response, 'placeholder="Mã phiếu"')
+        self.assertContains(response, 'id="filter_entry_type"')
+        self.assertContains(response, '-- Tất cả thu/chi --')
+        self.assertContains(response, "if(entryType === 'payment') return;")
+        self.assertContains(response, "if(entryType === 'receipt') return;")
+        self.assertContains(response, "String(d.code || '').toLowerCase().indexOf(code)")
+
     def test_cashbook_page_shows_create_button_to_brand_owner(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])

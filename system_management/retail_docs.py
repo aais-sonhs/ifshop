@@ -323,27 +323,28 @@ RETAIL_OPERATION_GUIDES = [
     {
         'anchor': 'quotation-profit-report',
         'icon': 'fas fa-chart-line',
-        'title': 'Báo cáo lợi nhuận dự kiến từ báo giá',
+        'title': 'Báo cáo lợi nhuận dự kiến từ báo giá và đơn chưa xuất kho',
         'intro': (
-            'Ước tính doanh thu, giá vốn và lợi nhuận của báo giá trước khi tạo đơn hoặc '
-            'quyết định mức chiết khấu cộng tác viên.'
+            'Ước tính doanh thu, giá vốn và lợi nhuận của báo giá cùng các đơn chưa xuất kho '
+            'trước khi quyết định mức chiết khấu cộng tác viên.'
         ),
         'path': 'Báo cáo → BC LN dự kiến (/report-quotation-profit/)',
         'steps': [
-            'Chọn khoảng Ngày báo giá và trạng thái cần xem; mặc định chỉ lấy Nháp, Đã gửi và Đã duyệt.',
-            'Nếu cần, lọc thêm cửa hàng, hiệu lực, khách hàng, sản phẩm, người báo giá hoặc tình trạng lợi nhuận.',
-            'Đọc các thẻ Số báo giá, Doanh thu dự kiến, Giá vốn dự kiến, LN dự kiến, Biên LN dự kiến và BG cần chú ý.',
-            'Dùng Báo lỗ, Thiếu giá vốn hoặc Giá vốn tạm tính để ưu tiên các báo giá cần kiểm tra.',
-            'Bấm Mã BG để mở đúng báo giá trong tab mới và đối chiếu từng dòng sản phẩm.',
+            'Chọn khoảng ngày và phạm vi cần xem; mặc định lấy báo giá đang chào khách cùng đơn ở trạng thái chưa xuất kho.',
+            'Nếu cần, lọc thêm loại chứng từ, cửa hàng, hiệu lực báo giá, khách hàng, sản phẩm, nhân viên hoặc tình trạng lợi nhuận.',
+            'Đọc các thẻ Số chứng từ, Doanh thu dự kiến, Giá vốn dự kiến, LN dự kiến, Biên LN dự kiến và Chứng từ cần chú ý.',
+            'Dùng Báo lỗ, Thiếu giá vốn hoặc Giá vốn tạm tính để ưu tiên các chứng từ cần kiểm tra.',
+            'Bấm Mã chứng từ để mở đúng báo giá hoặc đơn hàng trong tab mới và đối chiếu từng dòng sản phẩm.',
             'Tại Thử CK CTV, chọn nhập theo tiền hoặc phần trăm để xem LN còn lại và mức tối đa không lỗ.',
             'Bấm Xuất Excel để lưu kết quả theo các bộ lọc hiện tại.',
         ],
         'checks': [
             'Doanh thu dự kiến = Tiền hàng − Chiết khấu + Phí vận chuyển + Phí khác.',
             'LN dự kiến = Doanh thu dự kiến − Giá vốn dự kiến; Biên LN = LN dự kiến ÷ Doanh thu dự kiến × 100%.',
-            'Báo giá mới dùng giá vốn đã chụp tại thời điểm lưu. Dữ liệu cũ chưa có bản chụp dùng giá vốn hiện tại và được đánh dấu rõ.',
-            'Báo giá có dòng thiếu giá vốn không xác định được mức chiết khấu CTV tối đa không lỗ.',
-            'Thử CK CTV chỉ mô phỏng trên trình duyệt, không sửa hoặc lưu vào báo giá.',
+            'Báo giá hoặc đơn mới dùng giá vốn đã chụp tại thời điểm lưu. Dữ liệu cũ chưa có bản chụp dùng giá vốn hiện tại và được đánh dấu rõ.',
+            'Chứng từ có dòng thiếu giá vốn không xác định được mức chiết khấu CTV tối đa không lỗ.',
+            'Báo giá đã chuyển thành đơn chưa xuất kho chỉ được tính một lần để tránh cộng trùng doanh thu và lợi nhuận.',
+            'Thử CK CTV chỉ mô phỏng trên trình duyệt, không sửa hoặc lưu vào chứng từ.',
             'Đây là lợi nhuận gộp dự kiến, chưa phải kết quả bán hàng thực tế và không ghi nhận thanh toán hoặc xuất kho.',
         ],
     },

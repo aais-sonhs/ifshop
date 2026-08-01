@@ -3399,6 +3399,36 @@ class QuotationProfitReportTests(TestCase):
             created_by=created_by or self.manager,
         )
 
+    def _create_pending_order(
+        self,
+        code,
+        *,
+        status=1,
+        quotation=None,
+        store=None,
+        customer=None,
+        total_amount=1500,
+        discount_amount=100,
+        shipping_fee=50,
+        other_fee=0,
+        created_by=None,
+    ):
+        return Order.objects.create(
+            code=code,
+            store=store or self.store,
+            customer=customer or self.customer,
+            quotation=quotation,
+            status=status,
+            total_amount=total_amount,
+            discount_amount=discount_amount,
+            shipping_fee=shipping_fee,
+            other_fee=other_fee,
+            final_amount=total_amount - discount_amount + shipping_fee + other_fee,
+            order_date=date.today(),
+            salesperson='Nguyễn Quản lý',
+            created_by=created_by or self.manager,
+        )
+
     def test_manager_can_view_report_menu_and_open_quotation_link_in_new_tab(self):
         response = self.client.get(reverse('report_quotation_profit'))
 
@@ -3476,6 +3506,139 @@ class QuotationProfitReportTests(TestCase):
             row['quotation_url'],
             f'/order-tbl/?edit_quotation={quotation.id}',
         )
+
+    def test_default_report_includes_quotations_and_all_unexported_order_statuses(self):
+        quotation = self._create_quotation('BG-QLN-INCLUDED')
+        QuotationItem.objects.create(
+            quotation=quotation,
+            product=self.product,
+            quantity=1,
+            unit_price=2000,
+            total_price=2000,
+            cost_price=600,
+        )
+        pending_orders = [
+            self._create_pending_order(f'DH-QLN-PENDING-{status}', status=status)
+            for status in (0, 1, 2, 3)
+        ]
+        for order in pending_orders:
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=2,
+                unit_price=750,
+                total_price=1500,
+                cost_price=500,
+            )
+        excluded_orders = [
+            self._create_pending_order(f'DH-QLN-EXCLUDED-{status}', status=status)
+            for status in (4, 5, 6)
+        ]
+        for order in excluded_orders:
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=1500,
+                total_price=1500,
+                cost_price=500,
+            )
+        other_store_order = self._create_pending_order(
+            'DH-QLN-OTHER-STORE',
+            store=self.other_store,
+            customer=self.other_customer,
+            created_by=self.owner,
+        )
+        OrderItem.objects.create(
+            order=other_store_order,
+            product=self.other_product,
+            quantity=1,
+            unit_price=1500,
+            total_price=1500,
+            cost_price=400,
+        )
+
+        payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {'from_date': date.today().isoformat(), 'to_date': date.today().isoformat()},
+        ).json()
+        rows = {row['code']: row for row in payload['data']}
+
+        self.assertEqual(
+            set(rows),
+            {quotation.code, *(order.code for order in pending_orders)},
+        )
+        self.assertEqual(payload['summary']['record_count'], 5)
+        self.assertEqual(payload['summary']['quotation_count'], 1)
+        self.assertEqual(payload['summary']['pending_order_count'], 4)
+        order_row = rows[pending_orders[2].code]
+        self.assertEqual(order_row['source_type'], 'order')
+        self.assertEqual(order_row['source_display'], 'Đơn chưa xuất kho')
+        self.assertEqual(order_row['document_url'], f'/order-tbl/?open_order={pending_orders[2].id}')
+        self.assertEqual(order_row['validity_status'], 'pending_order')
+        self.assertEqual(order_row['expected_revenue'], 1450)
+        self.assertEqual(order_row['expected_cost'], 1000)
+        self.assertEqual(order_row['expected_profit'], 450)
+
+        order_only_payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {
+                'from_date': date.today().isoformat(),
+                'to_date': date.today().isoformat(),
+                'source': 'order',
+            },
+        ).json()
+        self.assertEqual(
+            {row['code'] for row in order_only_payload['data']},
+            {order.code for order in pending_orders},
+        )
+
+        quotation_only_payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {
+                'from_date': date.today().isoformat(),
+                'to_date': date.today().isoformat(),
+                'source': 'quotation',
+            },
+        ).json()
+        self.assertEqual(
+            [row['code'] for row in quotation_only_payload['data']],
+            [quotation.code],
+        )
+
+    def test_converted_quotation_is_not_counted_twice_with_linked_pending_order(self):
+        quotation = self._create_quotation('BG-QLN-LINKED', status=3)
+        QuotationItem.objects.create(
+            quotation=quotation,
+            product=self.product,
+            quantity=1,
+            unit_price=2000,
+            total_price=2000,
+            cost_price=600,
+        )
+        order = self._create_pending_order('DH-QLN-LINKED', quotation=quotation)
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=2,
+            unit_price=750,
+            total_price=1500,
+            cost_price=500,
+        )
+
+        payload = self.client.get(
+            reverse('api_report_quotation_profit'),
+            {
+                'from_date': date.today().isoformat(),
+                'to_date': date.today().isoformat(),
+                'status': 'all',
+            },
+        ).json()
+
+        self.assertEqual([row['code'] for row in payload['data']], [order.code])
+        self.assertEqual(payload['summary']['record_count'], 1)
+        self.assertEqual(payload['summary']['quotation_count'], 0)
+        self.assertEqual(payload['summary']['pending_order_count'], 1)
 
     def test_report_marks_legacy_and_missing_cost_lines(self):
         legacy = self._create_quotation(

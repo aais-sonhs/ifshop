@@ -2724,6 +2724,10 @@ def _get_quotation_profit_filters(request):
     if sort not in {'date_desc', 'revenue_desc', 'profit_asc', 'profit_desc', 'margin_asc'}:
         sort = 'date_desc'
 
+    source = (request.GET.get('source') or 'all').strip().lower()
+    if source not in {'all', 'quotation', 'order'}:
+        source = 'all'
+
     return {
         'from_date': from_date,
         'to_date': to_date,
@@ -2731,6 +2735,7 @@ def _get_quotation_profit_filters(request):
         'validity': validity,
         'profit_filter': profit_filter,
         'sort': sort,
+        'source': source,
         'store_id': _parse_filter_int(request.GET.get('store_id')),
         'customer_id': _parse_filter_int(request.GET.get('customer_id')),
         'product_id': _parse_filter_int(request.GET.get('product_id')),
@@ -2772,6 +2777,124 @@ def _quotation_item_current_unit_cost(item):
     return _quotation_product_unit_cost(item.product if item.product_id else None)
 
 
+def _build_expected_profit_row(document, source_type, today):
+    """Chuẩn hóa báo giá và đơn chưa xuất kho về cùng một dòng báo cáo."""
+    items = list(document.items.all())
+    expected_cost = Decimal('0')
+    missing_cost_lines = 0
+    estimated_cost_lines = 0
+    product_names = []
+
+    for item in items:
+        if item.product_id:
+            product_label = f'{item.product.code} - {item.product.name}'
+        else:
+            product_label = item.item_name or 'Dịch vụ'
+        if product_label not in product_names:
+            product_names.append(product_label)
+
+        if item.cost_price is not None and Decimal(str(item.cost_price or 0)) > 0:
+            unit_cost = Decimal(str(item.cost_price))
+        else:
+            unit_cost = _quotation_item_current_unit_cost(item)
+            if unit_cost > 0:
+                estimated_cost_lines += 1
+            else:
+                missing_cost_lines += 1
+        expected_cost += unit_cost * Decimal(str(item.quantity or 0))
+
+    expected_revenue = Decimal(str(document.final_amount or 0))
+    expected_profit = expected_revenue - expected_cost
+    expected_margin = (
+        expected_profit / expected_revenue * Decimal('100')
+        if expected_revenue > 0
+        else Decimal('0')
+    )
+
+    if source_type == 'quotation':
+        document_date = document.quotation_date
+        valid_until = document.valid_until
+        source_display = 'Báo giá'
+        document_url = f'/order-tbl/?edit_quotation={document.id}'
+        validity_status = 'no_expiry'
+        validity_display = 'Không đặt hạn'
+        if valid_until:
+            if valid_until < today:
+                validity_status = 'expired'
+                validity_display = 'Hết hạn'
+            else:
+                validity_status = 'current'
+                validity_display = 'Còn hạn'
+    else:
+        document_date = document.order_date
+        valid_until = None
+        source_display = 'Đơn báo giá' if document.status == 0 else 'Đơn chưa xuất kho'
+        document_url = f'/order-tbl/?open_order={document.id}'
+        validity_status = 'pending_order'
+        validity_display = 'Chưa xuất kho'
+
+    if missing_cost_lines:
+        cost_status = 'missing'
+        cost_status_display = 'Thiếu giá vốn'
+    elif estimated_cost_lines:
+        cost_status = 'estimated'
+        cost_status_display = 'Giá vốn hiện tại'
+    else:
+        cost_status = 'snapshot'
+        cost_status_display = 'Giá vốn đã chụp'
+
+    creator_display = ''
+    if document.created_by:
+        creator_display = (
+            document.created_by.get_full_name()
+            or document.created_by.username
+        )
+
+    return {
+        'id': document.id,
+        'source_type': source_type,
+        'source_display': source_display,
+        'code': document.code,
+        'document_url': document_url,
+        # Giữ khóa cũ để các tích hợp đang dùng API không bị gãy.
+        'quotation_url': document_url,
+        'date': document_date.strftime('%d/%m/%Y') if document_date else '',
+        'date_raw': document_date.isoformat() if document_date else '',
+        'valid_until': valid_until.strftime('%d/%m/%Y') if valid_until else '',
+        'valid_until_raw': valid_until.isoformat() if valid_until else '',
+        'validity_status': validity_status,
+        'validity_display': validity_display,
+        'status': document.status,
+        'status_display': document.get_status_display(),
+        'store_id': document.store_id,
+        'store_name': document.store.name if document.store else '',
+        'customer_id': document.customer_id,
+        'customer_name': document.customer.name if document.customer else '',
+        'salesperson': document.salesperson or creator_display,
+        'item_count': len(items),
+        'product_names': product_names,
+        'product_summary': ', '.join(product_names),
+        'goods_amount': float(document.total_amount or 0),
+        'discount_amount': float(document.discount_amount or 0),
+        'shipping_fee': float(document.shipping_fee or 0),
+        'other_fee': float(document.other_fee or 0),
+        'expected_revenue': float(expected_revenue),
+        'expected_cost': float(expected_cost),
+        'expected_profit': float(expected_profit),
+        'expected_margin': round(float(expected_margin), 2),
+        'ctv_discount_capacity': (
+            None
+            if missing_cost_lines
+            else float(max(expected_profit, Decimal('0')))
+        ),
+        'is_loss': expected_profit < 0,
+        'missing_cost_lines': missing_cost_lines,
+        'estimated_cost_lines': estimated_cost_lines,
+        'cost_status': cost_status,
+        'cost_status_display': cost_status_display,
+    }
+
+
 def _build_quotation_profit_payload(request, include_filter_options=True):
     from customers.models import Customer
     from products.models import Product
@@ -2784,9 +2907,17 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
         Quotation.objects.filter(is_deleted=False),
         request,
     )
+    scoped_pending_orders = filter_by_store(
+        Order.objects.filter(is_deleted=False, status__in=(0, 1, 2, 3)),
+        request,
+    )
     quotations = scoped_quotations.filter(
         quotation_date__gte=filters['from_date'],
         quotation_date__lte=filters['to_date'],
+    )
+    pending_orders = scoped_pending_orders.filter(
+        order_date__gte=filters['from_date'],
+        order_date__lte=filters['to_date'],
     )
 
     if filters['status'] == 'active':
@@ -2795,6 +2926,13 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
         quotations = quotations.exclude(status=4)
     elif filters['status'] != 'all':
         quotations = quotations.filter(status=int(filters['status']))
+        # Trạng thái số trên bộ lọc cũ là trạng thái riêng của báo giá.
+        pending_orders = pending_orders.none()
+
+    if filters['source'] == 'quotation':
+        pending_orders = pending_orders.none()
+    elif filters['source'] == 'order':
+        quotations = quotations.none()
 
     if filters['validity'] == 'current':
         quotations = quotations.filter(Q(valid_until__isnull=True) | Q(valid_until__gte=today))
@@ -2805,12 +2943,16 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
 
     if filters['store_id']:
         quotations = quotations.filter(store_id=filters['store_id'])
+        pending_orders = pending_orders.filter(store_id=filters['store_id'])
     if filters['customer_id']:
         quotations = quotations.filter(customer_id=filters['customer_id'])
+        pending_orders = pending_orders.filter(customer_id=filters['customer_id'])
     if filters['product_id']:
         quotations = quotations.filter(items__product_id=filters['product_id'])
+        pending_orders = pending_orders.filter(items__product_id=filters['product_id'])
     if filters['salesperson']:
         quotations = quotations.filter(salesperson=filters['salesperson'])
+        pending_orders = pending_orders.filter(salesperson=filters['salesperson'])
     if filters['search']:
         search = filters['search']
         quotations = quotations.filter(
@@ -2824,6 +2966,25 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
             | Q(items__product__name__icontains=search)
             | Q(items__item_name__icontains=search)
         )
+        pending_orders = pending_orders.filter(
+            Q(code__icontains=search)
+            | Q(customer__name__icontains=search)
+            | Q(customer__phone__icontains=search)
+            | Q(salesperson__icontains=search)
+            | Q(creator_name__icontains=search)
+            | Q(tags__icontains=search)
+            | Q(note__icontains=search)
+            | Q(items__product__code__icontains=search)
+            | Q(items__product__name__icontains=search)
+            | Q(items__item_name__icontains=search)
+        )
+
+    # Khi báo giá đã tạo ra một đơn chưa xuất kho đang nằm trong cùng kết quả,
+    # chỉ giữ dòng đơn hàng để doanh thu/lợi nhuận không bị cộng hai lần.
+    linked_pending_quotation_ids = pending_orders.exclude(
+        quotation_id__isnull=True,
+    ).values_list('quotation_id', flat=True)
+    quotations = quotations.exclude(id__in=linked_pending_quotation_ids)
 
     quotations = (
         quotations.select_related('customer', 'store', 'created_by')
@@ -2834,107 +2995,26 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
         )
         .distinct()
     )
-
-    rows = []
-    for quotation in quotations:
-        items = list(quotation.items.all())
-        expected_cost = Decimal('0')
-        missing_cost_lines = 0
-        estimated_cost_lines = 0
-        product_names = []
-
-        for item in items:
-            if item.product_id:
-                product_label = f'{item.product.code} - {item.product.name}'
-            else:
-                product_label = item.item_name or 'Dịch vụ'
-            if product_label not in product_names:
-                product_names.append(product_label)
-
-            if item.cost_price is not None and Decimal(str(item.cost_price or 0)) > 0:
-                unit_cost = Decimal(str(item.cost_price))
-            else:
-                unit_cost = _quotation_item_current_unit_cost(item)
-                if unit_cost > 0:
-                    estimated_cost_lines += 1
-                else:
-                    missing_cost_lines += 1
-            expected_cost += unit_cost * Decimal(str(item.quantity or 0))
-
-        expected_revenue = Decimal(str(quotation.final_amount or 0))
-        expected_profit = expected_revenue - expected_cost
-        expected_margin = (
-            expected_profit / expected_revenue * Decimal('100')
-            if expected_revenue > 0
-            else Decimal('0')
+    pending_orders = (
+        pending_orders.select_related('customer', 'store', 'created_by')
+        .prefetch_related(
+            'items__variant',
+            'items__product',
+            'items__product__combo_items__product',
         )
-        validity_status = 'no_expiry'
-        validity_display = 'Không đặt hạn'
-        if quotation.valid_until:
-            if quotation.valid_until < today:
-                validity_status = 'expired'
-                validity_display = 'Hết hạn'
-            else:
-                validity_status = 'current'
-                validity_display = 'Còn hạn'
+        .distinct()
+    )
 
-        if missing_cost_lines:
-            cost_status = 'missing'
-            cost_status_display = 'Thiếu giá vốn'
-        elif estimated_cost_lines:
-            cost_status = 'estimated'
-            cost_status_display = 'Giá vốn hiện tại'
-        else:
-            cost_status = 'snapshot'
-            cost_status_display = 'Giá vốn đã chụp'
-
-        creator_display = ''
-        if quotation.created_by:
-            creator_display = (
-                quotation.created_by.get_full_name()
-                or quotation.created_by.username
-            )
-
-        row = {
-            'id': quotation.id,
-            'code': quotation.code,
-            'quotation_url': f'/order-tbl/?edit_quotation={quotation.id}',
-            'date': quotation.quotation_date.strftime('%d/%m/%Y') if quotation.quotation_date else '',
-            'date_raw': quotation.quotation_date.isoformat() if quotation.quotation_date else '',
-            'valid_until': quotation.valid_until.strftime('%d/%m/%Y') if quotation.valid_until else '',
-            'valid_until_raw': quotation.valid_until.isoformat() if quotation.valid_until else '',
-            'validity_status': validity_status,
-            'validity_display': validity_display,
-            'status': quotation.status,
-            'status_display': quotation.get_status_display(),
-            'store_id': quotation.store_id,
-            'store_name': quotation.store.name if quotation.store else '',
-            'customer_id': quotation.customer_id,
-            'customer_name': quotation.customer.name if quotation.customer else '',
-            'salesperson': quotation.salesperson or creator_display,
-            'item_count': len(items),
-            'product_names': product_names,
-            'product_summary': ', '.join(product_names),
-            'goods_amount': float(quotation.total_amount or 0),
-            'discount_amount': float(quotation.discount_amount or 0),
-            'shipping_fee': float(quotation.shipping_fee or 0),
-            'other_fee': float(quotation.other_fee or 0),
-            'expected_revenue': float(expected_revenue),
-            'expected_cost': float(expected_cost),
-            'expected_profit': float(expected_profit),
-            'expected_margin': round(float(expected_margin), 2),
-            'ctv_discount_capacity': (
-                None
-                if missing_cost_lines
-                else float(max(expected_profit, Decimal('0')))
-            ),
-            'is_loss': expected_profit < 0,
-            'missing_cost_lines': missing_cost_lines,
-            'estimated_cost_lines': estimated_cost_lines,
-            'cost_status': cost_status,
-            'cost_status_display': cost_status_display,
-        }
-        rows.append(row)
+    rows = [
+        *[
+            _build_expected_profit_row(quotation, 'quotation', today)
+            for quotation in quotations
+        ],
+        *[
+            _build_expected_profit_row(order, 'order', today)
+            for order in pending_orders
+        ],
+    ]
 
     if filters['profit_filter'] == 'profit':
         rows = [row for row in rows if row['expected_profit'] >= 0 and not row['missing_cost_lines']]
@@ -2959,7 +3039,9 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
     total_cost = sum(row['expected_cost'] for row in rows)
     total_profit = total_revenue - total_cost
     summary = {
-        'quotation_count': len(rows),
+        'record_count': len(rows),
+        'quotation_count': sum(1 for row in rows if row['source_type'] == 'quotation'),
+        'pending_order_count': sum(1 for row in rows if row['source_type'] == 'order'),
         'total_revenue': total_revenue,
         'total_cost': total_cost,
         'total_profit': total_profit,
@@ -2992,7 +3074,8 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
         )
         customers = list(
             Customer.objects.filter(
-                quotations__in=scoped_quotations,
+                Q(quotations__in=scoped_quotations)
+                | Q(orders__in=scoped_pending_orders),
             )
             .distinct()
             .order_by('name')
@@ -3000,19 +3083,26 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
         )
         products = list(
             Product.objects.filter(
-                quotation_items__quotation__in=scoped_quotations,
+                Q(quotation_items__quotation__in=scoped_quotations)
+                | Q(order_items__order__in=scoped_pending_orders),
             )
             .distinct()
             .order_by('name')
             .values('id', 'code', 'name')
         )
-        salespersons = list(
+        quotation_salespersons = set(
             scoped_quotations.exclude(salesperson__isnull=True)
             .exclude(salesperson='')
-            .order_by('salesperson')
             .values_list('salesperson', flat=True)
             .distinct()
         )
+        order_salespersons = set(
+            scoped_pending_orders.exclude(salesperson__isnull=True)
+            .exclude(salesperson='')
+            .values_list('salesperson', flat=True)
+            .distinct()
+        )
+        salespersons = sorted(quotation_salespersons | order_salespersons)
         payload['options'] = {
             'stores': stores,
             'has_multiple_stores': len(stores) > 1,
@@ -3020,11 +3110,11 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
             'products': products,
             'salespersons': salespersons,
             'statuses': [
-                {'value': 'active', 'label': 'Đang chào khách (Nháp/Đã gửi/Đã duyệt)'},
-                {'value': 'non_cancelled', 'label': 'Tất cả trừ đã hủy'},
-                {'value': 'all', 'label': 'Tất cả trạng thái'},
+                {'value': 'active', 'label': 'BG đang chào + đơn chưa xuất kho'},
+                {'value': 'non_cancelled', 'label': 'Tất cả BG trừ hủy + đơn chưa xuất kho'},
+                {'value': 'all', 'label': 'Tất cả BG + đơn chưa xuất kho'},
                 *[
-                    {'value': str(value), 'label': label}
+                    {'value': str(value), 'label': f'Chỉ BG: {label}'}
                     for value, label in Quotation.STATUS_CHOICES
                 ],
             ],
@@ -3083,7 +3173,7 @@ def export_quotation_profit_excel(request):
     money_format = '#,##0'
 
     sheet.merge_cells('A1:T1')
-    sheet['A1'] = 'BÁO CÁO LỢI NHUẬN DỰ KIẾN TỪ BÁO GIÁ'
+    sheet['A1'] = 'BÁO CÁO LỢI NHUẬN DỰ KIẾN: BÁO GIÁ VÀ ĐƠN CHƯA XUẤT KHO'
     sheet['A1'].font = Font(bold=True, size=14, color='FFFFFF')
     sheet['A1'].fill = title_fill
     sheet['A1'].alignment = Alignment(horizontal='center')
@@ -3093,7 +3183,8 @@ def export_quotation_profit_excel(request):
     sheet['A2'].alignment = Alignment(horizontal='center')
     sheet.merge_cells('A3:T3')
     sheet['A3'] = (
-        f"Số báo giá: {summary['quotation_count']} | "
+        f"Số chứng từ: {summary['record_count']} "
+        f"(Báo giá: {summary['quotation_count']}, đơn chưa xuất kho: {summary['pending_order_count']}) | "
         f"Doanh thu dự kiến: {summary['total_revenue']:,.0f}đ | "
         f"Giá vốn dự kiến: {summary['total_cost']:,.0f}đ | "
         f"LN dự kiến: {summary['total_profit']:,.0f}đ | "
@@ -3103,8 +3194,8 @@ def export_quotation_profit_excel(request):
     sheet['A3'].alignment = Alignment(horizontal='center')
 
     headers = [
-        'STT', 'Mã BG', 'Ngày BG', 'Hiệu lực đến', 'Trạng thái', 'Cửa hàng',
-        'Khách hàng', 'Người báo giá', 'Sản phẩm', 'Số dòng', 'Tiền hàng',
+        'STT', 'Mã chứng từ', 'Ngày chứng từ', 'Loại / Hiệu lực', 'Trạng thái', 'Cửa hàng',
+        'Khách hàng', 'Nhân viên', 'Sản phẩm', 'Số dòng', 'Tiền hàng',
         'Chiết khấu', 'Phí vận chuyển', 'Chi phí khác', 'Doanh thu dự kiến',
         'Giá vốn dự kiến', 'LN dự kiến', 'Biên LN (%)', 'Nguồn giá vốn', 'Cảnh báo',
     ]
@@ -3127,7 +3218,11 @@ def export_quotation_profit_excel(request):
             index,
             item['code'],
             item['date'],
-            item['valid_until'] or 'Không đặt hạn',
+            (
+                item['source_display']
+                if item['source_type'] == 'order'
+                else f"Báo giá · {item['valid_until'] or 'Không đặt hạn'}"
+            ),
             item['status_display'],
             item['store_name'],
             item['customer_name'],
@@ -3186,7 +3281,7 @@ def export_quotation_profit_excel(request):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     response['Content-Disposition'] = (
-        f"attachment; filename=\"BC_LN_du_kien_BG_{filters['from_date']}_{filters['to_date']}.xlsx\""
+        f"attachment; filename=\"BC_LN_du_kien_BG_DH_chua_XK_{filters['from_date']}_{filters['to_date']}.xlsx\""
     )
     workbook.save(response)
     return response

@@ -23,7 +23,17 @@
         </div>
         {% endif %}
         <div class="row mb-3">
-            <div class="col-md-3">
+            <div class="col-lg-2 col-md-4 mb-2">
+                <input type="text" class="form-control form-control-sm" id="filter_code" placeholder="Mã phiếu">
+            </div>
+            <div class="col-lg-2 col-md-4 mb-2">
+                <select class="form-control form-control-sm" id="filter_entry_type">
+                    <option value="">-- Tất cả thu/chi --</option>
+                    <option value="receipt">Thu</option>
+                    <option value="payment">Chi</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4 mb-2">
                 <select class="form-control form-control-sm" id="filter_cashbook">
                     <option value="">-- Tất cả quỹ --</option>
                     {% for c in cashbooks %}
@@ -31,9 +41,9 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
-            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem</button></div>
+            <div class="col-lg-2 col-md-4 mb-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+            <div class="col-lg-2 col-md-4 mb-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-lg-2 col-md-4 mb-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem</button></div>
         </div>
         <div class="row mb-3">
             <div class="col-md-4">
@@ -147,6 +157,12 @@ $(document).ready(function(){
     {% endif %}
     loadData();
     $('#btn_search').click(function(){loadData();});
+    $('#filter_code').on('keydown', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            loadData();
+        }
+    });
 });
 
 function refreshCashbookFilter(){
@@ -165,6 +181,8 @@ function refreshCashbookFilter(){
 }
 
 function loadData(){
+    var code = $.trim($('#filter_code').val() || '').toLowerCase();
+    var entryType = $('#filter_entry_type').val();
     var cashbookId = $('#filter_cashbook').val();
     var fromDate = $('#filter_from_date').val();
     var toDate = $('#filter_to_date').val();
@@ -176,6 +194,8 @@ function loadData(){
     ).done(function(r1, r2){
         r1[0].data.forEach(function(d){
             if(d.status !== 1) return;
+            if(entryType === 'payment') return;
+            if(code && String(d.code || '').toLowerCase().indexOf(code) === -1) return;
             if(cashbookId && d.cash_book_id != cashbookId) return;
             if(fromDate && d.receipt_date < fromDate) return;
             if(toDate && d.receipt_date > toDate) return;
@@ -183,6 +203,8 @@ function loadData(){
         });
         r2[0].data.forEach(function(d){
             if(d.status !== 1) return;
+            if(entryType === 'receipt') return;
+            if(code && String(d.code || '').toLowerCase().indexOf(code) === -1) return;
             if(cashbookId && d.cash_book_id != cashbookId) return;
             if(fromDate && d.payment_date < fromDate) return;
             if(toDate && d.payment_date > toDate) return;

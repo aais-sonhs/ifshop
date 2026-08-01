@@ -3,6 +3,8 @@ Centralized Excel export utility for ifshop.
 Usage: from core.excel_export import excel_response
 """
 import openpyxl
+from io import BytesIO
+from openpyxl.drawing.image import Image as WorksheetImage
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from django.http import HttpResponse
@@ -37,6 +39,42 @@ def _format_value(val):
     if isinstance(val, (date, datetime)):
         return val.strftime('%d/%m/%Y')
     return val
+
+
+def _add_image_to_cell(ws, value, cell_coordinate, column):
+    """Embed an image value into a worksheet cell without failing the export."""
+    if not value:
+        return False
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            stream = BytesIO(value)
+        elif hasattr(value, 'read'):
+            stream = value
+            if hasattr(stream, 'seek'):
+                stream.seek(0)
+        else:
+            stream = value
+
+        image = WorksheetImage(stream)
+        max_width = float(column.get('image_width', 72))
+        max_height = float(column.get('image_height', 72))
+        if image.width and image.height:
+            scale = min(max_width / image.width, max_height / image.height, 1)
+            image.width = max(1, round(image.width * scale))
+            image.height = max(1, round(image.height * scale))
+        image.anchor = cell_coordinate
+        ws.add_image(image)
+
+        # openpyxl reads the stream again while saving the workbook.
+        if isinstance(stream, BytesIO):
+            image_streams = getattr(ws, '_ifshop_image_streams', None)
+            if image_streams is None:
+                image_streams = []
+                setattr(ws, '_ifshop_image_streams', image_streams)
+            image_streams.append(stream)
+        return True
+    except Exception:
+        return False
 
 
 def _populate_worksheet(ws, title, subtitle, columns, rows,
@@ -74,11 +112,21 @@ def _populate_worksheet(ws, title, subtitle, columns, rows,
     for ri, row_data in enumerate(rows):
         excel_row = header_row + 1 + ri
         for ci, col in enumerate(columns, 1):
-            val = _format_value(row_data.get(col['key'], ''))
+            is_image_column = col.get('type') == 'image'
+            raw_value = row_data.get(col['key'], '')
+            val = '' if is_image_column else _format_value(raw_value)
             cell = ws.cell(row=excel_row, column=ci, value=val)
             cell.font = DATA_FONT
             cell.border = THIN_BORDER
             cell.alignment = Alignment(vertical='center', wrap_text=True)
+
+            if is_image_column:
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                if _add_image_to_cell(ws, raw_value, cell.coordinate, col):
+                    ws.row_dimensions[excel_row].height = max(
+                        ws.row_dimensions[excel_row].height or 15,
+                        float(col.get('row_height', 58)),
+                    )
 
             # Money formatting
             if col['key'] in money_cols and isinstance(val, (int, float)):
@@ -118,7 +166,9 @@ def excel_response(title, subtitle, columns, rows, filename,
     Args:
         title: Sheet title (e.g. 'DANH SÁCH PHIẾU THU')
         subtitle: Sub-info (e.g. 'Xuất ngày 14/04/2026')
-        columns: list of {'key': str, 'label': str, 'width': int}
+        columns: list of {'key': str, 'label': str, 'width': int}; image
+            columns can also set type='image', image_width, image_height,
+            and row_height.
         rows: list of dicts matching column keys
         filename: download filename (without .xlsx)
         money_cols: list of column keys that should be formatted as money

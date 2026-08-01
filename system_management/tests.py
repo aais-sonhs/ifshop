@@ -1144,6 +1144,8 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'bấm trực tiếp vào ảnh để mở chế độ xem riêng')
         self.assertContains(response, 'rê chuột qua ảnh không làm phóng hoặc thay đổi ảnh')
         self.assertContains(response, 'Ảnh trên đơn lấy từ hồ sơ sản phẩm')
+        self.assertContains(response, 'Excel Đặt hàng nhập có sheet chi tiết')
+        self.assertContains(response, 'ảnh được nhúng trực tiếp')
         self.assertContains(response, 'Mở Tạo/Sửa đơn đặt hàng rồi đóng ngay sẽ không hỏi xác nhận')
         self.assertContains(response, 'Quản lý kho và kiểm hàng')
         self.assertContains(response, 'Báo cáo nhập xuất tồn')

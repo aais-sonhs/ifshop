@@ -1,9 +1,12 @@
 import json
+import shutil
+import tempfile
 from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
 import openpyxl
+from PIL import Image
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -1532,6 +1535,59 @@ class ProductInventoryFlowTests(TestCase):
         )
         self.assertEqual(foreign_delete_response.json()['status'], 'error')
         self.assertTrue(PurchaseOrder.objects.filter(id=second_id).exists())
+
+    def test_purchase_order_excel_embeds_each_product_image_in_detail_sheet(self):
+        media_root = tempfile.mkdtemp(prefix='ifshop-purchase-order-export-')
+        self.addCleanup(shutil.rmtree, media_root, True)
+        image_stream = BytesIO()
+        Image.new('RGB', (32, 20), color=(38, 132, 255)).save(image_stream, format='PNG')
+
+        with self.settings(MEDIA_ROOT=media_root):
+            self.product.image.save(
+                'purchase-order-export.png',
+                SimpleUploadedFile(
+                    'purchase-order-export.png',
+                    image_stream.getvalue(),
+                    content_type='image/png',
+                ),
+                save=True,
+            )
+            purchase_order = PurchaseOrder.objects.create(
+                code='DDH-EXCEL-IMG',
+                supplier=self.supplier,
+                warehouse=self.warehouse_a,
+                order_date=date.today(),
+                status=0,
+                total_amount=200,
+                created_by=self.user,
+            )
+            PurchaseOrderItem.objects.create(
+                purchase_order=purchase_order,
+                product=self.product,
+                quantity=2,
+                unit_price=100,
+                total_price=200,
+            )
+
+            response = self.client.get(reverse('export_purchase_orders_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        workbook = openpyxl.load_workbook(BytesIO(response.content), data_only=True)
+        detail_sheet = workbook.active
+        headers = [cell.value for cell in detail_sheet[4]]
+        self.assertIn('Hình ảnh', headers)
+        self.assertIn('Mã sản phẩm', headers)
+        self.assertIn('Quy cách', headers)
+        self.assertEqual(len(detail_sheet._images), 1)
+        self.assertGreater(detail_sheet.row_dimensions[5].height, 40)
+        self.assertEqual(
+            detail_sheet.cell(row=5, column=headers.index('Mã sản phẩm') + 1).value,
+            self.product.code,
+        )
+        self.assertIn('Tổng hợp đơn', workbook.sheetnames)
+        summary_sheet = workbook['Tổng hợp đơn']
+        summary_values = [cell.value for cell in summary_sheet[5]]
+        self.assertIn('DDH-EXCEL-IMG', summary_values)
 
     def test_purchase_order_product_picker_is_rebuilt_after_modal_closes(self):
         response = self.client.get(reverse('purchase_order_tbl'))

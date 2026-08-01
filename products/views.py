@@ -4621,13 +4621,20 @@ def export_purchase_orders_excel(request):
     from core.excel_export import excel_response
     from datetime import datetime
 
-    orders = PurchaseOrder.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
+    orders = PurchaseOrder.objects.select_related(
+        'supplier', 'warehouse', 'created_by'
+    ).prefetch_related(
+        Prefetch(
+            'items',
+            queryset=PurchaseOrderItem.objects.select_related('product', 'variant').order_by('id'),
+        )
+    ).all()
     orders = _scope_purchase_orders_for_user(orders, request)
     orders = _apply_purchase_order_list_filters(orders, request).order_by(
         '-order_date', '-id'
     )
 
-    columns = [
+    summary_columns = [
         {'key': 'stt', 'label': 'STT', 'width': 6},
         {'key': 'code', 'label': 'Mã đơn', 'width': 14},
         {'key': 'order_date', 'label': 'Ngày đặt', 'width': 12},
@@ -4641,31 +4648,119 @@ def export_purchase_orders_excel(request):
         {'key': 'note', 'label': 'Ghi chú', 'width': 24},
     ]
 
-    rows = []
-    total = 0
+    detail_columns = [
+        {'key': 'stt', 'label': 'STT', 'width': 6},
+        {'key': 'code', 'label': 'Mã ĐĐH', 'width': 14},
+        {
+            'key': 'product_image', 'label': 'Hình ảnh', 'width': 14,
+            'type': 'image', 'image_width': 72, 'image_height': 72,
+            'row_height': 58,
+        },
+        {'key': 'product_code', 'label': 'Mã sản phẩm', 'width': 16},
+        {'key': 'product_name', 'label': 'Tên sản phẩm', 'width': 30},
+        {'key': 'specification', 'label': 'Quy cách', 'width': 22},
+        {'key': 'variant', 'label': 'Biến thể', 'width': 16},
+        {'key': 'unit', 'label': 'ĐVT', 'width': 10},
+        {'key': 'quantity', 'label': 'Số lượng đặt', 'width': 13},
+        {'key': 'unit_price', 'label': 'Đơn giá', 'width': 16},
+        {'key': 'line_total', 'label': 'Thành tiền', 'width': 18},
+        {'key': 'supplier', 'label': 'Nhà cung cấp', 'width': 22},
+        {'key': 'warehouse', 'label': 'Kho nhập', 'width': 16},
+        {'key': 'order_date', 'label': 'Ngày đặt', 'width': 12},
+        {'key': 'expected_date', 'label': 'Ngày dự kiến', 'width': 12},
+        {'key': 'status', 'label': 'Trạng thái', 'width': 12},
+        {'key': 'note', 'label': 'Ghi chú', 'width': 24},
+    ]
+
+    summary_rows = []
+    detail_rows = []
+    summary_total = 0
+    detail_total = 0
+    image_cache = {}
+
+    def read_product_image(product):
+        if not product or not product.image:
+            return None
+        if product.id in image_cache:
+            return image_cache[product.id]
+        image_data = None
+        try:
+            product.image.open('rb')
+            image_data = product.image.read()
+        except Exception:
+            image_data = None
+        finally:
+            try:
+                product.image.close()
+            except Exception:
+                pass
+        image_cache[product.id] = image_data
+        return image_data
+
     for i, o in enumerate(orders, 1):
-        total += float(o.total_amount)
-        rows.append({
+        summary_total += float(o.total_amount)
+        items = list(o.items.all())
+        summary_rows.append({
             'stt': i,
             'code': o.code,
             'order_date': o.order_date,
             'expected_date': o.expected_date,
             'supplier': o.supplier.name if o.supplier else '',
             'warehouse': o.warehouse.name if o.warehouse else '',
-            'items_count': o.items.count(),
+            'items_count': len(items),
             'total_amount': float(o.total_amount),
             'status': o.get_status_display(),
             'created_by': o.created_by.get_full_name() or o.created_by.username if o.created_by else '',
             'note': o.note or '',
         })
 
+        for item in items:
+            line_total = float(item.total_price)
+            detail_total += line_total
+            detail_rows.append({
+                'stt': len(detail_rows) + 1,
+                'code': o.code,
+                'product_image': read_product_image(item.product),
+                'product_code': item.product.code if item.product else '',
+                'product_name': item.product.name if item.product else '',
+                'specification': item.product.specification if item.product else '',
+                'variant': item.variant.size_name if item.variant else '',
+                'unit': item.product.unit if item.product else '',
+                'quantity': float(item.quantity),
+                'unit_price': float(item.unit_price),
+                'line_total': line_total,
+                'supplier': o.supplier.name if o.supplier else '',
+                'warehouse': o.warehouse.name if o.warehouse else '',
+                'order_date': o.order_date,
+                'expected_date': o.expected_date,
+                'status': o.get_status_display(),
+                'note': o.note or '',
+            })
+
     return excel_response(
-        title='DANH SÁCH ĐƠN ĐẶT HÀNG NHẬP',
-        subtitle=f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — {len(rows)} đơn',
-        columns=columns, rows=rows,
+        title='CHI TIẾT ĐƠN ĐẶT HÀNG NHẬP',
+        subtitle=(
+            f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — '
+            f'{len(summary_rows)} đơn · {len(detail_rows)} dòng sản phẩm'
+        ),
+        columns=detail_columns, rows=detail_rows,
         filename=f'Dat_hang_nhap_{datetime.now().strftime("%Y%m%d")}',
-        money_cols=['total_amount'],
-        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'total_amount': total},
+        money_cols=['unit_price', 'line_total'],
+        total_row={'stt': '', 'product_name': 'TỔNG CỘNG', 'line_total': detail_total},
+        extra_sheets=[{
+            'sheet_name': 'Tổng hợp đơn',
+            'title': 'DANH SÁCH ĐƠN ĐẶT HÀNG NHẬP',
+            'subtitle': (
+                f'Xuất ngày {datetime.now().strftime("%d/%m/%Y %H:%M")} — '
+                f'{len(summary_rows)} đơn'
+            ),
+            'columns': summary_columns,
+            'rows': summary_rows,
+            'money_cols': ['total_amount'],
+            'total_row': {
+                'stt': '', 'code': 'TỔNG CỘNG', 'total_amount': summary_total,
+            },
+        }],
     )
 
 

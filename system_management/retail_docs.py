@@ -244,6 +244,7 @@ RETAIL_OPERATION_GUIDES = [
         'checks': [
             'Mã ĐĐH đọc tiếp số thứ tự từ cả mã cũ DDH-001 và mã mới DDH001; mã đã xóa không được dùng lại.',
             'Đơn Nháp chưa chọn Kho nhập vẫn được lưu và hiển thị trong danh sách theo cửa hàng của sản phẩm; sau khi lưu, màn hình tự tìm đúng mã đơn vừa tạo.',
+            'Excel Đặt hàng nhập có sheet chi tiết, mỗi sản phẩm một dòng và ảnh được nhúng trực tiếp; sheet Tổng hợp đơn giữ số liệu theo từng đơn đặt hàng.',
             'Ảnh trên đơn lấy từ hồ sơ sản phẩm. Nếu hiện Chưa có ảnh, hãy bổ sung ảnh tại danh sách sản phẩm trước khi gửi đơn cho nhà cung cấp.',
             'Mở Tạo/Sửa đơn đặt hàng rồi đóng ngay sẽ không hỏi xác nhận; hệ thống chỉ cảnh báo khi thông tin hoặc dòng sản phẩm đã thực sự thay đổi.',
             'Phiếu Nháp dùng để chuẩn bị và chưa nên coi là hàng đã nhận.',

@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from customers.models import Customer
 from finance.models import CashBook, FinanceCategory, Payment, PaymentMethodOption, Receipt
 from orders.models import Order
-from products.models import GoodsReceipt, Supplier, Warehouse
+from products.models import GoodsReceipt, PurchaseReturn, Supplier, Warehouse
 from system_management.models import Brand, Store, UserProfile
 
 
@@ -572,6 +572,180 @@ class FinanceFlowTests(TestCase):
         self.assertEqual([item['code'] for item in payload['data']], ['PT-FILTER-001'])
         self.assertEqual(payload['data'][0]['type'], 'Thu')
 
+    def test_supplier_debt_api_calculates_returns_and_completed_linked_payments(self):
+        receipt = GoodsReceipt.objects.create(
+            code='PN-DEBT-001',
+            supplier=self.supplier,
+            warehouse=self.warehouse,
+            total_amount=Decimal('1000'),
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        PurchaseReturn.objects.create(
+            code='THN-DEBT-001',
+            goods_receipt=receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse,
+            total_amount=Decimal('100'),
+            return_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        PurchaseReturn.objects.create(
+            code='THN-DEBT-DRAFT',
+            goods_receipt=receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse,
+            total_amount=Decimal('50'),
+            return_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-DEBT-PAID',
+            store=self.store,
+            supplier=self.supplier,
+            goods_receipt=receipt,
+            amount=Decimal('300'),
+            payment_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-DEBT-DRAFT',
+            store=self.store,
+            supplier=self.supplier,
+            goods_receipt=receipt,
+            amount=Decimal('200'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-DEBT-UNLINKED',
+            store=self.store,
+            supplier=self.supplier,
+            amount=Decimal('500'),
+            payment_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        GoodsReceipt.objects.create(
+            code='PN-DEBT-FOREIGN',
+            supplier=self.supplier,
+            warehouse=self.other_warehouse,
+            total_amount=Decimal('999'),
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.other_user,
+        )
+
+        response = self.client.get(reverse('api_get_supplier_debts'), {
+            'q': 'PN-DEBT-001',
+            'payment_state': 'outstanding',
+            'page': 1,
+            'page_size': 10,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(payload['meta']['total_all_count'], 1)
+        row = payload['data'][0]
+        self.assertEqual(row['code'], 'PN-DEBT-001')
+        self.assertEqual(row['original_amount'], 1000.0)
+        self.assertEqual(row['returned_amount'], 100.0)
+        self.assertEqual(row['payable_amount'], 900.0)
+        self.assertEqual(row['paid_amount'], 300.0)
+        self.assertEqual(row['debt_amount'], 600.0)
+        self.assertEqual(row['payment_state'], 'partial')
+        self.assertEqual(row['payment_codes'], ['PC-DEBT-PAID'])
+        self.assertEqual(payload['totals']['debt_amount'], 600.0)
+        self.assertEqual(payload['totals']['debt_document_count'], 1)
+        self.assertEqual(payload['totals']['overall_debt_amount'], 600.0)
+
+    def test_supplier_debt_page_is_available_from_finance_menu(self):
+        response = self.client.get(reverse('supplier_debt_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Công nợ nhà cung cấp')
+        self.assertContains(response, 'id="supplier_debt_tbl"')
+        self.assertContains(response, 'id="supplier_debt_state"')
+        self.assertContains(response, 'id="supplier_debt_cashbook_tbl"')
+        self.assertContains(response, 'id="supplier_debt_cashbook_total"')
+        self.assertContains(response, 'id="supplier_debt_after_payment_card"')
+        self.assertContains(response, 'Còn sau trả nợ')
+        self.assertContains(response, 'Thiếu để trả nợ')
+        self.assertContains(response, 'function updateSupplierDebtAfterPayment()')
+        self.assertContains(response, 'Số dư hiện tại theo quỹ')
+        self.assertContains(response, 'function loadSupplierDebtCashbooks()')
+        self.assertContains(response, 'Lập phiếu chi')
+        self.assertContains(response, reverse('supplier_debt_tbl'))
+
+    def test_supplier_debt_api_filters_payment_states_and_paginates(self):
+        receipts = []
+        for index in range(11):
+            receipts.append(GoodsReceipt.objects.create(
+                code=f'PN-DEBT-PAGE-{index:02d}',
+                supplier=self.supplier,
+                warehouse=self.warehouse,
+                total_amount=Decimal('100'),
+                receipt_date=date.today() - timedelta(days=index),
+                status=1,
+                created_by=self.user,
+            ))
+        Payment.objects.create(
+            code='PC-DEBT-PARTIAL',
+            store=self.store,
+            supplier=self.supplier,
+            goods_receipt=receipts[0],
+            amount=Decimal('40'),
+            payment_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-DEBT-SETTLED',
+            store=self.store,
+            supplier=self.supplier,
+            goods_receipt=receipts[1],
+            amount=Decimal('100'),
+            payment_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+
+        outstanding = self.client.get(reverse('api_get_supplier_debts'))
+        partial = self.client.get(reverse('api_get_supplier_debts'), {'payment_state': 'partial'})
+        settled = self.client.get(reverse('api_get_supplier_debts'), {'payment_state': 'settled'})
+        second_page = self.client.get(reverse('api_get_supplier_debts'), {
+            'payment_state': 'all',
+            'page': 2,
+            'page_size': 10,
+        })
+
+        self.assertEqual(outstanding.json()['meta']['total_filtered_count'], 10)
+        self.assertEqual(partial.json()['meta']['total_filtered_count'], 1)
+        self.assertEqual(partial.json()['data'][0]['payment_state'], 'partial')
+        self.assertEqual(settled.json()['meta']['total_filtered_count'], 1)
+        self.assertEqual(settled.json()['data'][0]['payment_state'], 'settled')
+        page_payload = second_page.json()
+        self.assertEqual(page_payload['meta']['page'], 2)
+        self.assertEqual(page_payload['meta']['total_pages'], 2)
+        self.assertEqual(page_payload['meta']['start_index'], 11)
+        self.assertEqual(page_payload['meta']['end_index'], 11)
+        self.assertEqual(len(page_payload['data']), 1)
+
+    def test_payment_page_supports_prefill_from_supplier_debt(self):
+        response = self.client.get(reverse('payment_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "params.get('create_goods_receipt_id')")
+        self.assertContains(response, 'function openPaymentForSupplierDebt()')
+        self.assertContains(response, "$('#inp_goods_receipt_id').val(goodsReceiptId).trigger('change');")
+        self.assertContains(response, 'openPaymentForSupplierDebt();')
+
     def test_save_receipt_rejects_foreign_order(self):
         other_order = self._create_order(
             code='DH-FOREIGN-001',
@@ -1081,7 +1255,7 @@ class FinanceFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="filter_code"')
-        self.assertContains(response, 'placeholder="Mã phiếu"')
+        self.assertContains(response, 'placeholder="Mã phiếu / phiếu nhập"')
         self.assertContains(response, 'id="filter_entry_type"')
         self.assertContains(response, '-- Tất cả thu/chi --')
         self.assertContains(response, 'Thu − Chi lũy kế')
@@ -1096,6 +1270,8 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'id="cashbook_entry_pagination"')
         self.assertContains(response, 'function renderCashbookEntryPagination(')
         self.assertContains(response, 'CASHBOOK_FILTERED_ENTRIES = entries;')
+        self.assertContains(response, "var goodsReceiptCode = String(d.goods_receipt || '').toLowerCase();")
+        self.assertContains(response, "paymentCode.indexOf(code) === -1 && goodsReceiptCode.indexOf(code) === -1")
         self.assertContains(response, "if(entryType === 'payment') return;")
         self.assertContains(response, "if(entryType === 'receipt') return;")
         self.assertContains(response, "String(d.code || '').toLowerCase().indexOf(code)")

@@ -603,8 +603,8 @@ $(document).ready(function(){
 
                 {% if brand_menu_groups.finance %}
                 {% if not biz or biz.mod_finance %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}menu-open{% endif %}" data-menu-key="finance">
-                    <a href="#" class="nav-link {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' or active_tab == 'supplier_debt_tbl' %}menu-open{% endif %}" data-menu-key="finance">
+                    <a href="#" class="nav-link {% if active_tab == 'receipt_tbl' or active_tab == 'payment_tbl' or active_tab == 'finance_list_tbl' or active_tab == 'cashbook_tbl' or active_tab == 'supplier_debt_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-wallet"></i>
                         <p>Tài chính <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -638,6 +638,14 @@ $(document).ready(function(){
                             <a href="{% url 'cashbook_tbl' %}" class="nav-link {% if active_tab == 'cashbook_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Sổ quỹ</p>
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if brand_menu.supplier_debts %}
+                        <li class="nav-item">
+                            <a href="{% url 'supplier_debt_tbl' %}" class="nav-link {% if active_tab == 'supplier_debt_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Công nợ NCC</p>
                             </a>
                         </li>
                         {% endif %}

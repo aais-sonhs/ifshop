@@ -7,9 +7,23 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
-from django.db.models import CharField, F, Q, Value
+from django.db.models import (
+    Case,
+    CharField,
+    DecimalField,
+    ExpressionWrapper,
+    F,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from .models import FinanceCategory, CashBook, Receipt, Payment, PaymentMethodOption
 from .services import (
     capture_receipt_effect,
@@ -17,7 +31,7 @@ from .services import (
 )
 from customers.models import Customer
 from orders.models import Order
-from products.models import GoodsReceipt, Supplier
+from products.models import GoodsReceipt, PurchaseReturn, Supplier
 from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required, can_manage_users
 from core.unique_codes import save_with_generated_code
 
@@ -528,6 +542,34 @@ def cashbook_tbl(request):
     return render(request, "finance/cashbook.html", context)
 
 
+@login_required(login_url="/login/")
+@brand_owner_required
+def supplier_debt_tbl(request):
+    """Màn hình theo dõi công nợ phải trả theo từng phiếu nhập."""
+    from system_management.models import Store
+
+    store_ids = get_managed_store_ids(request.user)
+    suppliers = list(
+        Supplier.objects
+        .filter(goods_receipts__warehouse__store_id__in=store_ids)
+        .distinct()
+        .values('id', 'code', 'name')
+        .order_by('name')
+    )
+    stores = list(
+        Store.objects
+        .filter(id__in=store_ids)
+        .values('id', 'name')
+        .order_by('name')
+    )
+    return render(request, 'finance/supplier_debt.html', {
+        'active_tab': 'supplier_debt_tbl',
+        'suppliers': suppliers,
+        'stores': stores,
+        'has_multiple_stores': len(stores) > 1,
+    })
+
+
 # ============ API: ORDERS FOR RECEIPT ============
 
 @login_required(login_url="/login/")
@@ -860,6 +902,234 @@ def _serialize_finance_entries(rows):
             'status_display': status_labels.get(row.get('status'), ''),
         })
     return data
+
+
+def _get_supplier_debt_queryset(request):
+    """Tính phải trả theo phiếu nhập trong phạm vi cửa hàng được phép xem.
+
+    Phải trả = Phiếu nhập hoàn thành - Phiếu trả nhập hoàn thành.
+    Còn nợ = max(Phải trả - Phiếu chi hoàn thành có liên kết, 0).
+    """
+    money_field = DecimalField(max_digits=18, decimal_places=0)
+    zero_money = Value(Decimal('0'), output_field=money_field)
+
+    completed_payment_total = (
+        Payment.objects
+        .filter(goods_receipt_id=OuterRef('pk'), status=1)
+        .order_by()
+        .values('goods_receipt_id')
+        .annotate(total=Sum('amount'))
+        .values('total')[:1]
+    )
+    completed_return_total = (
+        PurchaseReturn.objects
+        .filter(goods_receipt_id=OuterRef('pk'), status=1)
+        .order_by()
+        .values('goods_receipt_id')
+        .annotate(total=Sum('total_amount'))
+        .values('total')[:1]
+    )
+
+    receipts = filter_by_store(
+        GoodsReceipt.objects.filter(status=1).select_related(
+            'supplier', 'warehouse', 'warehouse__store', 'purchase_order'
+        ),
+        request,
+        field_name='warehouse__store',
+    )
+    total_all_count = receipts.count()
+    receipts = receipts.annotate(
+        paid_amount=Coalesce(
+            Subquery(completed_payment_total, output_field=money_field),
+            zero_money,
+            output_field=money_field,
+        ),
+        returned_amount=Coalesce(
+            Subquery(completed_return_total, output_field=money_field),
+            zero_money,
+            output_field=money_field,
+        ),
+    ).annotate(
+        payable_amount=ExpressionWrapper(
+            F('total_amount') - F('returned_amount'),
+            output_field=money_field,
+        ),
+    ).annotate(
+        remaining_raw=ExpressionWrapper(
+            F('payable_amount') - F('paid_amount'),
+            output_field=money_field,
+        ),
+    ).annotate(
+        debt_amount=Case(
+            When(remaining_raw__gt=0, then=F('remaining_raw')),
+            default=zero_money,
+            output_field=money_field,
+        ),
+        overpaid_amount=Case(
+            When(remaining_raw__lt=0, then=ExpressionWrapper(-F('remaining_raw'), output_field=money_field)),
+            default=zero_money,
+            output_field=money_field,
+        ),
+    )
+    return receipts, total_all_count
+
+
+def _apply_supplier_debt_filters(queryset, request):
+    search = (request.GET.get('q') or '').strip()
+    supplier_id = (request.GET.get('supplier_id') or '').strip()
+    store_id = (request.GET.get('store_id') or '').strip()
+    payment_state = (request.GET.get('payment_state') or 'outstanding').strip()
+    date_from = parse_date((request.GET.get('date_from') or '').strip())
+    date_to = parse_date((request.GET.get('date_to') or '').strip())
+
+    if search:
+        queryset = queryset.filter(
+            Q(code__icontains=search)
+            | Q(purchase_order__code__icontains=search)
+            | Q(supplier__code__icontains=search)
+            | Q(supplier__name__icontains=search)
+            | Q(warehouse__name__icontains=search)
+        )
+    if supplier_id:
+        queryset = queryset.filter(supplier_id=int(supplier_id)) if supplier_id.isdigit() else queryset.none()
+    if store_id:
+        allowed_store_ids = set(get_managed_store_ids(request.user))
+        if store_id.isdigit() and int(store_id) in allowed_store_ids:
+            queryset = queryset.filter(warehouse__store_id=int(store_id))
+        else:
+            queryset = queryset.none()
+    if date_from:
+        queryset = queryset.filter(receipt_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(receipt_date__lte=date_to)
+
+    if payment_state == 'unpaid':
+        queryset = queryset.filter(paid_amount__lte=0, debt_amount__gt=0)
+    elif payment_state == 'partial':
+        queryset = queryset.filter(paid_amount__gt=0, debt_amount__gt=0)
+    elif payment_state == 'settled':
+        queryset = queryset.filter(debt_amount__lte=0)
+    elif payment_state != 'all':
+        payment_state = 'outstanding'
+        queryset = queryset.filter(debt_amount__gt=0)
+
+    sort = (request.GET.get('sort') or 'date_desc').strip()
+    ordering = {
+        'date_asc': ('receipt_date', 'id'),
+        'debt_desc': ('-debt_amount', '-receipt_date', '-id'),
+        'debt_asc': ('debt_amount', '-receipt_date', '-id'),
+        'date_desc': ('-receipt_date', '-id'),
+    }.get(sort, ('-receipt_date', '-id'))
+    return queryset.order_by(*ordering), payment_state
+
+
+def _serialize_supplier_debts(receipts):
+    data = []
+    for receipt in receipts:
+        payable_amount = Decimal(str(receipt.payable_amount or 0))
+        paid_amount = Decimal(str(receipt.paid_amount or 0))
+        debt_amount = Decimal(str(receipt.debt_amount or 0))
+        if debt_amount > 0 and paid_amount <= 0:
+            payment_state = 'unpaid'
+            payment_state_display = 'Chưa thanh toán'
+        elif debt_amount > 0:
+            payment_state = 'partial'
+            payment_state_display = 'Thanh toán một phần'
+        else:
+            payment_state = 'settled'
+            payment_state_display = 'Đã tất toán'
+
+        payments = getattr(receipt, 'completed_debt_payments', [])
+        data.append({
+            'id': receipt.id,
+            'code': receipt.code,
+            'purchase_order': receipt.purchase_order.code if receipt.purchase_order else '',
+            'receipt_date': receipt.receipt_date.strftime('%Y-%m-%d') if receipt.receipt_date else '',
+            'supplier_id': receipt.supplier_id,
+            'supplier_code': receipt.supplier.code if receipt.supplier else '',
+            'supplier': receipt.supplier.name if receipt.supplier else '',
+            'warehouse': receipt.warehouse.name if receipt.warehouse else '',
+            'store_id': receipt.warehouse.store_id if receipt.warehouse else None,
+            'store': receipt.warehouse.store.name if receipt.warehouse and receipt.warehouse.store else '',
+            'original_amount': float(receipt.total_amount or 0),
+            'returned_amount': float(receipt.returned_amount or 0),
+            'payable_amount': float(payable_amount),
+            'paid_amount': float(paid_amount),
+            'debt_amount': float(debt_amount),
+            'overpaid_amount': float(receipt.overpaid_amount or 0),
+            'payment_state': payment_state,
+            'payment_state_display': payment_state_display,
+            'payment_codes': [payment.code for payment in payments],
+            'payment_count': len(payments),
+        })
+    return data
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def api_get_supplier_debts(request):
+    receipts, total_all_count = _get_supplier_debt_queryset(request)
+    overall_debt_amount = sum(
+        (
+            Decimal(str(value or 0))
+            for value in receipts.filter(debt_amount__gt=0).values_list('debt_amount', flat=True).iterator()
+        ),
+        Decimal('0'),
+    )
+    receipts, payment_state = _apply_supplier_debt_filters(receipts, request)
+
+    totals = {
+        'original_amount': Decimal('0'),
+        'returned_amount': Decimal('0'),
+        'payable_amount': Decimal('0'),
+        'paid_amount': Decimal('0'),
+        'debt_amount': Decimal('0'),
+        'overpaid_amount': Decimal('0'),
+    }
+    debt_document_count = 0
+    for row in receipts.values(
+        'total_amount', 'returned_amount', 'payable_amount',
+        'paid_amount', 'debt_amount', 'overpaid_amount',
+    ).iterator():
+        totals['original_amount'] += Decimal(str(row['total_amount'] or 0))
+        for key in ('returned_amount', 'payable_amount', 'paid_amount', 'debt_amount', 'overpaid_amount'):
+            totals[key] += Decimal(str(row[key] or 0))
+        if Decimal(str(row['debt_amount'] or 0)) > 0:
+            debt_document_count += 1
+    page = _to_positive_int(request.GET.get('page'), default=1, minimum=1)
+    page_size = _to_positive_int(request.GET.get('page_size'), default=25, minimum=10, maximum=200)
+    paginator = Paginator(receipts, page_size)
+    page_obj = paginator.get_page(page)
+    page_receipts = page_obj.object_list.prefetch_related(Prefetch(
+        'payments',
+        queryset=Payment.objects.filter(status=1).order_by('payment_date', 'id'),
+        to_attr='completed_debt_payments',
+    ))
+    data = _serialize_supplier_debts(page_receipts)
+
+    return JsonResponse({
+        'data': data,
+        'totals': {
+            key: float(value or 0)
+            for key, value in totals.items()
+        } | {
+            'debt_document_count': debt_document_count,
+            'overall_debt_amount': float(overall_debt_amount),
+        },
+        'filters': {'payment_state': payment_state},
+        'meta': {
+            'page': page_obj.number,
+            'page_size': page_size,
+            'page_count': len(data),
+            'total_pages': paginator.num_pages,
+            'total_filtered_count': paginator.count,
+            'total_all_count': total_all_count,
+            'has_previous': page_obj.has_previous(),
+            'has_next': page_obj.has_next(),
+            'start_index': page_obj.start_index() if paginator.count else 0,
+            'end_index': page_obj.end_index() if paginator.count else 0,
+        },
+    })
 
 
 @login_required(login_url="/login/")

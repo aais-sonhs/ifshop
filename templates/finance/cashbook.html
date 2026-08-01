@@ -24,7 +24,7 @@
         {% endif %}
         <div class="row mb-3">
             <div class="col-lg-2 col-md-4 mb-2">
-                <input type="text" class="form-control form-control-sm" id="filter_code" placeholder="Mã phiếu">
+                <input type="text" class="form-control form-control-sm" id="filter_code" placeholder="Mã phiếu / phiếu nhập" aria-label="Mã phiếu thu, phiếu chi hoặc phiếu nhập">
             </div>
             <div class="col-lg-2 col-md-4 mb-2">
                 <select class="form-control form-control-sm" id="filter_entry_type">
@@ -276,7 +276,9 @@ function loadData(){
         r2[0].data.forEach(function(d){
             if(d.status !== 1) return;
             if(entryType === 'receipt') return;
-            if(code && String(d.code || '').toLowerCase().indexOf(code) === -1) return;
+            var paymentCode = String(d.code || '').toLowerCase();
+            var goodsReceiptCode = String(d.goods_receipt || '').toLowerCase();
+            if(code && paymentCode.indexOf(code) === -1 && goodsReceiptCode.indexOf(code) === -1) return;
             if(cashbookId && d.cash_book_id != cashbookId) return;
             if(fromDate && d.payment_date < fromDate) return;
             if(toDate && d.payment_date > toDate) return;

@@ -199,14 +199,22 @@ var PAYMENT_URL_FILTERS = (function(){
         var dateTo = params.get('date_to') || '';
         var status = params.get('status') || '';
         var storeId = params.get('store_id') || '';
+        var createGoodsReceiptId = params.get('create_goods_receipt_id') || '';
+        var supplierId = params.get('supplier_id') || '';
+        var debtAmount = Number(params.get('amount') || 0);
+        var goodsReceiptCode = (params.get('goods_receipt_code') || '').slice(0, 50);
         return {
             date_from: /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : '',
             date_to: /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : '',
             status: /^(0|1|2)$/.test(status) ? status : '',
-            store_id: /^\d+$/.test(storeId) ? storeId : ''
+            store_id: /^\d+$/.test(storeId) ? storeId : '',
+            create_goods_receipt_id: /^\d+$/.test(createGoodsReceiptId) ? createGoodsReceiptId : '',
+            supplier_id: /^\d+$/.test(supplierId) ? supplierId : '',
+            debt_amount: Number.isFinite(debtAmount) && debtAmount > 0 ? debtAmount : 0,
+            goods_receipt_code: goodsReceiptCode
         };
     } catch (error) {
-        return {date_from: '', date_to: '', status: '', store_id: ''};
+        return {date_from: '', date_to: '', status: '', store_id: '', create_goods_receipt_id: '', supplier_id: '', debt_amount: 0, goods_receipt_code: ''};
     }
 })();
 
@@ -215,6 +223,23 @@ function applyPaymentUrlFilters(){
     $('#f_date_to').val(PAYMENT_URL_FILTERS.date_to);
     $('#f_status').val(PAYMENT_URL_FILTERS.status);
     if($('#f_store').length) $('#f_store').val(PAYMENT_URL_FILTERS.store_id);
+}
+function openPaymentForSupplierDebt(){
+    var goodsReceiptId = PAYMENT_URL_FILTERS.create_goods_receipt_id;
+    if(!goodsReceiptId) return;
+    if(!$('#inp_goods_receipt_id option[value="'+goodsReceiptId+'"]').length) return;
+
+    $('#btn_add').trigger('click');
+    $('#inp_goods_receipt_id').val(goodsReceiptId).trigger('change');
+    if(PAYMENT_URL_FILTERS.supplier_id){
+        $('#inp_supplier_id').val(PAYMENT_URL_FILTERS.supplier_id).trigger('change.select2');
+    }
+    if(PAYMENT_URL_FILTERS.debt_amount > 0){
+        $('#inp_amount').val(PAYMENT_URL_FILTERS.debt_amount);
+    }
+    if(PAYMENT_URL_FILTERS.goods_receipt_code){
+        $('#inp_description').val('Thanh toán phiếu nhập ' + PAYMENT_URL_FILTERS.goods_receipt_code);
+    }
 }
 function getPaymentFilters(){
     return {
@@ -362,6 +387,7 @@ $(document).ready(function(){
         PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
         PAYMENT_FORM_CLOSE_BASELINE = null;
     });
+    openPaymentForSupplierDebt();
 });
 
 function getPaymentFormCloseFieldValue(selector){

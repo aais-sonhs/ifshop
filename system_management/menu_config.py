@@ -58,6 +58,7 @@ BRAND_MENU_CATALOG = (
             {'key': 'payments', 'label': 'Phiếu chi'},
             {'key': 'finance_list', 'label': 'Danh sách thu chi'},
             {'key': 'cashbooks', 'label': 'Sổ quỹ'},
+            {'key': 'supplier_debts', 'label': 'Công nợ nhà cung cấp'},
         ),
     },
     {

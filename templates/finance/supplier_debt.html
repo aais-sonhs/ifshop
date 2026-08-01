@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-file-invoice-dollar mr-2"></i>Công nợ nhà cung cấp</h3>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-light border py-2 small">
+            <i class="fas fa-info-circle text-info mr-1"></i>
+            Còn nợ = Giá trị phiếu nhập hoàn thành − Hàng trả hoàn thành − Phiếu chi hoàn thành có liên kết.
+            Phiếu chi nháp, đã hủy hoặc không liên kết phiếu nhập không được trừ vào công nợ chứng từ.
+        </div>
+
+        <div id="supplier_debt_filters" class="mb-3">
+            <div class="row">
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <input id="supplier_debt_q" type="text" class="form-control form-control-sm" placeholder="Mã phiếu nhập / nhà cung cấp">
+                </div>
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <select id="supplier_debt_supplier" class="form-control form-control-sm">
+                        <option value="">-- Tất cả nhà cung cấp --</option>
+                        {% for supplier in suppliers %}
+                        <option value="{{ supplier.id }}">{{ supplier.code }} - {{ supplier.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4 mb-2">
+                    <select id="supplier_debt_state" class="form-control form-control-sm">
+                        <option value="outstanding" selected>Còn nợ</option>
+                        <option value="unpaid">Chưa thanh toán</option>
+                        <option value="partial">Thanh toán một phần</option>
+                        <option value="settled">Đã tất toán</option>
+                        <option value="all">Tất cả trạng thái</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4 mb-2">
+                    <input id="supplier_debt_date_from" type="date" class="form-control form-control-sm" title="Từ ngày nhập">
+                </div>
+                <div class="col-lg-2 col-md-4 mb-2">
+                    <input id="supplier_debt_date_to" type="date" class="form-control form-control-sm" title="Đến ngày nhập">
+                </div>
+            </div>
+            <div class="row">
+                {% if has_multiple_stores %}
+                <div class="col-lg-3 col-md-4 mb-2">
+                    <select id="supplier_debt_store" class="form-control form-control-sm">
+                        <option value="">-- Tất cả cửa hàng --</option>
+                        {% for store in stores %}<option value="{{ store.id }}">{{ store.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-lg-3 col-md-4 mb-2">
+                    <select id="supplier_debt_sort" class="form-control form-control-sm">
+                        <option value="date_desc">Ngày nhập mới nhất</option>
+                        <option value="date_asc">Ngày nhập cũ nhất</option>
+                        <option value="debt_desc">Còn nợ cao nhất</option>
+                        <option value="debt_asc">Còn nợ thấp nhất</option>
+                    </select>
+                </div>
+                <div class="col-lg-4 col-md-4 mb-2">
+                    <button type="button" id="btn_apply_supplier_debt_filters" class="btn btn-sm btn-info">
+                        <i class="fas fa-search mr-1"></i>Xem
+                    </button>
+                    <button type="button" id="btn_clear_supplier_debt_filters" class="btn btn-sm btn-outline-secondary ml-1">
+                        Xóa lọc
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xl col-lg-4 col-md-6">
+                <div class="info-box bg-primary">
+                    <span class="info-box-icon"><i class="fas fa-truck-loading"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Phải trả sau hàng trả</span><span id="supplier_debt_total_payable" class="info-box-number">0đ</span></div>
+                </div>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+                <div class="info-box bg-success">
+                    <span class="info-box-icon"><i class="fas fa-money-check-alt"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Đã thanh toán</span><span id="supplier_debt_total_paid" class="info-box-number">0đ</span></div>
+                </div>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+                <div class="info-box bg-danger">
+                    <span class="info-box-icon"><i class="fas fa-hand-holding-usd"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Còn nợ</span><span id="supplier_debt_total_remaining" class="info-box-number">0đ</span></div>
+                </div>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+                <div class="info-box bg-warning">
+                    <span class="info-box-icon"><i class="fas fa-file-invoice"></i></span>
+                    <div class="info-box-content"><span class="info-box-text">Phiếu còn nợ</span><span id="supplier_debt_document_count" class="info-box-number">0</span></div>
+                </div>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6">
+                <div id="supplier_debt_after_payment_card" class="info-box bg-info" title="Tổng số dư các quỹ trừ toàn bộ công nợ nhà cung cấp còn lại">
+                    <span class="info-box-icon"><i class="fas fa-balance-scale"></i></span>
+                    <div class="info-box-content"><span id="supplier_debt_after_payment_label" class="info-box-text">Còn sau trả nợ</span><span id="supplier_debt_after_payment" class="info-box-number">Đang tính...</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-outline card-info mb-3">
+            <div class="card-header py-2">
+                <h3 class="card-title"><i class="fas fa-wallet mr-2"></i>Số dư hiện tại theo quỹ</h3>
+                <div class="card-tools">
+                    Tổng: <strong id="supplier_debt_cashbook_total">0đ</strong>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="px-3 pt-2 text-muted small">
+                    Số dư quỹ là số tiền thực tế hiện có và không bị ảnh hưởng bởi bộ lọc công nợ bên dưới.
+                </div>
+                <div class="table-responsive">
+                    <table id="supplier_debt_cashbook_tbl" class="table table-bordered table-sm mb-0">
+                        <thead><tr><th style="width:60px;">STT</th><th>Quỹ / Tài khoản</th><th>Mô tả</th><th class="text-right">Số dư hiện tại</th></tr></thead>
+                        <tbody><tr><td colspan="4" class="text-center text-muted">Đang tải dữ liệu...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
+            <div id="supplier_debt_pagination_summary" class="text-muted small">Đang tải dữ liệu...</div>
+            <div class="d-flex align-items-center" style="gap:8px;">
+                <label for="supplier_debt_page_size" class="small text-muted mb-0">Hiển thị</label>
+                <select id="supplier_debt_page_size" class="form-control form-control-sm" style="width:auto;min-width:86px;">
+                    <option value="25">25 dòng</option>
+                    <option value="50">50 dòng</option>
+                    <option value="100">100 dòng</option>
+                    <option value="200">200 dòng</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table id="supplier_debt_tbl" class="table table-bordered table-striped table-sm" style="min-width:1500px;">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Ngày nhập</th>
+                        <th>Mã phiếu nhập</th>
+                        <th>Nhà cung cấp</th>
+                        <th>Kho / Cửa hàng</th>
+                        <th class="text-right">Tổng nhập</th>
+                        <th class="text-right">Hàng trả</th>
+                        <th class="text-right">Phải trả</th>
+                        <th class="text-right">Đã trả</th>
+                        <th class="text-right">Còn nợ</th>
+                        <th>Trạng thái</th>
+                        <th>Phiếu chi</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="supplier_debt_pagination" class="d-flex justify-content-end flex-wrap mt-2" style="gap:6px;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function supplierDebtFmt(number){ return Number(number || 0).toLocaleString('vi-VN'); }
+function supplierDebtMoney(number){ return supplierDebtFmt(number) + 'đ'; }
+function supplierDebtEscape(value){ return $('<div>').text(value == null ? '' : String(value)).html(); }
+function supplierDebtDate(value){
+    var parts = String(value || '').split('-');
+    return parts.length === 3 ? parts[2]+'/'+parts[1]+'/'+parts[0] : String(value || '');
+}
+
+var SUPPLIER_DEBT_PAGE_SIZE_KEY = 'ifshop_supplier_debt_page_size';
+var SUPPLIER_DEBT_STATE = {
+    page: 1,
+    page_size: (function(){
+        var saved = parseInt(localStorage.getItem(SUPPLIER_DEBT_PAGE_SIZE_KEY) || '25', 10);
+        return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
+    })()
+};
+var SUPPLIER_DEBT_TOTAL_CASH_BALANCE = 0;
+var SUPPLIER_DEBT_OVERALL_DEBT = 0;
+var SUPPLIER_DEBT_CASH_LOADED = false;
+var SUPPLIER_DEBT_TOTALS_LOADED = false;
+
+function getSupplierDebtParams(){
+    return {
+        q: ($('#supplier_debt_q').val() || '').trim(),
+        supplier_id: $('#supplier_debt_supplier').val() || '',
+        payment_state: $('#supplier_debt_state').val() || 'outstanding',
+        date_from: $('#supplier_debt_date_from').val() || '',
+        date_to: $('#supplier_debt_date_to').val() || '',
+        store_id: $('#supplier_debt_store').val() || '',
+        sort: $('#supplier_debt_sort').val() || 'date_desc',
+        page: SUPPLIER_DEBT_STATE.page || 1,
+        page_size: SUPPLIER_DEBT_STATE.page_size || 25
+    };
+}
+
+function supplierDebtPaymentUrl(row){
+    var params = $.param({
+        create_goods_receipt_id: row.id,
+        goods_receipt_code: row.code,
+        supplier_id: row.supplier_id || '',
+        amount: row.debt_amount || 0
+    });
+    return '{% url "payment_tbl" %}?' + params;
+}
+
+function renderSupplierDebtRows(response){
+    var rows = response.data || [];
+    var meta = response.meta || {};
+    var startIndex = Number(meta.start_index || 1);
+    var html = '';
+    rows.forEach(function(row, index){
+        var stateClass = row.payment_state === 'unpaid' ? 'danger' : (row.payment_state === 'partial' ? 'warning' : 'success');
+        var paymentCodes = (row.payment_codes || []).map(function(code){
+            return '<span class="badge badge-light border mr-1">'+supplierDebtEscape(code)+'</span>';
+        }).join('') || '<span class="text-muted">—</span>';
+        var action = row.debt_amount > 0
+            ? '<a class="btn btn-xs btn-danger" href="'+supplierDebtEscape(supplierDebtPaymentUrl(row))+'"><i class="fas fa-plus mr-1"></i>Lập phiếu chi</a>'
+            : '<span class="text-success small"><i class="fas fa-check mr-1"></i>Đã tất toán</span>';
+        html += '<tr>'+
+            '<td>'+(startIndex + index)+'</td>'+
+            '<td>'+supplierDebtDate(row.receipt_date)+'</td>'+
+            '<td><a href="{% url "goods_receipt_tbl" %}?open_receipt='+row.id+'"><strong>'+supplierDebtEscape(row.code)+'</strong></a>'+
+                (row.purchase_order ? '<small class="text-muted d-block">Đơn đặt: '+supplierDebtEscape(row.purchase_order)+'</small>' : '')+'</td>'+
+            '<td><strong>'+supplierDebtEscape(row.supplier)+'</strong><small class="text-muted d-block">'+supplierDebtEscape(row.supplier_code)+'</small></td>'+
+            '<td>'+supplierDebtEscape(row.warehouse)+(row.store ? '<small class="text-muted d-block">'+supplierDebtEscape(row.store)+'</small>' : '')+'</td>'+
+            '<td class="text-right">'+supplierDebtMoney(row.original_amount)+'</td>'+
+            '<td class="text-right text-warning">'+supplierDebtMoney(row.returned_amount)+'</td>'+
+            '<td class="text-right font-weight-bold">'+supplierDebtMoney(row.payable_amount)+'</td>'+
+            '<td class="text-right text-success">'+supplierDebtMoney(row.paid_amount)+'</td>'+
+            '<td class="text-right text-danger font-weight-bold">'+supplierDebtMoney(row.debt_amount)+'</td>'+
+            '<td><span class="badge badge-'+stateClass+'">'+supplierDebtEscape(row.payment_state_display)+'</span></td>'+
+            '<td>'+paymentCodes+'</td>'+
+            '<td>'+action+'</td>'+
+            '</tr>';
+    });
+    $('#supplier_debt_tbl tbody').html(
+        html || '<tr><td colspan="13" class="text-center text-muted py-3">Không có phiếu nhập phù hợp.</td></tr>'
+    );
+}
+
+function renderSupplierDebtTotals(totals){
+    totals = totals || {};
+    $('#supplier_debt_total_payable').text(supplierDebtMoney(totals.payable_amount));
+    $('#supplier_debt_total_paid').text(supplierDebtMoney(totals.paid_amount));
+    $('#supplier_debt_total_remaining').text(supplierDebtMoney(totals.debt_amount));
+    $('#supplier_debt_document_count').text(supplierDebtFmt(totals.debt_document_count));
+    SUPPLIER_DEBT_OVERALL_DEBT = Number(totals.overall_debt_amount || 0);
+    SUPPLIER_DEBT_TOTALS_LOADED = true;
+    updateSupplierDebtAfterPayment();
+}
+
+function updateSupplierDebtAfterPayment(){
+    if(!SUPPLIER_DEBT_CASH_LOADED || !SUPPLIER_DEBT_TOTALS_LOADED){
+        $('#supplier_debt_after_payment').text('Đang tính...');
+        return;
+    }
+    var remaining = SUPPLIER_DEBT_TOTAL_CASH_BALANCE - SUPPLIER_DEBT_OVERALL_DEBT;
+    var isShort = remaining < 0;
+    $('#supplier_debt_after_payment_label').text(isShort ? 'Thiếu để trả nợ' : 'Còn sau trả nợ');
+    $('#supplier_debt_after_payment').text(supplierDebtMoney(Math.abs(remaining)));
+    $('#supplier_debt_after_payment_card')
+        .toggleClass('bg-danger', isShort)
+        .toggleClass('bg-info', !isShort);
+}
+
+function renderSupplierDebtCashbooks(books){
+    var activeBooks = (books || []).filter(function(book){ return book.is_active; });
+    var totalBalance = 0;
+    var html = '';
+    activeBooks.forEach(function(book, index){
+        var balance = Number(book.balance || 0);
+        var balanceClass = balance < 0 ? 'text-danger' : (balance > 0 ? 'text-success' : 'text-muted');
+        totalBalance += balance;
+        html += '<tr>'+
+            '<td>'+(index + 1)+'</td>'+
+            '<td><strong>'+supplierDebtEscape(book.name)+'</strong></td>'+
+            '<td>'+supplierDebtEscape(book.description || '')+'</td>'+
+            '<td class="text-right font-weight-bold '+balanceClass+'">'+supplierDebtMoney(balance)+'</td>'+
+            '</tr>';
+    });
+    $('#supplier_debt_cashbook_tbl tbody').html(
+        html || '<tr><td colspan="4" class="text-center text-muted">Chưa có quỹ hoạt động.</td></tr>'
+    );
+    SUPPLIER_DEBT_TOTAL_CASH_BALANCE = totalBalance;
+    SUPPLIER_DEBT_CASH_LOADED = true;
+    $('#supplier_debt_cashbook_total').text(supplierDebtMoney(totalBalance));
+    updateSupplierDebtAfterPayment();
+}
+
+function loadSupplierDebtCashbooks(){
+    $.get('{% url "api_get_cashbooks" %}', function(response){
+        renderSupplierDebtCashbooks(response.data || []);
+    }).fail(function(){
+        $('#supplier_debt_cashbook_tbl tbody').html(
+            '<tr><td colspan="4" class="text-center text-danger">Không tải được số dư quỹ.</td></tr>'
+        );
+        $('#supplier_debt_after_payment').text('Không tính được');
+    });
+}
+
+function renderSupplierDebtPagination(meta){
+    meta = meta || {};
+    var total = Number(meta.total_filtered_count || 0);
+    var currentPage = Number(meta.page || 1);
+    var totalPages = Number(meta.total_pages || 1);
+    if(!total){
+        $('#supplier_debt_pagination_summary').text('Không có phiếu nhập phù hợp.');
+        $('#supplier_debt_pagination').empty();
+        return;
+    }
+    $('#supplier_debt_pagination_summary').html(
+        'Hiển thị <strong>'+meta.start_index+'-'+meta.end_index+'</strong> / <strong>'+total+'</strong> phiếu nhập' +
+        ' · Trang <strong>'+currentPage+'/'+totalPages+'</strong>'
+    );
+    if(totalPages <= 1){
+        $('#supplier_debt_pagination').empty();
+        return;
+    }
+
+    var pages = [1];
+    for(var page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page++) pages.push(page);
+    if(totalPages > 1) pages.push(totalPages);
+    pages = pages.filter(function(page, index, allPages){ return allPages.indexOf(page) === index; }).sort(function(a, b){ return a - b; });
+    var html = '<button type="button" class="btn btn-sm btn-outline-secondary supplier-debt-page-btn" data-page="'+(currentPage - 1)+'"'+(currentPage <= 1 ? ' disabled' : '')+'>Trước</button>';
+    var previousPage = 0;
+    pages.forEach(function(page){
+        if(previousPage && page - previousPage > 1) html += '<span class="btn btn-sm btn-light disabled">...</span>';
+        html += '<button type="button" class="btn btn-sm '+(page === currentPage ? 'btn-primary active' : 'btn-outline-primary')+' supplier-debt-page-btn" data-page="'+page+'">'+page+'</button>';
+        previousPage = page;
+    });
+    html += '<button type="button" class="btn btn-sm btn-outline-secondary supplier-debt-page-btn" data-page="'+(currentPage + 1)+'"'+(currentPage >= totalPages ? ' disabled' : '')+'>Sau</button>';
+    $('#supplier_debt_pagination').html(html);
+}
+
+function loadSupplierDebts(){
+    $('#supplier_debt_pagination_summary').text('Đang tải dữ liệu...');
+    $.get('{% url "api_get_supplier_debts" %}', getSupplierDebtParams(), function(response){
+        SUPPLIER_DEBT_STATE.page = Number((response.meta && response.meta.page) || 1);
+        renderSupplierDebtRows(response);
+        renderSupplierDebtTotals(response.totals || {});
+        renderSupplierDebtPagination(response.meta || {});
+    }).fail(function(){
+        $('#supplier_debt_tbl tbody').html('<tr><td colspan="13" class="text-center text-danger py-3">Không tải được công nợ nhà cung cấp.</td></tr>');
+        $('#supplier_debt_pagination_summary').text('Không tải được dữ liệu.');
+        $('#supplier_debt_pagination').empty();
+    });
+}
+
+$(document).ready(function(){
+    $('#supplier_debt_page_size').val(String(SUPPLIER_DEBT_STATE.page_size));
+    loadSupplierDebtCashbooks();
+    loadSupplierDebts();
+    $('#btn_apply_supplier_debt_filters').click(function(){ SUPPLIER_DEBT_STATE.page = 1; loadSupplierDebts(); });
+    $('#supplier_debt_filters input').on('keydown', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            SUPPLIER_DEBT_STATE.page = 1;
+            loadSupplierDebts();
+        }
+    });
+    $('#btn_clear_supplier_debt_filters').click(function(){
+        $('#supplier_debt_q, #supplier_debt_date_from, #supplier_debt_date_to').val('');
+        $('#supplier_debt_supplier, #supplier_debt_store').val('');
+        $('#supplier_debt_state').val('outstanding');
+        $('#supplier_debt_sort').val('date_desc');
+        SUPPLIER_DEBT_STATE.page = 1;
+        loadSupplierDebts();
+    });
+    $('#supplier_debt_page_size').change(function(){
+        SUPPLIER_DEBT_STATE.page_size = parseInt($(this).val() || '25', 10) || 25;
+        localStorage.setItem(SUPPLIER_DEBT_PAGE_SIZE_KEY, String(SUPPLIER_DEBT_STATE.page_size));
+        SUPPLIER_DEBT_STATE.page = 1;
+        loadSupplierDebts();
+    });
+    $(document).on('click', '.supplier-debt-page-btn', function(){
+        if($(this).prop('disabled')) return;
+        var page = parseInt($(this).data('page'), 10);
+        if(!page || page < 1 || page === SUPPLIER_DEBT_STATE.page) return;
+        SUPPLIER_DEBT_STATE.page = page;
+        loadSupplierDebts();
+    });
+});
+</script>
+{% endblock %}

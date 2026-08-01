@@ -391,6 +391,18 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "params.get('store_id')")
         self.assertContains(response, 'applyPaymentUrlFilters();')
 
+    def test_payment_form_cashbook_options_include_current_balance(self):
+        cash_book = CashBook.objects.create(
+            name='Quỹ tiền mặt hiển thị',
+            balance=Decimal('100000000'),
+        )
+
+        response = self.client.get(reverse('payment_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'value="{cash_book.id}" data-balance="100000000"')
+        self.assertContains(response, 'Quỹ tiền mặt hiển thị - 100.000.000đ')
+
     def test_payment_create_and_edit_only_confirm_close_when_form_changed(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])

@@ -495,7 +495,7 @@ def receipt_tbl(request):
 @brand_owner_required
 def payment_tbl(request):
     categories = list(FinanceCategory.objects.filter(type=2, is_active=True).values('id', 'name'))
-    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name', 'balance'))
     payment_methods = _serialize_payment_methods()
     suppliers = list(Supplier.objects.filter(is_active=True).values('id', 'code', 'name'))
     goods_receipts_qs = GoodsReceipt.objects.select_related('supplier')

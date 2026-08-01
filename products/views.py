@@ -25,6 +25,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from .models import (
     Product, ProductCategory, ProductVariant, ProductStock, Supplier, Warehouse,
     GoodsReceipt, GoodsReceiptItem, PurchaseOrder, PurchaseOrderItem,
@@ -341,7 +342,26 @@ def _get_purchase_order_for_user(request, purchase_order_id, queryset=None):
     if not purchase_order_id:
         return None
     base_queryset = queryset if queryset is not None else PurchaseOrder.objects.all()
-    return filter_by_store(base_queryset, request, field_name='warehouse__store').filter(id=purchase_order_id).first()
+    return _scope_purchase_orders_for_user(base_queryset, request).filter(id=purchase_order_id).first()
+
+
+def _scope_purchase_orders_for_user(queryset, request):
+    """Giữ đơn chưa chọn kho trong đúng phạm vi cửa hàng của người dùng.
+
+    Đơn đặt hàng cho phép để trống kho khi còn là bản nháp. Khi đó sản phẩm
+    trong đơn được dùng để xác định phạm vi cửa hàng; đơn chưa có dòng hàng chỉ
+    được hiện cho chính người tạo.
+    """
+    if request.user.is_superuser:
+        return queryset.none()
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(warehouse__store_id__in=store_ids)
+        | Q(warehouse__isnull=True, items__product__store_id__in=store_ids)
+        | Q(warehouse__isnull=True, items__isnull=True, created_by=request.user)
+    ).distinct()
 
 
 def _normalize_goods_receipt_items(items_data):
@@ -3279,7 +3299,7 @@ def api_get_purchase_orders(request):
         .prefetch_related('items__product')
         .order_by('-order_date', '-id')
     )
-    orders = filter_by_store(orders, request, field_name='warehouse__store')
+    orders = _scope_purchase_orders_for_user(orders, request)
     total_all_count = orders.count()
     orders = _apply_purchase_order_list_filters(orders, request)
     data = []
@@ -3289,6 +3309,7 @@ def api_get_purchase_orders(request):
             'variant_id': item.variant_id,
             'product_code': item.product.code if item.product else '',
             'product_name': item.product.name if item.product else '',
+            'product_image': item.product.image.url if item.product and item.product.image else '',
             'variant_name': item.variant.size_name if item.variant else '',
             'quantity': float(item.quantity),
             'received_quantity': float(item.received_quantity),
@@ -3318,6 +3339,7 @@ def api_get_purchase_orders(request):
     })
 
 
+@never_cache
 @login_required(login_url="/login/")
 def api_next_purchase_order_code(request):
     """Trả mã đơn đặt hàng tiếp theo, không dùng dấu gạch ngang."""
@@ -3381,23 +3403,24 @@ def api_save_purchase_order(request):
             normalized_items.append((product, variant_id, qty, price))
 
         po.total_amount = total
-        save_with_generated_code(
-            po,
-            _generate_next_purchase_order_code,
-            auto_generated=auto_code,
-        )
-
-        # Delete old items and create new ones
-        po.items.all().delete()
-        for product, variant_id, qty, price in normalized_items:
-            PurchaseOrderItem.objects.create(
-                purchase_order=po,
-                product=product,
-                variant_id=variant_id,
-                quantity=qty,
-                unit_price=price,
-                total_price=qty * price,
+        with transaction.atomic():
+            save_with_generated_code(
+                po,
+                _generate_next_purchase_order_code,
+                auto_generated=auto_code,
             )
+
+            # Chỉ thay chi tiết sau khi toàn bộ dữ liệu hợp lệ và lưu nguyên khối.
+            po.items.all().delete()
+            for product, variant_id, qty, price in normalized_items:
+                PurchaseOrderItem.objects.create(
+                    purchase_order=po,
+                    product=product,
+                    variant_id=variant_id,
+                    quantity=qty,
+                    unit_price=price,
+                    total_price=qty * price,
+                )
 
         return JsonResponse({
             'status': 'ok',
@@ -4599,7 +4622,7 @@ def export_purchase_orders_excel(request):
     from datetime import datetime
 
     orders = PurchaseOrder.objects.select_related('supplier', 'warehouse', 'created_by').prefetch_related('items__product').all()
-    orders = filter_by_store(orders, request, field_name='warehouse__store')
+    orders = _scope_purchase_orders_for_user(orders, request)
     orders = _apply_purchase_order_list_filters(orders, request).order_by(
         '-order_date', '-id'
     )

@@ -1304,7 +1304,8 @@ class ProductInventoryFlowTests(TestCase):
 
     def test_purchase_order_product_picker_shows_stock_metrics_and_retries_load(self):
         self.product.specification = 'Hộp 10 gói x 500 g'
-        self.product.save(update_fields=['specification'])
+        self.product.image = 'products/purchase-order-sample.jpg'
+        self.product.save(update_fields=['specification', 'image'])
         ProductStock.objects.create(
             product=self.product,
             warehouse=self.warehouse_a,
@@ -1318,6 +1319,15 @@ class ProductInventoryFlowTests(TestCase):
         self.assertContains(page_response, 'function formatPurchaseOrderProductOption(data)')
         self.assertContains(page_response, 'templateResult: formatPurchaseOrderProductOption')
         self.assertContains(page_response, 'Sản phẩm / Quy cách')
+        self.assertContains(page_response, '>Hình ảnh<')
+        self.assertContains(page_response, 'function getPurchaseOrderProductImageUrl(product)')
+        self.assertContains(page_response, 'function renderPurchaseOrderProductImage(product, compact)')
+        self.assertContains(page_response, 'class="text-center align-middle item-product-image-cell"')
+        self.assertContains(page_response, 'Chưa có ảnh')
+        self.assertContains(page_response, 'id="global_image_solo_view"')
+        self.assertContains(page_response, "event.target.closest('table img')")
+        self.assertNotContains(page_response, 'title="Mở ảnh')
+        self.assertContains(page_response, "row.find('.item-product-image-cell').html(renderPurchaseOrderProductImage(product, false))")
         self.assertContains(page_response, 'function getPurchaseOrderProductSpecification(product)')
         self.assertContains(page_response, 'class="purchase-order-product-specification small text-muted"')
         self.assertContains(page_response, 'class="item-product-specification d-block mt-1 text-muted"')
@@ -1340,17 +1350,83 @@ class ProductInventoryFlowTests(TestCase):
         )
         warehouse_key = str(self.warehouse_a.id)
         self.assertEqual(row['specification'], 'Hộp 10 gói x 500 g')
+        self.assertTrue(row['image_url'].endswith('/products/purchase-order-sample.jpg'))
         self.assertEqual(row['stocks'][warehouse_key], 9.0)
         self.assertEqual(row['sellable_stocks'][warehouse_key], 9.0)
+
+        purchase_order = PurchaseOrder.objects.create(
+            code='DDH-IMAGE-001',
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        PurchaseOrderItem.objects.create(
+            purchase_order=purchase_order,
+            product=self.product,
+            quantity=1,
+            unit_price=100,
+            total_price=100,
+        )
+        purchase_order_response = self.client.get(reverse('api_get_purchase_orders'))
+        saved_item = next(
+            item
+            for order in purchase_order_response.json()['data']
+            if order['id'] == purchase_order.id
+            for item in order['items']
+        )
+        self.assertTrue(saved_item['product_image'].endswith('/products/purchase-order-sample.jpg'))
+
+    def test_table_images_use_global_solo_view_without_hover_zoom(self):
+        response = self.client.get(reverse('product_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="global_image_solo_view"')
+        self.assertContains(response, 'function openImageSoloView(src, alt, trigger)')
+        self.assertContains(response, "event.target.closest('table img')")
+        self.assertContains(response, 'event.stopImmediatePropagation();')
+        self.assertNotContains(response, 'id="imageZoomOverlay"')
+        self.assertNotContains(response, 'function openImageZoom(src)')
+        self.assertNotContains(response, "this.style.transform='scale(1.1)'")
 
     def test_purchase_order_page_fetches_an_automatic_code(self):
         response = self.client.get(reverse('purchase_order_tbl'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'placeholder="Tự động sinh"')
-        self.assertContains(response, 'function fetchNextPurchaseOrderCode(modalSession)')
+        self.assertContains(response, 'function fetchNextPurchaseOrderCode(modalSession, closeTrackingToken)')
         self.assertContains(response, reverse('api_next_purchase_order_code'))
-        self.assertContains(response, 'fetchNextPurchaseOrderCode(modalSession);')
+        self.assertContains(response, 'fetchNextPurchaseOrderCode(modalSession, closeTrackingToken);')
+        self.assertContains(response, 'cache: false')
+        self.assertContains(response, 'function showSavedPurchaseOrder(code)')
+        self.assertContains(response, 'showSavedPurchaseOrder(r.purchase_order_code);')
+
+    def test_purchase_order_create_and_edit_only_confirm_close_when_changed(self):
+        response = self.client.get(reverse('purchase_order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="modal_form" tabindex="-1" data-confirm-close="dirty" '
+            'data-backdrop="static" data-keyboard="false"',
+        )
+        self.assertContains(response, 'function getPurchaseOrderCloseSnapshot()')
+        self.assertContains(response, 'function getPurchaseOrderCloseItems()')
+        self.assertContains(response, 'function startPurchaseOrderCloseTracking()')
+        self.assertContains(response, 'function capturePurchaseOrderCloseBaseline(trackingToken)')
+        self.assertContains(response, 'function capturePurchaseOrderCloseBaselineItems(trackingToken)')
+        self.assertContains(response, 'function updatePurchaseOrderCloseBaselineField(trackingToken, fieldName, value)')
+        self.assertContains(response, 'function purchaseOrderHasUnsavedChanges()')
+        self.assertContains(response, 'modal.confirmCloseDirtyCheck = purchaseOrderHasUnsavedChanges')
+        self.assertContains(response, 'var closeTrackingToken = startPurchaseOrderCloseTracking();', count=2)
+        self.assertContains(response, 'capturePurchaseOrderCloseBaseline(closeTrackingToken);', count=2)
+        self.assertContains(response, 'capturePurchaseOrderCloseBaselineItems(closeTrackingToken);')
+        self.assertContains(response, "updatePurchaseOrderCloseBaselineField(closeTrackingToken, 'code', generatedCode);")
+        for field_name in (
+            'code', 'supplier_id', 'warehouse_id', 'order_date',
+            'expected_date', 'status', 'note', 'items',
+        ):
+            self.assertContains(response, f'{field_name}:')
 
     def test_next_purchase_order_code_reads_old_new_and_soft_deleted_codes(self):
         for code in ('DDH-009', 'DDH010'):
@@ -1372,6 +1448,7 @@ class ProductInventoryFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['code'], 'DDH012')
+        self.assertIn('no-cache', response.headers['Cache-Control'])
 
     def test_save_purchase_order_generates_code_when_blank(self):
         response = self.client.post(
@@ -1397,6 +1474,64 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['purchase_order_code'], 'DDH001')
         self.assertNotIn('-', payload['purchase_order_code'])
         self.assertTrue(PurchaseOrder.objects.filter(code='DDH001').exists())
+
+    def test_second_purchase_order_without_warehouse_is_saved_and_visible(self):
+        base_data = {
+            'code': 'DDH001',
+            'supplier_id': self.supplier.id,
+            'order_date': date.today().isoformat(),
+            'status': 0,
+            'items': [{
+                'product_id': self.product.id,
+                'quantity': 1,
+                'unit_price': 100,
+            }],
+        }
+        first_response = self.client.post(
+            reverse('api_save_purchase_order'),
+            data=json.dumps({**base_data, 'warehouse_id': self.warehouse_a.id}),
+            content_type='application/json',
+        )
+        second_response = self.client.post(
+            reverse('api_save_purchase_order'),
+            data=json.dumps({**base_data, 'warehouse_id': None}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        self.assertEqual(first_response.json()['purchase_order_code'], 'DDH001')
+        self.assertEqual(second_response.json()['purchase_order_code'], 'DDH002')
+
+        second_id = second_response.json()['purchase_order_id']
+        second_order = PurchaseOrder.objects.get(id=second_id)
+        self.assertIsNone(second_order.warehouse_id)
+        list_response = self.client.get(reverse('api_get_purchase_orders'))
+        self.assertIn(second_id, [row['id'] for row in list_response.json()['data']])
+
+        edit_response = self.client.post(
+            reverse('api_save_purchase_order'),
+            data=json.dumps({
+                **base_data,
+                'id': second_id,
+                'code': 'DDH002',
+                'warehouse_id': None,
+                'note': 'Đã sửa đơn chưa chọn kho',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+
+        self.client.force_login(self.other_user)
+        foreign_list_response = self.client.get(reverse('api_get_purchase_orders'))
+        self.assertNotIn(second_id, [row['id'] for row in foreign_list_response.json()['data']])
+        foreign_delete_response = self.client.post(
+            reverse('api_delete_purchase_order'),
+            data=json.dumps({'id': second_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(foreign_delete_response.json()['status'], 'error')
+        self.assertTrue(PurchaseOrder.objects.filter(id=second_id).exists())
 
     def test_purchase_order_product_picker_is_rebuilt_after_modal_closes(self):
         response = self.client.get(reverse('purchase_order_tbl'))

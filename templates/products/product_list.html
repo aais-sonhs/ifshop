@@ -470,16 +470,6 @@
     </div>
 </div>
 
-<!-- Image Zoom Modal -->
-<div id="imageZoomOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;cursor:pointer;opacity:0;transition:opacity 0.3s ease;" onclick="closeImageZoom()">
-    <button type="button" onclick="closeImageZoom()" style="position:absolute;top:15px;right:25px;background:none;border:none;color:#fff;font-size:36px;cursor:pointer;z-index:10000;opacity:0.8;transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
-        <i class="fas fa-times"></i>
-    </button>
-    <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:20px;">
-        <img id="zoomImage" src="" alt="Zoom" style="max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.5);transform:scale(0.8);transition:transform 0.3s ease;" onclick="event.stopPropagation()">
-    </div>
-</div>
-
 <!-- Modal Lịch sử nhập hàng -->
 <!-- MODAL LỊCH SỬ SẢN PHẨM (3 tabs) -->
 <div class="modal fade" id="modal_purchase_history" tabindex="-1" data-confirm-close="false">
@@ -870,7 +860,7 @@ function getProductPriceValue(product, basis){
 
 function renderProductThumb(src, imgClass, placeholderClass){
     if(src){
-        return '<img src="' + escapeAttr(src) + '" class="' + imgClass + '" onclick="openImageZoom(this.src)" title="Click để phóng to">';
+        return '<img src="' + escapeAttr(src) + '" class="' + imgClass + '" alt="">';
     }
     return '<div class="' + placeholderClass + '"><i class="fas fa-box"></i></div>';
 }
@@ -1805,7 +1795,7 @@ function loadData(done, requestOverrides){
         var h = '';
         filtered.forEach(function(d, i){
             var imgTd = d.image
-                ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" class="img-thumbnail product-zoom-img" onclick="openImageZoom(this.src)" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'" title="Click để phóng to">'
+                ? '<img src="'+d.image+'" style="height:60px;width:60px;object-fit:cover;" class="img-thumbnail product-zoom-img" alt="">'
                 : '<div style="height:60px;width:60px;" class="d-flex align-items-center justify-content-center bg-light border rounded"><i class="fas fa-image text-muted fa-2x"></i></div>';
 
             var costDisplay = '<span class="text-primary font-weight-bold">'+fmt(d.cost_price)+'đ</span>';
@@ -2538,35 +2528,6 @@ function deleteItem(id){
         }
     });
 }
-
-// Image Zoom functions
-function openImageZoom(src) {
-    var overlay = document.getElementById('imageZoomOverlay');
-    var img = document.getElementById('zoomImage');
-    img.src = src;
-    overlay.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-    setTimeout(function() {
-        overlay.style.opacity = '1';
-        img.style.transform = 'scale(1)';
-    }, 10);
-}
-
-function closeImageZoom() {
-    var overlay = document.getElementById('imageZoomOverlay');
-    var img = document.getElementById('zoomImage');
-    overlay.style.opacity = '0';
-    img.style.transform = 'scale(0.8)';
-    setTimeout(function() {
-        overlay.style.display = 'none';
-        document.body.style.overflow = '';
-    }, 300);
-}
-
-// Close on Escape key
-$(document).keydown(function(e) {
-    if (e.key === 'Escape') closeImageZoom();
-});
 
 // View combo (read-only)
 function viewCombo(d){

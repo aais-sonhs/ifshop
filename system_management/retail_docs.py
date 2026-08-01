@@ -233,6 +233,7 @@ RETAIL_OPERATION_GUIDES = [
         'path': 'Kho & Sản phẩm → Đơn đặt hàng / Phiếu nhập',
         'steps': [
             'Nếu cần đặt hàng trước, tạo Đơn đặt hàng; Mã ĐĐH được tự sinh dạng DDH001, DDH002... không có dấu gạch ngang.',
+            'Trong các bảng có cột Hình ảnh, bấm trực tiếp vào ảnh để mở chế độ xem riêng; rê chuột qua ảnh không làm phóng hoặc thay đổi ảnh.',
             'Chọn nhà cung cấp, kho nhận và ngày nhập.',
             'Tìm sản phẩm theo mã, tên, barcode hoặc quy cách rồi thêm vào phiếu.',
             'Nhập số lượng thực nhận và giá nhập thực tế trên từng dòng.',
@@ -242,6 +243,9 @@ RETAIL_OPERATION_GUIDES = [
         ],
         'checks': [
             'Mã ĐĐH đọc tiếp số thứ tự từ cả mã cũ DDH-001 và mã mới DDH001; mã đã xóa không được dùng lại.',
+            'Đơn Nháp chưa chọn Kho nhập vẫn được lưu và hiển thị trong danh sách theo cửa hàng của sản phẩm; sau khi lưu, màn hình tự tìm đúng mã đơn vừa tạo.',
+            'Ảnh trên đơn lấy từ hồ sơ sản phẩm. Nếu hiện Chưa có ảnh, hãy bổ sung ảnh tại danh sách sản phẩm trước khi gửi đơn cho nhà cung cấp.',
+            'Mở Tạo/Sửa đơn đặt hàng rồi đóng ngay sẽ không hỏi xác nhận; hệ thống chỉ cảnh báo khi thông tin hoặc dòng sản phẩm đã thực sự thay đổi.',
             'Phiếu Nháp dùng để chuẩn bị và chưa nên coi là hàng đã nhận.',
             'Không chọn nhầm kho nếu doanh nghiệp có nhiều điểm bán.',
             'Giá nhập sai có thể làm sai lịch sử mua và giá vốn tham khảo.',

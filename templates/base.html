@@ -118,6 +118,58 @@
         border-top: 1px solid #e5e7eb;
         background: #f9fafb;
     }
+    table img:not([data-solo-view="false"]):not(.no-solo-view) {
+        cursor: pointer;
+    }
+    .global-image-solo-view {
+        position: fixed;
+        inset: 0;
+        z-index: 21000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 56px 24px 24px;
+        background: rgba(3, 7, 18, 0.9);
+    }
+    .global-image-solo-view[hidden] {
+        display: none !important;
+    }
+    .global-image-solo-view__stage {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+    }
+    .global-image-solo-view__image {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.48);
+    }
+    .global-image-solo-view__close {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        display: inline-flex;
+        width: 42px;
+        height: 42px;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.12);
+        font-size: 24px;
+    }
+    .global-image-solo-view__close:focus {
+        outline: 2px solid #fff;
+        outline-offset: 2px;
+    }
     @keyframes globalCloseConfirmIn {
         from { opacity: 0; transform: translateY(8px) scale(0.98); }
         to { opacity: 1; transform: translateY(0) scale(1); }
@@ -165,7 +217,84 @@
         </div>
     </div>
 
+    <div class="global-image-solo-view" id="global_image_solo_view" hidden
+         role="dialog" aria-modal="true" aria-label="Xem ảnh">
+        <button type="button" class="global-image-solo-view__close"
+                id="global_image_solo_view_close" aria-label="Đóng ảnh">
+            <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
+        <div class="global-image-solo-view__stage">
+            <img class="global-image-solo-view__image" id="global_image_solo_view_image" alt="">
+        </div>
+    </div>
+
     <script>
+    // Tất cả ảnh trong bảng: chỉ mở trình xem riêng khi click, không xử lý hover.
+    (function(){
+        var viewer = document.getElementById('global_image_solo_view');
+        var viewerImage = document.getElementById('global_image_solo_view_image');
+        var closeButton = document.getElementById('global_image_solo_view_close');
+        var previousBodyOverflow = '';
+        var returnFocusElement = null;
+
+        function openImageSoloView(src, alt, trigger){
+            if(!src) return;
+            previousBodyOverflow = document.body.style.overflow;
+            returnFocusElement = trigger || null;
+            viewerImage.src = src;
+            viewerImage.alt = alt || 'Ảnh xem riêng';
+            viewer.hidden = false;
+            document.body.style.overflow = 'hidden';
+            window.setTimeout(function(){ closeButton.focus(); }, 0);
+        }
+
+        function closeImageSoloView(){
+            if(viewer.hidden) return;
+            viewer.hidden = true;
+            viewerImage.removeAttribute('src');
+            viewerImage.alt = '';
+            document.body.style.overflow = previousBodyOverflow;
+            if(returnFocusElement && document.documentElement.contains(returnFocusElement)){
+                returnFocusElement.focus();
+            }
+            returnFocusElement = null;
+        }
+
+        window.openImageSoloView = openImageSoloView;
+        window.closeImageSoloView = closeImageSoloView;
+
+        document.addEventListener('click', function(event){
+            var image = event.target.closest('table img');
+            if(!image || image.matches('[data-solo-view="false"], .no-solo-view')) return;
+            var src = image.currentSrc || image.getAttribute('src') || '';
+            if(!src) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            openImageSoloView(src, image.getAttribute('alt') || '', image);
+        }, true);
+
+        closeButton.addEventListener('click', closeImageSoloView);
+        viewer.addEventListener('click', function(event){
+            if(event.target === viewer || event.target.classList.contains('global-image-solo-view__stage')){
+                closeImageSoloView();
+            }
+        });
+        viewerImage.addEventListener('click', function(event){
+            event.stopPropagation();
+        });
+        document.addEventListener('keydown', function(event){
+            if(viewer.hidden) return;
+            if(event.key === 'Escape'){
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                closeImageSoloView();
+            } else if(event.key === 'Tab'){
+                event.preventDefault();
+                closeButton.focus();
+            }
+        }, true);
+    })();
+
     // Xác nhận nút X cho mọi modal. Hỗ trợ:
     // - data-confirm-close="false": luôn đóng ngay.
     // - data-confirm-close="dirty": chỉ hỏi khi hàm kiểm tra của modal báo có thay đổi.

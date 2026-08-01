@@ -237,7 +237,7 @@ function loadApprovals(){
 }
 
 function approveOrder(id, code){
-    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Đang xử lý.')) return;
+    if(!confirm('✅ XÁC NHẬN DUYỆT\n\nĐơn hàng: ' + code + '\n\nBạn xác nhận duyệt đơn hàng này?\nĐơn hàng sẽ chuyển sang trạng thái Đơn hàng.')) return;
     var note = prompt('Ghi chú khi duyệt (có thể bỏ trống):', '');
     $.ajax({url:'/api/orders/approve/',type:'POST',contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},

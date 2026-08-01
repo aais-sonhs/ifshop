@@ -46,11 +46,11 @@ GUEST_CUSTOMER_CODE_PREFIX = 'KHLE-'
 GUEST_CUSTOMER_NAME = 'Khách lẻ / khách vãng lai'
 
 # Luồng chuyển trạng thái của đơn hàng theo đúng quy trình một chiều:
-# Báo giá -> Đơn hàng -> Xử lý -> Đóng gói -> Xuất kho -> Hoàn thành.
+# Báo giá -> Đơn hàng -> Đóng gói -> Xuất kho -> Hoàn thành.
 ORDER_STATUS_TRANSITIONS = {
     0: {0, 1, 6},  # Báo giá -> Đơn hàng hoặc Hủy
-    1: {1, 2, 6},  # Đơn hàng -> Đang xử lý hoặc Hủy
-    2: {2, 3, 6},  # Đang xử lý -> Đóng gói hoặc Hủy
+    1: {1, 3, 6},  # Đơn hàng -> Đang đóng gói hoặc Hủy
+    2: {2, 3, 6},  # Tương thích dữ liệu cũ: Đang xử lý -> Đang đóng gói hoặc Hủy
     3: {3, 4, 6},  # Đóng gói -> Đã xuất kho hoặc Hủy
     4: {4, 5, 6},  # Đã xuất kho -> Hoàn thành hoặc Hủy
     5: {5},        # Hoàn thành -> khóa
@@ -2842,7 +2842,10 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
         queryset = queryset.filter(created_at__date__lte=filters['created_to'])
 
     if include_status and filters.get('status') not in ('', None):
-        queryset = queryset.filter(status=filters['status'])
+        if str(filters['status']) == '1':
+            queryset = queryset.filter(status__in=(1, 2))
+        else:
+            queryset = queryset.filter(status=filters['status'])
     if filters.get('customer'):
         queryset = queryset.filter(customer_id=filters['customer'])
     if filters.get('export_status') in ('pending', 'not_exported'):
@@ -3005,7 +3008,8 @@ def _serialize_order_list(orders):
             'final_amount': float(o.final_amount),
             'paid_amount': float(o.paid_amount),
             'remaining_amount': max(float(o.final_amount) - float(o.paid_amount), 0),
-            'status': o.status, 'status_display': o.get_status_display(),
+            'status': 1 if o.status == 2 else o.status,
+            'status_display': 'Đơn hàng' if o.status == 2 else o.get_status_display(),
             'payment_status': o.payment_status,
             'payment_status_display': o.get_payment_status_display(),
             'payment_method_option_ids': [
@@ -3055,7 +3059,8 @@ def _build_order_status_counts(queryset):
     counts = {str(idx): 0 for idx, _ in Order.STATUS_CHOICES}
     grouped = queryset.values('status').annotate(count=Count('id', distinct=True))
     for row in grouped:
-        counts[str(row['status'])] = row['count']
+        status_key = '1' if row['status'] == 2 else str(row['status'])
+        counts[status_key] = counts.get(status_key, 0) + row['count']
     counts['all'] = queryset.count()
     return counts
 

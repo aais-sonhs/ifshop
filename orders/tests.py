@@ -378,6 +378,16 @@ class OrderRiskFlowTests(TestCase):
             content.index('loadData();', content.index('applyOrderListQueryFilters(pageParams);')),
         )
 
+    def test_order_page_skips_legacy_processing_status(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'class="btn btn-link rounded-0 px-3 py-2 text-muted filter-tab" data-status="2"')
+        self.assertNotContains(response, 'class="st-step" data-step="2"')
+        self.assertNotContains(response, "$('#tab_count_2')")
+        self.assertContains(response, '1: [1,3,6]')
+        self.assertContains(response, 'var STATUS_FLOW_STEPS = [0,1,3,4,5];')
+
     def test_order_page_ignores_loss_warning_for_fully_returned_order(self):
         response = self.client.get(reverse('order_tbl'))
 
@@ -2210,6 +2220,7 @@ class OrderRiskFlowTests(TestCase):
     def test_get_orders_status_counts_ignore_active_status_filter(self):
         self._create_order(code='DH-COUNT-001', status=1)
         self._create_order(code='DH-COUNT-002', status=1)
+        legacy_processing_order = self._create_order(code='DH-COUNT-LEGACY-002', status=2)
         completed_order = self._create_order(code='DH-COUNT-003', status=5)
 
         response = self.client.get(reverse('api_get_orders'), {'status': 1})
@@ -2217,8 +2228,10 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(all(row['status'] == 1 for row in payload['data']))
-        self.assertEqual(payload['meta']['status_counts']['all'], 3)
-        self.assertEqual(payload['meta']['status_counts']['1'], 2)
+        self.assertIn(legacy_processing_order.id, [row['id'] for row in payload['data']])
+        self.assertEqual(payload['meta']['status_counts']['all'], 4)
+        self.assertEqual(payload['meta']['status_counts']['1'], 3)
+        self.assertEqual(payload['meta']['status_counts']['2'], 0)
         self.assertEqual(payload['meta']['status_counts']['5'], 1)
         self.assertNotIn(completed_order.id, [row['id'] for row in payload['data']])
 
@@ -3394,22 +3407,25 @@ class OrderRiskFlowTests(TestCase):
 
     def test_update_order_status_api_moves_steps_without_full_order_save(self):
         order = self._create_order(code='DH-STATUS-FAST-001', status=1)
+        legacy_processing_order = self._create_order(code='DH-STATUS-LEGACY-002', status=2)
 
-        first_response = self.client.post(
-            reverse('api_update_order_status'),
-            data=json.dumps({'order_id': order.id, 'status': 2}),
-            content_type='application/json',
-        )
-        second_response = self.client.post(
+        response = self.client.post(
             reverse('api_update_order_status'),
             data=json.dumps({'order_id': order.id, 'status': 3}),
             content_type='application/json',
         )
+        legacy_response = self.client.post(
+            reverse('api_update_order_status'),
+            data=json.dumps({'order_id': legacy_processing_order.id, 'status': 3}),
+            content_type='application/json',
+        )
 
-        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
-        self.assertEqual(second_response.json()['status'], 'ok', msg=second_response.content.decode())
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(legacy_response.json()['status'], 'ok', msg=legacy_response.content.decode())
         order.refresh_from_db()
+        legacy_processing_order.refresh_from_db()
         self.assertEqual(order.status, 3)
+        self.assertEqual(legacy_processing_order.status, 3)
 
     def test_save_order_preserves_original_creator_when_edited_by_another_user(self):
         self.user.first_name = 'Ngọc'

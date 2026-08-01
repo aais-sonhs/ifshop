@@ -176,6 +176,8 @@ RETAIL_OPERATION_GUIDES = [
         'checks': [
             'Báo giá, Đơn hàng và Đang đóng gói chưa phải doanh thu đã thực hiện khi dùng phạm vi báo cáo mặc định.',
             'Thanh trạng thái khi tạo hoặc sửa đơn đi theo luồng: Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành; không còn bước Đang xử lý.',
+            'Khi đơn đang ở bước Đơn hàng, chọn In → Phiếu đóng hàng A5 sẽ tự chuyển đơn sang Đang đóng gói và ghi vào lịch sử đơn.',
+            'Trong DS Đơn hàng, bộ lọc Trạng thái chỉ hiển thị tại tab Tất cả, gồm: Chưa hoàn thành, Đã hoàn thành, Chưa xuất kho, Đã xuất kho và Đang đóng gói. Chưa hoàn thành không tính đơn đã Hủy.',
             'Đã xuất kho nghĩa là hàng đã rời kho; đơn chỉ Hoàn thành sau khi đã thanh toán đủ và được duyệt nếu có yêu cầu duyệt.',
             'Ngày đặt hàng là ngày BC Bán hàng dùng để ghi nhận doanh thu.',
             'Nếu đơn cần duyệt, phải đủ điều kiện duyệt trước khi xuất kho.',

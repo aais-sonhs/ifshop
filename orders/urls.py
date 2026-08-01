@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/orders/collect-payment/', views.api_collect_order_payment, name='api_collect_order_payment'),
     path('api/orders/export-stock/', views.api_export_order_stock, name='api_export_order_stock'),
     path('api/orders/warranty/save/', views.api_save_order_warranty, name='api_save_order_warranty'),
+    path('api/orders/start-packing/', views.api_start_order_packing, name='api_start_order_packing'),
     path('api/orders/update-status/', views.api_update_order_status, name='api_update_order_status'),
     path('api/orders/update-note/', views.api_update_order_note, name='api_update_order_note'),
     path('api/orders/approve/', views.api_approve_order, name='api_approve_order'),

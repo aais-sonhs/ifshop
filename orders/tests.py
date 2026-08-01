@@ -244,6 +244,57 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-print-type="packing"')
         self.assertContains(response, 'Phiếu đóng hàng A5')
+        self.assertContains(response, 'function openPackingSlipAndStartWorkflow(source, orderId, printUrl)')
+        self.assertContains(response, "url: '/api/orders/start-packing/'")
+
+    def test_packing_a5_action_moves_order_to_packing_and_logs_once(self):
+        order = self._create_order(code='DH-START-PACKING-A5', status=1)
+
+        response = self.client.post(
+            reverse('api_start_order_packing'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['order_status'], 3)
+        self.assertIn('Đã chuyển đơn sang Đang đóng gói', payload['message'])
+        order.refresh_from_db()
+        self.assertEqual(order.status, 3)
+        history = OrderEditHistory.objects.filter(
+            order=order,
+            action='status',
+            status_before=1,
+            status_after=3,
+        )
+        self.assertEqual(history.count(), 1)
+        self.assertIn('Phiếu đóng hàng A5', history.get().summary)
+
+        repeated_response = self.client.post(
+            reverse('api_start_order_packing'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(repeated_response.status_code, 200)
+        self.assertEqual(repeated_response.json()['status'], 'ok')
+        self.assertEqual(history.count(), 1)
+
+    def test_packing_a5_action_never_moves_exported_order_backwards(self):
+        order = self._create_order(code='DH-REPRINT-PACKING-A5', status=4)
+
+        response = self.client.post(
+            reverse('api_start_order_packing'),
+            data=json.dumps({'order_id': order.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
+        self.assertEqual(response.json()['order_status'], 4)
+        order.refresh_from_db()
+        self.assertEqual(order.status, 4)
 
     def test_print_config_modal_closes_without_global_confirmation(self):
         for url_name in ('order_tbl', 'quotation_tbl'):
@@ -1739,6 +1790,57 @@ class OrderRiskFlowTests(TestCase):
         )
         self.assertContains(response, 'class="btn btn-sm btn-outline-primary" id="btn_status_next"')
         self.assertContains(response, 'class="btn btn-sm btn-outline-success" id="btn_status_save"')
+
+    def test_only_all_tab_keeps_export_status_filter(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="export_status_filter_wrap"')
+        self.assertContains(response, '<option value="">-- Trạng thái --</option>', html=True)
+        self.assertContains(response, '<option value="incomplete">Chưa hoàn thành</option>', html=True)
+        self.assertContains(response, '<option value="completed">Đã hoàn thành</option>', html=True)
+        self.assertContains(response, '<option value="pending">Chưa xuất kho</option>', html=True)
+        self.assertContains(response, '<option value="exported">Đã xuất kho</option>', html=True)
+        self.assertContains(response, '<option value="packing">Đang đóng gói</option>', html=True)
+        self.assertContains(response, 'function orderStatusHidesExportFilter(status)')
+        self.assertContains(response, 'function syncOrderExportStatusFilter()')
+        self.assertContains(
+            response,
+            'var hidesExportFilter = orderStatusHidesExportFilter(activeStatus);',
+            count=2,
+        )
+        self.assertContains(response, "$('#export_status_filter_wrap').toggle(!hidesExportFilter);")
+        self.assertContains(response, "$('#filter_export_status').val('');")
+        self.assertContains(
+            response,
+            "export_status: hidesExportFilter ? '' : ($('#filter_export_status').val() || ''),",
+        )
+
+    def test_all_tab_status_filter_supports_completion_export_and_packing(self):
+        orders_by_status = {
+            status: self._create_order(code=f'DH-STATE-FILTER-{status}', status=status)
+            for status in (0, 1, 2, 3, 4, 5, 6)
+        }
+        expected_statuses = {
+            'incomplete': {0, 1, 2, 3, 4},
+            'completed': {5},
+            'pending': {0, 1, 2, 3},
+            'exported': {4, 5},
+            'packing': {3},
+        }
+
+        for filter_value, statuses in expected_statuses.items():
+            with self.subTest(filter_value=filter_value):
+                response = self.client.get(
+                    reverse('api_get_orders'),
+                    {'export_status': filter_value, 'page_size': 200},
+                )
+                self.assertEqual(response.status_code, 200)
+                returned_ids = {row['id'] for row in response.json()['data']}
+                self.assertEqual(
+                    returned_ids,
+                    {orders_by_status[status].id for status in statuses},
+                )
 
     def test_products_select_exposes_combo_components_and_component_based_stock(self):
         self.product.cost_price = 100

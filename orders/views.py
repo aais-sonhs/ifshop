@@ -2848,10 +2848,16 @@ def _apply_order_list_filters(queryset, filters, include_status=True):
             queryset = queryset.filter(status=filters['status'])
     if filters.get('customer'):
         queryset = queryset.filter(customer_id=filters['customer'])
-    if filters.get('export_status') in ('pending', 'not_exported'):
+    if filters.get('export_status') == 'incomplete':
+        queryset = queryset.filter(status__in=(0, 1, 2, 3, 4))
+    elif filters.get('export_status') == 'completed':
+        queryset = queryset.filter(status=5)
+    elif filters.get('export_status') in ('pending', 'not_exported'):
         queryset = queryset.filter(status__in=(0, 1, 2, 3))
     elif filters.get('export_status') == 'exported':
         queryset = queryset.filter(status__in=(4, 5))
+    elif filters.get('export_status') == 'packing':
+        queryset = queryset.filter(status=3)
     if filters.get('payment_status') not in ('', None):
         queryset = queryset.filter(payment_status=filters['payment_status'])
     if filters.get('customer_group'):
@@ -4588,6 +4594,64 @@ def api_save_order_warranty(request):
     except Exception as exc:
         logger.exception('Không lưu được phiếu bảo hành cho đơn %s', request.POST.get('id', ''))
         return JsonResponse({'status': 'error', 'message': str(exc)})
+
+
+@login_required(login_url="/login/")
+def api_start_order_packing(request):
+    """Chuyển đơn sang Đang đóng gói trước khi mở Phiếu đóng hàng A5."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id') or data.get('id')
+
+        with transaction.atomic():
+            order = _get_order_for_user(
+                request,
+                order_id,
+                queryset=Order.objects.select_for_update(),
+            )
+            if not order:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy đơn hàng'})
+
+            old_status = order.status
+            if old_status == 0:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Đây vẫn là Báo giá. Vui lòng chuyển thành Đơn hàng trước khi in Phiếu đóng hàng A5.',
+                })
+            if old_status == 6:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Đơn hàng đã Hủy nên không thể bắt đầu đóng gói.',
+                })
+
+            changed = old_status in (1, 2)
+            if changed:
+                order.status = 3
+                order.save(update_fields=['status'])
+                _sync_order_quotation_status(order, old_quotation_id=order.quotation_id)
+                _log_order_history(
+                    order=order,
+                    actor=request.user,
+                    action='status',
+                    summary='Chuyển sang Đang đóng gói khi chọn in Phiếu đóng hàng A5.',
+                    status_before=old_status,
+                    status_after=order.status,
+                )
+
+        payload = {
+            'status': 'ok',
+            'message': (
+                'Đã chuyển đơn sang Đang đóng gói và mở Phiếu đóng hàng A5.'
+                if changed else
+                'Đã mở Phiếu đóng hàng A5; trạng thái đơn được giữ nguyên.'
+            ),
+        }
+        payload.update(_order_workflow_payload(order))
+        return JsonResponse(payload)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
 
 
 @login_required(login_url="/login/")

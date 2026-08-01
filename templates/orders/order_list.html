@@ -35,11 +35,14 @@
             <div class="col-md-3">
                 <input type="text" class="form-control form-control-sm" id="filter_product" placeholder="🔍 Tên, mã, SKU, barcode, quy cách...">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-2" id="export_status_filter_wrap">
                 <select class="form-control form-control-sm" id="filter_export_status">
-                    <option value="">-- Xuất kho --</option>
+                    <option value="">-- Trạng thái --</option>
+                    <option value="incomplete">Chưa hoàn thành</option>
+                    <option value="completed">Đã hoàn thành</option>
                     <option value="pending">Chưa xuất kho</option>
                     <option value="exported">Đã xuất kho</option>
+                    <option value="packing">Đang đóng gói</option>
                 </select>
             </div>
             <div class="col-md-1 d-flex align-items-center flex-wrap" style="gap:6px;">
@@ -5253,6 +5256,7 @@ $(document).ready(function(){
     });
     var pageParams = new URLSearchParams(window.location.search);
     applyOrderListQueryFilters(pageParams);
+    syncOrderExportStatusFilter();
     loadData();
 
     // Khi thay đổi kho → cập nhật tồn kho hiển thị
@@ -6781,6 +6785,19 @@ function syncOrderDateFilterLabels(){
     $('#filter_to_date').attr({'title':'Đến ngày','aria-label':'Đến ngày'});
 }
 
+function orderStatusHidesExportFilter(status){
+    return status !== '' && status !== undefined && status !== null;
+}
+
+function syncOrderExportStatusFilter(){
+    var activeStatus = $('.filter-tab.active').data('status');
+    var hidesExportFilter = orderStatusHidesExportFilter(activeStatus);
+    $('#export_status_filter_wrap').toggle(!hidesExportFilter);
+    if(hidesExportFilter){
+        $('#filter_export_status').val('');
+    }
+}
+
 function applyOrderListQueryFilters(params){
     var openOrderId = String(params.get('open_order') || '').trim();
     ORDER_OPEN_FILTER_ID = /^\d+$/.test(openOrderId) ? openOrderId : '';
@@ -6798,11 +6815,12 @@ function applyOrderListQueryFilters(params){
 function getCurrentOrderFilters(){
     var activeStatus = $('.filter-tab.active').data('status');
     if(activeStatus === undefined || activeStatus === null) activeStatus = '';
+    var hidesExportFilter = orderStatusHidesExportFilter(activeStatus);
     return {
         order_id: ORDER_OPEN_FILTER_ID,
         status: String(activeStatus),
         customer: $('#filter_customer').val() || '',
-        export_status: $('#filter_export_status').val() || '',
+        export_status: hidesExportFilter ? '' : ($('#filter_export_status').val() || ''),
         payment_status: $('#filter_payment_status').val() || '',
         customer_group: $('#filter_customer_group').val() || '',
         payment_method: $('#filter_payment_method').val() || '',
@@ -6857,7 +6875,7 @@ function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
         chips.push({key:'customer', label:'Khách hàng', value:$('#filter_customer option:selected').text()});
     }
     if($('#filter_export_status').val()){
-        chips.push({key:'export_status', label:'Xuất kho', value:$('#filter_export_status option:selected').text()});
+        chips.push({key:'export_status', label:'Trạng thái', value:$('#filter_export_status option:selected').text()});
     }
     if($('#filter_payment_status').val()){
         chips.push({key:'payment', label:'Thanh toán', value:$('#filter_payment_status option:selected').text()});
@@ -7105,6 +7123,7 @@ $(document).on('click', '.filter-tab', function(){
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $(this).addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
     syncOrderDateFilterLabels();
+    syncOrderExportStatusFilter();
     resetOrderPage();
     loadData();
 });
@@ -7134,6 +7153,7 @@ $('#btn_clear_filter').click(function(){
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
     syncOrderDateFilterLabels();
+    syncOrderExportStatusFilter();
     resetOrderPage();
     loadData();
 });
@@ -7168,6 +7188,7 @@ $(document).on('click', '.order-filter-chip-remove', function(){
     } else if(key === 'text'){
         $('#filter_text').val('');
     }
+    syncOrderExportStatusFilter();
     resetOrderPage();
     loadData();
 });
@@ -8260,7 +8281,7 @@ function renderSavedFiltersMenu(){
         if(f.text) desc.push('"' + f.text + '"');
         if(f.status !== undefined && f.status !== '') desc.push($('.filter-tab[data-status="'+f.status+'"]').contents().first().text().trim() || 'Trạng thái');
         if(f.customer_text) desc.push(f.customer_text);
-        if(f.export_status) desc.push($('#filter_export_status option[value="'+f.export_status+'"]').text() || 'Xuất kho');
+        if(f.export_status) desc.push($('#filter_export_status option[value="'+f.export_status+'"]').text() || 'Trạng thái');
         if(f.payment_status) desc.push($('#filter_payment_status option[value="'+f.payment_status+'"]').text() || 'Thanh toán');
         if(f.customer_group_text) desc.push(f.customer_group_text);
         if(f.payment_method_text) desc.push(f.payment_method_text);
@@ -8323,6 +8344,7 @@ $(document).on('click', '.filter-load-btn', function(){
     $('#filter_product').val(f.product || '');
     ORDER_DATE_FILTER_BASIS = f.date_basis === 'exported' ? 'exported' : 'order';
     syncOrderDateFilterLabels();
+    syncOrderExportStatusFilter();
     $('#filter_from_date').val(f.from_date || '');
     $('#filter_to_date').val(f.to_date || '');
     $('#filter_text').val(f.text || '');
@@ -8359,6 +8381,41 @@ function getPrintDetailUrl(source, id){
     return source === 'quotation'
         ? '/api/quotations/detail/?id=' + encodeURIComponent(id)
         : '/api/orders/detail/?id=' + encodeURIComponent(id);
+}
+
+function openPackingSlipAndStartWorkflow(source, orderId, printUrl){
+    if(source !== 'order'){
+        window.open(printUrl, '_blank');
+        return;
+    }
+    var printWindow = window.open('about:blank', '_blank');
+    $.ajax({
+        url: '/api/orders/start-packing/',
+        type: 'POST',
+        contentType: 'application/json',
+        headers: {'X-CSRFToken': '{{csrf_token}}'},
+        data: JSON.stringify({order_id: orderId}),
+        success: function(res){
+            if(res.status !== 'ok'){
+                if(printWindow) printWindow.close();
+                alert(res.message || 'Không thể bắt đầu đóng gói đơn hàng.');
+                return;
+            }
+            $('#modal_print_config').modal('hide');
+            if(printWindow) printWindow.location = printUrl;
+            else window.open(printUrl, '_blank');
+            if(String($('#edit_id').val() || '') === String(orderId)){
+                applyOrderWorkflowResult(res);
+            } else {
+                loadData();
+            }
+            if(typeof toastr !== 'undefined') toastr.success(res.message);
+        },
+        error: function(){
+            if(printWindow) printWindow.close();
+            alert('Không kết nối được máy chủ để bắt đầu đóng gói.');
+        }
+    });
 }
 
 function normalizeWarrantyItem(item){
@@ -8527,7 +8584,12 @@ $(document).on('click', '.print-option-card[data-print-type]', function(){
         openWarrantyItemEditor(source, orderId);
         return;
     }
-    window.open(getPrintUrl(type, source, orderId, {brand_id: getSelectedPrintBrandId()}), '_blank');
+    var printUrl = getPrintUrl(type, source, orderId, {brand_id: getSelectedPrintBrandId()});
+    if(type === 'packing'){
+        openPackingSlipAndStartWorkflow(source, orderId, printUrl);
+        return;
+    }
+    window.open(printUrl, '_blank');
 });
 
 $(document).on('change', '#sel_print_brand', function(){

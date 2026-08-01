@@ -48,7 +48,7 @@
                 <button class="btn btn-sm btn-outline-secondary" id="btn_clear_filter" title="Xóa bộ lọc"><i class="fas fa-eraser"></i></button>
             </div>
         </div>
-        <div class="row mb-2" style="gap:6px 0;">
+        <div class="row mb-2" id="secondary_order_filters" style="gap:6px 0;">
             <div class="col-md-2"><select class="form-control form-control-sm" id="filter_payment_status"><option value="">-- Thanh toán --</option><option value="0">Chưa TT</option><option value="1">TT một phần</option><option value="2">Đã TT đủ</option></select></div>
             <div class="col-md-2"><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Nhóm KH</option>{% for g in customer_groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div>
             <div class="col-md-2">
@@ -63,12 +63,20 @@
                     {% for u in system_users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_from" title="Tạo từ ngày" aria-label="Tạo từ ngày"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_created_to" title="Tạo đến ngày" aria-label="Tạo đến ngày"></div>
-        </div>
-        <div class="row mb-2" style="gap:6px 0;">
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date" title="Ngày đặt từ" aria-label="Ngày đặt từ"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date" title="Ngày đặt đến" aria-label="Ngày đặt đến"></div>
+            <div class="col-md-2">
+                <div class="input-group input-group-sm">
+                    <div class="input-group-prepend"><span class="input-group-text">Từ ngày</span></div>
+                    <input type="date" class="form-control form-control-sm" id="filter_from_date"
+                           title="Từ ngày" aria-label="Từ ngày">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="input-group input-group-sm">
+                    <div class="input-group-prepend"><span class="input-group-text">Đến ngày</span></div>
+                    <input type="date" class="form-control form-control-sm" id="filter_to_date"
+                           title="Đến ngày" aria-label="Đến ngày">
+                </div>
+            </div>
         </div>
         <div class="mb-2" id="active_order_filter_summary"></div>
         <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
@@ -87,12 +95,10 @@
             <div class="col-md-12 d-flex align-items-center flex-wrap" style="gap:6px;">
                 <span id="col_config_container"></span>
                 <button class="btn btn-sm btn-outline-success" id="btn_export_orders" title="Xuất Excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-primary" id="btn_save_filter" title="Lưu bộ lọc"><i class="fas fa-save"></i> Lưu</button>
-                    <button class="btn btn-outline-info dropdown-toggle" data-toggle="dropdown" id="btn_load_filter" title="Tải bộ lọc"><i class="fas fa-bookmark"></i></button>
-                    <div class="dropdown-menu" id="saved_filters_menu" style="max-height:200px;overflow-y:auto;">
-                        <span class="dropdown-item text-muted">Chưa có bộ lọc nào</span>
-                    </div>
+                <div class="d-flex align-items-center" id="saved_filter_actions" style="gap:6px;position:relative;">
+                    <button class="btn btn-sm btn-outline-primary" id="btn_save_filter" title="Lưu bộ lọc đang chọn"><i class="fas fa-save"></i> Lưu bộ lọc</button>
+                    <button class="btn btn-sm btn-outline-info dropdown-toggle" data-toggle="dropdown" id="btn_load_filter" title="Mở bộ lọc đã lưu" style="display:none;"><i class="fas fa-bookmark"></i> Bộ lọc đã lưu <span class="badge badge-info" id="saved_filter_count">0</span></button>
+                    <div class="dropdown-menu" id="saved_filters_menu" style="max-height:200px;overflow-y:auto;"></div>
                 </div>
                 <div class="btn-group btn-group-sm" id="bulk_action_bar" style="display:none;">
                     <button class="btn btn-outline-success" id="btn_bulk_collect">Thanh toán nhanh</button>
@@ -6762,14 +6768,27 @@ function setOrderFormInitialFocus(mode){
         });
 }
 
+function getOrderDateFilterLabel(){
+    if(ORDER_DATE_FILTER_BASIS === 'exported') return 'Ngày xuất kho';
+    var activeStatus = $('.filter-tab.active').data('status');
+    if(String(activeStatus) === '0') return 'Ngày báo giá';
+    if(activeStatus === '' || activeStatus === undefined || activeStatus === null){
+        return 'Ngày đơn hàng / báo giá';
+    }
+    return 'Ngày đặt hàng';
+}
+
+function syncOrderDateFilterLabels(){
+    $('#filter_from_date').attr({'title':'Từ ngày','aria-label':'Từ ngày'});
+    $('#filter_to_date').attr({'title':'Đến ngày','aria-label':'Đến ngày'});
+}
+
 function applyOrderListQueryFilters(params){
     var openOrderId = String(params.get('open_order') || '').trim();
     ORDER_OPEN_FILTER_ID = /^\d+$/.test(openOrderId) ? openOrderId : '';
     ORDER_OPEN_FILTER_LABEL = '';
     ORDER_DATE_FILTER_BASIS = params.get('date_basis') === 'exported' ? 'exported' : 'order';
-    var dateTitle = ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt';
-    $('#filter_from_date').attr({'title':dateTitle+' từ','aria-label':dateTitle+' từ'});
-    $('#filter_to_date').attr({'title':dateTitle+' đến','aria-label':dateTitle+' đến'});
+    syncOrderDateFilterLabels();
     ['from_date', 'to_date'].forEach(function(key){
         var value=String(params.get(key)||'');
         if(/^\d{4}-\d{2}-\d{2}$/.test(value)){
@@ -6794,8 +6813,6 @@ function getCurrentOrderFilters(){
         from_date: $('#filter_from_date').val() || '',
         to_date: $('#filter_to_date').val() || '',
         date_basis: ORDER_DATE_FILTER_BASIS,
-        created_from: $('#filter_created_from').val() || '',
-        created_to: $('#filter_created_to').val() || '',
         text: ($('#filter_text').val() || '').trim()
     };
 }
@@ -6863,15 +6880,8 @@ function renderOrderFilterSummary(pageCount, totalFilteredCount, totalAllCount){
     if($('#filter_from_date').val() || $('#filter_to_date').val()){
         chips.push({
             key:'date',
-            label:ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt',
+            label:getOrderDateFilterLabel(),
             value:($('#filter_from_date').val() || '...') + ' - ' + ($('#filter_to_date').val() || '...')
-        });
-    }
-    if($('#filter_created_from').val() || $('#filter_created_to').val()){
-        chips.push({
-            key:'created_date',
-            label:'Ngày tạo',
-            value:($('#filter_created_from').val() || '...') + ' - ' + ($('#filter_created_to').val() || '...')
         });
     }
     if($('#filter_text').val().trim()){
@@ -7097,6 +7107,7 @@ $('#btn_export_orders, #btn_export_orders_top').click(function(){
 $(document).on('click', '.filter-tab', function(){
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $(this).addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    syncOrderDateFilterLabels();
     resetOrderPage();
     loadData();
 });
@@ -7115,8 +7126,6 @@ function clearOpenOrderListFilter(){
 $('#btn_clear_filter').click(function(){
     clearOpenOrderListFilter();
     ORDER_DATE_FILTER_BASIS = 'order';
-    $('#filter_from_date').attr({'title':'Ngày đặt từ','aria-label':'Ngày đặt từ'});
-    $('#filter_to_date').attr({'title':'Ngày đặt đến','aria-label':'Ngày đặt đến'});
     $('#filter_text').val('');
     $('#filter_customer').val('').trigger('change.select2');
     $('#filter_export_status').val('');
@@ -7125,9 +7134,9 @@ $('#btn_clear_filter').click(function(){
     $('#filter_payment_method, #filter_creator').val('').trigger('change.select2');
     $('#filter_product').val('');
     $('#filter_from_date, #filter_to_date').val('');
-    $('#filter_created_from, #filter_created_to').val('');
     $('.filter-tab').removeClass('active text-dark font-weight-bold').addClass('text-muted').css('border-bottom', 'none');
     $('.filter-tab[data-status=""]').addClass('active text-dark font-weight-bold').removeClass('text-muted').css('border-bottom', '3px solid #4a90d9');
+    syncOrderDateFilterLabels();
     resetOrderPage();
     loadData();
 });
@@ -7159,8 +7168,6 @@ $(document).on('click', '.order-filter-chip-remove', function(){
         $('#filter_product').val('');
     } else if(key === 'date'){
         $('#filter_from_date, #filter_to_date').val('');
-    } else if(key === 'created_date'){
-        $('#filter_created_from, #filter_created_to').val('');
     } else if(key === 'text'){
         $('#filter_text').val('');
     }
@@ -7190,7 +7197,7 @@ $('#filter_customer, #filter_export_status, #filter_customer_group, #filter_paym
     resetOrderPage();
     loadData();
 });
-$('#filter_from_date, #filter_to_date, #filter_created_from, #filter_created_to').on('change', function(){
+$('#filter_from_date, #filter_to_date').on('change', function(){
     resetOrderPage();
     loadData();
 });
@@ -8245,8 +8252,9 @@ function getSavedFilters(){
 function renderSavedFiltersMenu(){
     var filters = getSavedFilters();
     var $menu = $('#saved_filters_menu'); $menu.html('');
+    $('#saved_filter_count').text(filters.length);
+    $('#btn_load_filter').toggle(filters.length > 0);
     if(filters.length === 0){
-        $menu.html('<span class="dropdown-item text-muted">Chưa có bộ lọc nào</span>');
         return;
     }
     filters.forEach(function(f, idx){
@@ -8262,7 +8270,6 @@ function renderSavedFiltersMenu(){
         if(f.creator_text) desc.push(f.creator_text);
         if(f.product) desc.push('SP: ' + f.product);
         if(f.from_date || f.to_date) desc.push((f.from_date || '...') + ' - ' + (f.to_date || '...'));
-        if(f.created_from || f.created_to) desc.push('Tạo: ' + (f.created_from || '...') + ' - ' + (f.created_to || '...'));
         var descText = desc.length ? '<br><small class="text-muted">' + desc.join(' · ') + '</small>' : '';
         var $item = $('<div class="dropdown-item d-flex justify-content-between align-items-center" style="cursor:pointer;">' +
             '<span class="filter-load-btn flex-grow-1" data-idx="'+idx+'">'+label+descText+'</span>' +
@@ -8293,8 +8300,6 @@ $('#btn_save_filter').click(function(){
         from_date: $('#filter_from_date').val(),
         to_date: $('#filter_to_date').val(),
         date_basis: ORDER_DATE_FILTER_BASIS,
-        created_from: $('#filter_created_from').val(),
-        created_to: $('#filter_created_to').val(),
         text: $('#filter_text').val()
     };
     var filters = getSavedFilters();
@@ -8320,13 +8325,9 @@ $(document).on('click', '.filter-load-btn', function(){
     $('#filter_creator').val(f.creator || '').trigger('change.select2');
     $('#filter_product').val(f.product || '');
     ORDER_DATE_FILTER_BASIS = f.date_basis === 'exported' ? 'exported' : 'order';
-    var savedDateTitle = ORDER_DATE_FILTER_BASIS === 'exported' ? 'Ngày xuất kho' : 'Ngày đặt';
-    $('#filter_from_date').attr({'title':savedDateTitle+' từ','aria-label':savedDateTitle+' từ'});
-    $('#filter_to_date').attr({'title':savedDateTitle+' đến','aria-label':savedDateTitle+' đến'});
+    syncOrderDateFilterLabels();
     $('#filter_from_date').val(f.from_date || '');
     $('#filter_to_date').val(f.to_date || '');
-    $('#filter_created_from').val(f.created_from || '');
-    $('#filter_created_to').val(f.created_to || '');
     $('#filter_text').val(f.text || '');
     resetOrderPage();
     loadData();

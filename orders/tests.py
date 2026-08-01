@@ -345,12 +345,31 @@ class OrderRiskFlowTests(TestCase):
 
     def test_order_page_applies_date_filters_from_query_string_before_loading(self):
         response = self.client.get(reverse('order_tbl'), {
-            'from_date': '2026-07-21',
+            'from_date': '2026-07-01',
             'to_date': '2026-07-21',
         })
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'function applyOrderListQueryFilters(params)')
+        self.assertContains(response, 'function getOrderDateFilterLabel()')
+        self.assertContains(response, 'function syncOrderDateFilterLabels()')
+        self.assertContains(response, 'id="secondary_order_filters"')
+        self.assertContains(response, 'id="filter_from_date"')
+        self.assertContains(response, 'id="filter_to_date"')
+        self.assertContains(response, 'Từ ngày')
+        self.assertContains(response, 'Đến ngày')
+        self.assertContains(response, 'id="saved_filter_actions"')
+        self.assertContains(response, 'style="gap:6px;position:relative;"')
+        self.assertContains(response, 'Lưu bộ lọc')
+        self.assertContains(response, 'Bộ lọc đã lưu')
+        self.assertContains(response, "$('#btn_load_filter').toggle(filters.length > 0);")
+        self.assertNotContains(response, 'Chưa có bộ lọc nào')
+        self.assertNotContains(response, 'id="filter_date_basis_label"')
+        self.assertNotContains(response, 'Lọc theo:')
+        self.assertNotContains(response, 'id="filter_created_from"')
+        self.assertNotContains(response, 'id="filter_created_to"')
+        self.assertNotContains(response, "created_from: $('#filter_created_from')")
+        self.assertNotContains(response, "created_to: $('#filter_created_to')")
         self.assertContains(response, 'applyOrderListQueryFilters(pageParams);')
         self.assertContains(response, "['from_date', 'to_date']")
         content = response.content.decode()

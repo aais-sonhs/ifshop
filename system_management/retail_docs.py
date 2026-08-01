@@ -6,7 +6,7 @@ RETAIL_GUIDE_META = {
         'Tài liệu thao tác từ lúc khai báo sản phẩm đến bán hàng, thu tiền, quản lý công nợ, '
         'nhập kho, trả hàng và đọc báo cáo.'
     ),
-    'revision_date': '31/07/2026',
+    'revision_date': '01/08/2026',
     'audience': 'Chủ cửa hàng, quản lý, nhân viên bán hàng, nhân viên kho và kế toán.',
     'scope': (
         'Tài liệu này chỉ trình bày quy trình bán lẻ. Các mô hình F&B, spa, thời trang chuyên sâu '
@@ -170,11 +170,12 @@ RETAIL_OPERATION_GUIDES = [
             'Nếu có, nhập chiết khấu chung, phí vận chuyển và chi phí khác.',
             'Chọn nhân viên bán hàng, địa chỉ giao và ghi chú cần thiết.',
             'Nhập đúng số khách trả lần đầu; không đánh dấu trả đủ nếu thực tế khách còn nợ.',
-            'Lưu đơn. Khi đã giao hàng khỏi kho, chuyển sang Đã xuất kho; khi nghiệp vụ kết thúc, chuyển Hoàn thành.',
+            'Lưu đơn ở bước Đơn hàng. Khi bắt đầu soạn hàng, chuyển sang Đang đóng gói; khi hàng rời kho, chuyển sang Đã xuất kho; khi nghiệp vụ kết thúc, chuyển Hoàn thành.',
             'Có thể in hóa đơn, phiếu xuất, phiếu đóng hàng hoặc phiếu bảo hành tùy nhu cầu.',
         ],
         'checks': [
-            'Báo giá, Đơn hàng, Đang xử lý và Đang đóng gói chưa phải doanh thu đã thực hiện khi dùng phạm vi báo cáo mặc định.',
+            'Báo giá, Đơn hàng và Đang đóng gói chưa phải doanh thu đã thực hiện khi dùng phạm vi báo cáo mặc định.',
+            'Thanh trạng thái khi tạo hoặc sửa đơn đi theo luồng: Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành; không còn bước Đang xử lý.',
             'Đã xuất kho nghĩa là hàng đã rời kho; đơn chỉ Hoàn thành sau khi đã thanh toán đủ và được duyệt nếu có yêu cầu duyệt.',
             'Ngày đặt hàng là ngày BC Bán hàng dùng để ghi nhận doanh thu.',
             'Nếu đơn cần duyệt, phải đủ điều kiện duyệt trước khi xuất kho.',
@@ -227,8 +228,9 @@ RETAIL_OPERATION_GUIDES = [
         'icon': 'fas fa-truck-loading',
         'title': 'Nhập hàng',
         'intro': 'Phiếu nhập làm tăng tồn và tạo lịch sử giá nhập; phải chọn đúng kho và ngày hàng thực nhận.',
-        'path': 'Kho & Sản phẩm → Phiếu nhập',
+        'path': 'Kho & Sản phẩm → Đơn đặt hàng / Phiếu nhập',
         'steps': [
+            'Nếu cần đặt hàng trước, tạo Đơn đặt hàng; Mã ĐĐH được tự sinh dạng DDH001, DDH002... không có dấu gạch ngang.',
             'Chọn nhà cung cấp, kho nhận và ngày nhập.',
             'Tìm sản phẩm theo mã, tên, barcode hoặc quy cách rồi thêm vào phiếu.',
             'Nhập số lượng thực nhận và giá nhập thực tế trên từng dòng.',
@@ -237,6 +239,7 @@ RETAIL_OPERATION_GUIDES = [
             'Kiểm tra tồn kho và Lịch sử nhập của sản phẩm sau khi hoàn thành.',
         ],
         'checks': [
+            'Mã ĐĐH đọc tiếp số thứ tự từ cả mã cũ DDH-001 và mã mới DDH001; mã đã xóa không được dùng lại.',
             'Phiếu Nháp dùng để chuẩn bị và chưa nên coi là hàng đã nhận.',
             'Không chọn nhầm kho nếu doanh nghiệp có nhiều điểm bán.',
             'Giá nhập sai có thể làm sai lịch sử mua và giá vốn tham khảo.',
@@ -263,6 +266,30 @@ RETAIL_OPERATION_GUIDES = [
             'Không dùng phiếu kiểm để che lỗi quy trình; luôn ghi nguyên nhân.',
             'Tồn combo được tính từ thành phần và không chỉnh trực tiếp.',
             'Muốn lưu tồn âm, thương hiệu phải bật Cho phép tồn âm.',
+        ],
+    },
+    {
+        'anchor': 'inventory-movement-report',
+        'icon': 'fas fa-exchange-alt',
+        'title': 'Báo cáo nhập xuất tồn',
+        'intro': 'Đối chiếu tồn đầu kỳ, nhập trong kỳ, xuất trong kỳ và tồn cuối kỳ theo sản phẩm hoặc danh mục.',
+        'path': 'Báo cáo → BC Kho (/report-inventory/)',
+        'steps': [
+            'Mở BC Kho và chọn tab BC nhập xuất tồn theo SP hoặc BC nhập xuất tồn theo danh mục.',
+            'Chọn Từ ngày và Đến ngày của kỳ cần đối chiếu rồi bấm Xem báo cáo.',
+            'Nếu cần, lọc thêm tên/mã sản phẩm, danh mục, loại sản phẩm hoặc kho.',
+            'Đọc bốn nhóm số liệu: Tồn đầu kỳ, Nhập trong kỳ, Xuất trong kỳ và Tồn cuối kỳ; mỗi nhóm có Số lượng và Giá trị.',
+            'Xem các thẻ tổng SL nhập, Giá trị nhập, SL xuất và Giá trị xuất theo giá vốn của toàn bộ kết quả đã lọc.',
+            'Tab theo sản phẩm tách từng sản phẩm và kho; tab theo danh mục cộng số liệu từ các sản phẩm thuộc cùng danh mục.',
+            'Chọn 25, 50, 100 hoặc 200 dòng mỗi trang và dùng phân trang ở cuối bảng khi dữ liệu dài.',
+            'Bấm Xuất Excel; hệ thống xuất đúng kỳ, bộ lọc và cách nhóm theo sản phẩm hoặc danh mục của tab đang xem.',
+        ],
+        'checks': [
+            'Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Xuất trong kỳ.',
+            'Nhập/xuất gồm các giao dịch kho hợp lệ như nhập hàng, bán xuất kho, trả hàng, kiểm hàng và chuyển kho.',
+            'Giá trị xuất dùng giá vốn tại giao dịch; tồn đầu kỳ và tồn cuối kỳ được định giá theo giá vốn hiện tại.',
+            'Tab theo danh mục phải có tổng số lượng và giá trị bằng số tổng của tab theo sản phẩm khi dùng cùng bộ lọc.',
+            'Khoảng Từ ngày–Đến ngày phải hợp lệ; ngày bắt đầu không được sau ngày kết thúc.',
         ],
     },
     {
@@ -594,6 +621,27 @@ RETAIL_FORMULA_GROUPS = [
                 'note': 'Tồn âm hiển thị để xử lý nhưng không làm giảm giá trị tồn dương.',
             },
             {
+                'name': 'Tồn cuối kỳ trên BC Nhập xuất tồn',
+                'formula': 'Tồn đầu kỳ + Nhập trong kỳ − Xuất trong kỳ',
+                'example': '10 + 7 − 3 = 14 sản phẩm',
+                'meaning': 'Số lượng tồn được tái lập tại ngày kết thúc kỳ báo cáo.',
+                'note': 'Bao gồm các biến động hợp lệ từ nhập, xuất bán, trả hàng, kiểm hàng và chuyển kho.',
+            },
+            {
+                'name': 'Giá trị xuất trong kỳ',
+                'formula': 'Tổng Số lượng xuất × Giá vốn ghi nhận tại từng giao dịch',
+                'example': '3 × 120.000 = 360.000đ',
+                'meaning': 'Giá trị vốn của lượng hàng đã xuất trong kỳ.',
+                'note': 'Không dùng giá bán để tính chỉ tiêu này.',
+            },
+            {
+                'name': 'Giá trị tồn đầu/cuối kỳ',
+                'formula': 'max(Số lượng tồn, 0) × Giá vốn hiện tại',
+                'example': '14 × 120.000 = 1.680.000đ',
+                'meaning': 'Giá trị ước tính của lượng hàng tồn tại đầu hoặc cuối kỳ.',
+                'note': 'Có thể khác tổng giá trị giao dịch nhập/xuất vì dùng giá vốn hiện tại.',
+            },
+            {
                 'name': 'Ngày chưa bán',
                 'formula': 'Ngày hiện tại − Ngày bán gần nhất',
                 'example': '25/07 − 10/06 = 45 ngày',
@@ -695,7 +743,9 @@ RETAIL_SALES_REPORT_SCOPE = [
         'name': 'Riêng BC Nhân viên BH',
         'detail': (
             'Chỉ tính đơn Đã xuất kho/Hoàn thành theo ngày xuất kho, có thể lọc theo cửa hàng '
-            'và nhân viên. Bảng xếp hạng chỉ hiện tên nhân viên; Top 3 sản phẩm nằm trong nút Xem chi tiết.'
+            'và nhân viên. Bộ lọc Nhóm khách cho phép xem riêng Khách lẻ hoặc Khách buôn / sỉ; '
+            'toàn bộ doanh thu, giá vốn, lợi nhuận, tỷ suất, Bonus và tỷ lệ đóng góp được tính lại '
+            'trong nhóm đang chọn. Bảng xếp hạng chỉ hiện tên nhân viên; Top 3 sản phẩm nằm trong nút Xem chi tiết.'
         ),
     },
 ]
@@ -838,6 +888,14 @@ RETAIL_SALES_REPORT_TABLES = [
             'dữ liệu được ghi nhận theo ngày xuất kho.'
         ),
         'columns': [
+            {
+                'name': 'Nhóm khách',
+                'formula': 'Tất cả / Khách lẻ / Khách buôn / sỉ',
+                'meaning': (
+                    'Tách số liệu KPI và Bonus theo nhóm khách; đơn khách vãng lai được tính vào Khách lẻ, '
+                    'dữ liệu cũ có nhóm khách sỉ/buôn/đại lý được nhận diện là Khách buôn / sỉ.'
+                ),
+            },
             {
                 'name': 'Nhân viên',
                 'formula': 'Ưu tiên NV bán hàng trên đơn; nếu trống lấy tài khoản tạo đơn',
@@ -1084,7 +1142,7 @@ RETAIL_TROUBLESHOOTING = [
     {
         'problem': 'Có thể bán thấp hơn Tồn kho',
         'cause': 'Một phần hàng đang được giữ cho đơn chưa xuất kho.',
-        'check': 'Kiểm tra các đơn ở trạng thái Đơn hàng, Đang xử lý hoặc Đang đóng gói.',
+        'check': 'Kiểm tra các đơn ở trạng thái Đơn hàng hoặc Đang đóng gói.',
     },
     {
         'problem': 'Báo cáo thiếu đơn',
@@ -1197,6 +1255,32 @@ RETAIL_FAQS = [
             'Không dùng Tổng thu trên BC Tài chính để kết luận đơn có doanh thu hay chưa. '
             'BC Bán hàng ghi nhận giá trị bán; BC Tài chính ghi nhận dòng tiền thực thu, nên hai số có thể khác nhau '
             'khi khách còn nợ hoặc thanh toán vào ngày khác.'
+        ),
+    },
+    {
+        'question': '4) Quy trình đơn hàng hiện có những trạng thái nào?',
+        'short_answer': 'Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành.',
+        'answer': [
+            (
+                'Bước Đang xử lý đã được loại bỏ vì trùng ý nghĩa vận hành với giai đoạn Đơn hàng và không được sử dụng '
+                'trong quy trình thực tế của cửa hàng.'
+            ),
+            (
+                'Trong phần tạo hoặc sửa đơn, từ bước Đơn hàng có thể chuyển thẳng sang Đang đóng gói. '
+                'Các bước xuất kho, thanh toán đủ, duyệt đơn và hoàn thành vẫn giữ nguyên điều kiện nghiệp vụ.'
+            ),
+            (
+                'Nếu có dữ liệu cũ từng mang trạng thái Đang xử lý, hệ thống hiển thị trong nhóm Đơn hàng '
+                'và vẫn cho chuyển tiếp sang Đang đóng gói, không làm mất đơn hay lịch sử.'
+            ),
+        ],
+        'checks': [
+            'Tại DS Đơn hàng, các tab không còn tab Đang xử lý.',
+            'Mở tạo hoặc sửa đơn và kiểm tra thanh trạng thái không còn bước Đang xử lý.',
+            'Đơn ở bước Đơn hàng có thể chuyển trực tiếp sang Đang đóng gói.',
+        ],
+        'exception': (
+            'Mã trạng thái cũ vẫn được hệ thống giữ tương thích ở tầng dữ liệu. Người dùng không cần sửa hoặc chuyển đổi thủ công.'
         ),
     },
 ]

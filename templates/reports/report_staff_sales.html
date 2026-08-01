@@ -108,6 +108,14 @@
                 </select>
             </div>
             <div class="col-md-2">
+                <label class="small text-muted mb-1">Nhóm khách</label>
+                <select class="form-control form-control-sm" id="filter_customer_kind">
+                    <option value="">👥 Tất cả</option>
+                    <option value="retail">Khách lẻ</option>
+                    <option value="wholesale">Khách buôn / sỉ</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button>
             </div>
         </div>
@@ -345,6 +353,7 @@ $(document).ready(function(){
     $('#btn_search').click(function(){ loadReport(); });
     $('#filter_store_id').change(function(){ loadReport(); });
     $('#filter_salesperson').change(function(){ loadReport(); });
+    $('#filter_customer_kind').change(function(){ loadReport(); });
     $('#staff_sales_page_size').val(String(staffSalesPageState.pageSize));
     $('#staff_sales_page_size').on('change', function(){
         var pageSize = parseInt($(this).val() || '25', 10);
@@ -370,8 +379,12 @@ $(document).ready(function(){
         var from = $('#filter_from_date').val();
         var to = $('#filter_to_date').val();
         var storeId = $('#filter_store_id').val();
+        var salesperson = $('#filter_salesperson').val();
+        var customerKind = $('#filter_customer_kind').val();
         var url = '/api/export-staff-sales-excel/?from_date='+from+'&to_date='+to;
         if(storeId) url += '&store_id='+storeId;
+        if(salesperson) url += '&salesperson='+encodeURIComponent(salesperson);
+        if(customerKind) url += '&customer_kind='+encodeURIComponent(customerKind);
         window.location.href = url;
     });
 });
@@ -391,9 +404,11 @@ function loadReport(){
     var to = $('#filter_to_date').val();
     var storeId = $('#filter_store_id').val();
     var sp = $('#filter_salesperson').val();
+    var customerKind = $('#filter_customer_kind').val();
     var url = '/api/report-staff-sales/?from_date='+from+'&to_date='+to;
     if(storeId) url += '&store_id='+storeId;
     if(sp) url += '&salesperson='+encodeURIComponent(sp);
+    if(customerKind) url += '&customer_kind='+encodeURIComponent(customerKind);
 
     $.get(url, function(res){
         if(res.status !== 'ok') return;
@@ -423,6 +438,15 @@ function loadReport(){
             spOpts += '<option value="'+name+'"'+sel+'>'+name+'</option>';
         });
         $('#filter_salesperson').html(spOpts);
+
+        // Customer-kind filter (retail / wholesale)
+        var curCustomerKind = $('#filter_customer_kind').val();
+        var customerKindOpts = '<option value="">👥 Tất cả</option>';
+        (res.customer_kinds || []).forEach(function(item){
+            var sel = (item.value === curCustomerKind) ? ' selected' : '';
+            customerKindOpts += '<option value="'+item.value+'"'+sel+'>'+item.label+'</option>';
+        });
+        $('#filter_customer_kind').html(customerKindOpts);
 
         // Summary KPI cards
         var s = res.summary;

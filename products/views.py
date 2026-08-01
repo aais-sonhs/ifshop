@@ -151,6 +151,27 @@ def _generate_next_purchase_return_code():
         next_number += 1
 
 
+def _generate_next_purchase_order_code():
+    """Sinh DDH001, DDH002... và tiếp tục đúng số từ cả mã DDH-001 cũ."""
+    prefix = 'DDH'
+    max_number = 0
+    for code in (
+        PurchaseOrder.all_objects
+        .filter(code__istartswith=prefix)
+        .values_list('code', flat=True)
+    ):
+        match = re.match(r'^DDH-?(\d+)$', (code or '').strip(), re.IGNORECASE)
+        if match:
+            max_number = max(max_number, int(match.group(1)))
+
+    next_number = max_number + 1
+    while True:
+        candidate = f'{prefix}{next_number:03d}'
+        if not PurchaseOrder.all_objects.filter(code=candidate).exists():
+            return candidate
+        next_number += 1
+
+
 def _get_default_store_for_request(request):
     """Return the store new business records should belong to."""
     from system_management.models import Store
@@ -3298,6 +3319,12 @@ def api_get_purchase_orders(request):
 
 
 @login_required(login_url="/login/")
+def api_next_purchase_order_code(request):
+    """Trả mã đơn đặt hàng tiếp theo, không dùng dấu gạch ngang."""
+    return JsonResponse({'code': _generate_next_purchase_order_code()})
+
+
+@login_required(login_url="/login/")
 def api_save_purchase_order(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -3311,7 +3338,15 @@ def api_save_purchase_order(request):
         else:
             po = PurchaseOrder()
             po.created_by = request.user
-        po.code = data.get('code', '')
+        requested_code = (data.get('code') or '').strip()
+        if po_id:
+            po.code = requested_code or po.code
+            auto_code = False
+        else:
+            auto_code = not requested_code or bool(
+                re.fullmatch(r'DDH-?\d+', requested_code, re.IGNORECASE)
+            )
+            po.code = requested_code or _generate_next_purchase_order_code()
         po.supplier_id = data.get('supplier_id') or None
         warehouse_id = data.get('warehouse_id') or None
         warehouse = _get_warehouse_for_user(request, warehouse_id) if warehouse_id else None
@@ -3346,7 +3381,11 @@ def api_save_purchase_order(request):
             normalized_items.append((product, variant_id, qty, price))
 
         po.total_amount = total
-        po.save()
+        save_with_generated_code(
+            po,
+            _generate_next_purchase_order_code,
+            auto_generated=auto_code,
+        )
 
         # Delete old items and create new ones
         po.items.all().delete()
@@ -3360,7 +3399,12 @@ def api_save_purchase_order(request):
                 total_price=qty * price,
             )
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Lưu thành công',
+            'purchase_order_id': po.id,
+            'purchase_order_code': po.code,
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

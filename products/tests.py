@@ -1343,6 +1343,61 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(row['stocks'][warehouse_key], 9.0)
         self.assertEqual(row['sellable_stocks'][warehouse_key], 9.0)
 
+    def test_purchase_order_page_fetches_an_automatic_code(self):
+        response = self.client.get(reverse('purchase_order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'placeholder="Tự động sinh"')
+        self.assertContains(response, 'function fetchNextPurchaseOrderCode(modalSession)')
+        self.assertContains(response, reverse('api_next_purchase_order_code'))
+        self.assertContains(response, 'fetchNextPurchaseOrderCode(modalSession);')
+
+    def test_next_purchase_order_code_reads_old_new_and_soft_deleted_codes(self):
+        for code in ('DDH-009', 'DDH010'):
+            PurchaseOrder.objects.create(
+                code=code,
+                warehouse=self.warehouse_a,
+                order_date=date.today(),
+                created_by=self.user,
+            )
+        deleted_order = PurchaseOrder.objects.create(
+            code='DDH011',
+            warehouse=self.warehouse_a,
+            order_date=date.today(),
+            created_by=self.user,
+        )
+        deleted_order.delete()
+
+        response = self.client.get(reverse('api_next_purchase_order_code'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], 'DDH012')
+
+    def test_save_purchase_order_generates_code_when_blank(self):
+        response = self.client.post(
+            reverse('api_save_purchase_order'),
+            data=json.dumps({
+                'code': '',
+                'supplier_id': self.supplier.id,
+                'warehouse_id': self.warehouse_a.id,
+                'order_date': date.today().isoformat(),
+                'status': 0,
+                'items': [{
+                    'product_id': self.product.id,
+                    'quantity': 2,
+                    'unit_price': 100,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        self.assertEqual(payload['purchase_order_code'], 'DDH001')
+        self.assertNotIn('-', payload['purchase_order_code'])
+        self.assertTrue(PurchaseOrder.objects.filter(code='DDH001').exists())
+
     def test_purchase_order_product_picker_is_rebuilt_after_modal_closes(self):
         response = self.client.get(reverse('purchase_order_tbl'))
 

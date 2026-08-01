@@ -4302,6 +4302,9 @@ def api_report_staff_sales(request):
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
     salesperson_filter = request.GET.get('salesperson', '')
+    customer_kind = request.GET.get('customer_kind', '').strip()
+    if customer_kind not in {'retail', 'wholesale'}:
+        customer_kind = ''
 
     today = datetime.now().date()
     if not from_date:
@@ -4317,6 +4320,8 @@ def api_report_staff_sales(request):
     orders = filter_by_store(orders, request)
     if store_id:
         orders = orders.filter(store_id=store_id)
+    if customer_kind:
+        orders = orders.filter(_get_sales_report_customer_kind_q(customer_kind))
 
     staff_order_ids = _group_order_ids_by_revenue_staff(orders)
 
@@ -4452,6 +4457,11 @@ def api_report_staff_sales(request):
         'has_multiple_stores': has_multiple,
         'stores': stores_list,
         'salespersons': all_salespersons,
+        'customer_kinds': [
+            option for option in CUSTOMER_KIND_OPTIONS
+            if option['value'] in {'retail', 'wholesale'}
+        ],
+        'selected_customer_kind': customer_kind,
         'staff_data': staff_data,
         'summary': summary,
     })
@@ -4468,6 +4478,10 @@ def export_staff_sales_excel(request):
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
+    salesperson_filter = request.GET.get('salesperson', '').strip()
+    customer_kind = request.GET.get('customer_kind', '').strip()
+    if customer_kind not in {'retail', 'wholesale'}:
+        customer_kind = ''
 
     today = datetime.now().date()
     if not from_date:
@@ -4483,6 +4497,8 @@ def export_staff_sales_excel(request):
     orders = filter_by_store(orders, request)
     if store_id:
         orders = orders.filter(store_id=store_id)
+    if customer_kind:
+        orders = orders.filter(_get_sales_report_customer_kind_q(customer_kind))
 
     staff_order_ids = _group_order_ids_by_revenue_staff(orders)
     grand_total_revenue = float(orders.aggregate(s=Sum('final_amount'))['s'] or 0)
@@ -4513,6 +4529,12 @@ def export_staff_sales_excel(request):
 
     ws.merge_cells('A2:M2')
     ws['A2'] = f'Từ ngày xuất kho {from_date} đến ngày xuất kho {to_date}'
+    if customer_kind:
+        customer_kind_label = next(
+            option['label'] for option in CUSTOMER_KIND_OPTIONS
+            if option['value'] == customer_kind
+        )
+        ws['A2'].value += f' · Nhóm khách: {customer_kind_label}'
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
@@ -4531,7 +4553,10 @@ def export_staff_sales_excel(request):
 
     # Data rows
     row = 5
-    sorted_names = sorted(staff_order_ids)
+    sorted_names = [
+        name for name in sorted(staff_order_ids)
+        if not salesperson_filter or salesperson_filter.casefold() == name.casefold()
+    ]
 
     grand = {'orders': 0, 'revenue': 0, 'cost': 0, 'profit': 0,
              'returns': 0, 'net': 0, 'bonus': 0, 'debt': 0, 'paid': 0}

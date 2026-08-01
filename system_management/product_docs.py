@@ -20,12 +20,11 @@ DEMO_ACCOUNT = {
 }
 
 DOCUMENT_REVISION = {
-    'date': '21/07/2026',
-    'title': 'Cập nhật nghiệp vụ ngày 21/07/2026',
+    'date': '01/08/2026',
+    'title': 'Cập nhật nghiệp vụ ngày 01/08/2026',
     'summary': (
-        'Tài liệu đã được đối chiếu với các thay đổi mới nhất về lịch sử nhập và lịch sử kho '
-        'trên danh sách sản phẩm, cảnh báo bán lỗ sau khi hoàn hàng, Log hệ thống khi xóa dữ liệu, '
-        'danh sách khách hàng, mã đơn hàng, Phiếu đóng hàng và công nợ trên Báo cáo tài chính.'
+        'Tài liệu đã được đối chiếu với luồng đơn hàng rút gọn Báo giá → Đơn hàng → Đang đóng gói '
+        '→ Đã xuất kho → Hoàn thành, cùng các thay đổi mới nhất về danh sách đơn hàng, kho và báo cáo.'
     ),
 }
 
@@ -52,6 +51,8 @@ DOCUMENT_UPDATES = [
         'icon': 'fas fa-file-invoice-dollar',
         'title': 'Báo giá, đơn hàng và chiết khấu',
         'items': [
+            'Luồng trạng thái trên danh sách và form sửa đơn là Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành; bước Đang xử lý đã được bỏ vì không dùng trong vận hành thực tế.',
+            'Dữ liệu cũ từng ở trạng thái Đang xử lý được hiển thị trong nhóm Đơn hàng và có thể chuyển tiếp sang Đang đóng gói.',
             'Mã đơn bán tạo mới dùng định dạng DH001, DH002... không có dấu gạch ngang; các mã cũ như DH-015 được giữ nguyên và vẫn được tính khi xác định số tiếp theo.',
             'Chiết khấu từng dòng và toàn đơn hỗ trợ nhập theo phần trăm hoặc số tiền; hệ thống tự quy đổi để tính thành tiền.',
             'Có thể sao chép đơn cũ thành đơn nháp mới, sắp xếp dòng hàng theo STT và nhập ngày thanh toán trong quá khứ.',
@@ -129,7 +130,7 @@ DOCUMENT_UPDATES = [
         'items': [
             'Màn hình Quản lý kho hiển thị Tồn kho tối thiểu, Tồn kho tối đa, Tồn kho thực tế và Có thể bán của từng sản phẩm.',
             'Ô tìm kiếm trên bảng tồn kho hỗ trợ tìm theo tên hoặc mã sản phẩm, kể cả khi nhập không dấu.',
-            'Có thể bán = Tồn kho thực tế − số lượng đang giữ cho các đơn ở trạng thái Đơn hàng, Đang xử lý hoặc Đang đóng gói và đã đủ điều kiện duyệt.',
+            'Có thể bán = Tồn kho thực tế − số lượng đang giữ cho các đơn ở trạng thái Đơn hàng hoặc Đang đóng gói và đã đủ điều kiện duyệt.',
             'Có thể sắp xếp Có thể bán hoặc Tồn kho theo thứ tự tăng/giảm; bộ chọn Tồn kho còn hỗ trợ lọc riêng các sản phẩm đang âm kho.',
             'Bấm Sửa tại sản phẩm để điều chỉnh tồn theo từng kho và xem lịch sử nhập; tồn combo chỉ xem vì được tính tự động từ thành phần.',
             'Hai cột Tồn kho tối thiểu và Tồn kho tối đa là ngưỡng riêng của từng sản phẩm. Bấm Sửa để điều chỉnh: mức tối thiểu được phép là số âm; mức tối đa bằng 0 nếu không giới hạn. Đây không phải số lượng của từng kho.',
@@ -140,6 +141,10 @@ DOCUMENT_UPDATES = [
         'icon': 'fas fa-exclamation-triangle',
         'title': 'Báo cáo và cảnh báo tồn kho',
         'items': [
+            'BC Kho có thêm hai tab BC nhập xuất tồn theo SP và BC nhập xuất tồn theo danh mục, dùng chung bộ lọc sản phẩm, danh mục, loại sản phẩm và kho.',
+            'Hai tab nhập xuất tồn lọc theo khoảng Từ ngày–Đến ngày, hiển thị Tồn đầu kỳ, Nhập trong kỳ, Xuất trong kỳ và Tồn cuối kỳ theo cả số lượng và giá trị.',
+            'Giá trị xuất dùng giá vốn tại giao dịch; tồn đầu/cuối kỳ định giá theo giá vốn hiện tại. Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ − Xuất trong kỳ.',
+            'Mỗi tab nhập xuất tồn có phân trang 25/50/100/200 dòng và xuất Excel đúng kỳ cùng cách nhóm đang xem.',
             'Tổng giá trị tồn kho = tổng của từng sản phẩm có tồn dương × giá vốn; tồn âm là chênh lệch cần xử lý và không làm giảm giá trị hàng đang còn.',
             'Bộ lọc Danh mục sản phẩm chỉ chứa danh mục gốc; bộ lọc Loại sản phẩm chứa các loại con và tự thu hẹp theo danh mục đã chọn.',
             'BC Kho tách rõ sản phẩm dưới tồn tối thiểu và trên tồn tối đa.',
@@ -153,6 +158,7 @@ DOCUMENT_UPDATES = [
         'items': [
             'Mã tự động được lấy theo số lớn nhất đã dùng và không tái sử dụng mã của bản ghi đã xóa mềm.',
             'Riêng đơn bán mới dùng tiền tố liền số như DH001. Hệ thống đọc chung cả DH-001 và DH001 để tiếp tục đúng số thứ tự mà không đổi mã đơn cũ.',
+            'Đơn đặt hàng nhập tự sinh Mã ĐĐH dạng DDH001, DDH002... không có dấu gạch ngang; hệ thống đọc chung mã cũ DDH-001 và mã mới DDH001 để tiếp tục đúng số.',
             'Khi nhiều người lưu đồng thời, hệ thống tự sinh lại mã và thử lưu an toàn thay vì trả lỗi ràng buộc mã trùng.',
             'Áp dụng cho các luồng sinh mã liên quan như khách hàng, nhà cung cấp, sản phẩm, phiếu thu/chi, báo giá, POS, phiếu nhập, trả hàng nhập, kiểm kho, trả hàng bán và lịch hẹn.',
             'Nếu người dùng chủ động nhập một mã đã tồn tại, hệ thống báo rõ mã bị trùng để chọn mã khác.',
@@ -546,6 +552,7 @@ DETAILED_OPERATION_GUIDES = [
             'Nhập số lượng và chiết khấu từng dòng theo % hoặc số tiền; nhập tiếp chiết khấu toàn đơn, phí giao hàng, chi phí khác và ghi chú.',
             'Chọn phương thức thanh toán, ngày thanh toán (có thể là ngày trong quá khứ nhưng không được sau hôm nay), số tiền đã thu rồi lưu đơn.',
             'Nếu muốn tạo đơn tương tự, chọn Sao chép tại danh sách hoặc Xem nhanh; hệ thống tạo bản nháp mới và không sao chép khoản đã thu.',
+            'Khi xử lý đơn, chuyển theo thứ tự Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành. Form sửa đơn không còn bước Đang xử lý.',
             'In hóa đơn A4, phiếu xuất hoặc hóa đơn K80. Khi đơn đã Xuất kho/Hoàn thành, chọn Phiếu bảo hành, nhập serial/lô rồi bấm Lưu & In.',
         ],
         'checks': [
@@ -603,7 +610,7 @@ DETAILED_OPERATION_GUIDES = [
         'goal': 'Cập nhật tồn kho, giá nhập, nhà cung cấp và lịch sử mua hàng để tính giá vốn chính xác hơn.',
         'steps': [
             'Tạo hoặc chọn nhà cung cấp trước khi nhập hàng.',
-            'Lập đơn đặt hàng nhập nếu cần quản lý hàng đang chờ về.',
+            'Lập đơn đặt hàng nhập nếu cần quản lý hàng đang chờ về; Mã ĐĐH được tự sinh dạng DDH001, DDH002... và không dùng lại mã đã xóa.',
             'Khi nhận hàng, tạo phiếu nhập, chọn kho nhận và nhà cung cấp.',
             'Tại ô Chọn sản phẩm để thêm, gõ một phần tên, mã, barcode hoặc quy cách; có thể gõ không dấu và không cần nhập đủ nguyên tên.',
             'Chọn sản phẩm để thêm một dòng vào bảng chi tiết. Nếu chọn lại sản phẩm/biến thể đã có, hệ thống đưa con trỏ về số lượng thay vì tạo dòng trùng.',
@@ -661,7 +668,7 @@ DETAILED_OPERATION_GUIDES = [
             'Trên BC Kho, bấm thẻ Cảnh báo hoặc chọn bộ lọc thiếu/vượt tồn để xem các mã cần xử lý và cột Cần nhập tối thiểu.',
         ],
         'checks': [
-            'Các đơn ở trạng thái Đơn hàng, Đang xử lý hoặc Đang đóng gói sẽ giữ hàng; vì vậy Có thể bán có thể thấp hơn Tồn kho.',
+            'Các đơn ở trạng thái Đơn hàng hoặc Đang đóng gói sẽ giữ hàng; vì vậy Có thể bán có thể thấp hơn Tồn kho.',
             'Nếu không có đơn đang giữ hàng, Có thể bán sẽ bằng Tồn kho.',
             'Tồn combo được tính từ khả năng đáp ứng của các thành phần và không chỉnh trực tiếp.',
             'Nếu cần nhập tồn âm, Chủ thương hiệu phải bật Cho phép tồn âm trong cấu hình kinh doanh; khi cấu hình đang tắt, hệ thống không ghi một phần dữ liệu âm.',
@@ -793,6 +800,7 @@ DETAILED_OPERATION_GUIDES = [
             'Chọn khoảng thời gian (ngày, tuần, tháng, tùy chỉnh), cửa hàng, kho hoặc bộ lọc liên quan.',
             'Tại BC Nhập hàng, xem bảng Tổng hợp theo nhà cung cấp để biết số phiếu hoàn thành và tổng tiền hàng; có thể lọc riêng một nhà cung cấp.',
             'Tại BC Kho, chọn riêng Danh mục sản phẩm hoặc Loại sản phẩm; khi đã chọn danh mục, danh sách loại chỉ còn các loại trực thuộc danh mục đó.',
+            'Khi cần đối chiếu biến động theo kỳ, chọn BC nhập xuất tồn theo SP hoặc theo danh mục, nhập Từ ngày–Đến ngày rồi đọc Tồn đầu, Nhập, Xuất và Tồn cuối.',
             'Đọc Tổng giá trị tồn theo công thức tổng của từng sản phẩm có tồn dương × giá vốn. Tồn âm vẫn hiển thị để xử lý nhưng không khấu trừ giá trị hàng còn lại.',
             'Bấm thẻ Cảnh báo để lọc hàng dưới tồn tối thiểu hoặc trên tồn tối đa và xem số lượng cần nhập bổ sung.',
             'Đọc số tổng trước, sau đó xem chi tiết theo sản phẩm, khách hàng, nhân viên hoặc chứng từ.',
@@ -802,6 +810,7 @@ DETAILED_OPERATION_GUIDES = [
         'checks': [
             'Báo cáo chỉ chính xác khi đơn hàng, nhập hàng và thu chi được nhập đúng thời điểm.',
             'BC Nhập hàng theo nhà cung cấp chỉ tính tiền của phiếu nhập Hoàn thành trong khoảng ngày đã chọn.',
+            'Trên BC nhập xuất tồn, tổng theo danh mục phải khớp tổng theo sản phẩm khi dùng cùng kỳ và bộ lọc.',
             'File Excel BC Kho giữ bộ lọc Danh mục và Loại sản phẩm đang chọn; giá trị tồn của dòng âm bằng 0.',
             'Nếu doanh thu và tiền thu lệch nhau, kiểm tra công nợ và phương thức thanh toán.',
             'Nếu tồn kho âm hoặc lệch, kiểm tra đơn bán, phiếu nhập, phiếu trả và phiếu kiểm hàng.',

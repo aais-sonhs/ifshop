@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/stock-checks/save/', views.api_save_stock_check, name='api_save_stock_check'),
     path('api/stock-checks/delete/', views.api_delete_stock_check, name='api_delete_stock_check'),
     path('api/purchase-orders/', views.api_get_purchase_orders, name='api_get_purchase_orders'),
+    path('api/purchase-orders/next-code/', views.api_next_purchase_order_code, name='api_next_purchase_order_code'),
     path('api/purchase-orders/save/', views.api_save_purchase_order, name='api_save_purchase_order'),
     path('api/purchase-orders/delete/', views.api_delete_purchase_order, name='api_delete_purchase_order'),
     path('api/products/purchase-history/', views.api_product_purchase_history, name='api_product_purchase_history'),

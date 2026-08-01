@@ -87,7 +87,7 @@
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
                 <div class="row">
-                    <div class="col-md-3"><div class="form-group"><label>Mã ĐĐH <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-3"><div class="form-group"><label>Mã ĐĐH <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code" placeholder="Tự động sinh"></div></div>
                     <div class="col-md-3"><div class="form-group"><label>NCC</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div></div>
                     <div class="col-md-3"><div class="form-group"><label>Kho nhập</label><select class="form-control form-control-sm select2" id="inp_warehouse_id"><option value="">-- Chọn --</option>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div></div>
                     <div class="col-md-3"><div class="form-group"><label>Trạng thái</label><select class="form-control form-control-sm" id="inp_status"><option value="0">Nháp</option><option value="1">Đã gửi</option><option value="2">Đã nhận hàng</option><option value="3">Hoàn thành</option><option value="4">Hủy</option></select></div></div>
@@ -192,6 +192,19 @@ var PURCHASE_ORDER_LIST_XHR = null;
 
 var itemRowIndex = 0;
 
+function fetchNextPurchaseOrderCode(modalSession){
+    $('#inp_code').val('').attr('placeholder', 'Đang tạo mã...');
+    $.get("{% url 'api_next_purchase_order_code' %}")
+        .done(function(res){
+            if(modalSession !== PURCHASE_ORDER_MODAL_SESSION || $('#edit_id').val()) return;
+            $('#inp_code').val(res.code || '').attr('placeholder', 'Tự động sinh');
+        })
+        .fail(function(){
+            if(modalSession !== PURCHASE_ORDER_MODAL_SESSION || $('#edit_id').val()) return;
+            $('#inp_code').val('').attr('placeholder', 'Sẽ tự sinh khi lưu');
+        });
+}
+
 $(document).ready(function(){
     // Load products with variants
     ensurePurchaseOrderProductsLoaded();
@@ -225,6 +238,7 @@ $(document).ready(function(){
         $('#inp_supplier_id,#inp_warehouse_id').val('').trigger('change.select2');
         $('#inp_order_date,#inp_expected_date').val('');
         $('#inp_status').val('0');
+        fetchNextPurchaseOrderCode(modalSession);
         resetQuickPurchaseOrderProductSelect();
         clearPurchaseOrderItemRows();
         $('#modal_title').text('Tạo đơn đặt hàng');
@@ -271,8 +285,8 @@ $(document).ready(function(){
 
     $('#btn_save').click(function(){
         var items = getItemsData();
-        if(!$('#inp_code').val() || !$('#inp_order_date').val()){
-            alert('Vui lòng nhập mã ĐĐH và ngày đặt'); return;
+        if(!$('#inp_order_date').val()){
+            alert('Vui lòng nhập ngày đặt'); return;
         }
         if(items.length === 0){
             alert('Vui lòng thêm ít nhất 1 sản phẩm'); return;

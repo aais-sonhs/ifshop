@@ -3185,6 +3185,113 @@ class SalesReportTests(TestCase):
         self.assertEqual(sheet.cell(row=exported_row, column=7).value, 0.4)
         self.assertEqual(sheet.cell(row=exported_row, column=7).number_format, '0.0%')
 
+    def test_staff_sales_report_filters_retail_and_wholesale_customers(self):
+        today = date.today()
+        retail_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-STAFF-RETAIL',
+            name='Khách lẻ KPI',
+            customer_kind=Customer.CUSTOMER_KIND_RETAIL,
+            created_by=self.user,
+        )
+        wholesale_customer = Customer.objects.create(
+            store=self.store,
+            code='KH-RP-STAFF-WHOLESALE',
+            name='Khách buôn KPI',
+            customer_kind=Customer.CUSTOMER_KIND_WHOLESALE,
+            created_by=self.user,
+        )
+
+        order_specs = [
+            ('DH-RP-STAFF-RETAIL', retail_customer, 300, 150, 30),
+            ('DH-RP-STAFF-WHOLESALE', wholesale_customer, 500, 400, 10),
+        ]
+        for code, customer, revenue, cost, bonus in order_specs:
+            order = Order.objects.create(
+                code=code,
+                store=self.store,
+                customer=customer,
+                warehouse=self.warehouse,
+                status=5,
+                payment_status=2,
+                total_amount=revenue,
+                final_amount=revenue,
+                paid_amount=revenue,
+                bonus_amount=bonus,
+                order_date=today,
+                salesperson='Nhân viên KPI',
+                created_by=self.user,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=revenue,
+                cost_price=cost,
+                total_price=revenue,
+            )
+
+        page_response = self.client.get(reverse('report_staff_sales'))
+        self.assertContains(page_response, 'id="filter_customer_kind"')
+        self.assertContains(page_response, 'Khách buôn / sỉ')
+
+        wholesale_response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'wholesale',
+        })
+
+        self.assertEqual(wholesale_response.status_code, 200)
+        wholesale_payload = wholesale_response.json()
+        self.assertEqual(wholesale_payload['selected_customer_kind'], 'wholesale')
+        self.assertEqual(
+            wholesale_payload['customer_kinds'],
+            [
+                {'value': 'retail', 'label': 'Khách lẻ'},
+                {'value': 'wholesale', 'label': 'Khách buôn / sỉ'},
+            ],
+        )
+        self.assertEqual(wholesale_payload['summary']['grand_orders'], 1)
+        self.assertEqual(wholesale_payload['summary']['grand_revenue'], 500.0)
+        self.assertEqual(wholesale_payload['summary']['grand_cost'], 400.0)
+        self.assertEqual(wholesale_payload['summary']['grand_profit'], 100.0)
+        self.assertEqual(wholesale_payload['summary']['grand_bonus'], 10.0)
+        wholesale_row = wholesale_payload['staff_data'][0]
+        self.assertEqual(wholesale_row['gross_margin'], 20.0)
+        self.assertEqual(wholesale_row['bonus'], 10.0)
+        self.assertEqual(
+            [order['code'] for order in wholesale_row['orders']],
+            ['DH-RP-STAFF-WHOLESALE'],
+        )
+
+        retail_response = self.client.get(reverse('api_report_staff_sales'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'retail',
+        })
+        self.assertEqual(retail_response.status_code, 200)
+        retail_payload = retail_response.json()
+        self.assertEqual(retail_payload['summary']['grand_orders'], 1)
+        self.assertEqual(retail_payload['summary']['grand_revenue'], 300.0)
+        self.assertEqual(retail_payload['summary']['grand_cost'], 150.0)
+        self.assertEqual(retail_payload['summary']['grand_profit'], 150.0)
+        self.assertEqual(retail_payload['summary']['grand_bonus'], 30.0)
+        self.assertEqual(retail_payload['staff_data'][0]['gross_margin'], 50.0)
+
+        export_response = self.client.get(reverse('export_staff_sales_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'customer_kind': 'wholesale',
+        })
+        self.assertEqual(export_response.status_code, 200)
+        workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+        sheet = workbook['BC Doanh thu NV']
+        self.assertIn('Nhóm khách: Khách buôn / sỉ', sheet['A2'].value)
+        self.assertEqual(sheet.cell(row=5, column=2).value, 'Nhân viên KPI')
+        self.assertEqual(sheet.cell(row=5, column=4).value, 500)
+        self.assertEqual(sheet.cell(row=5, column=5).value, 400)
+        self.assertEqual(sheet.cell(row=5, column=10).value, 10)
+
 
 class QuotationProfitReportTests(TestCase):
     @classmethod

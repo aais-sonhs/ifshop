@@ -3,7 +3,7 @@ import logging
 import re
 import unicodedata
 from datetime import date
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 from django.core.paginator import Paginator
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -175,10 +175,15 @@ def _sync_goods_receipt_draft_payment(
         elif previous_total_amount is None:
             should_sync_amount = True
         else:
-            # Kế toán có thể đã sửa số tiền Nháp để phản ánh hàng hỏng hoặc
-            # khuyến mãi từ NCC. Chỉ tự đồng bộ khi số tiền vẫn bằng tổng cũ.
-            should_sync_amount = (
+            # Khuyến mãi nằm riêng trên phiếu chi, vì vậy so tổng trước KM với
+            # tổng phiếu nhập cũ. Chỉ coi là kế toán sửa tay phần gốc khi hai
+            # số này thực sự khác nhau.
+            payment_gross_amount = (
                 Decimal(str(payment.amount or 0))
+                + Decimal(str(payment.promotion_amount or 0))
+            )
+            should_sync_amount = (
+                payment_gross_amount
                 == Decimal(str(previous_total_amount or 0))
             )
             if not should_sync_amount:
@@ -188,7 +193,21 @@ def _sync_goods_receipt_draft_payment(
     payment.supplier_id = receipt.supplier_id
     payment.goods_receipt = receipt
     if should_sync_amount:
-        payment.amount = receipt.total_amount
+        gross_amount = Decimal(str(receipt.total_amount or 0))
+        if payment.promotion_mode == 'percent':
+            promotion_amount = (
+                gross_amount * Decimal(str(payment.promotion_percent or 0)) / Decimal('100')
+            ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        else:
+            promotion_amount = Decimal(str(payment.promotion_amount or 0))
+        promotion_amount = min(max(promotion_amount, Decimal('0')), gross_amount)
+        payment.promotion_amount = promotion_amount
+        if payment.promotion_mode == 'amount':
+            payment.promotion_percent = (
+                promotion_amount * Decimal('100') / gross_amount
+                if gross_amount else Decimal('0')
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        payment.amount = gross_amount - promotion_amount
     payment.payment_date = receipt.receipt_date
     if not payment.category_id:
         payment.category = category

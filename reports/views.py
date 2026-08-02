@@ -4044,9 +4044,9 @@ def report_finance_order_debt(request):
 def _get_finance_report_querysets(request, from_date, to_date, store_id=None):
     """Lấy đúng các chứng từ tạo nên báo cáo tài chính.
 
-    Tổng chi trên báo cáo được cấu hình bằng tổng phiếu chi cộng tổng hàng
-    nhập. Dùng chung hàm này cho API và Excel để phạm vi ngày/cửa hàng/trạng
-    thái của hai đầu ra luôn giống nhau.
+    Dùng chung hàm này cho API và Excel để phạm vi ngày/cửa hàng/trạng thái
+    luôn giống nhau. Việc tách dòng tiền, chi phí khác và hàng nhập sau KM được
+    thực hiện ở `_get_finance_expense_metrics`.
     """
     from finance.models import Payment, Receipt
     from products.models import GoodsReceipt
@@ -4084,6 +4084,56 @@ def _get_finance_report_querysets(request, from_date, to_date, store_id=None):
     return receipts, payments, goods_receipts
 
 
+def _get_finance_expense_metrics(payments, goods_receipts):
+    """Tách chi phí khỏi dòng tiền để phiếu nhập không bị cộng hai lần.
+
+    - Phiếu chi gắn phiếu nhập là dòng tiền thanh toán, không phải một chi phí
+      mới vì giá trị hàng đã được ghi nhận từ phiếu nhập.
+    - KM nhà cung cấp làm giảm giá trị hàng nhập nhưng không làm tăng số dư quỹ.
+    - Phiếu chi không gắn phiếu nhập vẫn là chi phí khác trong kỳ theo ngày chi.
+    """
+    from finance.models import Payment
+
+    money_zero = Decimal('0')
+    cash_payment_expense = payments.aggregate(total=Sum('amount'))['total'] or money_zero
+    other_payments = payments.filter(goods_receipt_id__isnull=True)
+    other_payment_expense = other_payments.aggregate(total=Sum('amount'))['total'] or money_zero
+    goods_receipt_amounts = {
+        receipt_id: Decimal(str(total_amount or 0))
+        for receipt_id, total_amount in goods_receipts.values_list('id', 'total_amount').iterator()
+    }
+    promotion_by_receipt = {
+        item['goods_receipt_id']: Decimal(str(item['total'] or 0))
+        for item in Payment.objects.filter(
+            status=1,
+            goods_receipt_id__in=goods_receipt_amounts,
+        ).values('goods_receipt_id').annotate(total=Sum('promotion_amount')).iterator()
+    }
+    goods_receipt_gross_expense = sum(goods_receipt_amounts.values(), money_zero)
+    # Chặn riêng từng phiếu nhập để dữ liệu cũ/chi nhiều lần không thể tạo ra
+    # chi phí âm và tổng API luôn khớp tổng các dòng trong Excel.
+    applied_promotion_by_receipt = {
+        receipt_id: min(
+            max(promotion_by_receipt.get(receipt_id, money_zero), money_zero),
+            gross_amount,
+        )
+        for receipt_id, gross_amount in goods_receipt_amounts.items()
+    }
+    supplier_promotion = sum(applied_promotion_by_receipt.values(), money_zero)
+    goods_receipt_expense = goods_receipt_gross_expense - supplier_promotion
+    total_expense = other_payment_expense + goods_receipt_expense
+    return {
+        'cash_payment_expense': cash_payment_expense,
+        'payment_expense': other_payment_expense,
+        'goods_receipt_gross_expense': goods_receipt_gross_expense,
+        'supplier_promotion': supplier_promotion,
+        'goods_receipt_expense': goods_receipt_expense,
+        'total_expense': total_expense,
+        'other_payments': other_payments,
+        'promotion_by_receipt': applied_promotion_by_receipt,
+    }
+
+
 @login_required(login_url="/login/")
 @report_permission_required
 def api_report_finance(request):
@@ -4115,15 +4165,16 @@ def api_report_finance(request):
         amount=Sum('amount')
     ).order_by('-amount')
 
-    # Tổng chi = phiếu chi hoàn thành + phiếu nhập hoàn thành.
-    payment_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
-    goods_receipt_expense = float(
-        goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
-    )
-    total_expense = payment_expense + goods_receipt_expense
+    expense_metrics = _get_finance_expense_metrics(payments, goods_receipts)
+    cash_payment_expense = float(expense_metrics['cash_payment_expense'])
+    payment_expense = float(expense_metrics['payment_expense'])
+    goods_receipt_gross_expense = float(expense_metrics['goods_receipt_gross_expense'])
+    supplier_promotion = float(expense_metrics['supplier_promotion'])
+    goods_receipt_expense = float(expense_metrics['goods_receipt_expense'])
+    total_expense = float(expense_metrics['total_expense'])
 
-    # Chi theo danh mục
-    expense_by_cat = payments.values('category__name').annotate(
+    # Chỉ phiếu chi không gắn phiếu nhập mới là một khoản chi phí riêng.
+    expense_by_cat = expense_metrics['other_payments'].values('category__name').annotate(
         amount=Sum('amount')
     ).order_by('-amount')
 
@@ -4149,9 +4200,9 @@ def api_report_finance(request):
         else:
             rows.append({'name': c['category__name'] or 'Khác', 'income': 0, 'expense': float(c['amount'] or 0)})
 
-    # Đưa hàng nhập vào bảng danh mục để tổng bảng và biểu đồ khớp Tổng chi.
+    # Đưa hàng nhập sau KM vào bảng danh mục để khớp Tổng chi.
     if goods_receipt_expense:
-        goods_receipt_category = 'Hàng nhập (phiếu nhập)'
+        goods_receipt_category = 'Hàng nhập sau KM nhà cung cấp'
         existing = next((r for r in rows if r['name'] == goods_receipt_category), None)
         if existing:
             existing['expense'] += goods_receipt_expense
@@ -4187,17 +4238,22 @@ def api_report_finance(request):
                 warehouse__store=st,
             )
             st_income = float(st_receipts.aggregate(s=Sum('amount'))['s'] or 0)
-            st_payment_expense = float(st_payments.aggregate(s=Sum('amount'))['s'] or 0)
-            st_goods_receipt_expense = float(
-                st_goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
-            )
-            st_expense = st_payment_expense + st_goods_receipt_expense
+            st_metrics = _get_finance_expense_metrics(st_payments, st_goods_receipts)
+            st_cash_payment_expense = float(st_metrics['cash_payment_expense'])
+            st_payment_expense = float(st_metrics['payment_expense'])
+            st_goods_receipt_gross_expense = float(st_metrics['goods_receipt_gross_expense'])
+            st_supplier_promotion = float(st_metrics['supplier_promotion'])
+            st_goods_receipt_expense = float(st_metrics['goods_receipt_expense'])
+            st_expense = float(st_metrics['total_expense'])
             store_breakdown.append({
                 'store_id': st.id,
                 'store_name': st.name,
                 'brand_name': st.brand.name if st.brand else '',
                 'income': st_income,
+                'cash_payment_expense': st_cash_payment_expense,
                 'payment_expense': st_payment_expense,
+                'goods_receipt_gross_expense': st_goods_receipt_gross_expense,
+                'supplier_promotion': st_supplier_promotion,
                 'goods_receipt_expense': st_goods_receipt_expense,
                 'expense': st_expense,
                 'net': st_income - st_expense,
@@ -4209,7 +4265,10 @@ def api_report_finance(request):
         'stores': stores_list,
         'summary': {
             'total_income': total_income,
+            'cash_payment_expense': cash_payment_expense,
             'payment_expense': payment_expense,
+            'goods_receipt_gross_expense': goods_receipt_gross_expense,
+            'supplier_promotion': supplier_promotion,
             'goods_receipt_expense': goods_receipt_expense,
             'total_expense': total_expense,
             'net_profit': total_income - total_expense,
@@ -6015,23 +6074,27 @@ def export_finance_excel(request):
     ws['A2'].font = Font(italic=True, size=10)
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    # Summary row
+    # Summary: chi phí hàng nhập chỉ ghi một lần; phiếu chi gắn phiếu nhập là
+    # dòng tiền và không được cộng thêm vào chi phí.
     total_income = float(receipts.aggregate(s=Sum('amount'))['s'] or 0)
-    payment_expense = float(payments.aggregate(s=Sum('amount'))['s'] or 0)
-    goods_receipt_expense = float(
-        goods_receipts.aggregate(s=Sum('total_amount'))['s'] or 0
-    )
-    total_expense = payment_expense + goods_receipt_expense
+    expense_metrics = _get_finance_expense_metrics(payments, goods_receipts)
+    cash_payment_expense = float(expense_metrics['cash_payment_expense'])
+    payment_expense = float(expense_metrics['payment_expense'])
+    goods_receipt_gross_expense = float(expense_metrics['goods_receipt_gross_expense'])
+    supplier_promotion = float(expense_metrics['supplier_promotion'])
+    goods_receipt_expense = float(expense_metrics['goods_receipt_expense'])
+    total_expense = float(expense_metrics['total_expense'])
     net = total_income - total_expense
     ws['A3'] = (
         f'Tổng thu: {total_income:,.0f}đ  |  '
-        f'Tổng phiếu chi: {payment_expense:,.0f}đ  |  '
-        f'Tổng hàng nhập: {goods_receipt_expense:,.0f}đ'
+        f'Thực chi qua phiếu: {cash_payment_expense:,.0f}đ  |  '
+        f'Chi phí khác: {payment_expense:,.0f}đ'
     )
     ws['A3'].font = Font(bold=True, size=10)
     ws.merge_cells('A3:G3')
     ws['A4'] = (
-        f'Tổng chi = Tổng phiếu chi + Tổng hàng nhập: {total_expense:,.0f}đ  |  '
+        f'Hàng nhập: {goods_receipt_gross_expense:,.0f}đ - KM NCC: {supplier_promotion:,.0f}đ'
+        f' = {goods_receipt_expense:,.0f}đ  |  Tổng chi phí: {total_expense:,.0f}đ  |  '
         f'Lãi/Lỗ: {net:,.0f}đ'
     )
     ws['A4'].font = Font(bold=True, size=10)
@@ -6062,8 +6125,9 @@ def export_finance_excel(request):
         idx += 1
         row += 1
 
-    # Ghi phiếu chi
-    for p in payments.select_related('category').order_by('-payment_date'):
+    # Chỉ ghi phiếu chi không gắn phiếu nhập vào bảng chi phí. Phiếu chi gắn
+    # phiếu nhập vẫn đã nằm trong chỉ tiêu dòng tiền ở phần tổng hợp phía trên.
+    for p in expense_metrics['other_payments'].select_related('category').order_by('-payment_date'):
         vals = [idx, 'CHI', p.code,
                 p.payment_date.strftime('%d/%m/%Y') if p.payment_date else '',
                 p.category.name if p.category else '',
@@ -6077,7 +6141,9 @@ def export_finance_excel(request):
         idx += 1
         row += 1
 
-    # Ghi phiếu nhập hàng
+    promotion_by_receipt = expense_metrics['promotion_by_receipt']
+
+    # Ghi phiếu nhập hàng theo giá trị sau KM, nhưng vẫn nêu rõ giá trị gốc.
     for goods_receipt in goods_receipts.select_related(
         'supplier',
         'warehouse',
@@ -6089,14 +6155,21 @@ def export_finance_excel(request):
             description_parts.append(f'Kho: {goods_receipt.warehouse.name}')
         if goods_receipt.note:
             description_parts.append(goods_receipt.note)
+        gross_amount = Decimal(str(goods_receipt.total_amount or 0))
+        promotion_amount = promotion_by_receipt.get(goods_receipt.id, Decimal('0'))
+        net_goods_amount = max(gross_amount - promotion_amount, Decimal('0'))
+        if promotion_amount:
+            description_parts.append(
+                f'Giá trị gốc: {gross_amount:,.0f}đ · KM NCC: {promotion_amount:,.0f}đ'
+            )
         vals = [
             idx,
             'NHẬP HÀNG',
             goods_receipt.code,
             goods_receipt.receipt_date.strftime('%d/%m/%Y') if goods_receipt.receipt_date else '',
-            'Hàng nhập (phiếu nhập)',
+            'Hàng nhập sau KM nhà cung cấp',
             ' · '.join(description_parts),
-            float(goods_receipt.total_amount),
+            float(net_goods_amount),
         ]
         for col, val in enumerate(vals, 1):
             c = ws.cell(row=row, column=col, value=val)
@@ -6108,10 +6181,15 @@ def export_finance_excel(request):
         row += 1
 
     # Total rows
-    for label, amt, fill in [('TỔNG THU', total_income, green_fill),
-                             ('TỔNG PHIẾU CHI', payment_expense, red_fill),
-                             ('TỔNG HÀNG NHẬP', goods_receipt_expense, goods_fill),
-                             ('TỔNG CHI', total_expense, red_fill)]:
+    for label, amt, fill in [
+        ('TỔNG THU', total_income, green_fill),
+        ('THỰC CHI QUA PHIẾU', cash_payment_expense, red_fill),
+        ('TỔNG CHI PHÍ KHÁC', payment_expense, red_fill),
+        ('HÀNG NHẬP TRƯỚC KM', goods_receipt_gross_expense, goods_fill),
+        ('KM NHÀ CUNG CẤP', supplier_promotion, green_fill),
+        ('HÀNG NHẬP SAU KM', goods_receipt_expense, goods_fill),
+        ('TỔNG CHI PHÍ', total_expense, red_fill),
+    ]:
         for col, val in enumerate(['', label, '', '', '', '', amt], 1):
             c = ws.cell(row=row, column=col, value=val)
             c.font = Font(bold=True)

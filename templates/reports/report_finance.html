@@ -59,22 +59,28 @@
                 </div>
             </div>
             <div class="col-xl col-lg-4 col-md-6 col-12">
-                <a id="payment_expense_link" href="{% url 'payment_tbl' %}?status=1" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" title="Mở bảng phiếu chi hoàn thành">
+                <a id="payment_expense_link" href="{% url 'payment_tbl' %}?status=1&amp;goods_receipt_state=no" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" title="Mở các phiếu chi không gắn phiếu nhập">
                     <div class="small-box bg-danger" style="cursor:pointer;">
-                        <div class="inner"><h4 id="payment_expense">0đ</h4><p>Tổng phiếu chi</p></div>
+                        <div class="inner"><h4 id="payment_expense">0đ</h4><p>Chi phí khác (phiếu chi)</p></div>
                         <div class="icon"><i class="fas fa-arrow-up"></i></div>
                     </div>
                 </a>
             </div>
             <div class="col-xl col-lg-4 col-md-6 col-12">
                 <div class="small-box bg-warning">
-                    <div class="inner"><h4 id="goods_receipt_expense">0đ</h4><p>Tổng hàng nhập</p></div>
+                    <div class="inner"><h4 id="goods_receipt_expense">0đ</h4><p>Hàng nhập sau KM</p></div>
                     <div class="icon"><i class="fas fa-truck-loading"></i></div>
                 </div>
             </div>
             <div class="col-xl col-lg-4 col-md-6 col-12">
+                <div class="small-box bg-info">
+                    <div class="inner"><h4 id="supplier_promotion">0đ</h4><p>KM nhà cung cấp</p></div>
+                    <div class="icon"><i class="fas fa-tags"></i></div>
+                </div>
+            </div>
+            <div class="col-xl col-lg-4 col-md-6 col-12">
                 <div class="small-box bg-maroon">
-                    <div class="inner"><h4 id="total_expense">0đ</h4><p>Tổng chi (phiếu chi + hàng nhập)</p></div>
+                    <div class="inner"><h4 id="total_expense">0đ</h4><p>Tổng chi phí (chi khác + hàng nhập sau KM)</p></div>
                     <div class="icon"><i class="fas fa-calculator"></i></div>
                 </div>
             </div>
@@ -176,8 +182,9 @@
                                 <tr>
                                     <th>Cửa hàng</th>
                                     <th class="text-right">Tổng thu</th>
-                                    <th class="text-right">Phiếu chi</th>
-                                    <th class="text-right">Hàng nhập</th>
+                                    <th class="text-right">Chi khác</th>
+                                    <th class="text-right">KM NCC</th>
+                                    <th class="text-right">Hàng nhập sau KM</th>
                                     <th class="text-right">Tổng chi</th>
                                     <th class="text-right">Lãi/Lỗ</th>
                                     <th></th>
@@ -354,6 +361,7 @@ function loadReport(){
         $('#total_income').text(fmtD(s.total_income));
         $('#payment_expense').text(fmtD(s.payment_expense));
         $('#goods_receipt_expense').text(fmtD(s.goods_receipt_expense));
+        $('#supplier_promotion').text(fmtD(s.supplier_promotion));
         $('#total_expense').text(fmtD(s.total_expense));
         $('#net_profit').text(fmtD(s.net_profit));
         $('#box_net').removeClass('bg-success bg-danger bg-info').addClass(s.net_profit >= 0 ? 'bg-info' : 'bg-danger');
@@ -374,6 +382,7 @@ function loadReport(){
                 sb += '<td><b>'+st.store_name+'</b> <small class="text-muted">('+st.brand_name+')</small></td>';
                 sb += '<td class="text-right text-success">'+fmtD(st.income)+'</td>';
                 sb += '<td class="text-right text-danger">'+fmtD(st.payment_expense)+'</td>';
+                sb += '<td class="text-right text-info">'+fmtD(st.supplier_promotion)+'</td>';
                 sb += '<td class="text-right text-warning">'+fmtD(st.goods_receipt_expense)+'</td>';
                 sb += '<td class="text-right text-danger">'+fmtD(st.expense)+'</td>';
                 sb += '<td class="text-right '+cls+'"><b>'+fmtD(st.net)+'</b></td>';
@@ -423,6 +432,7 @@ function updatePaymentExpenseLink(){
     if(fromDate) params.set('date_from', fromDate);
     if(toDate) params.set('date_to', toDate);
     params.set('status', '1');
+    params.set('goods_receipt_state', 'no');
     if(storeId) params.set('store_id', storeId);
     $('#payment_expense_link').attr('href', '{% url "payment_tbl" %}?' + params.toString());
 }

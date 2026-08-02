@@ -78,7 +78,7 @@
             <div class="col-xl col-lg-4 col-md-6">
                 <div class="info-box bg-success">
                     <span class="info-box-icon"><i class="fas fa-money-check-alt"></i></span>
-                    <div class="info-box-content"><span class="info-box-text">Đã thanh toán</span><span id="supplier_debt_total_paid" class="info-box-number">0đ</span></div>
+                    <div class="info-box-content"><span class="info-box-text">Đã xử lý (chi + KM)</span><span id="supplier_debt_total_paid" class="info-box-number">0đ</span></div>
                 </div>
             </div>
             <div class="col-xl col-lg-4 col-md-6">
@@ -135,7 +135,7 @@
         </div>
 
         <div class="table-responsive">
-            <table id="supplier_debt_tbl" class="table table-bordered table-striped table-sm" style="min-width:1500px;">
+            <table id="supplier_debt_tbl" class="table table-bordered table-striped table-sm" style="min-width:1700px;">
                 <thead>
                     <tr>
                         <th>STT</th>
@@ -146,7 +146,9 @@
                         <th class="text-right">Tổng nhập</th>
                         <th class="text-right">Hàng trả</th>
                         <th class="text-right">Phải trả</th>
-                        <th class="text-right">Đã trả</th>
+                        <th class="text-right">Thực chi</th>
+                        <th class="text-right">KM NCC</th>
+                        <th class="text-right">Đã xử lý</th>
                         <th class="text-right">Còn nợ</th>
                         <th>Trạng thái</th>
                         <th>Phiếu chi</th>
@@ -231,7 +233,9 @@ function renderSupplierDebtRows(response){
             '<td class="text-right">'+supplierDebtMoney(row.original_amount)+'</td>'+
             '<td class="text-right text-warning">'+supplierDebtMoney(row.returned_amount)+'</td>'+
             '<td class="text-right font-weight-bold">'+supplierDebtMoney(row.payable_amount)+'</td>'+
-            '<td class="text-right text-success">'+supplierDebtMoney(row.paid_amount)+'</td>'+
+            '<td class="text-right text-success">'+supplierDebtMoney(row.cash_paid_amount)+'</td>'+
+            '<td class="text-right text-info">'+supplierDebtMoney(row.promotion_amount)+'</td>'+
+            '<td class="text-right text-success font-weight-bold">'+supplierDebtMoney(row.paid_amount)+'</td>'+
             '<td class="text-right text-danger font-weight-bold">'+supplierDebtMoney(row.debt_amount)+'</td>'+
             '<td><span class="badge badge-'+stateClass+'">'+supplierDebtEscape(row.payment_state_display)+'</span></td>'+
             '<td>'+paymentCodes+'</td>'+
@@ -239,7 +243,7 @@ function renderSupplierDebtRows(response){
             '</tr>';
     });
     $('#supplier_debt_tbl tbody').html(
-        html || '<tr><td colspan="13" class="text-center text-muted py-3">Không có phiếu nhập phù hợp.</td></tr>'
+        html || '<tr><td colspan="15" class="text-center text-muted py-3">Không có phiếu nhập phù hợp.</td></tr>'
     );
 }
 
@@ -345,7 +349,7 @@ function loadSupplierDebts(){
         renderSupplierDebtTotals(response.totals || {});
         renderSupplierDebtPagination(response.meta || {});
     }).fail(function(){
-        $('#supplier_debt_tbl tbody').html('<tr><td colspan="13" class="text-center text-danger py-3">Không tải được công nợ nhà cung cấp.</td></tr>');
+        $('#supplier_debt_tbl tbody').html('<tr><td colspan="15" class="text-center text-danger py-3">Không tải được công nợ nhà cung cấp.</td></tr>');
         $('#supplier_debt_pagination_summary').text('Không tải được dữ liệu.');
         $('#supplier_debt_pagination').empty();
     });

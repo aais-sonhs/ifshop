@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -105,6 +105,83 @@ def _parse_decimal_filter(value):
         return Decimal(str(value))
     except Exception:
         return None
+
+
+def _parse_payment_decimal(value, label):
+    """Đọc số tiền từ payload và chặn NaN/Infinity trước khi ghi sổ quỹ."""
+    if value in (None, ''):
+        return Decimal('0')
+    try:
+        number = Decimal(str(value).strip())
+    except (InvalidOperation, TypeError, ValueError, AttributeError):
+        raise ValueError(f'{label} không hợp lệ.')
+    if not number.is_finite():
+        raise ValueError(f'{label} không hợp lệ.')
+    return number
+
+
+def _apply_payment_promotion(payment, data):
+    """Tính tiền thực chi từ tiền trước KM và KM lưu riêng trên phiếu chi.
+
+    Payload cũ chỉ gửi `amount` vẫn được giữ tương thích: `amount` khi đó là
+    tiền thực chi. Giao diện mới gửi `gross_amount` cùng các trường KM để phía
+    server là nơi tính kết quả cuối cùng và không tin vào phép tính JavaScript.
+    """
+    promotion_keys = {
+        'gross_amount', 'promotion_mode', 'promotion_amount', 'promotion_percent',
+    }
+    if not any(key in data for key in promotion_keys):
+        actual_amount = _parse_payment_decimal(data.get('amount', 0), 'Số tiền thực chi')
+        if actual_amount < 0:
+            raise ValueError('Số tiền thực chi không được âm.')
+        payment.amount = actual_amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        return
+
+    existing_gross = (
+        Decimal(str(payment.amount or 0))
+        + Decimal(str(payment.promotion_amount or 0))
+    )
+    gross_source = data.get('gross_amount')
+    if gross_source in (None, ''):
+        gross_source = data.get('amount', existing_gross)
+    gross_amount = _parse_payment_decimal(gross_source, 'Số tiền trước khuyến mãi')
+    gross_amount = gross_amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    if gross_amount < 0:
+        raise ValueError('Số tiền trước khuyến mãi không được âm.')
+
+    promotion_mode = str(data.get('promotion_mode') or 'amount').strip().lower()
+    if promotion_mode not in dict(Payment.PROMOTION_MODE_CHOICES):
+        raise ValueError('Cách tính khuyến mãi không hợp lệ.')
+
+    if promotion_mode == 'percent':
+        promotion_percent = _parse_payment_decimal(
+            data.get('promotion_percent', 0),
+            'Khuyến mãi (%)',
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if promotion_percent < 0 or promotion_percent > 100:
+            raise ValueError('Khuyến mãi (%) phải từ 0 đến 100.')
+        promotion_amount = (
+            gross_amount * promotion_percent / Decimal('100')
+        ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    else:
+        promotion_amount = _parse_payment_decimal(
+            data.get('promotion_amount', 0),
+            'Tiền khuyến mãi',
+        ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        if promotion_amount < 0:
+            raise ValueError('Tiền khuyến mãi không được âm.')
+        promotion_percent = (
+            promotion_amount * Decimal('100') / gross_amount
+            if gross_amount else Decimal('0')
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    if promotion_amount > gross_amount:
+        raise ValueError('Tiền khuyến mãi không được lớn hơn số tiền trước khuyến mãi.')
+
+    payment.promotion_mode = promotion_mode
+    payment.promotion_amount = promotion_amount
+    payment.promotion_percent = promotion_percent
+    payment.amount = gross_amount - promotion_amount
 
 
 def _to_positive_int(value, default, minimum=1, maximum=None):
@@ -798,6 +875,12 @@ def _serialize_payment_list(payments):
         'target': p.supplier.name if p.supplier else (p.customer.name if p.customer else ''),
         'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
         'goods_receipt_id': p.goods_receipt_id,
+        'gross_amount': float(
+            Decimal(str(p.amount or 0)) + Decimal(str(p.promotion_amount or 0))
+        ),
+        'promotion_mode': p.promotion_mode,
+        'promotion_amount': float(p.promotion_amount or 0),
+        'promotion_percent': float(p.promotion_percent or 0),
         'amount': float(p.amount),
         'description': p.description or '',
         'payment_date': p.payment_date.strftime('%Y-%m-%d') if p.payment_date else '',
@@ -918,12 +1001,20 @@ def _get_supplier_debt_queryset(request):
     money_field = DecimalField(max_digits=18, decimal_places=0)
     zero_money = Value(Decimal('0'), output_field=money_field)
 
-    completed_payment_total = (
+    completed_cash_payment_total = (
         Payment.objects
         .filter(goods_receipt_id=OuterRef('pk'), status=1)
         .order_by()
         .values('goods_receipt_id')
         .annotate(total=Sum('amount'))
+        .values('total')[:1]
+    )
+    completed_promotion_total = (
+        Payment.objects
+        .filter(goods_receipt_id=OuterRef('pk'), status=1)
+        .order_by()
+        .values('goods_receipt_id')
+        .annotate(total=Sum('promotion_amount'))
         .values('total')[:1]
     )
     completed_return_total = (
@@ -944,8 +1035,13 @@ def _get_supplier_debt_queryset(request):
     )
     total_all_count = receipts.count()
     receipts = receipts.annotate(
-        paid_amount=Coalesce(
-            Subquery(completed_payment_total, output_field=money_field),
+        cash_paid_amount=Coalesce(
+            Subquery(completed_cash_payment_total, output_field=money_field),
+            zero_money,
+            output_field=money_field,
+        ),
+        promotion_amount=Coalesce(
+            Subquery(completed_promotion_total, output_field=money_field),
             zero_money,
             output_field=money_field,
         ),
@@ -955,6 +1051,10 @@ def _get_supplier_debt_queryset(request):
             output_field=money_field,
         ),
     ).annotate(
+        paid_amount=ExpressionWrapper(
+            F('cash_paid_amount') + F('promotion_amount'),
+            output_field=money_field,
+        ),
         payable_amount=ExpressionWrapper(
             F('total_amount') - F('returned_amount'),
             output_field=money_field,
@@ -1059,6 +1159,8 @@ def _serialize_supplier_debts(receipts):
             'original_amount': float(receipt.total_amount or 0),
             'returned_amount': float(receipt.returned_amount or 0),
             'payable_amount': float(payable_amount),
+            'cash_paid_amount': float(receipt.cash_paid_amount or 0),
+            'promotion_amount': float(receipt.promotion_amount or 0),
             'paid_amount': float(paid_amount),
             'debt_amount': float(debt_amount),
             'overpaid_amount': float(receipt.overpaid_amount or 0),
@@ -1087,6 +1189,8 @@ def api_get_supplier_debts(request):
         'original_amount': Decimal('0'),
         'returned_amount': Decimal('0'),
         'payable_amount': Decimal('0'),
+        'cash_paid_amount': Decimal('0'),
+        'promotion_amount': Decimal('0'),
         'paid_amount': Decimal('0'),
         'debt_amount': Decimal('0'),
         'overpaid_amount': Decimal('0'),
@@ -1094,10 +1198,14 @@ def api_get_supplier_debts(request):
     debt_document_count = 0
     for row in receipts.values(
         'total_amount', 'returned_amount', 'payable_amount',
-        'paid_amount', 'debt_amount', 'overpaid_amount',
+        'cash_paid_amount', 'promotion_amount', 'paid_amount',
+        'debt_amount', 'overpaid_amount',
     ).iterator():
         totals['original_amount'] += Decimal(str(row['total_amount'] or 0))
-        for key in ('returned_amount', 'payable_amount', 'paid_amount', 'debt_amount', 'overpaid_amount'):
+        for key in (
+            'returned_amount', 'payable_amount', 'cash_paid_amount',
+            'promotion_amount', 'paid_amount', 'debt_amount', 'overpaid_amount',
+        ):
             totals[key] += Decimal(str(row[key] or 0))
         if Decimal(str(row['debt_amount'] or 0)) > 0:
             debt_document_count += 1
@@ -1257,7 +1365,7 @@ def api_save_payment(request):
             p.cash_book_id = data.get('cash_book_id') or None
             p.supplier_id = data.get('supplier_id') or None
             p.goods_receipt_id = data.get('goods_receipt_id') or None
-            p.amount = data.get('amount', 0) or 0
+            _apply_payment_promotion(p, data)
             p.description = data.get('description', '')
             p.payment_date = data.get('payment_date')
             p.status = data.get('status', 0)
@@ -1298,46 +1406,6 @@ def api_save_payment(request):
 
             save_with_generated_code(p, _generate_next_payment_code, auto_code)
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
-    except ValueError as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
-
-
-@login_required(login_url="/login/")
-def api_approve_payment(request):
-    """Duyệt nhanh một phiếu chi Nháp mà không phải gửi lại toàn bộ biểu mẫu."""
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
-    try:
-        data = json.loads(request.body)
-        with transaction.atomic():
-            current_payment = _get_payment_for_user(request, data.get('id'))
-            if not current_payment:
-                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
-
-            # Sau khi kiểm tra phạm vi cửa hàng, khóa bản ghi bằng query đơn giản
-            # để hai thao tác đồng thời không thể cùng trừ tiền khỏi quỹ.
-            payment = Payment.objects.select_for_update().get(id=current_payment.id)
-            if payment.status != 0:
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'Chỉ phiếu chi ở trạng thái Nháp mới được duyệt nhanh.',
-                })
-
-            if payment.cash_book_id:
-                _adjust_cashbook_balance(
-                    payment.cash_book_id,
-                    -Decimal(str(payment.amount or 0)),
-                    validate_non_negative=True,
-                )
-
-            payment.status = 1
-            payment.approved_by = request.user
-            payment.approved_at = timezone.now()
-            payment.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
-
-        return JsonResponse({'status': 'ok', 'message': 'Duyệt phiếu chi thành công'})
     except ValueError as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
@@ -1800,7 +1868,9 @@ def export_payments_excel(request):
         {'key': 'category', 'label': 'Danh mục', 'width': 16},
         {'key': 'target', 'label': 'Người nhận', 'width': 22},
         {'key': 'goods_receipt', 'label': 'Phiếu nhập', 'width': 16},
-        {'key': 'amount', 'label': 'Số tiền', 'width': 16},
+        {'key': 'gross_amount', 'label': 'Tiền trước KM', 'width': 16},
+        {'key': 'promotion', 'label': 'Khuyến mãi', 'width': 16},
+        {'key': 'amount', 'label': 'Thực chi', 'width': 16},
         {'key': 'method', 'label': 'Hình thức TT', 'width': 16},
         {'key': 'date', 'label': 'Ngày chi', 'width': 13},
         {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
@@ -1813,8 +1883,16 @@ def export_payments_excel(request):
     ]
 
     rows = []
+    total_gross = 0
+    total_promotion = 0
     total = 0
     for i, p in enumerate(payments, 1):
+        gross_amount = float(
+            Decimal(str(p.amount or 0)) + Decimal(str(p.promotion_amount or 0))
+        )
+        promotion_amount = float(p.promotion_amount or 0)
+        total_gross += gross_amount
+        total_promotion += promotion_amount
         total += float(p.amount or 0)
         target = p.supplier.name if p.supplier else (p.customer.name if p.customer else '')
         rows.append({
@@ -1823,6 +1901,8 @@ def export_payments_excel(request):
             'category': p.category.name if p.category else '',
             'target': target,
             'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
+            'gross_amount': gross_amount,
+            'promotion': promotion_amount,
             'amount': float(p.amount or 0),
             'method': p.get_payment_method_label(),
             'date': p.payment_date,
@@ -1849,6 +1929,12 @@ def export_payments_excel(request):
         columns=columns,
         rows=rows,
         filename=f'Phieu_chi_{datetime.now().strftime("%Y%m%d")}',
-        money_cols=['amount'],
-        total_row={'stt': '', 'code': 'TỔNG CỘNG', 'amount': total},
+        money_cols=['gross_amount', 'promotion', 'amount'],
+        total_row={
+            'stt': '',
+            'code': 'TỔNG CỘNG',
+            'gross_amount': total_gross,
+            'promotion': total_promotion,
+            'amount': total,
+        },
     )

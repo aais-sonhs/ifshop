@@ -152,6 +152,10 @@ class ReceiptItem(models.Model):
 
 class Payment(SoftDeleteModel):
     """Phiếu chi"""
+    PROMOTION_MODE_CHOICES = (
+        ('amount', 'Số tiền'),
+        ('percent', 'Phần trăm'),
+    )
     STATUS_CHOICES = [
         (0, 'Nháp'),
         (1, 'Hoàn thành'),
@@ -178,7 +182,27 @@ class Payment(SoftDeleteModel):
                                  related_name='payments', verbose_name='Khách hàng')
     goods_receipt = models.ForeignKey('products.GoodsReceipt', on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name='payments', verbose_name='Phiếu nhập hàng')
-    amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số tiền')
+    # `amount` là tiền thực tế ra khỏi quỹ. Khuyến mãi từ nhà cung cấp được
+    # lưu riêng trên phiếu chi để không làm thay đổi giá trị phiếu nhập.
+    amount = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số tiền thực chi')
+    promotion_mode = models.CharField(
+        max_length=10,
+        choices=PROMOTION_MODE_CHOICES,
+        default='amount',
+        verbose_name='Cách tính khuyến mãi',
+    )
+    promotion_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=0,
+        default=0,
+        verbose_name='Tiền khuyến mãi',
+    )
+    promotion_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        verbose_name='Khuyến mãi (%)',
+    )
     description = models.TextField(blank=True, null=True, verbose_name='Diễn giải')
     payment_date = models.DateField(verbose_name='Ngày chi')
     reference = models.CharField(max_length=100, blank=True, null=True, verbose_name='Số tham chiếu')

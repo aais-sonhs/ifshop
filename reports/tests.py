@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.models import User
@@ -272,7 +273,7 @@ class SalesReportTests(TestCase):
         self.assertEqual(payload['summary']['total_expense'], 30190.0)
         self.assertEqual(payload['summary']['net_profit'], -29240.0)
         category_rows = {row['name']: row for row in payload['categories']}
-        self.assertEqual(category_rows['Hàng nhập (phiếu nhập)']['expense'], 30000.0)
+        self.assertEqual(category_rows['Hàng nhập sau KM nhà cung cấp']['expense'], 30000.0)
         self.assertEqual(sum(row['expense'] for row in payload['categories']), 30190.0)
 
         store_rows = {row['store_id']: row for row in payload['store_breakdown']}
@@ -307,9 +308,10 @@ class SalesReportTests(TestCase):
             BytesIO(excel_response.content),
             data_only=True,
         )['Thu chi']
-        self.assertIn('Tổng phiếu chi: 190đ', worksheet['A3'].value)
-        self.assertIn('Tổng hàng nhập: 30,000đ', worksheet['A3'].value)
-        self.assertIn('Tổng chi = Tổng phiếu chi + Tổng hàng nhập: 30,190đ', worksheet['A4'].value)
+        self.assertIn('Thực chi qua phiếu: 190đ', worksheet['A3'].value)
+        self.assertIn('Chi phí khác: 190đ', worksheet['A3'].value)
+        self.assertIn('Hàng nhập: 30,000đ - KM NCC: 0đ = 30,000đ', worksheet['A4'].value)
+        self.assertIn('Tổng chi phí: 30,190đ', worksheet['A4'].value)
 
         excel_rows = list(worksheet.iter_rows(values_only=True))
         imported_rows = {
@@ -328,17 +330,97 @@ class SalesReportTests(TestCase):
             for row in excel_rows
             if row[1] in {
                 'TỔNG THU',
-                'TỔNG PHIẾU CHI',
-                'TỔNG HÀNG NHẬP',
-                'TỔNG CHI',
+                'THỰC CHI QUA PHIẾU',
+                'TỔNG CHI PHÍ KHÁC',
+                'HÀNG NHẬP TRƯỚC KM',
+                'KM NHÀ CUNG CẤP',
+                'HÀNG NHẬP SAU KM',
+                'TỔNG CHI PHÍ',
                 'LÃI/LỖ',
             }
         }
         self.assertEqual(total_rows['TỔNG THU'], 950)
-        self.assertEqual(total_rows['TỔNG PHIẾU CHI'], 190)
-        self.assertEqual(total_rows['TỔNG HÀNG NHẬP'], 30000)
-        self.assertEqual(total_rows['TỔNG CHI'], 30190)
+        self.assertEqual(total_rows['THỰC CHI QUA PHIẾU'], 190)
+        self.assertEqual(total_rows['TỔNG CHI PHÍ KHÁC'], 190)
+        self.assertEqual(total_rows['HÀNG NHẬP TRƯỚC KM'], 30000)
+        self.assertEqual(total_rows['KM NHÀ CUNG CẤP'], 0)
+        self.assertEqual(total_rows['HÀNG NHẬP SAU KM'], 30000)
+        self.assertEqual(total_rows['TỔNG CHI PHÍ'], 30190)
         self.assertEqual(total_rows['LÃI/LỖ'], -29240)
+
+    def test_finance_report_uses_supplier_promotion_without_double_counting_purchase_payment(self):
+        today = date.today()
+        supplier = Supplier.objects.create(code='NCC-FIN-KM', name='NCC tài chính KM')
+        goods_receipt = GoodsReceipt.objects.create(
+            code='PN-FIN-KM',
+            supplier=supplier,
+            warehouse=self.warehouse,
+            receipt_date=today,
+            total_amount=Decimal('1000'),
+            status=1,
+            created_by=self.user,
+        )
+        Receipt.objects.create(
+            code='PT-FIN-KM',
+            store=self.store,
+            amount=Decimal('2000'),
+            receipt_date=today,
+            status=1,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-FIN-KM-PURCHASE',
+            store=self.store,
+            supplier=supplier,
+            goods_receipt=goods_receipt,
+            amount=Decimal('850'),
+            promotion_mode='amount',
+            promotion_amount=Decimal('150'),
+            promotion_percent=Decimal('15'),
+            payment_date=today,
+            status=1,
+            created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-FIN-KM-OTHER',
+            store=self.store,
+            amount=Decimal('200'),
+            payment_date=today,
+            status=1,
+            created_by=self.user,
+        )
+
+        payload = self.client.get(reverse('api_report_finance'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        }).json()
+
+        self.assertEqual(payload['summary']['cash_payment_expense'], 1050.0)
+        self.assertEqual(payload['summary']['payment_expense'], 200.0)
+        self.assertEqual(payload['summary']['goods_receipt_gross_expense'], 1000.0)
+        self.assertEqual(payload['summary']['supplier_promotion'], 150.0)
+        self.assertEqual(payload['summary']['goods_receipt_expense'], 850.0)
+        self.assertEqual(payload['summary']['total_expense'], 1050.0)
+        self.assertEqual(payload['summary']['net_profit'], 950.0)
+        self.assertEqual(sum(row['expense'] for row in payload['categories']), 1050.0)
+
+        purchase_payload = self.client.get(reverse('api_report_purchases'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+            'supplier_id': supplier.id,
+        }).json()
+        self.assertEqual(purchase_payload['summary']['total_amount'], 1000.0)
+
+        worksheet = load_workbook(BytesIO(self.client.get(reverse('export_finance_excel'), {
+            'from_date': today.isoformat(),
+            'to_date': today.isoformat(),
+        }).content), data_only=True)['Thu chi']
+        excel_rows = list(worksheet.iter_rows(values_only=True))
+        self.assertFalse(any(row[2] == 'PC-FIN-KM-PURCHASE' for row in excel_rows if len(row) > 2))
+        self.assertTrue(any(row[2] == 'PC-FIN-KM-OTHER' for row in excel_rows if len(row) > 2))
+        goods_row = next(row for row in excel_rows if row[2] == 'PN-FIN-KM')
+        self.assertEqual(goods_row[6], 850)
+        self.assertIn('KM NCC: 150đ', goods_row[5])
 
     def test_finance_report_page_shows_expense_formula_cards(self):
         self.brand.owner = self.user
@@ -348,11 +430,13 @@ class SalesReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="payment_expense"')
-        self.assertContains(response, 'Tổng phiếu chi')
+        self.assertContains(response, 'Chi phí khác (phiếu chi)')
         self.assertContains(response, 'id="goods_receipt_expense"')
-        self.assertContains(response, 'Tổng hàng nhập')
+        self.assertContains(response, 'Hàng nhập sau KM')
+        self.assertContains(response, 'id="supplier_promotion"')
+        self.assertContains(response, 'KM nhà cung cấp')
         self.assertContains(response, 'id="total_expense"')
-        self.assertContains(response, 'Tổng chi (phiếu chi + hàng nhập)')
+        self.assertContains(response, 'Tổng chi phí (chi khác + hàng nhập sau KM)')
         self.assertContains(response, 'id="order_debt_link"')
         self.assertContains(response, reverse('report_finance_order_debt'))
         self.assertContains(response, 'target="_blank"')
@@ -362,6 +446,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, reverse('payment_tbl'))
         self.assertNotContains(response, 'Xem bảng phiếu chi')
         self.assertContains(response, "params.set('status', '1')")
+        self.assertContains(response, "params.set('goods_receipt_state', 'no')")
         self.assertContains(response, 'updatePaymentExpenseLink()')
         self.assertContains(response, 'id="filter_period_type"')
         self.assertContains(response, '<option value="month" selected>Theo tháng</option>', html=True)

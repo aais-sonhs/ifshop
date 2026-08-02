@@ -85,11 +85,11 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="small mb-0 text-muted">Số tiền từ</label>
+                        <label class="small mb-0 text-muted">Thực chi từ</label>
                         <input type="number" class="form-control form-control-sm" id="f_amount_from" min="0" placeholder="0">
                     </div>
                     <div class="col-md-2">
-                        <label class="small mb-0 text-muted">Số tiền đến</label>
+                        <label class="small mb-0 text-muted">Thực chi đến</label>
                         <input type="number" class="form-control form-control-sm" id="f_amount_to" min="0" placeholder="∞">
                     </div>
                     {% if has_multiple_stores %}
@@ -124,14 +124,14 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Số tiền</th><th>HTTT</th>
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Trước KM</th><th>Khuyến mãi</th><th>Thực chi</th><th>HTTT</th>
                     <th id="payment_date_header" aria-sort="descending">
                         <button type="button" class="btn btn-link btn-sm p-0 text-dark font-weight-bold"
                                 id="btn_sort_payment_date" title="Sắp xếp Ngày chi tăng/giảm dần">
                             Ngày chi <i id="payment_date_sort_icon" class="fas fa-sort-down ml-1" aria-hidden="true"></i>
                         </button>
                     </th>
-                    <th>Quỹ</th><th>Người tạo</th><th>Người duyệt</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                    <th>Quỹ</th><th>Người duyệt</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -157,7 +157,27 @@
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Quỹ</label><select class="form-control form-control-sm" id="inp_cash_book_id"><option value="">-- Chọn --</option>{% for c in cashbooks %}<option value="{{ c.id }}" data-balance="{{ c.balance }}">{{ c.name }} - {{ c.balance|money_vnd }}đ</option>{% endfor %}</select><small class="text-muted" id="lbl_balance"></small></div></div>
-                    <div class="col-md-6"><div class="form-group"><label>Số tiền thực chi <span class="text-danger">*</span></label><input type="number" class="form-control form-control-sm" id="inp_amount" value="0"><small class="text-muted">Có thể điều chỉnh theo hàng hỏng hoặc khuyến mãi của nhà cung cấp.</small></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Số tiền trước khuyến mãi <span class="text-danger">*</span></label><input type="number" min="0" step="1" class="form-control form-control-sm" id="inp_amount" value="0"><small class="text-muted">Tự lấy từ phiếu nhập nhưng không sửa ngược giá trị phiếu nhập.</small></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Khuyến mãi (% / tiền)</label>
+                            <div class="input-group input-group-sm">
+                                <div class="input-group-prepend">
+                                    <select class="form-control form-control-sm" id="inp_promotion_mode" aria-label="Cách tính khuyến mãi">
+                                        <option value="amount">Số tiền</option>
+                                        <option value="percent">Phần trăm</option>
+                                    </select>
+                                </div>
+                                <input type="number" min="0" step="1" class="form-control text-right" id="inp_promotion_amount" value="0" aria-label="Tiền khuyến mãi">
+                                <input type="number" min="0" max="100" step="0.01" class="form-control text-right" id="inp_promotion_percent" value="0" aria-label="Phần trăm khuyến mãi" style="display:none;">
+                                <div class="input-group-append"><span class="input-group-text" id="promotion_unit">đ</span></div>
+                            </div>
+                            <small class="text-muted" id="promotion_conversion">Tương đương 0đ (0%)</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6"><div class="form-group"><label>Số tiền thực chi</label><input type="number" class="form-control form-control-sm font-weight-bold text-danger" id="inp_actual_amount" value="0" readonly><small class="text-muted">Đây là số tiền thực tế bị trừ khỏi quỹ.</small></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-4"><div class="form-group"><label>Ngày chi <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_payment_date"></div></div>
@@ -178,6 +198,35 @@
 {% block extra_js %}
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function getPaymentNumericValue(selector){
+    var value = Number($(selector).val() || 0);
+    return Number.isFinite(value) ? value : 0;
+}
+function syncPaymentPromotion(){
+    var grossAmount = Math.max(getPaymentNumericValue('#inp_amount'), 0);
+    var mode = $('#inp_promotion_mode').val() === 'percent' ? 'percent' : 'amount';
+    var promotionAmount = 0;
+    var promotionPercent = 0;
+
+    if(mode === 'percent'){
+        promotionPercent = getPaymentNumericValue('#inp_promotion_percent');
+        promotionAmount = Math.round(grossAmount * promotionPercent / 100);
+        $('#inp_promotion_amount').val(promotionAmount);
+    } else {
+        promotionAmount = getPaymentNumericValue('#inp_promotion_amount');
+        promotionPercent = grossAmount > 0 ? promotionAmount * 100 / grossAmount : 0;
+        $('#inp_promotion_percent').val(Math.round(promotionPercent * 100) / 100);
+    }
+
+    $('#inp_promotion_amount').toggle(mode === 'amount');
+    $('#inp_promotion_percent').toggle(mode === 'percent');
+    $('#promotion_unit').text(mode === 'percent' ? '%' : 'đ');
+    $('#inp_actual_amount').val(Math.round(grossAmount - promotionAmount));
+    $('#promotion_conversion').text(
+        'Tương đương ' + fmt(Math.round(promotionAmount)) + 'đ (' +
+        (Math.round(promotionPercent * 100) / 100).toLocaleString('vi-VN') + '%)'
+    );
+}
 function fmtD(n){return fmt(n) + 'đ';}
 var PAYMENT_PAGE_SIZE_KEY = 'ifshop_payment_page_size';
 var PAYMENT_PAGE_STATE = {
@@ -190,7 +239,6 @@ var PAYMENT_PAGE_STATE = {
 };
 var PAYMENT_NEXT_CODE = '';
 var PAYMENT_DATE_SORT_DIRECTION = 'desc';
-var PAYMENT_ROWS_BY_ID = {};
 var PAYMENT_FORM_CLOSE_BASELINE = null;
 var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
@@ -236,7 +284,7 @@ function openPaymentForSupplierDebt(){
         $('#inp_supplier_id').val(PAYMENT_URL_FILTERS.supplier_id).trigger('change.select2');
     }
     if(PAYMENT_URL_FILTERS.debt_amount > 0){
-        $('#inp_amount').val(PAYMENT_URL_FILTERS.debt_amount);
+        $('#inp_amount').val(PAYMENT_URL_FILTERS.debt_amount).trigger('input');
     }
     if(PAYMENT_URL_FILTERS.goods_receipt_code){
         $('#inp_description').val('Thanh toán phiếu nhập ' + PAYMENT_URL_FILTERS.goods_receipt_code);
@@ -317,12 +365,18 @@ $(document).ready(function(){
         var $opt = $(this).find('option:selected');
         var amount = $opt.data('amount');
         if(amount){
-            $('#inp_amount').val(amount);
+            $('#inp_amount').val(amount).trigger('input');
         }
     });
 
+    $('#inp_amount, #inp_promotion_amount, #inp_promotion_percent').on('input', syncPaymentPromotion);
+    $('#inp_promotion_mode').on('change', syncPaymentPromotion);
+
     $('#btn_add').click(function(){
         $('#edit_id').val('');$('#inp_description,#inp_note').val('');$('#inp_amount').val(0);
+        $('#inp_promotion_mode').val('amount');
+        $('#inp_promotion_amount,#inp_promotion_percent').val(0);
+        syncPaymentPromotion();
         $('#inp_category_id,#inp_cash_book_id,#inp_supplier_id,#inp_goods_receipt_id').val('').trigger('change');
         // Tự động điền ngày hôm nay
         var today = new Date().toISOString().split('T')[0];
@@ -340,11 +394,20 @@ $(document).ready(function(){
         var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),category_id:$('#inp_category_id').val(),
             cash_book_id:$('#inp_cash_book_id').val(),supplier_id:$('#inp_supplier_id').val(),
             goods_receipt_id:$('#inp_goods_receipt_id').val(),
-            amount:$('#inp_amount').val(),
+            gross_amount:$('#inp_amount').val(),promotion_mode:$('#inp_promotion_mode').val(),
+            promotion_amount:$('#inp_promotion_amount').val(),promotion_percent:$('#inp_promotion_percent').val(),
+            amount:$('#inp_actual_amount').val(),
             payment_date:$('#inp_payment_date').val(),description:$('#inp_description').val(),
             status:parseInt($('#inp_status').val()),payment_method:parseInt($methodOpt.data('legacy-type'))||2,
             payment_method_option_id:$methodOpt.val()||null,note:$('#inp_note').val()};
         if(!data.payment_date){alert('Vui lòng nhập ngày chi');return;}
+        if(Number(data.gross_amount) < 0){alert('Số tiền trước khuyến mãi không được âm');return;}
+        if(Number(data.promotion_amount) < 0 || Number(data.promotion_amount) > Number(data.gross_amount)){
+            alert('Tiền khuyến mãi phải từ 0 đến số tiền trước khuyến mãi');return;
+        }
+        if(data.promotion_mode === 'percent' && (Number(data.promotion_percent) < 0 || Number(data.promotion_percent) > 100)){
+            alert('Khuyến mãi (%) phải từ 0 đến 100');return;
+        }
         $.ajax({url:'/api/payments/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_form').modal('hide');if(!data.id) resetPaymentPage();loadData();}alert(r.message);}
@@ -386,9 +449,6 @@ $(document).ready(function(){
         PAYMENT_PAGE_STATE.page = page;
         loadData();
     });
-    $(document).on('click', '.btn-approve-payment', function(){
-        approvePayment($(this).data('payment-id'), this);
-    });
     $('#modal_form').on('hidden.bs.modal', function(){
         PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
         PAYMENT_FORM_CLOSE_BASELINE = null;
@@ -416,6 +476,9 @@ function getPaymentFormCloseSnapshot(){
         goods_receipt_id: getPaymentFormCloseFieldValue('#inp_goods_receipt_id'),
         cash_book_id: getPaymentFormCloseFieldValue('#inp_cash_book_id'),
         amount: normalizePaymentFormCloseNumber($('#inp_amount').val()),
+        promotion_mode: getPaymentFormCloseFieldValue('#inp_promotion_mode'),
+        promotion_amount: normalizePaymentFormCloseNumber($('#inp_promotion_amount').val()),
+        promotion_percent: normalizePaymentFormCloseNumber($('#inp_promotion_percent').val()),
         payment_date: getPaymentFormCloseFieldValue('#inp_payment_date'),
         payment_method_option_id: getPaymentFormCloseFieldValue('#inp_payment_method'),
         status: getPaymentFormCloseFieldValue('#inp_status'),
@@ -520,27 +583,23 @@ function loadData(){
         PAYMENT_NEXT_CODE = (res.meta && res.meta.next_code) || res.next_code || PAYMENT_NEXT_CODE || '';
         $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
         var h='';
-        PAYMENT_ROWS_BY_ID = {};
         var startIndex = Number((res.meta && res.meta.start_index) || 1);
         res.data.forEach(function(d,i){
-            PAYMENT_ROWS_BY_ID[d.id] = d;
             var grBadge = d.goods_receipt ? '<span class="badge badge-info">'+d.goods_receipt+'</span>' : '';
             var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
-            var statusHtml = '<div class="d-flex align-items-center flex-wrap" style="gap:5px;"><span>'+d.status_display+'</span>';
-            if(Number(d.status) === 0){
-                statusHtml += '<button type="button" class="btn btn-xs btn-success btn-approve-payment" data-payment-id="'+d.id+'" title="Duyệt nhanh phiếu chi"><i class="fas fa-check mr-1"></i>Duyệt</button>';
-            }
-            statusHtml += '</div>';
+            var promotionLabel = Number(d.promotion_amount || 0) > 0
+                ? fmtD(d.promotion_amount) + (d.promotion_mode === 'percent' ? '<small class="text-muted d-block">'+Number(d.promotion_percent || 0).toLocaleString('vi-VN')+'%</small>' : '')
+                : '—';
             h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
-                '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
-                '<td>'+(d.created_by || '')+'</td><td>'+(d.approved_by || '')+'</td><td>'+statusHtml+'</td>'+
+                '<td class="text-right">'+fmtD(d.gross_amount)+'</td><td class="text-right text-success">'+promotionLabel+'</td><td class="text-right font-weight-bold">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
+                '<td>'+(d.approved_by || '')+'</td><td>'+d.status_display+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
-        });$('#data_tbl tbody').html(h||'<tr><td colspan="13" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        });$('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         renderPaymentPagination(res.meta || {});
     }).fail(function(){
-        $('#data_tbl tbody').html('<tr><td colspan="13" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="14" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
         $('#payment_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#payment_pagination').html('');
     });
@@ -549,50 +608,13 @@ function editItem(d){
     $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_category_id').val(d.category_id);
     $('#inp_cash_book_id').val(d.cash_book_id);$('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
     $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
-    $('#inp_amount').val(d.amount);$('#inp_payment_date').val(d.payment_date);
+    $('#inp_amount').val(d.gross_amount);$('#inp_promotion_mode').val(d.promotion_mode || 'amount');
+    $('#inp_promotion_amount').val(d.promotion_amount || 0);$('#inp_promotion_percent').val(d.promotion_percent || 0);
+    syncPaymentPromotion();$('#inp_payment_date').val(d.payment_date);
     $('#inp_description').val(d.description);$('#inp_status').val(d.status);$('#inp_payment_method').val(d.payment_method_option_id || '');$('#inp_note').val(d.note);
     var closeTrackingToken = startPaymentFormCloseTracking();
     $('#modal_title').text('Sửa phiếu chi');$('#modal_form').modal('show');
     schedulePaymentFormCloseBaselineCapture(closeTrackingToken);
-}
-function approvePayment(id, button){
-    var payment = PAYMENT_ROWS_BY_ID[id];
-    if(!payment || Number(payment.status) !== 0) return;
-
-    var linkedOrderText = payment.goods_receipt
-        ? ' cho đơn nhập hàng '+payment.goods_receipt
-        : '';
-    var confirmMessage = 'Bạn chắc chắn muốn duyệt phiếu chi '+payment.code+linkedOrderText+'?\n\n'
-        +'Số tiền: '+fmtD(payment.amount)+'\n'
-        +'Người duyệt sẽ là tài khoản đang đăng nhập.';
-    if(!confirm(confirmMessage)) return;
-
-    var $button = $(button);
-    var originalHtml = $button.html();
-    $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang duyệt');
-    $.ajax({
-        url:'/api/payments/approve/',
-        type:'POST',
-        contentType:'application/json',
-        headers:{'X-CSRFToken':'{{csrf_token}}'},
-        data:JSON.stringify({id:id}),
-        success:function(r){
-            if(r.status === 'ok'){
-                loadData();
-                return;
-            }
-            alert(r.message || 'Không thể duyệt phiếu chi');
-        },
-        error:function(xhr){
-            var message = xhr.responseJSON && xhr.responseJSON.message
-                ? xhr.responseJSON.message
-                : 'Không thể duyệt phiếu chi';
-            alert(message);
-        },
-        complete:function(){
-            $button.prop('disabled', false).html(originalHtml);
-        }
-    });
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;

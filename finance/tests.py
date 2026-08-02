@@ -392,18 +392,21 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "params.get('status')")
         self.assertContains(response, "params.get('store_id')")
         self.assertContains(response, 'applyPaymentUrlFilters();')
-        self.assertContains(response, '<th>Người tạo</th>', html=True)
+        self.assertNotContains(response, '<th>Người tạo</th>', html=True)
         self.assertContains(response, '<th>Người duyệt</th>', html=True)
-        self.assertContains(response, "d.created_by || ''")
+        self.assertNotContains(response, "d.created_by || ''")
         self.assertContains(response, "d.approved_by || ''")
         self.assertContains(response, 'Số tiền thực chi')
-        self.assertContains(response, 'hàng hỏng hoặc khuyến mãi của nhà cung cấp')
+        self.assertContains(response, 'Số tiền trước khuyến mãi')
+        self.assertContains(response, 'Khuyến mãi (% / tiền)')
+        self.assertContains(response, 'id="inp_promotion_mode"')
+        self.assertContains(response, 'id="inp_promotion_amount"')
+        self.assertContains(response, 'id="inp_promotion_percent"')
+        self.assertContains(response, 'id="inp_actual_amount"')
+        self.assertContains(response, 'function syncPaymentPromotion()')
         self.assertContains(response, "$('#inp_status').val('1')")
-        self.assertContains(response, 'btn-approve-payment')
-        self.assertContains(response, 'if(Number(d.status) === 0)')
-        self.assertContains(response, 'Bạn chắc chắn muốn duyệt phiếu chi')
-        self.assertContains(response, 'cho đơn nhập hàng')
-        self.assertContains(response, '/api/payments/approve/')
+        self.assertNotContains(response, 'btn-approve-payment')
+        self.assertNotContains(response, '/api/payments/approve/')
 
     def test_payment_form_cashbook_options_include_current_balance(self):
         cash_book = CashBook.objects.create(
@@ -445,7 +448,8 @@ class FinanceFlowTests(TestCase):
         )
         for field_name in (
             'code', 'category_id', 'supplier_id', 'goods_receipt_id',
-            'cash_book_id', 'amount', 'payment_date',
+            'cash_book_id', 'amount', 'promotion_mode', 'promotion_amount',
+            'promotion_percent', 'payment_date',
             'payment_method_option_id', 'status', 'description', 'note',
         ):
             self.assertContains(response, f'{field_name}:')
@@ -577,50 +581,6 @@ class FinanceFlowTests(TestCase):
         self.assertIsNone(payment.approved_by_id)
         self.assertIsNone(payment.approved_at)
 
-    def test_quick_approve_payment_only_approves_draft_once(self):
-        cash_book = CashBook.objects.create(
-            name='Quỹ duyệt nhanh',
-            balance=Decimal('1000'),
-        )
-        goods_receipt = self._create_goods_receipt(code='PN-QUICK-APPROVE')
-        payment = Payment.objects.create(
-            code='PC-QUICK-APPROVE',
-            store=self.store,
-            cash_book=cash_book,
-            goods_receipt=goods_receipt,
-            supplier=self.supplier,
-            amount=Decimal('250'),
-            payment_date=date.today(),
-            status=0,
-            created_by=self.other_user,
-        )
-
-        response = self.client.post(
-            reverse('api_approve_payment'),
-            data=json.dumps({'id': payment.id}),
-            content_type='application/json',
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
-        payment.refresh_from_db()
-        cash_book.refresh_from_db()
-        self.assertEqual(payment.status, 1)
-        self.assertEqual(payment.created_by_id, self.other_user.id)
-        self.assertEqual(payment.approved_by_id, self.user.id)
-        self.assertIsNotNone(payment.approved_at)
-        self.assertEqual(cash_book.balance, Decimal('750'))
-
-        duplicate_response = self.client.post(
-            reverse('api_approve_payment'),
-            data=json.dumps({'id': payment.id}),
-            content_type='application/json',
-        )
-        self.assertEqual(duplicate_response.json()['status'], 'error')
-        self.assertIn('Nháp', duplicate_response.json()['message'])
-        cash_book.refresh_from_db()
-        self.assertEqual(cash_book.balance, Decimal('750'))
-
     def test_manual_completed_payment_uses_logged_in_user_as_creator_and_approver(self):
         response = self.client.post(
             reverse('api_save_payment'),
@@ -638,6 +598,125 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(payment.created_by_id, self.user.id)
         self.assertEqual(payment.approved_by_id, self.user.id)
         self.assertIsNotNone(payment.approved_at)
+
+    def test_payment_amount_promotion_reduces_cash_and_settles_supplier_debt(self):
+        receipt = GoodsReceipt.objects.create(
+            code='PN-PROMOTION-AMOUNT',
+            supplier=self.supplier,
+            warehouse=self.warehouse,
+            total_amount=Decimal('1000'),
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        cash_book = CashBook.objects.create(
+            name='Quỹ thanh toán có KM',
+            balance=Decimal('2000'),
+        )
+        payment = Payment.objects.create(
+            code='PC-PROMOTION-AMOUNT',
+            store=self.store,
+            supplier=self.supplier,
+            goods_receipt=receipt,
+            amount=Decimal('1000'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.other_user,
+        )
+
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'cash_book_id': cash_book.id,
+                'supplier_id': self.supplier.id,
+                'goods_receipt_id': receipt.id,
+                'gross_amount': '1000',
+                'promotion_mode': 'amount',
+                'promotion_amount': '150',
+                'promotion_percent': '0',
+                'amount': '999999',  # Server phải tự tính lại, không tin client.
+                'payment_date': date.today().isoformat(),
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        receipt.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.amount, Decimal('850'))
+        self.assertEqual(payment.promotion_mode, 'amount')
+        self.assertEqual(payment.promotion_amount, Decimal('150'))
+        self.assertEqual(payment.promotion_percent, Decimal('15.00'))
+        self.assertEqual(payment.approved_by_id, self.user.id)
+        self.assertEqual(cash_book.balance, Decimal('1150'))
+        self.assertEqual(receipt.total_amount, Decimal('1000'))
+
+        payment_row = next(
+            row for row in self.client.get(reverse('api_get_payments')).json()['data']
+            if row['id'] == payment.id
+        )
+        self.assertEqual(payment_row['gross_amount'], 1000.0)
+        self.assertEqual(payment_row['promotion_amount'], 150.0)
+        self.assertEqual(payment_row['amount'], 850.0)
+
+        debt_payload = self.client.get(
+            reverse('api_get_supplier_debts'),
+            {'q': receipt.code, 'payment_state': 'all'},
+        ).json()
+        debt_row = debt_payload['data'][0]
+        self.assertEqual(debt_row['cash_paid_amount'], 850.0)
+        self.assertEqual(debt_row['promotion_amount'], 150.0)
+        self.assertEqual(debt_row['paid_amount'], 1000.0)
+        self.assertEqual(debt_row['debt_amount'], 0.0)
+        self.assertEqual(debt_row['payment_state'], 'settled')
+
+    def test_payment_percent_promotion_is_calculated_and_rounded_by_server(self):
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-PROMOTION-PERCENT',
+                'gross_amount': '999',
+                'promotion_mode': 'percent',
+                'promotion_percent': '12.5',
+                'promotion_amount': '0',
+                'amount': '0',
+                'payment_date': date.today().isoformat(),
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment = Payment.objects.get(code='PC-PROMOTION-PERCENT')
+        self.assertEqual(payment.promotion_percent, Decimal('12.50'))
+        self.assertEqual(payment.promotion_amount, Decimal('125'))
+        self.assertEqual(payment.amount, Decimal('874'))
+
+    def test_payment_rejects_promotion_greater_than_gross_without_changing_cashbook(self):
+        cash_book = CashBook.objects.create(name='Quỹ không đổi khi lỗi KM', balance=Decimal('2000'))
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-PROMOTION-INVALID',
+                'cash_book_id': cash_book.id,
+                'gross_amount': '1000',
+                'promotion_mode': 'amount',
+                'promotion_amount': '1001',
+                'payment_date': date.today().isoformat(),
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('không được lớn hơn', response.json()['message'])
+        self.assertFalse(Payment.objects.filter(code='PC-PROMOTION-INVALID').exists())
+        cash_book.refresh_from_db()
+        self.assertEqual(cash_book.balance, Decimal('2000'))
 
     def test_finance_entries_api_returns_paginated_combined_rows(self):
         today = date.today()

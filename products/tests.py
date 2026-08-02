@@ -2601,6 +2601,38 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payment.amount, Decimal('45000'))
         self.assertEqual(Payment.objects.filter(goods_receipt=receipt).count(), 1)
 
+    def test_goods_receipt_edit_recalculates_percent_promotion_on_draft_payment(self):
+        create_response = self._post_goods_receipt(
+            'P-SYNC-PROMOTION-PERCENT',
+            Decimal('2'),
+            Decimal('10000'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-SYNC-PROMOTION-PERCENT')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        payment.promotion_mode = 'percent'
+        payment.promotion_percent = Decimal('10')
+        payment.promotion_amount = Decimal('2000')
+        payment.amount = Decimal('18000')
+        payment.save(update_fields=[
+            'promotion_mode', 'promotion_percent', 'promotion_amount', 'amount',
+        ])
+
+        edit_response = self._post_goods_receipt(
+            receipt.code,
+            Decimal('3'),
+            Decimal('10000'),
+            status=1,
+            receipt_id=receipt.id,
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(edit_response.json()['payment_action'], 'updated')
+        self.assertEqual(payment.promotion_amount, Decimal('3000'))
+        self.assertEqual(payment.amount, Decimal('27000'))
+
     def test_goods_receipt_edit_preserves_manually_adjusted_draft_payment_amount(self):
         create_response = self._post_goods_receipt(
             'P-PROMOTION-PAYMENT',

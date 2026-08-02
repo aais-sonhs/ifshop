@@ -862,8 +862,44 @@ def api_delete_receipt(request):
 
 # ============ API: PAYMENT ============
 
+def _get_payment_amount_breakdown(payment):
+    """Giá trị hiển thị của phiếu chi, có đồng bộ lại các phiếu Nháp cũ."""
+    stored_amount = Decimal(str(payment.amount or 0))
+    stored_promotion = Decimal(str(payment.promotion_amount or 0))
+    promotion_percent = Decimal(str(payment.promotion_percent or 0))
+    if payment.goods_receipt_id:
+        gross_amount = Decimal(str(payment.goods_receipt.total_amount or 0))
+    else:
+        gross_amount = stored_amount + stored_promotion
+
+    promotion_amount = stored_promotion
+    actual_amount = stored_amount
+    if payment.status == 0 and payment.goods_receipt_id:
+        if payment.promotion_mode == 'percent':
+            promotion_amount = (
+                gross_amount * promotion_percent / Decimal('100')
+            ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        promotion_amount = min(max(promotion_amount, Decimal('0')), gross_amount)
+        actual_amount = gross_amount - promotion_amount
+        if payment.promotion_mode == 'amount':
+            promotion_percent = (
+                promotion_amount * Decimal('100') / gross_amount
+                if gross_amount else Decimal('0')
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    return {
+        'gross_amount': gross_amount,
+        'promotion_amount': promotion_amount,
+        'promotion_percent': promotion_percent,
+        'actual_amount': actual_amount,
+    }
+
+
 def _serialize_payment_list(payments):
-    return [{
+    data = []
+    for p in payments:
+        amounts = _get_payment_amount_breakdown(p)
+        data.append({
         'id': p.id, 'code': p.code,
         'category': p.category.name if p.category else '',
         'category_id': p.category_id,
@@ -875,13 +911,11 @@ def _serialize_payment_list(payments):
         'target': p.supplier.name if p.supplier else (p.customer.name if p.customer else ''),
         'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
         'goods_receipt_id': p.goods_receipt_id,
-        'gross_amount': float(
-            Decimal(str(p.amount or 0)) + Decimal(str(p.promotion_amount or 0))
-        ),
+        'gross_amount': float(amounts['gross_amount']),
         'promotion_mode': p.promotion_mode,
-        'promotion_amount': float(p.promotion_amount or 0),
-        'promotion_percent': float(p.promotion_percent or 0),
-        'amount': float(p.amount),
+        'promotion_amount': float(amounts['promotion_amount']),
+        'promotion_percent': float(amounts['promotion_percent']),
+        'amount': float(amounts['actual_amount']),
         'description': p.description or '',
         'payment_date': p.payment_date.strftime('%Y-%m-%d') if p.payment_date else '',
         'created_at': p.created_at.strftime('%d/%m/%Y %H:%M:%S') if p.created_at else '',
@@ -893,7 +927,8 @@ def _serialize_payment_list(payments):
         'created_by': _get_user_display_name(p.created_by),
         'approved_by': _get_user_display_name(p.approved_by),
         'approved_at': p.approved_at.strftime('%d/%m/%Y %H:%M:%S') if p.approved_at else '',
-    } for p in payments]
+        })
+    return data
 
 
 def _get_finance_entry_queryset(request):
@@ -1365,7 +1400,6 @@ def api_save_payment(request):
             p.cash_book_id = data.get('cash_book_id') or None
             p.supplier_id = data.get('supplier_id') or None
             p.goods_receipt_id = data.get('goods_receipt_id') or None
-            _apply_payment_promotion(p, data)
             p.description = data.get('description', '')
             p.payment_date = data.get('payment_date')
             p.status = data.get('status', 0)
@@ -1374,7 +1408,22 @@ def api_save_payment(request):
             p.note = data.get('note', '')
 
             # 3. Đồng bộ store theo phiếu nhập liên kết hoặc store mặc định của user.
-            _resolve_payment_scope(request, p)
+            linked_receipt = _resolve_payment_scope(request, p)
+
+            # Phiếu chi gắn phiếu nhập luôn lấy tiền trước KM từ tổng phiếu
+            # nhập (số lượng × đơn giá). Không nhận số tiền gốc do trình duyệt
+            # gửi lên, để kế toán chỉ cần nhập phần KM.
+            promotion_data = data
+            if linked_receipt:
+                promotion_data = dict(data)
+                promotion_data['gross_amount'] = linked_receipt.total_amount
+                if not any(key in data for key in (
+                    'promotion_mode', 'promotion_amount', 'promotion_percent',
+                )):
+                    promotion_data['promotion_mode'] = p.promotion_mode or 'amount'
+                    promotion_data['promotion_amount'] = p.promotion_amount or 0
+                    promotion_data['promotion_percent'] = p.promotion_percent or 0
+            _apply_payment_promotion(p, promotion_data)
 
             # 4. Bổ sung cấu hình phương thức thanh toán nếu user chọn method option.
             _apply_payment_method_defaults(p)
@@ -1887,13 +1936,13 @@ def export_payments_excel(request):
     total_promotion = 0
     total = 0
     for i, p in enumerate(payments, 1):
-        gross_amount = float(
-            Decimal(str(p.amount or 0)) + Decimal(str(p.promotion_amount or 0))
-        )
-        promotion_amount = float(p.promotion_amount or 0)
+        amounts = _get_payment_amount_breakdown(p)
+        gross_amount = float(amounts['gross_amount'])
+        promotion_amount = float(amounts['promotion_amount'])
+        actual_amount = float(amounts['actual_amount'])
         total_gross += gross_amount
         total_promotion += promotion_amount
-        total += float(p.amount or 0)
+        total += actual_amount
         target = p.supplier.name if p.supplier else (p.customer.name if p.customer else '')
         rows.append({
             'stt': i,
@@ -1903,7 +1952,7 @@ def export_payments_excel(request):
             'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
             'gross_amount': gross_amount,
             'promotion': promotion_amount,
-            'amount': float(p.amount or 0),
+            'amount': actual_amount,
             'method': p.get_payment_method_label(),
             'date': p.payment_date,
             'cashbook': p.cash_book.name if p.cash_book else '',

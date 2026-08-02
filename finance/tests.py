@@ -152,6 +152,37 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(len(payload['data']), 11)
         self.assertEqual(payload['next_code'], 'PC-001')
 
+    def test_draft_linked_payment_is_displayed_from_current_goods_receipt_total(self):
+        goods_receipt = GoodsReceipt.objects.create(
+            code='PN-DRAFT-RECALCULATE',
+            supplier=self.supplier,
+            warehouse=self.warehouse,
+            total_amount=Decimal('1000'),
+            receipt_date=date.today(),
+            status=1,
+            created_by=self.user,
+        )
+        payment = Payment.objects.create(
+            code='PC-DRAFT-RECALCULATE',
+            store=self.store,
+            goods_receipt=goods_receipt,
+            amount=Decimal('333'),  # Dữ liệu Nháp cũ đã chỉnh tay.
+            promotion_mode='amount',
+            promotion_amount=Decimal('100'),
+            promotion_percent=Decimal('0'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        payload = self.client.get(reverse('api_get_payments')).json()['data']
+        row = next(item for item in payload if item['id'] == payment.id)
+
+        self.assertEqual(row['gross_amount'], 1000.0)
+        self.assertEqual(row['promotion_amount'], 100.0)
+        self.assertEqual(row['promotion_percent'], 10.0)
+        self.assertEqual(row['amount'], 900.0)
+
     def test_payment_list_sorts_by_payment_date_in_requested_direction(self):
         today = date.today()
         for index, days_ago in enumerate((1, 3, 2), start=1):
@@ -396,14 +427,17 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, '<th>Người duyệt</th>', html=True)
         self.assertNotContains(response, "d.created_by || ''")
         self.assertContains(response, "d.approved_by || ''")
-        self.assertContains(response, 'Số tiền thực chi')
-        self.assertContains(response, 'Số tiền trước khuyến mãi')
+        self.assertContains(response, 'Tiền phiếu chi')
+        self.assertContains(response, 'Tổng tiền phiếu nhập')
         self.assertContains(response, 'Khuyến mãi (% / tiền)')
         self.assertContains(response, 'id="inp_promotion_mode"')
         self.assertContains(response, 'id="inp_promotion_amount"')
         self.assertContains(response, 'id="inp_promotion_percent"')
         self.assertContains(response, 'id="inp_actual_amount"')
         self.assertContains(response, 'function syncPaymentPromotion()')
+        self.assertContains(response, 'function setPaymentGrossInputMode(isLinkedReceipt)')
+        self.assertContains(response, ".prop('readonly', !!isLinkedReceipt)")
+        self.assertContains(response, 'Tự lấy từ tổng số lượng × đơn giá của phiếu nhập')
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertNotContains(response, 'btn-approve-payment')
         self.assertNotContains(response, '/api/payments/approve/')
@@ -632,7 +666,7 @@ class FinanceFlowTests(TestCase):
                 'cash_book_id': cash_book.id,
                 'supplier_id': self.supplier.id,
                 'goods_receipt_id': receipt.id,
-                'gross_amount': '1000',
+                'gross_amount': '777',  # Backend phải bỏ qua và lấy tổng phiếu nhập 1.000.
                 'promotion_mode': 'amount',
                 'promotion_amount': '150',
                 'promotion_percent': '0',

@@ -190,6 +190,7 @@ var PAYMENT_PAGE_STATE = {
 };
 var PAYMENT_NEXT_CODE = '';
 var PAYMENT_DATE_SORT_DIRECTION = 'desc';
+var PAYMENT_ROWS_BY_ID = {};
 var PAYMENT_FORM_CLOSE_BASELINE = null;
 var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
@@ -385,6 +386,9 @@ $(document).ready(function(){
         PAYMENT_PAGE_STATE.page = page;
         loadData();
     });
+    $(document).on('click', '.btn-approve-payment', function(){
+        approvePayment($(this).data('payment-id'), this);
+    });
     $('#modal_form').on('hidden.bs.modal', function(){
         PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
         PAYMENT_FORM_CLOSE_BASELINE = null;
@@ -516,14 +520,21 @@ function loadData(){
         PAYMENT_NEXT_CODE = (res.meta && res.meta.next_code) || res.next_code || PAYMENT_NEXT_CODE || '';
         $('#payment_page_size').val(String(PAYMENT_PAGE_STATE.page_size));
         var h='';
+        PAYMENT_ROWS_BY_ID = {};
         var startIndex = Number((res.meta && res.meta.start_index) || 1);
         res.data.forEach(function(d,i){
+            PAYMENT_ROWS_BY_ID[d.id] = d;
             var grBadge = d.goods_receipt ? '<span class="badge badge-info">'+d.goods_receipt+'</span>' : '';
             var pmLabel = d.payment_method_display || (d.payment_method === 2 ? '🏦 CK' : '💵 TM');
+            var statusHtml = '<div class="d-flex align-items-center flex-wrap" style="gap:5px;"><span>'+d.status_display+'</span>';
+            if(Number(d.status) === 0){
+                statusHtml += '<button type="button" class="btn btn-xs btn-success btn-approve-payment" data-payment-id="'+d.id+'" title="Duyệt nhanh phiếu chi"><i class="fas fa-check mr-1"></i>Duyệt</button>';
+            }
+            statusHtml += '</div>';
             h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
                 '<td class="text-right">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
-                '<td>'+(d.created_by || '')+'</td><td>'+(d.approved_by || '')+'</td><td>'+d.status_display+'</td>'+
+                '<td>'+(d.created_by || '')+'</td><td>'+(d.approved_by || '')+'</td><td>'+statusHtml+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
         });$('#data_tbl tbody').html(h||'<tr><td colspan="13" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
@@ -543,6 +554,45 @@ function editItem(d){
     var closeTrackingToken = startPaymentFormCloseTracking();
     $('#modal_title').text('Sửa phiếu chi');$('#modal_form').modal('show');
     schedulePaymentFormCloseBaselineCapture(closeTrackingToken);
+}
+function approvePayment(id, button){
+    var payment = PAYMENT_ROWS_BY_ID[id];
+    if(!payment || Number(payment.status) !== 0) return;
+
+    var linkedOrderText = payment.goods_receipt
+        ? ' cho đơn nhập hàng '+payment.goods_receipt
+        : '';
+    var confirmMessage = 'Bạn chắc chắn muốn duyệt phiếu chi '+payment.code+linkedOrderText+'?\n\n'
+        +'Số tiền: '+fmtD(payment.amount)+'\n'
+        +'Người duyệt sẽ là tài khoản đang đăng nhập.';
+    if(!confirm(confirmMessage)) return;
+
+    var $button = $(button);
+    var originalHtml = $button.html();
+    $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang duyệt');
+    $.ajax({
+        url:'/api/payments/approve/',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({id:id}),
+        success:function(r){
+            if(r.status === 'ok'){
+                loadData();
+                return;
+            }
+            alert(r.message || 'Không thể duyệt phiếu chi');
+        },
+        error:function(xhr){
+            var message = xhr.responseJSON && xhr.responseJSON.message
+                ? xhr.responseJSON.message
+                : 'Không thể duyệt phiếu chi';
+            alert(message);
+        },
+        complete:function(){
+            $button.prop('disabled', false).html(originalHtml);
+        }
+    });
 }
 function deleteItem(id){
     if(!confirm('Bạn có chắc muốn xóa?'))return;

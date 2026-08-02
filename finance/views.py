@@ -1305,6 +1305,46 @@ def api_save_payment(request):
 
 
 @login_required(login_url="/login/")
+def api_approve_payment(request):
+    """Duyệt nhanh một phiếu chi Nháp mà không phải gửi lại toàn bộ biểu mẫu."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        with transaction.atomic():
+            current_payment = _get_payment_for_user(request, data.get('id'))
+            if not current_payment:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
+
+            # Sau khi kiểm tra phạm vi cửa hàng, khóa bản ghi bằng query đơn giản
+            # để hai thao tác đồng thời không thể cùng trừ tiền khỏi quỹ.
+            payment = Payment.objects.select_for_update().get(id=current_payment.id)
+            if payment.status != 0:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Chỉ phiếu chi ở trạng thái Nháp mới được duyệt nhanh.',
+                })
+
+            if payment.cash_book_id:
+                _adjust_cashbook_balance(
+                    payment.cash_book_id,
+                    -Decimal(str(payment.amount or 0)),
+                    validate_non_negative=True,
+                )
+
+            payment.status = 1
+            payment.approved_by = request.user
+            payment.approved_at = timezone.now()
+            payment.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
+
+        return JsonResponse({'status': 'ok', 'message': 'Duyệt phiếu chi thành công'})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
 def api_delete_payment(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})

@@ -8,13 +8,47 @@
         </div>
     </div>
     <div class="card-body">
-        <div class="row mb-3">
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-            <div class="col-md-2"><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
-            <div class="col-md-3" id="store_filter_wrap" style="display:none;">
+        <div class="row mb-3 align-items-end" style="row-gap:8px;">
+            <div class="col-lg-2 col-md-3">
+                <label class="small text-muted mb-1" for="filter_period_type">Thời gian</label>
+                <select class="form-control form-control-sm" id="filter_period_type">
+                    <option value="month" selected>Theo tháng</option>
+                    <option value="year">Theo năm</option>
+                    <option value="range">Theo khoảng ngày</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-3" id="filter_month_wrap">
+                <label class="small text-muted mb-1" for="filter_month">Tháng</label>
+                <input type="month" class="form-control form-control-sm" id="filter_month">
+            </div>
+            <div class="col-lg-2 col-md-3" id="filter_year_wrap" style="display:none;">
+                <label class="small text-muted mb-1" for="filter_year">Năm</label>
+                <input type="number" min="2000" max="2100" step="1" class="form-control form-control-sm" id="filter_year">
+            </div>
+            <div class="col-lg-2 col-md-3 finance-date-range-wrap" style="display:none;">
+                <label class="small text-muted mb-1" for="filter_from_date">Từ ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_from_date">
+            </div>
+            <div class="col-lg-2 col-md-3 finance-date-range-wrap" style="display:none;">
+                <label class="small text-muted mb-1" for="filter_to_date">Đến ngày</label>
+                <input type="date" class="form-control form-control-sm" id="filter_to_date">
+            </div>
+            <div class="col-lg-3 col-md-4" id="store_filter_wrap" style="display:none;">
+                <label class="small text-muted mb-1" for="filter_store_id">Cửa hàng</label>
                 <select class="form-control form-control-sm" id="filter_store_id"><option value="">🏢 Tất cả cửa hàng</option></select>
             </div>
-            <div class="col-md-2"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
+            <div class="col-lg-2 col-md-3"><button class="btn btn-sm btn-info" id="btn_search"><i class="fas fa-search"></i> Xem báo cáo</button></div>
+        </div>
+        <div class="d-flex align-items-center flex-wrap mb-3" id="finance_quick_periods" style="gap:6px;">
+            <span class="small text-muted mr-1">Mốc nhanh:</span>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="today">Hôm nay</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="yesterday">Hôm qua</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="7d">7 ngày qua</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="30d">30 ngày qua</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="current_month">Tháng này</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="previous_month">Tháng trước</button>
+            <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="current_year">Năm nay</button>
+            <span class="badge badge-light border px-2 py-1 ml-1" id="finance_period_summary"></span>
         </div>
         <!-- TỔNG QUAN -->
         <div class="row mb-3">
@@ -181,16 +215,124 @@
 <script>
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
+function financeDateValue(year, month, day){
+    return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+function financePeriodDateLabel(value){
+    var parts = String(value || '').split('-');
+    return parts.length === 3 ? parts[2]+'/'+parts[1]+'/'+parts[0] : value;
+}
+function updateFinancePeriodSummary(){
+    var fromDate = $('#filter_from_date').val();
+    var toDate = $('#filter_to_date').val();
+    var periodType = $('#filter_period_type').val() || 'month';
+    var prefix = periodType === 'month' ? 'Tháng' : (periodType === 'year' ? 'Năm' : 'Khoảng ngày');
+    $('#finance_period_summary').text(
+        prefix+': '+financePeriodDateLabel(fromDate)+' - '+financePeriodDateLabel(toDate)
+    );
+}
+function applyFinanceQuickPeriodState(){
+    $('.finance-quick-period').removeClass('btn-primary').addClass('btn-outline-primary');
+    var today = new Date();
+    var yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+    var date7 = new Date(today); date7.setDate(date7.getDate()-6);
+    var date30 = new Date(today); date30.setDate(date30.getDate()-29);
+    var previousMonth = new Date(today.getFullYear(), today.getMonth()-1, 1);
+    var periodType = $('#filter_period_type').val() || 'month';
+    var fromDate = $('#filter_from_date').val();
+    var toDate = $('#filter_to_date').val();
+    var matched = '';
+
+    if(periodType === 'month' && $('#filter_month').val() === financeDateValue(today.getFullYear(), today.getMonth()+1, 1).slice(0, 7)) matched = 'current_month';
+    else if(periodType === 'month' && $('#filter_month').val() === financeDateValue(previousMonth.getFullYear(), previousMonth.getMonth()+1, 1).slice(0, 7)) matched = 'previous_month';
+    else if(periodType === 'year' && String($('#filter_year').val()) === String(today.getFullYear())) matched = 'current_year';
+    else if(periodType === 'range' && fromDate === financeDateValue(today.getFullYear(), today.getMonth()+1, today.getDate()) && toDate === fromDate) matched = 'today';
+    else if(periodType === 'range' && fromDate === financeDateValue(yesterday.getFullYear(), yesterday.getMonth()+1, yesterday.getDate()) && toDate === fromDate) matched = 'yesterday';
+    else if(periodType === 'range' && fromDate === financeDateValue(date7.getFullYear(), date7.getMonth()+1, date7.getDate()) && toDate === financeDateValue(today.getFullYear(), today.getMonth()+1, today.getDate())) matched = '7d';
+    else if(periodType === 'range' && fromDate === financeDateValue(date30.getFullYear(), date30.getMonth()+1, date30.getDate()) && toDate === financeDateValue(today.getFullYear(), today.getMonth()+1, today.getDate())) matched = '30d';
+
+    if(matched){
+        $('.finance-quick-period[data-range="'+matched+'"]').removeClass('btn-outline-primary').addClass('btn-primary');
+    }
+}
+function syncFinancePeriodDates(){
+    var periodType = $('#filter_period_type').val() || 'month';
+    var today = new Date();
+    $('#filter_month_wrap').toggle(periodType === 'month');
+    $('#filter_year_wrap').toggle(periodType === 'year');
+    $('.finance-date-range-wrap').toggle(periodType === 'range');
+
+    if(periodType === 'month'){
+        var monthValue = $('#filter_month').val();
+        if(!/^\d{4}-\d{2}$/.test(monthValue)){
+            monthValue = financeDateValue(today.getFullYear(), today.getMonth() + 1, 1).slice(0, 7);
+            $('#filter_month').val(monthValue);
+        }
+        var monthParts = monthValue.split('-');
+        var monthYear = parseInt(monthParts[0], 10);
+        var monthNumber = parseInt(monthParts[1], 10);
+        var lastDay = new Date(monthYear, monthNumber, 0).getDate();
+        $('#filter_from_date').val(financeDateValue(monthYear, monthNumber, 1));
+        $('#filter_to_date').val(financeDateValue(monthYear, monthNumber, lastDay));
+    } else if(periodType === 'year'){
+        var selectedYear = parseInt($('#filter_year').val(), 10);
+        if(!selectedYear || selectedYear < 2000 || selectedYear > 2100){
+            selectedYear = today.getFullYear();
+            $('#filter_year').val(selectedYear);
+        }
+        $('#filter_from_date').val(financeDateValue(selectedYear, 1, 1));
+        $('#filter_to_date').val(financeDateValue(selectedYear, 12, 31));
+    }
+    updateFinancePeriodSummary();
+    applyFinanceQuickPeriodState();
+}
+function setFinanceQuickPeriod(range){
+    var today = new Date();
+    if(range === 'current_month' || range === 'previous_month'){
+        var selectedMonth = range === 'current_month'
+            ? new Date(today.getFullYear(), today.getMonth(), 1)
+            : new Date(today.getFullYear(), today.getMonth()-1, 1);
+        $('#filter_period_type').val('month');
+        $('#filter_month').val(financeDateValue(selectedMonth.getFullYear(), selectedMonth.getMonth()+1, 1).slice(0, 7));
+    }else if(range === 'current_year'){
+        $('#filter_period_type').val('year');
+        $('#filter_year').val(today.getFullYear());
+    }else{
+        var fromDate = new Date(today);
+        var toDate = new Date(today);
+        if(range === 'yesterday'){
+            fromDate.setDate(fromDate.getDate()-1);
+            toDate = new Date(fromDate);
+        }else if(range === '7d'){
+            fromDate.setDate(fromDate.getDate()-6);
+        }else if(range === '30d'){
+            fromDate.setDate(fromDate.getDate()-29);
+        }
+        $('#filter_period_type').val('range');
+        $('#filter_from_date').val(financeDateValue(fromDate.getFullYear(), fromDate.getMonth()+1, fromDate.getDate()));
+        $('#filter_to_date').val(financeDateValue(toDate.getFullYear(), toDate.getMonth()+1, toDate.getDate()));
+    }
+    syncFinancePeriodDates();
+    loadReport();
+}
 $(document).ready(function(){
     var today = new Date();
-    var first = new Date(today.getFullYear(), today.getMonth(), 1);
-    $('#filter_from_date').val(first.toISOString().split('T')[0]);
-    $('#filter_to_date').val(today.toISOString().split('T')[0]);
+    $('#filter_month').val(financeDateValue(today.getFullYear(), today.getMonth() + 1, 1).slice(0, 7));
+    $('#filter_year').val(today.getFullYear());
+    syncFinancePeriodDates();
     loadReport();
-    $('#btn_search').click(function(){ loadReport(); });
+    $('#filter_period_type').change(function(){ syncFinancePeriodDates(); loadReport(); });
+    $('#filter_month, #filter_year').change(function(){ syncFinancePeriodDates(); loadReport(); });
+    $('#filter_from_date, #filter_to_date').change(function(){
+        syncFinancePeriodDates();
+        if($('#filter_from_date').val() && $('#filter_to_date').val()) loadReport();
+    });
+    $('.finance-quick-period').click(function(){ setFinanceQuickPeriod($(this).data('range')); });
+    $('#btn_search').click(function(){ syncFinancePeriodDates(); loadReport(); });
     $('#filter_store_id').change(function(){ loadReport(); });
 });
 function loadReport(){
+    syncFinancePeriodDates();
     var storeId = $('#filter_store_id').val();
     updateOrderDebtLink();
     updatePaymentExpenseLink();
@@ -350,6 +492,7 @@ function renderFinanceCharts(categories, summary){
 }
 
 $('#btn_export').click(function(){
+    syncFinancePeriodDates();
     var from = $('#filter_from_date').val();
     var to = $('#filter_to_date').val();
     var storeId = $('#filter_store_id').val();

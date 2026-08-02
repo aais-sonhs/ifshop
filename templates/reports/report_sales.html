@@ -19,9 +19,25 @@
             </div>
             <div class="collapse show" id="filterCollapse">
                 <div class="card-body py-2">
-                    <div class="row">
-                        <div class="col-md-2"><label class="small text-muted mb-1" id="filter_from_date_label">Từ ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-                        <div class="col-md-2"><label class="small text-muted mb-1" id="filter_to_date_label">Đến ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+                    <div class="row align-items-end" style="row-gap:8px;">
+                        <div class="col-md-2">
+                            <label class="small text-muted mb-1" for="filter_period_type">Kỳ báo cáo</label>
+                            <select class="form-control form-control-sm" id="filter_period_type">
+                                <option value="month" selected>Theo tháng</option>
+                                <option value="year">Theo năm</option>
+                                <option value="range">Khoảng ngày</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2" id="filter_month_wrap">
+                            <label class="small text-muted mb-1" for="filter_month">Tháng</label>
+                            <input type="month" class="form-control form-control-sm" id="filter_month">
+                        </div>
+                        <div class="col-md-2" id="filter_year_wrap" style="display:none;">
+                            <label class="small text-muted mb-1" for="filter_year">Năm</label>
+                            <input type="number" min="2000" max="2100" step="1" class="form-control form-control-sm" id="filter_year">
+                        </div>
+                        <div class="col-md-2 sales-date-range-wrap" style="display:none;"><label class="small text-muted mb-1" id="filter_from_date_label" for="filter_from_date">Từ ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
+                        <div class="col-md-2 sales-date-range-wrap" style="display:none;"><label class="small text-muted mb-1" id="filter_to_date_label" for="filter_to_date">Đến ngày xuất kho</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
                         <div class="col-md-2" id="store_filter_wrap" style="display:none;"><label class="small text-muted mb-1">Cửa hàng</label><select class="form-control form-control-sm" id="filter_store_id"><option value="">🏢 Tất cả</option></select></div>
                         <div class="col-md-2"><label class="small text-muted mb-1">Khách buôn/lẻ</label><select class="form-control form-control-sm" id="filter_customer_kind"><option value="">👥 Tất cả</option></select></div>
                         <div class="col-md-2"><label class="small text-muted mb-1">Nhóm KH</label><select class="form-control form-control-sm" id="filter_customer_group"><option value="">👥 Tất cả</option></select></div>
@@ -54,7 +70,7 @@
                             <option value="all_active">Tất cả đơn chưa hủy</option>
                         </select>
                         <span class="badge badge-success" id="sales_date_basis_badge">Ghi nhận theo ngày xuất kho</span>
-                        <span class="small text-muted">Xem theo:</span>
+                        <span class="small text-muted">Nhóm theo:</span>
                         <select class="form-control form-control-sm" id="filter_time_group" style="width:auto;min-width:110px;">
                             <option value="day">Ngày</option>
                             <option value="month">Tháng</option>
@@ -690,6 +706,39 @@ function toIsoDate(d){
     var day = String(d.getDate()).padStart(2, '0');
     return year + '-' + month + '-' + day;
 }
+function salesDateValue(year, month, day){
+    return String(year).padStart(4, '0')+'-'+String(month).padStart(2, '0')+'-'+String(day).padStart(2, '0');
+}
+function syncSalesPeriodDates(){
+    var periodType=$('#filter_period_type').val()||'month';
+    var today=new Date();
+    $('#filter_month_wrap').toggle(periodType==='month');
+    $('#filter_year_wrap').toggle(periodType==='year');
+    $('.sales-date-range-wrap').toggle(periodType==='range');
+
+    if(periodType==='month'){
+        var monthValue=$('#filter_month').val();
+        if(!/^\d{4}-\d{2}$/.test(monthValue)){
+            monthValue=salesDateValue(today.getFullYear(),today.getMonth()+1,1).slice(0,7);
+            $('#filter_month').val(monthValue);
+        }
+        var monthParts=monthValue.split('-');
+        var monthYear=parseInt(monthParts[0],10);
+        var monthNumber=parseInt(monthParts[1],10);
+        var lastDay=new Date(monthYear,monthNumber,0).getDate();
+        $('#filter_from_date').val(salesDateValue(monthYear,monthNumber,1));
+        $('#filter_to_date').val(salesDateValue(monthYear,monthNumber,lastDay));
+    }else if(periodType==='year'){
+        var selectedYear=parseInt($('#filter_year').val(),10);
+        if(!selectedYear||selectedYear<2000||selectedYear>2100){
+            selectedYear=today.getFullYear();
+            $('#filter_year').val(selectedYear);
+        }
+        $('#filter_from_date').val(salesDateValue(selectedYear,1,1));
+        $('#filter_to_date').val(salesDateValue(selectedYear,12,31));
+    }
+    applyQuickRangeState();
+}
 function setOrderDetailCurrentMonth(){
     var today=new Date();
     var firstDay=new Date(today.getFullYear(),today.getMonth(),1);
@@ -738,6 +787,8 @@ function setQuickRange(range){
     if(range==='month'){ from=new Date(today.getFullYear(), today.getMonth(), 1); }
     else if(range==='7d'){ from.setDate(from.getDate()-6); }
     else if(range==='30d'){ from.setDate(from.getDate()-29); }
+    $('#filter_period_type').val('range');
+    syncSalesPeriodDates();
     $('#filter_from_date').val(toIsoDate(from));
     $('#filter_to_date').val(toIsoDate(to));
     applyQuickRangeState();
@@ -1162,8 +1213,10 @@ function showSalesReportTab(tabId){
 
 $(document).ready(function(){
     var today=new Date(), firstDay=new Date(today.getFullYear(),today.getMonth(),1);
-    $('#filter_from_date').val(toIsoDate(firstDay));
-    $('#filter_to_date').val(toIsoDate(today));
+    $('#filter_month').val(toIsoDate(firstDay).slice(0,7));
+    $('#filter_year').val(today.getFullYear());
+    $('#filter_period_type').val('month');
+    syncSalesPeriodDates();
     $('#filter_time_group').val('day');
     $('#filter_order_scope').val('realized');
     setOrderDetailCurrentMonth();
@@ -1264,8 +1317,10 @@ $(document).ready(function(){
     applyTimeGroupUi(getTimeGroupText());
     syncRevenueDateBasisUi();
     loadReport();
-    $('#btn_search').click(function(){loadReport();});
+    $('#btn_search').click(function(){syncSalesPeriodDates();loadReport();});
     $('#filter_store_id, #filter_customer_kind, #filter_customer_group, #filter_category, #filter_product_type, #filter_profit, #filter_customer_id, #filter_product_id, #filter_salesperson, #filter_time_group, #filter_order_scope').change(function(){loadReport();});
+    $('#filter_period_type').change(function(){syncSalesPeriodDates();});
+    $('#filter_month, #filter_year').change(function(){syncSalesPeriodDates();});
     $('#filter_from_date, #filter_to_date').change(function(){applyQuickRangeState();});
     $('#filter_revenue_min, #filter_revenue_max, #filter_cost_min, #filter_cost_max, #filter_line_profit_min, #filter_line_profit_max, #filter_profit_min, #filter_profit_max').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
     $('#filter_search').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
@@ -1276,9 +1331,10 @@ $(document).ready(function(){
         $('#filter_time_group').val('day');
         $('#filter_order_scope').val('realized');
         $('#filter_search,#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_line_profit_min,#filter_line_profit_max,#filter_profit_min,#filter_profit_max').val('');
-        $('#filter_from_date').val(toIsoDate(resetFirstDay));
-        $('#filter_to_date').val(toIsoDate(resetToday));
-        applyQuickRangeState();
+        $('#filter_period_type').val('month');
+        $('#filter_month').val(toIsoDate(resetFirstDay).slice(0,7));
+        $('#filter_year').val(resetToday.getFullYear());
+        syncSalesPeriodDates();
         applyTimeGroupUi(getTimeGroupText());
         loadReport();
     });
@@ -1286,6 +1342,7 @@ $(document).ready(function(){
 });
 
 function loadReport(){
+    syncSalesPeriodDates();
     syncRevenueDateBasisUi();
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
     var timeGroup=$('#filter_time_group').val()||'day',orderScope=$('#filter_order_scope').val()||'realized';
@@ -2090,6 +2147,7 @@ function renderSlowMovingRows(){
 function viewStore(sid){$('#filter_store_id').val(sid);loadReport();}
 
 $('#btn_export').click(function(){
+    syncSalesPeriodDates();
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val(),timeGroup=$('#filter_time_group').val()||'day',orderScope=$('#filter_order_scope').val()||'realized';
     var url='/api/export-sales-excel/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup)+'&order_scope='+encodeURIComponent(orderScope);
     if(storeId)url+='&store_id='+storeId;

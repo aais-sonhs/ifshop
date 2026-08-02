@@ -399,6 +399,11 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'Số tiền thực chi')
         self.assertContains(response, 'hàng hỏng hoặc khuyến mãi của nhà cung cấp')
         self.assertContains(response, "$('#inp_status').val('1')")
+        self.assertContains(response, 'btn-approve-payment')
+        self.assertContains(response, 'if(Number(d.status) === 0)')
+        self.assertContains(response, 'Bạn chắc chắn muốn duyệt phiếu chi')
+        self.assertContains(response, 'cho đơn nhập hàng')
+        self.assertContains(response, '/api/payments/approve/')
 
     def test_payment_form_cashbook_options_include_current_balance(self):
         cash_book = CashBook.objects.create(
@@ -571,6 +576,50 @@ class FinanceFlowTests(TestCase):
         payment.refresh_from_db()
         self.assertIsNone(payment.approved_by_id)
         self.assertIsNone(payment.approved_at)
+
+    def test_quick_approve_payment_only_approves_draft_once(self):
+        cash_book = CashBook.objects.create(
+            name='Quỹ duyệt nhanh',
+            balance=Decimal('1000'),
+        )
+        goods_receipt = self._create_goods_receipt(code='PN-QUICK-APPROVE')
+        payment = Payment.objects.create(
+            code='PC-QUICK-APPROVE',
+            store=self.store,
+            cash_book=cash_book,
+            goods_receipt=goods_receipt,
+            supplier=self.supplier,
+            amount=Decimal('250'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.other_user,
+        )
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.created_by_id, self.other_user.id)
+        self.assertEqual(payment.approved_by_id, self.user.id)
+        self.assertIsNotNone(payment.approved_at)
+        self.assertEqual(cash_book.balance, Decimal('750'))
+
+        duplicate_response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(duplicate_response.json()['status'], 'error')
+        self.assertIn('Nháp', duplicate_response.json()['message'])
+        cash_book.refresh_from_db()
+        self.assertEqual(cash_book.balance, Decimal('750'))
 
     def test_manual_completed_payment_uses_logged_in_user_as_creator_and_approver(self):
         response = self.client.post(

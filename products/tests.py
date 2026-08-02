@@ -2558,6 +2558,8 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payment.store_id, self.store.id)
         self.assertEqual(payment.payment_date, receipt.receipt_date)
         self.assertEqual(payment.created_by_id, self.user.id)
+        self.assertIsNone(payment.approved_by_id)
+        self.assertIsNone(payment.approved_at)
         self.assertIsNone(payment.cash_book_id)
         self.assertIn('chờ kế toán duyệt', payload['message'])
 

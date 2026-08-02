@@ -398,6 +398,7 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "d.approved_by || ''")
         self.assertContains(response, 'Số tiền thực chi')
         self.assertContains(response, 'hàng hỏng hoặc khuyến mãi của nhà cung cấp')
+        self.assertContains(response, "$('#inp_status').val('1')")
 
     def test_payment_form_cashbook_options_include_current_balance(self):
         cash_book = CashBook.objects.create(
@@ -570,6 +571,24 @@ class FinanceFlowTests(TestCase):
         payment.refresh_from_db()
         self.assertIsNone(payment.approved_by_id)
         self.assertIsNone(payment.approved_at)
+
+    def test_manual_completed_payment_uses_logged_in_user_as_creator_and_approver(self):
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-MANUAL-SELF-APPROVED',
+                'amount': '250',
+                'payment_date': date.today().isoformat(),
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment = Payment.objects.get(code='PC-MANUAL-SELF-APPROVED')
+        self.assertEqual(payment.created_by_id, self.user.id)
+        self.assertEqual(payment.approved_by_id, self.user.id)
+        self.assertIsNotNone(payment.approved_at)
 
     def test_finance_entries_api_returns_paginated_combined_rows(self):
         today = date.today()

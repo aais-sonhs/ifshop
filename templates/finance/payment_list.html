@@ -326,7 +326,9 @@ $(document).ready(function(){
         // Tự động điền ngày hôm nay
         var today = new Date().toISOString().split('T')[0];
         $('#inp_payment_date').val(today);
-        $('#inp_status').val('0');$('#inp_payment_method').val('2');
+        // Phiếu tạo tay được xem là người lập tự duyệt; phiếu tự động từ
+        // nhập hàng vẫn mở ở trạng thái Nháp khi kế toán vào chỉnh sửa.
+        $('#inp_status').val('1');$('#inp_payment_method').val('2');
         $('#inp_code').val(PAYMENT_NEXT_CODE || '');
         var closeTrackingToken = startPaymentFormCloseTracking();
         $('#modal_title').text('Tạo phiếu chi');$('#modal_form').modal('show');

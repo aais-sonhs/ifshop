@@ -13,6 +13,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from finance.models import CashBook, FinanceCategory, Payment
 from orders.models import Order, OrderEditHistory, OrderItem
 from products.models import (
     ComboItem,
@@ -2530,6 +2531,184 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
         self.assertEqual(response.json()['code'], 'P00002')
         self.assertTrue(GoodsReceipt.objects.filter(code='P00002').exists())
+
+    def test_completed_goods_receipt_auto_creates_draft_payment(self):
+        category = FinanceCategory.objects.create(name='Nhập hàng', type=2, is_active=True)
+
+        response = self._post_goods_receipt(
+            'P-AUTO-PAYMENT-001',
+            Decimal('3'),
+            Decimal('12000'),
+            status=1,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok', msg=response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-AUTO-PAYMENT-001')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        self.assertEqual(payload['payment_action'], 'created')
+        self.assertEqual(payload['payment_id'], payment.id)
+        self.assertEqual(payment.code, 'PC-P-AUTO-PAYMENT-001')
+        self.assertEqual(payment.reference, f'GOODS_RECEIPT:{receipt.id}')
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.amount, Decimal('36000'))
+        self.assertEqual(payment.category_id, category.id)
+        self.assertEqual(payment.supplier_id, self.supplier.id)
+        self.assertEqual(payment.store_id, self.store.id)
+        self.assertEqual(payment.payment_date, receipt.receipt_date)
+        self.assertEqual(payment.created_by_id, self.user.id)
+        self.assertIsNone(payment.cash_book_id)
+        self.assertIn('chờ kế toán duyệt', payload['message'])
+
+    def test_draft_goods_receipt_does_not_create_payment(self):
+        response = self._post_goods_receipt(
+            'P-NO-AUTO-PAYMENT',
+            Decimal('1'),
+            Decimal('10000'),
+            status=0,
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-NO-AUTO-PAYMENT')
+        self.assertFalse(Payment.objects.filter(goods_receipt=receipt).exists())
+        self.assertEqual(response.json()['payment_action'], 'unchanged')
+
+    def test_edit_completed_goods_receipt_syncs_its_draft_payment_without_duplication(self):
+        create_response = self._post_goods_receipt(
+            'P-SYNC-AUTO-PAYMENT',
+            Decimal('2'),
+            Decimal('10000'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-SYNC-AUTO-PAYMENT')
+        payment = Payment.objects.get(goods_receipt=receipt)
+
+        edit_response = self._post_goods_receipt(
+            receipt.code,
+            Decimal('3'),
+            Decimal('15000'),
+            status=1,
+            receipt_id=receipt.id,
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(edit_response.json()['payment_action'], 'updated')
+        self.assertEqual(payment.amount, Decimal('45000'))
+        self.assertEqual(Payment.objects.filter(goods_receipt=receipt).count(), 1)
+
+    def test_goods_receipt_edit_preserves_manually_adjusted_draft_payment_amount(self):
+        create_response = self._post_goods_receipt(
+            'P-PROMOTION-PAYMENT',
+            Decimal('2'),
+            Decimal('10000'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-PROMOTION-PAYMENT')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        payment.amount = Decimal('18000')
+        payment.save(update_fields=['amount'])
+
+        edit_response = self._post_goods_receipt(
+            receipt.code,
+            Decimal('3'),
+            Decimal('10000'),
+            status=1,
+            receipt_id=receipt.id,
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        payment.refresh_from_db()
+        receipt.refresh_from_db()
+        self.assertEqual(edit_response.json()['payment_action'], 'updated_manual_amount')
+        self.assertEqual(receipt.total_amount, Decimal('30000'))
+        self.assertEqual(payment.amount, Decimal('18000'))
+        self.assertIn('giữ nguyên để kế toán kiểm tra', edit_response.json()['message'])
+
+    def test_approved_goods_receipt_payment_allows_receipt_adjustment_but_blocks_delete(self):
+        create_response = self._post_goods_receipt(
+            'P-APPROVED-PAYMENT',
+            Decimal('2'),
+            Decimal('10000'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-APPROVED-PAYMENT')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        cash_book = CashBook.objects.create(name='Quỹ duyệt phiếu nhập', balance=Decimal('50000'))
+        approval_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'category_id': payment.category_id,
+                'cash_book_id': cash_book.id,
+                'supplier_id': payment.supplier_id,
+                'goods_receipt_id': receipt.id,
+                'amount': str(payment.amount),
+                'payment_date': payment.payment_date.isoformat(),
+                'description': payment.description,
+                'status': 1,
+                'payment_method': 1,
+                'note': payment.note,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(approval_response.json()['status'], 'ok', msg=approval_response.content.decode())
+        payment.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.reference, f'GOODS_RECEIPT:{receipt.id}')
+        self.assertEqual(cash_book.balance, Decimal('30000'))
+
+        edit_response = self._post_goods_receipt(
+            receipt.code,
+            Decimal('3'),
+            Decimal('10000'),
+            status=1,
+            receipt_id=receipt.id,
+        )
+        delete_response = self.client.post(
+            reverse('api_delete_goods_receipt'),
+            data=json.dumps({'id': receipt.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(edit_response.json()['status'], 'ok', msg=edit_response.content.decode())
+        receipt.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertEqual(receipt.total_amount, Decimal('30000'))
+        self.assertEqual(payment.amount, Decimal('20000'))
+        self.assertEqual(edit_response.json()['payment_action'], 'approved')
+        self.assertIn('số tiền được giữ nguyên', edit_response.json()['message'])
+        self.assertEqual(delete_response.json()['status'], 'error')
+        self.assertIn('phiếu chi Hoàn thành', delete_response.json()['message'])
+        self.assertTrue(GoodsReceipt.objects.filter(id=receipt.id).exists())
+
+    def test_delete_goods_receipt_cancels_its_auto_draft_payment(self):
+        create_response = self._post_goods_receipt(
+            'P-DELETE-AUTO-PAYMENT',
+            Decimal('2'),
+            Decimal('10000'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-DELETE-AUTO-PAYMENT')
+        payment = Payment.objects.get(goods_receipt=receipt)
+
+        delete_response = self.client.post(
+            reverse('api_delete_goods_receipt'),
+            data=json.dumps({'id': receipt.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(delete_response.json()['status'], 'ok', msg=delete_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, 2)
+        self.assertIn('[HỦY TỰ ĐỘNG]', payment.note)
 
     def test_save_goods_receipt_returns_clear_error_for_duplicate_code(self):
         GoodsReceipt.objects.create(

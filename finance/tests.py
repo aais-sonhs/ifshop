@@ -392,6 +392,8 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'applyPaymentUrlFilters();')
         self.assertContains(response, '<th>Người tạo</th>', html=True)
         self.assertContains(response, "d.created_by || ''")
+        self.assertContains(response, 'Số tiền thực chi')
+        self.assertContains(response, 'hàng hỏng hoặc khuyến mãi của nhà cung cấp')
 
     def test_payment_form_cashbook_options_include_current_balance(self):
         cash_book = CashBook.objects.create(

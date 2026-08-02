@@ -84,6 +84,128 @@ def _is_goods_receipt_code_conflict(error):
     )
 
 
+def _goods_receipt_payment_reference(receipt):
+    return f'GOODS_RECEIPT:{receipt.id}'
+
+
+def _generate_goods_receipt_payment_code(receipt):
+    """Sinh mã phiếu chi dễ đối chiếu và không đụng cả bản ghi đã xóa mềm."""
+    from finance.models import Payment
+
+    base_code = f'PC-{receipt.code}'[:50]
+    candidate = base_code
+    suffix_number = 2
+    while Payment.all_objects.filter(code=candidate).exists():
+        suffix = f'-{suffix_number}'
+        candidate = f'{base_code[:50 - len(suffix)]}{suffix}'
+        suffix_number += 1
+    return candidate
+
+
+def _get_goods_receipt_auto_payment(receipt, for_update=False):
+    from finance.models import Payment
+
+    queryset = Payment.all_objects
+    if for_update:
+        queryset = queryset.select_for_update()
+    return queryset.filter(
+        reference=_goods_receipt_payment_reference(receipt)
+    ).order_by('id').first()
+
+
+def _cancel_goods_receipt_draft_payment(receipt, reason):
+    """Hủy phiếu chi tự động còn Nháp; phiếu đã duyệt luôn được giữ nguyên."""
+    payment = _get_goods_receipt_auto_payment(receipt, for_update=True)
+    if not payment or payment.is_deleted or payment.status != 0:
+        return 'unchanged', payment
+
+    payment.status = 2
+    payment.note = f'[HỦY TỰ ĐỘNG] {reason}'
+    payment.save(update_fields=['status', 'note', 'updated_at'])
+    return 'cancelled', payment
+
+
+def _sync_goods_receipt_draft_payment(
+    receipt,
+    actor,
+    became_completed=False,
+    previous_total_amount=None,
+):
+    """Tạo/cập nhật đúng một phiếu chi Nháp cho phiếu nhập Hoàn thành."""
+    from finance.models import FinanceCategory, Payment
+
+    if receipt.status != 1 or Decimal(str(receipt.total_amount or 0)) <= 0:
+        return _cancel_goods_receipt_draft_payment(
+            receipt,
+            f'Phiếu nhập {receipt.code} không còn phát sinh khoản chi chờ duyệt.',
+        )
+
+    payment = _get_goods_receipt_auto_payment(receipt, for_update=True)
+    if payment and payment.is_deleted:
+        return 'unchanged', payment
+    if payment and payment.status == 1:
+        return 'approved', payment
+    if payment and payment.status == 2 and not became_completed:
+        return 'unchanged', payment
+
+    category = FinanceCategory.objects.filter(
+        type=2,
+        is_active=True,
+        name__iexact='Nhập hàng',
+    ).first()
+    store_id = receipt.warehouse.store_id if receipt.warehouse_id and receipt.warehouse else None
+    default_description = f'Thanh toán phiếu nhập {receipt.code}'
+    default_note = 'Tự động tạo từ phiếu nhập; chờ kế toán duyệt.'
+
+    if not payment:
+        payment = Payment(
+            code=_generate_goods_receipt_payment_code(receipt),
+            reference=_goods_receipt_payment_reference(receipt),
+            created_by=actor or receipt.created_by,
+            status=0,
+            payment_method=2,
+        )
+        action = 'created'
+        should_sync_amount = True
+    else:
+        action = 'reopened' if payment.status == 2 else 'updated'
+        should_sync_amount = payment.status == 2
+        if payment.status == 2:
+            payment.status = 0
+        elif previous_total_amount is None:
+            should_sync_amount = True
+        else:
+            # Kế toán có thể đã sửa số tiền Nháp để phản ánh hàng hỏng hoặc
+            # khuyến mãi từ NCC. Chỉ tự đồng bộ khi số tiền vẫn bằng tổng cũ.
+            should_sync_amount = (
+                Decimal(str(payment.amount or 0))
+                == Decimal(str(previous_total_amount or 0))
+            )
+            if not should_sync_amount:
+                action = 'updated_manual_amount'
+
+    payment.store_id = store_id
+    payment.supplier_id = receipt.supplier_id
+    payment.goods_receipt = receipt
+    if should_sync_amount:
+        payment.amount = receipt.total_amount
+    payment.payment_date = receipt.receipt_date
+    if not payment.category_id:
+        payment.category = category
+    if not payment.description or payment.description.startswith('Thanh toán phiếu nhập '):
+        payment.description = default_description
+    if not payment.note or payment.note.startswith('[HỦY TỰ ĐỘNG]'):
+        payment.note = default_note
+    payment.save()
+    return action, payment
+
+
+def _has_completed_goods_receipt_payment(receipt):
+    from finance.models import Payment
+
+    return Payment.objects.filter(goods_receipt=receipt, status=1).exists()
+
+
 def _generate_next_stock_check_code():
     prefix = 'KK'
     max_number = 0
@@ -2383,6 +2505,7 @@ def api_save_goods_receipt(request):
             gr_id = data.get('id')
             old_status = None
             old_warehouse_id = None
+            old_total_amount = None
             affected_product_ids = set()
             affected_variant_ids = set()
             if gr_id:
@@ -2400,6 +2523,7 @@ def api_save_goods_receipt(request):
                     })
                 old_status = gr.status
                 old_warehouse_id = gr.warehouse_id
+                old_total_amount = gr.total_amount
                 for old_item in gr.items.all():
                     affected_product_ids.add(old_item.product_id)
                     if old_item.variant_id:
@@ -2489,7 +2613,36 @@ def api_save_goods_receipt(request):
             if old_status == 1 or new_status == 1:
                 _sync_purchase_costs(affected_product_ids, affected_variant_ids)
 
-        return JsonResponse({'status': 'ok', 'message': 'Lưu thành công', 'code': gr.code})
+            # Phiếu nhập hoàn thành tự sinh một phiếu chi Nháp để kế toán duyệt.
+            # Những lần sửa sau chỉ đồng bộ khi phiếu chi vẫn còn ở trạng thái Nháp.
+            payment_action, draft_payment = _sync_goods_receipt_draft_payment(
+                gr,
+                request.user,
+                became_completed=(old_status != 1 and new_status == 1),
+                previous_total_amount=old_total_amount,
+            )
+
+        message = 'Lưu thành công'
+        if payment_action in ('created', 'reopened') and draft_payment:
+            message += f'. Đã tạo phiếu chi Nháp {draft_payment.code} chờ kế toán duyệt.'
+        elif payment_action == 'updated_manual_amount' and draft_payment:
+            message += (
+                f'. Phiếu chi Nháp {draft_payment.code} đã có số tiền điều chỉnh thủ công '
+                'nên hệ thống giữ nguyên để kế toán kiểm tra.'
+            )
+        elif payment_action == 'approved' and draft_payment:
+            message += (
+                f'. Phiếu chi {draft_payment.code} đã Hoàn thành nên số tiền được giữ nguyên; '
+                'kế toán cần kiểm tra lại nếu số lượng hàng hoặc khuyến mãi thay đổi.'
+            )
+        return JsonResponse({
+            'status': 'ok',
+            'message': message,
+            'code': gr.code,
+            'payment_action': payment_action,
+            'payment_id': draft_payment.id if draft_payment and not draft_payment.is_deleted else None,
+            'payment_code': draft_payment.code if draft_payment and not draft_payment.is_deleted else '',
+        })
     except IntegrityError as e:
         if _is_goods_receipt_code_conflict(e):
             return JsonResponse({
@@ -2515,6 +2668,14 @@ def api_delete_goods_receipt(request):
             )
             if not receipt:
                 return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu nhập'})
+            if _has_completed_goods_receipt_payment(receipt):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': (
+                        'Phiếu nhập đã có phiếu chi Hoàn thành nên không thể xóa. '
+                        'Hãy chuyển phiếu chi về Hủy trước khi xóa phiếu nhập.'
+                    ),
+                })
             if PurchaseReturn.all_objects.filter(goods_receipt=receipt).exists():
                 return JsonResponse({
                     'status': 'error',
@@ -2530,6 +2691,10 @@ def api_delete_goods_receipt(request):
             if receipt.status == 1 and receipt.warehouse_id:
                 _apply_goods_receipt_stock_adjustment(receipt, receipt.warehouse_id, multiplier=-1)
 
+            _cancel_goods_receipt_draft_payment(
+                receipt,
+                f'Phiếu nhập {receipt.code} đã bị xóa.',
+            )
             was_completed = receipt.status == 1
             receipt.delete()
             if was_completed:

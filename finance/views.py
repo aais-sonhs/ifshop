@@ -296,7 +296,10 @@ def _apply_payment_filters(queryset, request):
             Q(note__icontains=search) |
             Q(created_by__username__icontains=search) |
             Q(created_by__first_name__icontains=search) |
-            Q(created_by__last_name__icontains=search)
+            Q(created_by__last_name__icontains=search) |
+            Q(approved_by__username__icontains=search) |
+            Q(approved_by__first_name__icontains=search) |
+            Q(approved_by__last_name__icontains=search)
         )
 
     return queryset
@@ -805,6 +808,8 @@ def _serialize_payment_list(payments):
         'payment_method_display': p.get_payment_method_label(),
         'note': p.note or '',
         'created_by': _get_user_display_name(p.created_by),
+        'approved_by': _get_user_display_name(p.approved_by),
+        'approved_at': p.approved_at.strftime('%d/%m/%Y %H:%M:%S') if p.approved_at else '',
     } for p in payments]
 
 
@@ -1179,6 +1184,7 @@ def api_get_payments(request):
             'goods_receipt__warehouse',
             'payment_method_option',
             'created_by',
+            'approved_by',
         )
         .order_by(*ordering)
     )
@@ -1267,6 +1273,16 @@ def api_save_payment(request):
 
             new_amount = Decimal(str(p.amount or 0))
             new_status = int(p.status)
+
+            # Người duyệt luôn là tài khoản đang đăng nhập tại đúng lần chuyển
+            # từ Nháp/Hủy sang Hoàn thành. Không ghi đè lịch sử khi chỉ sửa lại
+            # một phiếu vốn đã Hoàn thành.
+            if new_status == 1 and old_status != 1:
+                p.approved_by = request.user
+                p.approved_at = timezone.now()
+            elif new_status != 1:
+                p.approved_by = None
+                p.approved_at = None
 
             # 5. Hoàn lại quỹ cũ trước khi áp trạng thái/quỹ mới.
             if pid and old_status == 1 and old_cash_book_id:
@@ -1730,7 +1746,7 @@ def export_payments_excel(request):
 
     payments = Payment.objects.select_related(
         'category', 'cash_book', 'supplier', 'customer', 'goods_receipt',
-        'goods_receipt__warehouse', 'payment_method_option', 'created_by'
+        'goods_receipt__warehouse', 'payment_method_option', 'created_by', 'approved_by'
     )
     payments = _filter_payments_for_user(payments, request)
     payments = _apply_payment_filters(payments, request)
@@ -1750,6 +1766,8 @@ def export_payments_excel(request):
         {'key': 'cashbook', 'label': 'Quỹ/Tài khoản', 'width': 20},
         {'key': 'status', 'label': 'Trạng thái', 'width': 14},
         {'key': 'creator', 'label': 'Người tạo', 'width': 16},
+        {'key': 'approver', 'label': 'Người duyệt', 'width': 16},
+        {'key': 'approved_at', 'label': 'Thời gian duyệt', 'width': 18},
         {'key': 'description', 'label': 'Diễn giải', 'width': 30},
         {'key': 'note', 'label': 'Ghi chú', 'width': 30},
     ]
@@ -1771,6 +1789,8 @@ def export_payments_excel(request):
             'cashbook': p.cash_book.name if p.cash_book else '',
             'status': p.get_status_display(),
             'creator': _get_user_display_name(p.created_by),
+            'approver': _get_user_display_name(p.approved_by),
+            'approved_at': p.approved_at,
             'description': p.description or '',
             'note': p.note or '',
         })

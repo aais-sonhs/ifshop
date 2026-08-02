@@ -343,6 +343,8 @@ class FinanceFlowTests(TestCase):
         headers = [cell.value for cell in worksheet[4]]
         self.assertIn('Phiếu nhập', headers)
         self.assertIn('Trạng thái', headers)
+        self.assertIn('Người duyệt', headers)
+        self.assertIn('Thời gian duyệt', headers)
         code_column = headers.index('Mã phiếu') + 1
         status_column = headers.index('Trạng thái') + 1
         self.assertEqual(worksheet.cell(row=5, column=code_column).value, 'PC-PAYMENT-FILTER-DRAFT')
@@ -391,7 +393,9 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "params.get('store_id')")
         self.assertContains(response, 'applyPaymentUrlFilters();')
         self.assertContains(response, '<th>Người tạo</th>', html=True)
+        self.assertContains(response, '<th>Người duyệt</th>', html=True)
         self.assertContains(response, "d.created_by || ''")
+        self.assertContains(response, "d.approved_by || ''")
         self.assertContains(response, 'Số tiền thực chi')
         self.assertContains(response, 'hàng hỏng hoặc khuyến mãi của nhà cung cấp')
 
@@ -516,6 +520,56 @@ class FinanceFlowTests(TestCase):
         payment = Payment.objects.get(amount=Decimal('100'))
         self.assertEqual(payment.code, 'PC-001')
         self.assertEqual(payment.store_id, self.store.id)
+
+    def test_payment_approval_uses_logged_in_user_and_clears_when_cancelled(self):
+        payment = Payment.objects.create(
+            code='PC-APPROVAL-USER',
+            store=self.store,
+            amount=Decimal('100'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.other_user,
+        )
+
+        approval_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'amount': '100',
+                'payment_date': payment.payment_date.isoformat(),
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(approval_response.json()['status'], 'ok', msg=approval_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(payment.created_by_id, self.other_user.id)
+        self.assertEqual(payment.approved_by_id, self.user.id)
+        self.assertIsNotNone(payment.approved_at)
+
+        list_payload = self.client.get(reverse('api_get_payments')).json()['data']
+        payment_row = next(row for row in list_payload if row['id'] == payment.id)
+        self.assertEqual(payment_row['created_by'], self.other_user.username)
+        self.assertEqual(payment_row['approved_by'], self.user.username)
+        self.assertTrue(payment_row['approved_at'])
+
+        cancel_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'amount': '100',
+                'payment_date': payment.payment_date.isoformat(),
+                'status': 2,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(cancel_response.json()['status'], 'ok', msg=cancel_response.content.decode())
+        payment.refresh_from_db()
+        self.assertIsNone(payment.approved_by_id)
+        self.assertIsNone(payment.approved_at)
 
     def test_finance_entries_api_returns_paginated_combined_rows(self):
         today = date.today()

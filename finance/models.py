@@ -188,6 +188,15 @@ class Payment(SoftDeleteModel):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='payments_created')
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payments_approved',
+        verbose_name='Người duyệt',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name='Thời gian duyệt')
 
     class Meta:
         db_table = 'payments'

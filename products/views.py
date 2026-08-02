@@ -115,9 +115,29 @@ def _get_goods_receipt_auto_payment(receipt, for_update=False):
 
 def _cancel_goods_receipt_draft_payment(receipt, reason):
     """Hủy phiếu chi tự động còn Nháp; phiếu đã duyệt luôn được giữ nguyên."""
+    from finance.models import SupplierPaymentSchedule
+
+    # Một phiếu nhập có thể được xếp nhiều đợt thanh toán. Nếu chứng từ nguồn
+    # không còn hợp lệ, hủy toàn bộ lịch chưa trả và các phiếu chi Nháp tương ứng.
+    schedules = list(
+        SupplierPaymentSchedule.objects.select_related('payment')
+        .select_for_update()
+        .filter(goods_receipt=receipt, status=0)
+    )
+    for schedule in schedules:
+        schedule.status = 2
+        schedule.note = (
+            f'{schedule.note or ""}\n[HỦY TỰ ĐỘNG] {reason}'
+        ).strip()
+        schedule.save(update_fields=['status', 'note', 'updated_at'])
+        if schedule.payment and schedule.payment.status == 0:
+            schedule.payment.status = 2
+            schedule.payment.note = f'[HỦY TỰ ĐỘNG] {reason}'
+            schedule.payment.save(update_fields=['status', 'note', 'updated_at'])
+
     payment = _get_goods_receipt_auto_payment(receipt, for_update=True)
     if not payment or payment.is_deleted or payment.status != 0:
-        return 'unchanged', payment
+        return ('cancelled' if schedules else 'unchanged'), payment
 
     payment.status = 2
     payment.note = f'[HỦY TỰ ĐỘNG] {reason}'
@@ -169,9 +189,15 @@ def _sync_goods_receipt_draft_payment(
         should_sync_amount = True
     else:
         action = 'reopened' if payment.status == 2 else 'updated'
-        should_sync_amount = payment.status == 2
-        if payment.status == 2:
+        linked_schedule = getattr(payment, 'supplier_schedule', None)
+        should_sync_amount = payment.status == 2 and not linked_schedule
+        if payment.status == 2 and not linked_schedule:
             payment.status = 0
+        elif linked_schedule:
+            # Lịch thanh toán có thể chỉ là một đợt chi của phiếu nhập. Khi
+            # phiếu nhập được sửa lại, không ghi đè số tiền kế toán đã xếp lịch.
+            should_sync_amount = False
+            action = 'scheduled_payment_unchanged'
         elif previous_total_amount is None:
             should_sync_amount = True
         else:

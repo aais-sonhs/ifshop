@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .finance-plan-card .info-box { min-height: 92px; }
+    .finance-plan-card .info-box-number { font-size: 1.15rem; }
+    .finance-plan-table th { white-space: nowrap; }
+    .finance-plan-money { white-space: nowrap; text-align: right; }
+    .finance-alert-list { max-height: 260px; overflow-y: auto; }
+    .finance-alert-list .alert { margin-bottom: .5rem; padding: .55rem .75rem; }
+</style>
+
+<div class="card">
+    <div class="card-header d-flex align-items-center flex-wrap" style="gap:8px;">
+        <h3 class="card-title mr-auto"><i class="fas fa-chart-pie mr-2"></i>Kế hoạch tài chính</h3>
+        <select id="financial_plan_selector" class="form-control form-control-sm" style="width:min(360px,100%);"></select>
+        <button id="btn_add_financial_plan" class="btn btn-sm btn-success"><i class="fas fa-plus mr-1"></i>Tạo kế hoạch</button>
+        <button id="btn_edit_financial_plan" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit mr-1"></i>Sửa</button>
+        <button id="btn_delete_financial_plan" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash mr-1"></i>Xóa</button>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-light border py-2 small">
+            <i class="fas fa-info-circle text-info mr-1"></i>
+            Số thực tế chỉ lấy phiếu thu/chi <b>Hoàn thành</b>. Lịch nhà cung cấp tạo phiếu chi <b>Nháp</b> để kế toán kiểm tra và duyệt trên màn hình Phiếu chi.
+        </div>
+
+        <div id="financial_plan_empty" class="text-center text-muted py-5 d-none">
+            <i class="fas fa-calendar-plus fa-3x mb-3"></i><br>
+            Chưa có kế hoạch. Hãy tạo kế hoạch tháng hoặc năm đầu tiên.
+        </div>
+
+        <div id="financial_plan_dashboard" class="d-none">
+            <div class="row finance-plan-card">
+                <div class="col-xl col-md-4 col-sm-6"><div class="info-box bg-success"><span class="info-box-icon"><i class="fas fa-arrow-down"></i></span><div class="info-box-content"><span class="info-box-text">Thu KH / thực tế</span><span id="fp_income" class="info-box-number">0đ / 0đ</span></div></div></div>
+                <div class="col-xl col-md-4 col-sm-6"><div class="info-box bg-danger"><span class="info-box-icon"><i class="fas fa-arrow-up"></i></span><div class="info-box-content"><span class="info-box-text">Chi KH / thực tế</span><span id="fp_expense" class="info-box-number">0đ / 0đ</span></div></div></div>
+                <div class="col-xl col-md-4 col-sm-6"><div class="info-box bg-info"><span class="info-box-icon"><i class="fas fa-wallet"></i></span><div class="info-box-content"><span class="info-box-text">Số dư hiện tại</span><span id="fp_current_balance" class="info-box-number">0đ</span></div></div></div>
+                <div class="col-xl col-md-4 col-sm-6"><div id="fp_forecast_box" class="info-box bg-primary"><span class="info-box-icon"><i class="fas fa-chart-line"></i></span><div class="info-box-content"><span class="info-box-text">Số dư dự báo cuối kỳ</span><span id="fp_forecast_balance" class="info-box-number">0đ</span></div></div></div>
+                <div class="col-xl col-md-4 col-sm-6"><div class="info-box bg-warning"><span class="info-box-icon"><i class="fas fa-bell"></i></span><div class="info-box-content"><span class="info-box-text">Cảnh báo</span><span id="fp_alert_count" class="info-box-number">0</span></div></div></div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-8">
+                    <div class="card card-outline card-primary">
+                        <div class="card-header py-2"><h3 class="card-title">Kế hoạch so với thực tế</h3><div class="card-tools"><button id="btn_add_plan_item" class="btn btn-xs btn-primary"><i class="fas fa-plus mr-1"></i>Khoản ngân sách</button></div></div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm mb-0 finance-plan-table" style="min-width:900px;">
+                                <thead><tr><th>Loại</th><th>Danh mục</th><th class="text-right">Kế hoạch</th><th class="text-right">Thực tế</th><th class="text-right">Chênh lệch</th><th>Tiến độ</th><th>Ngày dự kiến</th><th>Quỹ</th><th></th></tr></thead>
+                                <tbody id="financial_plan_items_body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card card-outline card-warning">
+                        <div class="card-header py-2"><h3 class="card-title">Cảnh báo tài chính</h3></div>
+                        <div id="financial_plan_alerts" class="card-body finance-alert-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-outline card-info">
+                <div class="card-header py-2"><h3 class="card-title">Lịch thanh toán nhà cung cấp</h3><div class="card-tools"><button id="btn_add_supplier_schedule" class="btn btn-xs btn-info"><i class="fas fa-plus mr-1"></i>Xếp lịch chi</button></div></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped table-sm mb-0 finance-plan-table" style="min-width:1250px;">
+                        <thead><tr><th>Ưu tiên</th><th>Hạn chi</th><th>Nhà cung cấp</th><th>Phiếu nhập</th><th class="text-right">Trước KM</th><th class="text-right">KM</th><th class="text-right">Dự chi</th><th>Quỹ</th><th>Phiếu chi Nháp</th><th>Trạng thái</th><th></th></tr></thead>
+                        <tbody id="supplier_schedule_body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card card-outline card-secondary">
+                <div class="card-header py-2"><h3 class="card-title">Dự báo dòng tiền tương lai</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm mb-0 finance-plan-table">
+                        <thead><tr><th>Ngày</th><th>Nội dung</th><th class="text-right text-success">Thu dự kiến</th><th class="text-right text-danger">Chi dự kiến</th><th class="text-right">Số dư sau phát sinh</th></tr></thead>
+                        <tbody id="financial_forecast_body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="financial_plan_modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Kế hoạch tài chính</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body"><input type="hidden" id="fp_form_id">
+        <div class="form-group"><label>Tên kế hoạch</label><input id="fp_form_name" class="form-control" placeholder="Để trống để hệ thống tự đặt tên"></div>
+        <div class="form-row"><div class="form-group col-6"><label>Kỳ kế hoạch</label><select id="fp_form_period_type" class="form-control"><option value="month">Theo tháng</option><option value="year">Theo năm</option></select></div><div class="form-group col-6"><label>Tháng / năm</label><input id="fp_form_period_value" type="month" class="form-control"></div></div>
+        {% if has_multiple_stores %}<div class="form-group"><label>Cửa hàng</label><select id="fp_form_store" class="form-control"><option value="">Toàn công ty</option>{% for store in stores %}<option value="{{ store.id }}">{{ store.name }}</option>{% endfor %}</select></div>{% endif %}
+        <div class="form-group"><label>Trạng thái</label><select id="fp_form_status" class="form-control"><option value="1">Đang áp dụng</option><option value="0">Nháp</option><option value="2">Đã khóa</option></select></div>
+        <div class="form-group mb-0"><label>Ghi chú</label><textarea id="fp_form_note" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">Đóng</button><button id="btn_save_financial_plan" class="btn btn-primary">Lưu kế hoạch</button></div>
+</div></div></div>
+
+<div class="modal fade" id="plan_item_modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Khoản ngân sách</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body"><input type="hidden" id="fpi_form_id">
+        <div class="form-row"><div class="form-group col-5"><label>Loại</label><select id="fpi_form_direction" class="form-control"><option value="1">Thu</option><option value="2">Chi</option></select></div><div class="form-group col-7"><label>Danh mục</label><select id="fpi_form_category" class="form-control"></select></div></div>
+        <div class="form-group"><label>Số tiền kế hoạch</label><input id="fpi_form_amount" type="number" min="0" class="form-control"></div>
+        <div class="form-row"><div class="form-group col-6"><label>Ngày dự kiến</label><input id="fpi_form_date" type="date" class="form-control"></div><div class="form-group col-6"><label>Quỹ dự kiến</label><select id="fpi_form_cashbook" class="form-control"><option value="">-- Chưa xác định --</option>{% for cashbook in cashbooks %}<option value="{{ cashbook.id }}">{{ cashbook.name }}</option>{% endfor %}</select></div></div>
+        <div class="custom-control custom-checkbox mb-3"><input id="fpi_form_forecast" type="checkbox" class="custom-control-input" checked><label class="custom-control-label" for="fpi_form_forecast">Đưa phần ngân sách còn lại vào dự báo</label></div>
+        <div class="form-group mb-0"><label>Ghi chú</label><textarea id="fpi_form_note" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">Đóng</button><button id="btn_save_plan_item" class="btn btn-primary">Lưu khoản ngân sách</button></div>
+</div></div></div>
+
+<div class="modal fade" id="supplier_schedule_modal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Xếp lịch thanh toán nhà cung cấp</h5><button type="button" class="close" data-dismiss="modal">&times;</button></div>
+    <div class="modal-body"><input type="hidden" id="fps_form_id">
+        <div class="form-row"><div class="form-group col-md-6"><label>Phiếu nhập (không bắt buộc)</label><select id="fps_form_receipt" class="form-control"><option value="">-- Khoản chi không gắn phiếu nhập --</option>{% for receipt in goods_receipts %}<option value="{{ receipt.id }}" data-supplier="{{ receipt.supplier_id|default:'' }}" data-total="{{ receipt.total_amount }}">{{ receipt.code }} · {{ receipt.supplier__name }} · {{ receipt.total_amount }}</option>{% endfor %}</select></div><div class="form-group col-md-6"><label>Nhà cung cấp</label><select id="fps_form_supplier" class="form-control"><option value="">-- Chọn nhà cung cấp --</option>{% for supplier in suppliers %}<option value="{{ supplier.id }}">{{ supplier.code }} - {{ supplier.name }}</option>{% endfor %}</select></div></div>
+        <div class="form-row"><div class="form-group col-md-4"><label>Khoản ngân sách chi</label><select id="fps_form_item" class="form-control"><option value="">-- Chưa phân bổ --</option></select></div><div class="form-group col-md-4"><label>Ngày dự kiến chi</label><input id="fps_form_date" type="date" class="form-control"></div><div class="form-group col-md-4"><label>Mức ưu tiên</label><select id="fps_form_priority" class="form-control"><option value="1">Khẩn cấp</option><option value="2">Cao</option><option value="3" selected>Bình thường</option><option value="4">Thấp</option></select></div></div>
+        <div class="form-row"><div class="form-group col-md-4"><label>Số tiền trước KM</label><input id="fps_form_gross" type="number" min="1" class="form-control"></div><div class="form-group col-md-2"><label>Tính KM</label><select id="fps_form_promo_mode" class="form-control"><option value="amount">Tiền</option><option value="percent">%</option></select></div><div class="form-group col-md-3"><label>Giá trị KM</label><input id="fps_form_promo" type="number" min="0" class="form-control" value="0"></div><div class="form-group col-md-3"><label>Tiền dự chi</label><input id="fps_form_actual" class="form-control" readonly></div></div>
+        <div class="form-row"><div class="form-group col-md-6"><label>Quỹ dự kiến</label><select id="fps_form_cashbook" class="form-control"><option value="">-- Chọn khi duyệt phiếu chi --</option>{% for cashbook in cashbooks %}<option value="{{ cashbook.id }}">{{ cashbook.name }}</option>{% endfor %}</select></div><div class="form-group col-md-6"><label>Ghi chú</label><input id="fps_form_note" class="form-control"></div></div>
+        <div class="alert alert-info py-2 mb-0 small"><i class="fas fa-file-invoice-dollar mr-1"></i>Khi lưu, hệ thống tạo phiếu chi Nháp. Số tiền trước KM là phần công nợ được xử lý; tiền dự chi là số thực tế trừ khỏi quỹ sau khi duyệt.</div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" data-dismiss="modal">Đóng</button><button id="btn_save_supplier_schedule" class="btn btn-info">Xếp lịch & tạo phiếu chi Nháp</button></div>
+</div></div></div>
+
+<script>
+var FINANCIAL_PLAN_DATA = null;
+var FINANCIAL_PLAN_LIST = [];
+var FINANCIAL_CATEGORIES = [{% for category in categories %}{id:{{ category.id }},name:'{{ category.name|escapejs }}',type:{{ category.type }}},{% endfor %}];
+
+function fpMoney(value){ return new Intl.NumberFormat('vi-VN').format(Number(value || 0)) + 'đ'; }
+function fpDate(value){ if(!value) return ''; var p=String(value).split('-'); return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : value; }
+function fpEscape(value){ return $('<div>').text(value == null ? '' : String(value)).html(); }
+function fpPost(url, payload, done){
+    $.ajax({url:url,method:'POST',contentType:'application/json',headers:{'X-CSRFToken':'{{ csrf_token }}'},data:JSON.stringify(payload),success:function(response){if(response.status==='ok'){done(response);}else{alert(response.message||'Không thể thực hiện.');}},error:function(xhr){alert((xhr.responseJSON&&xhr.responseJSON.message)||'Không thể kết nối máy chủ.');}});
+}
+function fpCurrentPlan(){ var id=Number($('#financial_plan_selector').val()); return FINANCIAL_PLAN_LIST.find(function(x){return x.id===id;}); }
+
+function fpLoad(planId){
+    var params=planId ? {plan_id:planId} : {};
+    $.get('{% url "api_get_financial_plans" %}',params,function(response){
+        FINANCIAL_PLAN_LIST=response.plans||[]; FINANCIAL_PLAN_DATA=response.dashboard;
+        var selector=$('#financial_plan_selector').empty();
+        if(!FINANCIAL_PLAN_LIST.length){selector.append('<option value="">Chưa có kế hoạch</option>');$('#financial_plan_empty').removeClass('d-none');$('#financial_plan_dashboard').addClass('d-none');return;}
+        FINANCIAL_PLAN_LIST.forEach(function(p){selector.append('<option value="'+p.id+'">'+fpEscape(p.name)+' · '+fpDate(p.start_date)+' - '+fpDate(p.end_date)+'</option>');});
+        if(FINANCIAL_PLAN_DATA){selector.val(String(FINANCIAL_PLAN_DATA.plan.id));}
+        $('#financial_plan_empty').addClass('d-none');$('#financial_plan_dashboard').removeClass('d-none');fpRender();
+    }).fail(function(){alert('Không tải được kế hoạch tài chính. Có thể database chưa chạy migration mới.');});
+}
+
+function fpRender(){
+    var d=FINANCIAL_PLAN_DATA;if(!d)return;var s=d.summary;
+    $('#fp_income').text(fpMoney(s.planned_income)+' / '+fpMoney(s.actual_income));
+    $('#fp_expense').text(fpMoney(s.planned_expense)+' / '+fpMoney(s.actual_expense));
+    $('#fp_current_balance').text(fpMoney(s.current_balance));$('#fp_forecast_balance').text(fpMoney(s.forecast_balance));$('#fp_alert_count').text(s.alert_count||0);
+    $('#fp_forecast_box').toggleClass('bg-primary',Number(s.forecast_balance)>=0).toggleClass('bg-danger',Number(s.forecast_balance)<0);
+    var itemBody=$('#financial_plan_items_body').empty();
+    if(!d.items.length)itemBody.html('<tr><td colspan="9" class="text-center text-muted py-3">Chưa lập ngân sách thu/chi.</td></tr>');
+    d.items.forEach(function(x){var variance=Number(x.variance);itemBody.append('<tr><td><span class="badge badge-'+(x.direction===1?'success':'danger')+'">'+x.direction_display+'</span></td><td>'+fpEscape(x.category)+'</td><td class="finance-plan-money">'+fpMoney(x.planned_amount)+'</td><td class="finance-plan-money">'+fpMoney(x.actual_amount)+'</td><td class="finance-plan-money '+(variance>0?'text-danger':'')+'">'+(variance>0?'+':'')+fpMoney(variance)+'</td><td>'+x.completion_percent+'%</td><td>'+fpDate(x.expected_date)+'</td><td>'+fpEscape(x.cash_book||'')+'</td><td class="text-nowrap"><button class="btn btn-xs btn-outline-primary fp-edit-item" data-id="'+x.id+'"><i class="fas fa-edit"></i></button> <button class="btn btn-xs btn-outline-danger fp-delete-item" data-id="'+x.id+'"><i class="fas fa-trash"></i></button></td></tr>');});
+    var scheduleBody=$('#supplier_schedule_body').empty();
+    if(!d.schedules.length)scheduleBody.html('<tr><td colspan="11" class="text-center text-muted py-3">Chưa có lịch thanh toán.</td></tr>');
+    d.schedules.forEach(function(x){var badge=x.status===1?'success':(x.status===2?'secondary':'warning');scheduleBody.append('<tr><td>'+fpEscape(x.priority_display)+'</td><td>'+fpDate(x.due_date)+'</td><td>'+fpEscape(x.supplier)+'</td><td>'+fpEscape(x.goods_receipt)+'</td><td class="finance-plan-money">'+fpMoney(x.gross_amount)+'</td><td class="finance-plan-money">'+fpMoney(x.promotion_amount)+(x.promotion_mode==='percent'?' ('+x.promotion_percent+'%)':'')+'</td><td class="finance-plan-money"><b>'+fpMoney(x.amount)+'</b></td><td>'+fpEscape(x.cash_book)+'</td><td>'+(x.payment_code?'<a href="{% url "payment_tbl" %}" title="Mở danh sách phiếu chi">'+fpEscape(x.payment_code)+'</a>':'')+'</td><td><span class="badge badge-'+badge+'">'+fpEscape(x.status_display)+'</span></td><td class="text-nowrap">'+(x.status===0?'<button class="btn btn-xs btn-outline-primary fp-edit-schedule" data-id="'+x.id+'"><i class="fas fa-edit"></i></button> <button class="btn btn-xs btn-outline-danger fp-delete-schedule" data-id="'+x.id+'"><i class="fas fa-times"></i></button>':'')+'</td></tr>');});
+    var alerts=$('#financial_plan_alerts').empty();if(!d.alerts.length)alerts.html('<div class="text-center text-success py-3"><i class="fas fa-check-circle mr-1"></i>Chưa có cảnh báo.</div>');
+    d.alerts.forEach(function(x){alerts.append('<div class="alert alert-'+(x.level||'warning')+'"><i class="fas fa-exclamation-triangle mr-1"></i>'+fpEscape(x.message)+'</div>');});
+    var forecast=$('#financial_forecast_body').empty();if(!d.forecast.length)forecast.html('<tr><td colspan="5" class="text-center text-muted py-3">Không còn khoản dự kiến trong kỳ.</td></tr>');
+    d.forecast.forEach(function(x){forecast.append('<tr><td>'+fpDate(x.date)+'</td><td>'+x.details.map(fpEscape).join('<br>')+'</td><td class="finance-plan-money text-success">'+fpMoney(x.income)+'</td><td class="finance-plan-money text-danger">'+fpMoney(x.expense)+'</td><td class="finance-plan-money '+(Number(x.balance)<0?'text-danger font-weight-bold':'')+'">'+fpMoney(x.balance)+'</td></tr>');});
+}
+
+function fpSetCategoryOptions(direction, selected){var el=$('#fpi_form_category').empty();FINANCIAL_CATEGORIES.filter(function(c){return c.type===Number(direction);}).forEach(function(c){el.append('<option value="'+c.id+'">'+fpEscape(c.name)+'</option>');});if(selected)el.val(String(selected));}
+function fpSetScheduleItems(selected){var el=$('#fps_form_item').html('<option value="">-- Chưa phân bổ --</option>');((FINANCIAL_PLAN_DATA&&FINANCIAL_PLAN_DATA.items)||[]).filter(function(x){return x.direction===2;}).forEach(function(x){el.append('<option value="'+x.id+'">'+fpEscape(x.category)+' · còn KH '+fpMoney(Math.max(Number(x.planned_amount)-Number(x.actual_amount),0))+'</option>');});if(selected)el.val(String(selected));}
+function fpCalculateSchedule(){var gross=Number($('#fps_form_gross').val()||0),promo=Number($('#fps_form_promo').val()||0);if($('#fps_form_promo_mode').val()==='percent')promo=Math.round(gross*Math.min(Math.max(promo,0),100)/100);$('#fps_form_actual').val(Math.max(gross-promo,0));}
+
+$(function(){
+    fpLoad();
+    $('#financial_plan_selector').change(function(){fpLoad($(this).val());});
+    $('#fp_form_period_type').change(function(){var yearly=$(this).val()==='year',input=$('#fp_form_period_value'),value=String(input.val()||'');input.attr('type',yearly?'number':'month').attr('min',yearly?'2000':null).attr('max',yearly?'2100':null);if(yearly&&value.indexOf('-')>0)input.val(value.slice(0,4));else if(!yearly&&/^\d{4}$/.test(value))input.val(value+'-01');});
+    $('#btn_add_financial_plan').click(function(){var now=new Date(),month=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');$('#fp_form_id,#fp_form_name,#fp_form_note').val('');$('#fp_form_period_type').val('month').trigger('change');$('#fp_form_period_value').val(month);$('#fp_form_status').val('1');$('#fp_form_store').val('');$('#financial_plan_modal').modal('show');});
+    $('#btn_edit_financial_plan').click(function(){var p=fpCurrentPlan();if(!p)return;$('#fp_form_id').val(p.id);$('#fp_form_name').val(p.name);$('#fp_form_period_type').val(p.period_type).trigger('change');$('#fp_form_period_value').val(p.period_type==='month'?p.start_date.slice(0,7):p.start_date.slice(0,4));$('#fp_form_status').val(p.status);$('#fp_form_store').val(p.store_id||'');$('#fp_form_note').val(p.note);$('#financial_plan_modal').modal('show');});
+    $('#btn_save_financial_plan').click(function(){fpPost('{% url "api_save_financial_plan" %}',{id:$('#fp_form_id').val()||null,name:$('#fp_form_name').val(),period_type:$('#fp_form_period_type').val(),period_value:$('#fp_form_period_value').val(),store_id:$('#fp_form_store').val()||null,status:$('#fp_form_status').val(),note:$('#fp_form_note').val()},function(r){$('#financial_plan_modal').modal('hide');fpLoad(r.id);});});
+    $('#btn_delete_financial_plan').click(function(){var p=fpCurrentPlan();if(p&&confirm('Xóa kế hoạch '+p.name+'?'))fpPost('{% url "api_delete_financial_plan" %}',{id:p.id},function(){fpLoad();});});
+
+    $('#btn_add_plan_item').click(function(){$('#fpi_form_id,#fpi_form_amount,#fpi_form_date,#fpi_form_note').val('');$('#fpi_form_direction').val('1');fpSetCategoryOptions(1);$('#fpi_form_cashbook').val('');$('#fpi_form_forecast').prop('checked',true);$('#plan_item_modal').modal('show');});
+    $('#fpi_form_direction').change(function(){fpSetCategoryOptions($(this).val());});
+    $(document).on('click','.fp-edit-item',function(){var id=Number($(this).data('id')),x=FINANCIAL_PLAN_DATA.items.find(function(i){return i.id===id;});if(!x)return;$('#fpi_form_id').val(x.id);$('#fpi_form_direction').val(x.direction);fpSetCategoryOptions(x.direction,x.category_id);$('#fpi_form_amount').val(x.planned_amount);$('#fpi_form_date').val(x.expected_date);$('#fpi_form_cashbook').val(x.cash_book_id||'');$('#fpi_form_forecast').prop('checked',x.include_in_forecast);$('#fpi_form_note').val(x.note);$('#plan_item_modal').modal('show');});
+    $('#btn_save_plan_item').click(function(){fpPost('{% url "api_save_financial_plan_item" %}',{id:$('#fpi_form_id').val()||null,plan_id:FINANCIAL_PLAN_DATA.plan.id,direction:$('#fpi_form_direction').val(),category_id:$('#fpi_form_category').val(),planned_amount:$('#fpi_form_amount').val(),expected_date:$('#fpi_form_date').val(),cash_book_id:$('#fpi_form_cashbook').val()||null,include_in_forecast:$('#fpi_form_forecast').prop('checked'),note:$('#fpi_form_note').val()},function(){ $('#plan_item_modal').modal('hide');fpLoad(FINANCIAL_PLAN_DATA.plan.id);});});
+    $(document).on('click','.fp-delete-item',function(){var id=$(this).data('id');if(confirm('Xóa khoản ngân sách này?'))fpPost('{% url "api_delete_financial_plan_item" %}',{id:id},function(){fpLoad(FINANCIAL_PLAN_DATA.plan.id);});});
+
+    $('#btn_add_supplier_schedule').click(function(){var now=new Date(),today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0'),plan=FINANCIAL_PLAN_DATA.plan,defaultDate=today<plan.start_date?plan.start_date:(today>plan.end_date?plan.end_date:today);$('#fps_form_id,#fps_form_receipt,#fps_form_supplier,#fps_form_gross,#fps_form_note').val('');$('#fps_form_date').val(defaultDate);$('#fps_form_priority').val('3');$('#fps_form_promo_mode').val('amount');$('#fps_form_promo').val('0');$('#fps_form_cashbook').val('');fpSetScheduleItems();fpCalculateSchedule();$('#supplier_schedule_modal').modal('show');});
+    $('#fps_form_receipt').change(function(){var o=$(this).find('option:selected');if(o.val()){$('#fps_form_supplier').val(String(o.data('supplier')));$('#fps_form_gross').val(o.data('total'));}fpCalculateSchedule();});
+    $('#fps_form_gross,#fps_form_promo,#fps_form_promo_mode').on('input change',fpCalculateSchedule);
+    $(document).on('click','.fp-edit-schedule',function(){var id=Number($(this).data('id')),x=FINANCIAL_PLAN_DATA.schedules.find(function(i){return i.id===id;});if(!x)return;$('#fps_form_id').val(x.id);$('#fps_form_receipt').val(x.goods_receipt_id||'');$('#fps_form_supplier').val(x.supplier_id);fpSetScheduleItems(x.plan_item_id);$('#fps_form_date').val(x.due_date);$('#fps_form_priority').val(x.priority);$('#fps_form_gross').val(x.gross_amount);$('#fps_form_promo_mode').val(x.promotion_mode);$('#fps_form_promo').val(x.promotion_mode==='percent'?x.promotion_percent:x.promotion_amount);$('#fps_form_cashbook').val(x.cash_book_id||'');$('#fps_form_note').val(x.note);fpCalculateSchedule();$('#supplier_schedule_modal').modal('show');});
+    $('#btn_save_supplier_schedule').click(function(){var mode=$('#fps_form_promo_mode').val();fpPost('{% url "api_save_supplier_payment_schedule" %}',{id:$('#fps_form_id').val()||null,plan_id:FINANCIAL_PLAN_DATA.plan.id,goods_receipt_id:$('#fps_form_receipt').val()||null,supplier_id:$('#fps_form_supplier').val(),plan_item_id:$('#fps_form_item').val()||null,due_date:$('#fps_form_date').val(),priority:$('#fps_form_priority').val(),gross_amount:$('#fps_form_gross').val(),promotion_mode:mode,promotion_amount:mode==='amount'?$('#fps_form_promo').val():0,promotion_percent:mode==='percent'?$('#fps_form_promo').val():0,cash_book_id:$('#fps_form_cashbook').val()||null,note:$('#fps_form_note').val()},function(){ $('#supplier_schedule_modal').modal('hide');fpLoad(FINANCIAL_PLAN_DATA.plan.id);});});
+    $(document).on('click','.fp-delete-schedule',function(){var id=$(this).data('id');if(confirm('Hủy lịch và phiếu chi Nháp liên quan?'))fpPost('{% url "api_delete_supplier_payment_schedule" %}',{id:id},function(){fpLoad(FINANCIAL_PLAN_DATA.plan.id);});});
+});
+</script>
+{% endblock %}

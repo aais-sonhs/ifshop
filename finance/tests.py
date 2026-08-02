@@ -9,7 +9,16 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from customers.models import Customer
-from finance.models import CashBook, FinanceCategory, Payment, PaymentMethodOption, Receipt
+from finance.models import (
+    CashBook,
+    FinanceCategory,
+    FinancialPlan,
+    FinancialPlanItem,
+    Payment,
+    PaymentMethodOption,
+    Receipt,
+    SupplierPaymentSchedule,
+)
 from orders.models import Order
 from products.models import GoodsReceipt, PurchaseReturn, Supplier, Warehouse
 from system_management.models import Brand, Store, UserProfile
@@ -1536,3 +1545,215 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="btn_add_cashbook"')
         self.assertContains(response, 'id="modal_cashbook"')
+
+    def _create_current_month_plan(self, name='Kế hoạch kiểm thử'):
+        today = date.today()
+        response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'name': name,
+                'period_type': 'month',
+                'period_value': today.strftime('%Y-%m'),
+                'store_id': self.store.id,
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        return FinancialPlan.objects.get(id=response.json()['id'])
+
+    def test_financial_plan_page_exposes_budget_schedule_and_forecast_sections(self):
+        response = self.client.get(reverse('financial_plan_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Kế hoạch so với thực tế')
+        self.assertContains(response, 'Lịch thanh toán nhà cung cấp')
+        self.assertContains(response, 'Dự báo dòng tiền tương lai')
+        self.assertContains(response, 'Cảnh báo tài chính')
+
+    def test_yearly_financial_plan_and_budget_item_are_saved_with_correct_period(self):
+        year = date.today().year + 1
+        plan_response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'period_type': 'year',
+                'period_value': str(year),
+                'store_id': self.store.id,
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(plan_response.json()['status'], 'ok', msg=plan_response.content.decode())
+        plan = FinancialPlan.objects.get(id=plan_response.json()['id'])
+        self.assertEqual(plan.start_date, date(year, 1, 1))
+        self.assertEqual(plan.end_date, date(year, 12, 31))
+
+        category = FinanceCategory.objects.create(name='Ngân sách năm', type=2)
+        item_response = self.client.post(
+            reverse('api_save_financial_plan_item'),
+            data=json.dumps({
+                'plan_id': plan.id,
+                'direction': 2,
+                'category_id': category.id,
+                'planned_amount': 12000000,
+                'expected_date': f'{year}-12-20',
+                'include_in_forecast': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(item_response.json()['status'], 'ok', msg=item_response.content.decode())
+        item = FinancialPlanItem.objects.get(id=item_response.json()['id'])
+        self.assertEqual(item.planned_amount, Decimal('12000000'))
+        self.assertEqual(item.expected_date, date(year, 12, 20))
+
+    def test_financial_plan_compares_completed_receipts_and_payments_with_budget(self):
+        plan = self._create_current_month_plan()
+        income_category = FinanceCategory.objects.create(name='Thu kế hoạch', type=1)
+        expense_category = FinanceCategory.objects.create(name='Chi kế hoạch', type=2)
+        FinancialPlanItem.objects.create(
+            plan=plan, direction=1, category=income_category, planned_amount=Decimal('1000'),
+        )
+        FinancialPlanItem.objects.create(
+            plan=plan, direction=2, category=expense_category, planned_amount=Decimal('600'),
+        )
+        Receipt.objects.create(
+            code='PT-PLAN-ACTUAL', store=self.store, category=income_category,
+            amount=Decimal('700'), receipt_date=date.today(), status=1, created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-PLAN-ACTUAL', store=self.store, category=expense_category,
+            amount=Decimal('250'), payment_date=date.today(), status=1, created_by=self.user,
+        )
+        # Nháp không được tính vào thực tế.
+        Payment.objects.create(
+            code='PC-PLAN-DRAFT', store=self.store, category=expense_category,
+            amount=Decimal('999'), payment_date=date.today(), status=0, created_by=self.user,
+        )
+
+        payload = self.client.get(
+            reverse('api_get_financial_plans'), {'plan_id': plan.id},
+        ).json()['dashboard']
+
+        self.assertEqual(payload['summary']['planned_income'], 1000.0)
+        self.assertEqual(payload['summary']['actual_income'], 700.0)
+        self.assertEqual(payload['summary']['planned_expense'], 600.0)
+        self.assertEqual(payload['summary']['actual_expense'], 250.0)
+        expense_row = next(row for row in payload['items'] if row['direction'] == 2)
+        self.assertEqual(expense_row['variance'], -350.0)
+
+    def test_financial_forecast_warns_when_future_budget_makes_cash_negative(self):
+        plan = self._create_current_month_plan()
+        cashbook = CashBook.objects.create(name='Quỹ dự báo', balance=Decimal('100'))
+        category = FinanceCategory.objects.create(name='Chi tương lai', type=2)
+        FinancialPlanItem.objects.create(
+            plan=plan,
+            direction=2,
+            category=category,
+            cash_book=cashbook,
+            planned_amount=Decimal('500'),
+            expected_date=plan.end_date,
+        )
+
+        dashboard = self.client.get(
+            reverse('api_get_financial_plans'), {'plan_id': plan.id},
+        ).json()['dashboard']
+
+        self.assertEqual(dashboard['summary']['current_balance'], 100.0)
+        self.assertEqual(dashboard['summary']['forecast_balance'], -400.0)
+        self.assertTrue(any(alert['type'] == 'cash_shortage' for alert in dashboard['alerts']))
+
+    def test_supplier_schedule_creates_draft_payment_and_approval_marks_schedule_paid(self):
+        plan = self._create_current_month_plan()
+        category = FinanceCategory.objects.create(name='Nhập hàng', type=2)
+        item = FinancialPlanItem.objects.create(
+            plan=plan, direction=2, category=category, planned_amount=Decimal('1000'),
+        )
+        cashbook = CashBook.objects.create(name='Quỹ trả NCC', balance=Decimal('1000'))
+        receipt = GoodsReceipt.objects.create(
+            code='PN-SCHEDULE-001', supplier=self.supplier, warehouse=self.warehouse,
+            status=1, total_amount=Decimal('1000'), receipt_date=date.today(), created_by=self.user,
+        )
+
+        create_response = self.client.post(
+            reverse('api_save_supplier_payment_schedule'),
+            data=json.dumps({
+                'plan_id': plan.id,
+                'plan_item_id': item.id,
+                'goods_receipt_id': receipt.id,
+                'due_date': date.today().isoformat(),
+                'gross_amount': 1000,
+                'promotion_mode': 'percent',
+                'promotion_percent': 10,
+                'cash_book_id': cashbook.id,
+                'priority': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        schedule = SupplierPaymentSchedule.objects.get(id=create_response.json()['id'])
+        payment = schedule.payment
+        self.assertEqual(schedule.amount, Decimal('900'))
+        self.assertEqual(schedule.promotion_amount, Decimal('100'))
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.amount, Decimal('900'))
+        self.assertEqual(payment.goods_receipt_id, receipt.id)
+
+        approve_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'category_id': category.id,
+                'cash_book_id': cashbook.id,
+                'supplier_id': self.supplier.id,
+                'goods_receipt_id': receipt.id,
+                'gross_amount': 999999,
+                'promotion_mode': 'percent',
+                'promotion_percent': 10,
+                'payment_date': date.today().isoformat(),
+                'payment_method': 2,
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(approve_response.json()['status'], 'ok', msg=approve_response.content.decode())
+        schedule.refresh_from_db()
+        payment.refresh_from_db()
+        cashbook.refresh_from_db()
+        self.assertEqual(payment.amount, Decimal('900'))
+        self.assertEqual(payment.approved_by_id, self.user.id)
+        self.assertEqual(schedule.status, 1)
+        self.assertEqual(cashbook.balance, Decimal('100'))
+
+    def test_supplier_schedule_rejects_amount_over_remaining_goods_receipt_debt(self):
+        plan = self._create_current_month_plan()
+        receipt = GoodsReceipt.objects.create(
+            code='PN-SCHEDULE-LIMIT', supplier=self.supplier, warehouse=self.warehouse,
+            status=1, total_amount=Decimal('500'), receipt_date=date.today(), created_by=self.user,
+        )
+        common = {
+            'plan_id': plan.id,
+            'goods_receipt_id': receipt.id,
+            'due_date': date.today().isoformat(),
+            'promotion_mode': 'amount',
+            'promotion_amount': 0,
+            'priority': 3,
+        }
+        first_response = self.client.post(
+            reverse('api_save_supplier_payment_schedule'),
+            data=json.dumps(dict(common, gross_amount=400)),
+            content_type='application/json',
+        )
+        second_response = self.client.post(
+            reverse('api_save_supplier_payment_schedule'),
+            data=json.dumps(dict(common, gross_amount=200)),
+            content_type='application/json',
+        )
+
+        self.assertEqual(first_response.json()['status'], 'ok', msg=first_response.content.decode())
+        self.assertEqual(second_response.json()['status'], 'error')
+        self.assertIn('100', second_response.json()['message'])
+        self.assertEqual(SupplierPaymentSchedule.objects.filter(goods_receipt=receipt).count(), 1)

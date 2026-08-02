@@ -70,12 +70,6 @@
                             <option value="all_active">Tất cả đơn chưa hủy</option>
                         </select>
                         <span class="badge badge-success" id="sales_date_basis_badge">Ghi nhận theo ngày xuất kho</span>
-                        <span class="small text-muted">Nhóm theo:</span>
-                        <select class="form-control form-control-sm" id="filter_time_group" style="width:auto;min-width:110px;">
-                            <option value="day">Ngày</option>
-                            <option value="month">Tháng</option>
-                            <option value="year">Năm</option>
-                        </select>
                         <span class="small text-muted">Mốc nhanh:</span>
                         <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="today">Hôm nay</button>
                         <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="7d">7 ngày</button>
@@ -531,7 +525,7 @@ function getDailyOrdersUrl(dateKey){
 }
 function renderDailyOrderDate(row){
     var dateKey=String(row.period_key||'');
-    var isDailyView=($('#filter_time_group').val()||'day')==='day';
+    var isDailyView=getAutomaticTimeGroup()==='day';
     if(!isDailyView || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)){
         return escapeHtml(row.date||'');
     }
@@ -622,7 +616,24 @@ function renderLossProducts(order){
     return html;
 }
 function getSelectedText(selector){var $el=$(selector);return $el.val()?($el.find('option:selected').text()||''):'';}
-function getTimeGroupText(){return $('#filter_time_group option:selected').text() || 'Ngày';}
+function getAutomaticTimeGroup(){
+    var periodType=$('#filter_period_type').val()||'month';
+    if(periodType==='month') return 'day';
+    if(periodType==='year') return 'month';
+
+    var fromParts=String($('#filter_from_date').val()||'').split('-');
+    var toParts=String($('#filter_to_date').val()||'').split('-');
+    if(fromParts.length!==3||toParts.length!==3) return 'day';
+    var fromDate=new Date(Number(fromParts[0]),Number(fromParts[1])-1,Number(fromParts[2]));
+    var toDate=new Date(Number(toParts[0]),Number(toParts[1])-1,Number(toParts[2]));
+    var dayCount=Math.floor((toDate-fromDate)/86400000)+1;
+    if(!Number.isFinite(dayCount)||dayCount<=31) return 'day';
+    if(dayCount<=730) return 'month';
+    return 'year';
+}
+function getTimeGroupText(){
+    return {day:'Ngày',month:'Tháng',year:'Năm'}[getAutomaticTimeGroup()]||'Ngày';
+}
 function syncRevenueDateBasisUi(){
     var realized=($('#filter_order_scope').val()||'realized')==='realized';
     var label=realized?'ngày xuất kho':'ngày đặt hàng';
@@ -1217,7 +1228,6 @@ $(document).ready(function(){
     $('#filter_year').val(today.getFullYear());
     $('#filter_period_type').val('month');
     syncSalesPeriodDates();
-    $('#filter_time_group').val('day');
     $('#filter_order_scope').val('realized');
     setOrderDetailCurrentMonth();
     $('#top_products_limit,#top_customers_limit').on('change', renderOverviewRankings);
@@ -1318,17 +1328,16 @@ $(document).ready(function(){
     syncRevenueDateBasisUi();
     loadReport();
     $('#btn_search').click(function(){syncSalesPeriodDates();loadReport();});
-    $('#filter_store_id, #filter_customer_kind, #filter_customer_group, #filter_category, #filter_product_type, #filter_profit, #filter_customer_id, #filter_product_id, #filter_salesperson, #filter_time_group, #filter_order_scope').change(function(){loadReport();});
-    $('#filter_period_type').change(function(){syncSalesPeriodDates();});
-    $('#filter_month, #filter_year').change(function(){syncSalesPeriodDates();});
-    $('#filter_from_date, #filter_to_date').change(function(){applyQuickRangeState();});
+    $('#filter_store_id, #filter_customer_kind, #filter_customer_group, #filter_category, #filter_product_type, #filter_profit, #filter_customer_id, #filter_product_id, #filter_salesperson, #filter_order_scope').change(function(){loadReport();});
+    $('#filter_period_type').change(function(){syncSalesPeriodDates();applyTimeGroupUi(getTimeGroupText());});
+    $('#filter_month, #filter_year').change(function(){syncSalesPeriodDates();applyTimeGroupUi(getTimeGroupText());});
+    $('#filter_from_date, #filter_to_date').change(function(){applyQuickRangeState();applyTimeGroupUi(getTimeGroupText());});
     $('#filter_revenue_min, #filter_revenue_max, #filter_cost_min, #filter_cost_max, #filter_line_profit_min, #filter_line_profit_max, #filter_profit_min, #filter_profit_max').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
     $('#filter_search').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
     $('.btn-quick-range').click(function(){ setQuickRange($(this).data('range')); });
     $('#btn_reset_filter').click(function(){
         var resetToday=new Date(), resetFirstDay=new Date(resetToday.getFullYear(),resetToday.getMonth(),1);
         $('#filter_customer_kind,#filter_customer_group,#filter_category,#filter_product_type,#filter_profit,#filter_store_id,#filter_customer_id,#filter_product_id,#filter_salesperson,#supplier_sales_filter').val('');
-        $('#filter_time_group').val('day');
         $('#filter_order_scope').val('realized');
         $('#filter_search,#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_line_profit_min,#filter_line_profit_max,#filter_profit_min,#filter_profit_max').val('');
         $('#filter_period_type').val('month');
@@ -1345,7 +1354,7 @@ function loadReport(){
     syncSalesPeriodDates();
     syncRevenueDateBasisUi();
     var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val();
-    var timeGroup=$('#filter_time_group').val()||'day',orderScope=$('#filter_order_scope').val()||'realized';
+    var timeGroup=getAutomaticTimeGroup(),orderScope=$('#filter_order_scope').val()||'realized';
     var url='/api/report-sales/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup)+'&order_scope='+encodeURIComponent(orderScope);
     if(storeId)url+='&store_id='+storeId;
     var customerKind=$('#filter_customer_kind').val(),groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),productTypeId=$('#filter_product_type').val(),profitF=$('#filter_profit').val();
@@ -1368,7 +1377,6 @@ function loadReport(){
             _filtersLoaded=true;
         }
         if(res.has_multiple_stores&&res.stores&&res.stores.length>1){$('#store_filter_wrap').show();var cv=$('#filter_store_id').val(),os='<option value="">🏢 Tất cả</option>';res.stores.forEach(function(s){os+='<option value="'+s.id+'"'+(s.id==cv?' selected':'')+'>'+s.name+'</option>';});$('#filter_store_id').html(os);}else{$('#store_filter_wrap').hide();}
-        if(res.time_group){$('#filter_time_group').val(res.time_group);}
         applyTimeGroupUi(res.time_group_label||getTimeGroupText());
         renderSalesReportFilterSummary(res.summary);
 
@@ -2148,7 +2156,7 @@ function viewStore(sid){$('#filter_store_id').val(sid);loadReport();}
 
 $('#btn_export').click(function(){
     syncSalesPeriodDates();
-    var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val(),timeGroup=$('#filter_time_group').val()||'day',orderScope=$('#filter_order_scope').val()||'realized';
+    var from=$('#filter_from_date').val(),to=$('#filter_to_date').val(),storeId=$('#filter_store_id').val(),timeGroup=getAutomaticTimeGroup(),orderScope=$('#filter_order_scope').val()||'realized';
     var url='/api/export-sales-excel/?from_date='+from+'&to_date='+to+'&time_group='+encodeURIComponent(timeGroup)+'&order_scope='+encodeURIComponent(orderScope);
     if(storeId)url+='&store_id='+storeId;
     var customerKind=$('#filter_customer_kind').val(),groupId=$('#filter_customer_group').val(),catId=$('#filter_category').val(),productTypeId=$('#filter_product_type').val(),profitF=$('#filter_profit').val();

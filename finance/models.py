@@ -36,7 +36,7 @@ class FinanceCategory(SoftDeleteModel):
 
 
 class ExpenseClassification(SoftDeleteModel):
-    """Nhóm quản trị dùng để phân loại các khoản chi độc lập với danh mục chi."""
+    """Phân loại con dùng để nhận biết chi tiết trong một danh mục chi."""
     brand = models.ForeignKey(
         'system_management.Brand',
         on_delete=models.CASCADE,
@@ -44,6 +44,14 @@ class ExpenseClassification(SoftDeleteModel):
         blank=True,
         related_name='expense_classifications',
         verbose_name='Thương hiệu',
+    )
+    parent_category = models.ForeignKey(
+        FinanceCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expense_classifications',
+        verbose_name='Danh mục cha',
     )
     name = models.CharField(max_length=255, verbose_name='Tên phân loại chi')
     description = models.TextField(blank=True, default='', verbose_name='Mô tả')

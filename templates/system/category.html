@@ -21,6 +21,7 @@
                     <select class="form-control form-control-sm" id="system_category_filter_scope">
                         <option value="">Tất cả nhóm</option>
                         <option value="finance">Nghiệp vụ thu chi</option>
+                        <option value="expense_classification">Phân loại chi</option>
                         <option value="cashbook">Quỹ</option>
                         <option value="product_category">Danh mục sản phẩm</option>
                         <option value="product_type">Loại sản phẩm</option>
@@ -69,6 +70,30 @@
                             <thead><tr><th>Tên quỹ</th><th>Số dư</th><th>Thao tác</th></tr></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3" id="expense-classification">
+            <!-- Phân loại chi: cấp con của Danh mục chi, cấu hình chung tại trang Danh mục -->
+            <div class="col-md-6">
+                <div class="card card-outline card-danger system-category-section" data-system-category-scope="expense_classification">
+                    <div class="card-header">
+                        <h5 class="card-title">Phân loại chi</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-danger" id="btn_add_expense_classification"><i class="fas fa-plus"></i> Thêm phân loại chi</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="px-3 py-2 small text-muted border-bottom">
+                            Mỗi phân loại phải thuộc một Danh mục chi cha. Ví dụ: Danh mục cha “Chi văn phòng” có phân loại “Chi thường xuyên”.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0" id="expense_classification_tbl">
+                                <thead><tr><th>Tên phân loại</th><th>Danh mục cha</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -162,6 +187,37 @@
             </div>
         </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Modal: Phân loại chi -->
+<div class="modal fade" id="modal_expense_classification" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="ec_modal_title">Thêm phân loại chi</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ec_id">
+                <div class="form-group"><label>Tên phân loại chi <span class="text-danger">*</span></label><input type="text" class="form-control" id="ec_name" maxlength="255" placeholder="Ví dụ: Chi thường xuyên"></div>
+                <div class="form-group">
+                    <label>Danh mục cha <span class="text-danger">*</span></label>
+                    <select class="form-control" id="ec_parent_category_id"><option value="">-- Chọn danh mục chi --</option></select>
+                    <small class="text-muted">Chỉ hiển thị các Danh mục nghiệp vụ có Loại là Chi.</small>
+                </div>
+                <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="ec_description" rows="2" placeholder="Giải thích khi nào kế toán chọn phân loại này"></textarea></div>
+                <div class="custom-control custom-switch">
+                    <input type="checkbox" class="custom-control-input" id="ec_is_active" checked>
+                    <label class="custom-control-label" for="ec_is_active">Đang sử dụng trên phiếu chi</label>
+                </div>
+                <small class="text-muted d-block mt-2">Ngừng sử dụng sẽ ẩn lựa chọn khi tạo phiếu mới nhưng vẫn giữ dữ liệu trên phiếu cũ.</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-danger" id="ec_save"><i class="fas fa-save"></i> Lưu</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -304,11 +360,14 @@
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function escapeCategoryHtml(value){ return $('<div>').text(value==null?'':String(value)).html(); }
 var SYSTEM_PRODUCT_CATEGORIES = [];
+var SYSTEM_EXPENSE_CATEGORIES = [];
+var EXPENSE_CLASSIFICATIONS = [];
 var PRODUCT_CATEGORY_REQUIRES_PARENT = false;
 var SYSTEM_CATEGORY_FILTER_TIMER = null;
 
 $(document).ready(function(){
     loadFinanceCats();
+    loadExpenseClassifications();
     loadCashbooks();
     loadProductCats();
     loadWarehouseCats();
@@ -339,6 +398,39 @@ $(document).ready(function(){
         $.ajax({url:'/api/finance-categories/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
             success:function(r){if(r.status==='ok'){$('#modal_finance_cat').modal('hide'); loadFinanceCats();}alert(r.message);}
+        });
+    });
+
+    // ===== PHÂN LOẠI CHI =====
+    $('#btn_add_expense_classification').click(function(){
+        if(!SYSTEM_EXPENSE_CATEGORIES.length){
+            alert('Vui lòng tạo ít nhất một Danh mục nghiệp vụ Loại Chi trước khi thêm phân loại chi.');
+            return;
+        }
+        $('#ec_id, #ec_name, #ec_description').val('');
+        renderExpenseParentCategoryOptions('');
+        $('#ec_is_active').prop('checked', true);
+        $('#ec_modal_title').text('Thêm phân loại chi');
+        $('#modal_expense_classification').modal('show');
+    });
+
+    $('#ec_save').click(function(){
+        var data = {
+            id: $('#ec_id').val() || null,
+            name: ($('#ec_name').val() || '').trim(),
+            parent_category_id: $('#ec_parent_category_id').val() || null,
+            description: ($('#ec_description').val() || '').trim(),
+            is_active: $('#ec_is_active').prop('checked')
+        };
+        if(!data.name){alert('Vui lòng nhập tên phân loại chi');return;}
+        if(!data.parent_category_id){alert('Vui lòng chọn Danh mục cha');return;}
+        $.ajax({url:'{% url "api_save_expense_classification" %}', type:'POST', contentType:'application/json',
+            headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
+            success:function(r){
+                alert(r.message);
+                if(r.status==='ok'){$('#modal_expense_classification').modal('hide'); loadExpenseClassifications();}
+            },
+            error:function(xhr){alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Không lưu được phân loại chi.');}
         });
     });
 
@@ -503,6 +595,10 @@ function applySystemCategoryFilters(){
 // ===== LOAD DATA =====
 function loadFinanceCats(){
     $.get('/api/finance-categories/', function(res){
+        SYSTEM_EXPENSE_CATEGORIES = (res.data || []).filter(function(item){
+            return Number(item.type) === 2 && item.is_active;
+        });
+        renderExpenseParentCategoryOptions($('#ec_parent_category_id').val() || '');
         var h='';
         res.data.forEach(function(d){
             var typeLabel = d.type === 1 ? '<span class="badge badge-success">Thu</span>' : '<span class="badge badge-danger">Chi</span>';
@@ -511,6 +607,60 @@ function loadFinanceCats(){
         });
         $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         applySystemCategoryFilters();
+    });
+}
+
+function renderExpenseParentCategoryOptions(selectedId){
+    var options = '<option value="">-- Chọn danh mục chi --</option>';
+    SYSTEM_EXPENSE_CATEGORIES.forEach(function(item){
+        options += '<option value="'+item.id+'">'+escapeCategoryHtml(item.name)+'</option>';
+    });
+    $('#ec_parent_category_id').html(options).val(selectedId || '');
+}
+
+function loadExpenseClassifications(){
+    $.get('{% url "api_get_expense_classifications" %}', function(res){
+        EXPENSE_CLASSIFICATIONS = res.data || [];
+        var h='';
+        EXPENSE_CLASSIFICATIONS.forEach(function(d){
+            var statusLabel = d.is_active
+                ? '<span class="badge badge-success">Đang sử dụng</span>'
+                : '<span class="badge badge-secondary">Ngừng sử dụng</span>';
+            var parentLabel = d.parent_category
+                ? escapeCategoryHtml(d.parent_category)
+                : '<span class="badge badge-warning">Chưa gán</span>';
+            h += '<tr><td><strong>'+escapeCategoryHtml(d.name)+'</strong></td>'+
+                '<td>'+parentLabel+'</td>'+
+                '<td>'+escapeCategoryHtml(d.description||'')+'</td><td>'+statusLabel+'</td>'+
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editExpenseClassification('+d.id+')">Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteExpenseClassification('+d.id+')">Xóa</button></div></td></tr>';
+        });
+        $('#expense_classification_tbl tbody').html(h || '<tr><td colspan="5" class="text-center text-muted">Chưa có phân loại chi</td></tr>');
+        applySystemCategoryFilters();
+    }).fail(function(xhr){
+        var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Không tải được phân loại chi.';
+        $('#expense_classification_tbl tbody').html('<tr><td colspan="5" class="text-center text-danger">'+escapeCategoryHtml(message)+'</td></tr>');
+    });
+}
+
+function editExpenseClassification(id){
+    var item = EXPENSE_CLASSIFICATIONS.find(function(row){ return Number(row.id) === Number(id); });
+    if(!item) return;
+    $('#ec_id').val(item.id);
+    $('#ec_name').val(item.name);
+    renderExpenseParentCategoryOptions(item.parent_category_id || '');
+    $('#ec_description').val(item.description || '');
+    $('#ec_is_active').prop('checked', !!item.is_active);
+    $('#ec_modal_title').text('Sửa phân loại chi');
+    $('#modal_expense_classification').modal('show');
+}
+
+function deleteExpenseClassification(id){
+    if(!confirm('Bạn có chắc muốn xóa phân loại chi này?')) return;
+    $.ajax({url:'{% url "api_delete_expense_classification" %}', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify({id:id}),
+        success:function(r){alert(r.message); if(r.status==='ok') loadExpenseClassifications();},
+        error:function(xhr){alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Không xóa được phân loại chi.');}
     });
 }
 

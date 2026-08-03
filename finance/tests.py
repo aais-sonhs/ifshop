@@ -463,17 +463,24 @@ class FinanceFlowTests(TestCase):
     def test_expense_classification_settings_and_payment_flow(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
+        expense_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi văn phòng',
+            type=2,
+        )
 
-        page_response = self.client.get(reverse('classification_tbl'))
+        page_response = self.client.get(reverse('category_tbl'))
         self.assertEqual(page_response.status_code, 200)
-        self.assertContains(page_response, 'Phân loại hệ thống')
-        self.assertContains(page_response, 'Nhóm phân loại')
+        self.assertContains(page_response, 'Danh mục hệ thống')
+        self.assertContains(page_response, 'Phân loại chi')
+        self.assertContains(page_response, 'Danh mục cha')
         self.assertContains(page_response, 'Chi thường xuyên')
 
         create_response = self.client.post(
             reverse('api_save_expense_classification'),
             data=json.dumps({
                 'name': 'Chi thường xuyên',
+                'parent_category_id': expense_category.id,
                 'description': 'Các khoản chi vận hành định kỳ',
                 'is_active': True,
             }),
@@ -483,11 +490,13 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(create_response.json()['status'], 'ok')
         classification = ExpenseClassification.objects.get(name='Chi thường xuyên')
         self.assertEqual(classification.brand, self.brand)
+        self.assertEqual(classification.parent_category, expense_category)
 
         payment_response = self.client.post(
             reverse('api_save_payment'),
             data=json.dumps({
                 'code': 'PC-PHAN-LOAI-001',
+                'category_id': expense_category.id,
                 'expense_classification_id': classification.id,
                 'gross_amount': '1000000',
                 'promotion_mode': 'amount',
@@ -501,7 +510,30 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(payment_response.status_code, 200)
         self.assertEqual(payment_response.json()['status'], 'ok')
         payment = Payment.objects.get(code='PC-PHAN-LOAI-001')
+        self.assertEqual(payment.category, expense_category)
         self.assertEqual(payment.expense_classification, classification)
+
+        other_expense_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi nhân sự',
+            type=2,
+        )
+        mismatch_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-PHAN-LOAI-SAI-DANH-MUC',
+                'category_id': other_expense_category.id,
+                'expense_classification_id': classification.id,
+                'gross_amount': '100000',
+                'payment_date': '2026-08-03',
+                'status': 0,
+                'payment_method': 2,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(mismatch_response.json()['status'], 'error')
+        self.assertIn('chỉ thuộc Danh mục cha', mismatch_response.json()['message'])
+        self.assertFalse(Payment.objects.filter(code='PC-PHAN-LOAI-SAI-DANH-MUC').exists())
 
         list_response = self.client.get(reverse('api_get_payments'), {
             'expense_classification_id': classification.id,
@@ -527,6 +559,7 @@ class FinanceFlowTests(TestCase):
             data=json.dumps({
                 'id': classification.id,
                 'name': classification.name,
+                'parent_category_id': expense_category.id,
                 'description': classification.description,
                 'is_active': False,
             }),
@@ -539,6 +572,7 @@ class FinanceFlowTests(TestCase):
             data=json.dumps({
                 'id': payment.id,
                 'code': payment.code,
+                'category_id': expense_category.id,
                 'expense_classification_id': classification.id,
                 'gross_amount': '1000000',
                 'promotion_mode': 'amount',

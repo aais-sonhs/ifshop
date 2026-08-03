@@ -513,13 +513,7 @@ def category_tbl(request):
 def classification_tbl(request):
     if not can_manage_users(request.user):
         return _redirect_no_system_access(request)
-    if not is_menu_visible_for_user(request.user, 'classifications'):
-        return _redirect_no_system_access(
-            request,
-            'Menu Phân loại đang bị Super Admin tắt cho thương hiệu này',
-        )
-    context = {'active_tab': 'classification_tbl'}
-    return render(request, "system/expense_classification.html", context)
+    return redirect('/category-tbl/#expense-classification')
 
 
 @login_required(login_url="/login/")

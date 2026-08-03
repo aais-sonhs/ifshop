@@ -187,17 +187,9 @@ def _normalize_plan_recipient_emails(raw_value):
 
 
 def _validate_finance_document_master_scope(request, document, direction):
-    if document.category_id and not _finance_master_for_user(
-        FinanceCategory.objects.filter(type=direction, is_active=True), request,
-    ).filter(id=document.category_id).exists():
-        raise ValueError('Danh mục thu/chi không thuộc thương hiệu của bạn.')
-    if document.cash_book_id and not _finance_master_for_user(
-        CashBook.objects.filter(is_active=True), request,
-    ).filter(id=document.cash_book_id).exists():
-        raise ValueError('Quỹ không thuộc thương hiệu của bạn.')
     if getattr(document, 'expense_classification_id', None):
         classification = _finance_master_for_user(
-            ExpenseClassification.objects.all(), request,
+            ExpenseClassification.objects.select_related('parent_category'), request,
         ).filter(id=document.expense_classification_id).first()
         if not classification:
             raise ValueError('Phân loại chi không thuộc thương hiệu của bạn.')
@@ -210,6 +202,13 @@ def _validate_finance_document_master_scope(request, document, direction):
             )
             if existing_classification_id != classification.id:
                 raise ValueError('Phân loại chi đã ngừng sử dụng, vui lòng chọn phân loại khác.')
+        if classification.parent_category_id:
+            if document.category_id and document.category_id != classification.parent_category_id:
+                raise ValueError(
+                    f'Phân loại chi "{classification.name}" chỉ thuộc Danh mục cha '
+                    f'"{classification.parent_category.name}".'
+                )
+            document.category_id = classification.parent_category_id
         if document.store_id and classification.brand_id:
             from system_management.models import Store
 
@@ -218,6 +217,14 @@ def _validate_finance_document_master_scope(request, document, direction):
             ).first()
             if store_brand_id and classification.brand_id != store_brand_id:
                 raise ValueError('Phân loại chi không thuộc thương hiệu của phiếu chi.')
+    if document.category_id and not _finance_master_for_user(
+        FinanceCategory.objects.filter(type=direction, is_active=True), request,
+    ).filter(id=document.category_id).exists():
+        raise ValueError('Danh mục thu/chi không thuộc thương hiệu của bạn.')
+    if document.cash_book_id and not _finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).filter(id=document.cash_book_id).exists():
+        raise ValueError('Quỹ không thuộc thương hiệu của bạn.')
 
 
 def _filter_receipts_for_user(queryset, request):
@@ -751,7 +758,7 @@ def payment_tbl(request):
     ).values('id', 'name'))
     expense_classifications = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
-    ).values('id', 'name', 'is_active'))
+    ).values('id', 'name', 'is_active', 'parent_category_id'))
     cashbooks = list(_finance_master_for_user(
         CashBook.objects.filter(is_active=True), request,
     ).values('id', 'name', 'balance'))
@@ -1836,8 +1843,6 @@ def api_save_finance_category(request):
 def _expense_classification_access_denied(request):
     if not can_manage_users(request.user):
         return _forbid_json('Bạn không có quyền cấu hình phân loại chi')
-    if not is_menu_visible_for_user(request.user, 'classifications'):
-        return _forbid_json('Menu Phân loại đang bị tắt cho thương hiệu này')
     return None
 
 
@@ -1848,12 +1853,17 @@ def api_get_expense_classifications(request):
         return denied
     rows = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
-    ).values('id', 'name', 'description', 'is_active'))
+    ).values(
+        'id', 'name', 'description', 'is_active',
+        'parent_category_id', 'parent_category__name',
+    ))
     return JsonResponse({'data': [{
         'id': row['id'],
         'name': row['name'],
         'description': row['description'] or '',
         'is_active': row['is_active'],
+        'parent_category_id': row['parent_category_id'],
+        'parent_category': row['parent_category__name'] or '',
     } for row in rows]})
 
 
@@ -1871,19 +1881,36 @@ def api_save_expense_classification(request):
             raise ValueError('Vui lòng nhập tên phân loại chi.')
         classification_id = data.get('id')
         scoped = _finance_master_for_user(ExpenseClassification.objects.all(), request)
-        duplicate = scoped.filter(name__iexact=name)
+        parent_category_id = data.get('parent_category_id')
+        if not parent_category_id:
+            raise ValueError('Vui lòng chọn Danh mục cha cho phân loại chi.')
+        parent_category = _finance_master_for_user(
+            FinanceCategory.objects.filter(type=2, is_active=True), request,
+        ).filter(id=parent_category_id).first()
+        if not parent_category:
+            raise ValueError('Danh mục cha không thuộc thương hiệu của bạn hoặc đã ngừng sử dụng.')
+        duplicate = scoped.filter(
+            name__iexact=name,
+            parent_category=parent_category,
+        )
         if classification_id:
             duplicate = duplicate.exclude(id=classification_id)
         if duplicate.exists():
-            raise ValueError('Tên phân loại chi đã tồn tại trong thương hiệu này.')
+            raise ValueError('Tên phân loại chi đã tồn tại trong Danh mục cha này.')
         if classification_id:
             classification = scoped.get(id=classification_id)
         else:
-            brand_id = _default_finance_brand_id(request)
+            brand_id = parent_category.brand_id or _default_finance_brand_id(request)
             if not brand_id:
                 raise ValueError('Không xác định được thương hiệu để tạo phân loại chi.')
             classification = ExpenseClassification(brand_id=brand_id)
+        if (
+            classification.brand_id and parent_category.brand_id
+            and classification.brand_id != parent_category.brand_id
+        ):
+            raise ValueError('Danh mục cha không cùng thương hiệu với phân loại chi.')
         classification.name = name
+        classification.parent_category = parent_category
         classification.description = (data.get('description') or '').strip()
         is_active = data.get('is_active', True)
         if not isinstance(is_active, bool):

@@ -168,12 +168,21 @@ def _sync_goods_receipt_draft_payment(
     if payment and payment.status == 2 and not became_completed:
         return 'unchanged', payment
 
+    store_id = receipt.warehouse.store_id if receipt.warehouse_id and receipt.warehouse else None
+    brand_id = (
+        receipt.warehouse.store.brand_id
+        if receipt.warehouse_id and receipt.warehouse and receipt.warehouse.store_id
+        else None
+    )
+    category_scope = Q(brand_id=brand_id)
+    if not FinanceCategory.objects.filter(brand_id=brand_id).exists():
+        category_scope |= Q(brand_id__isnull=True)
     category = FinanceCategory.objects.filter(
+        category_scope,
         type=2,
         is_active=True,
         name__iexact='Nhập hàng',
     ).first()
-    store_id = receipt.warehouse.store_id if receipt.warehouse_id and receipt.warehouse else None
     default_description = f'Thanh toán phiếu nhập {receipt.code}'
     default_note = 'Tự động tạo từ phiếu nhập; chờ kế toán duyệt.'
 

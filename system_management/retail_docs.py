@@ -153,7 +153,7 @@ RETAIL_FINANCIAL_PLAN_GUIDE = {
                 'Chọn loại Thu hoặc Chi, sau đó chọn đúng danh mục nghiệp vụ.',
                 'Nhập số tiền kế hoạch, ngày dự kiến và quỹ dự kiến nhận/chi.',
                 'Bật Đưa vào dự báo đối với khoản sẽ ảnh hưởng đến dòng tiền tương lai.',
-                'Kế hoạch năm cần phân bổ từng tháng; tổng 12 tháng tự trở thành ngân sách cả năm.',
+                'Với kế hoạch năm, nhập tổng số tiền cả năm rồi bấm “Chia đều 12 tháng”; sau đó có thể sửa từng tháng. Hệ thống không tự ghi đè phần phân bổ đã chỉnh.',
             ],
             'result': 'Hệ thống có cơ sở để so sánh thực tế và dựng đường dự báo dòng tiền.',
         },

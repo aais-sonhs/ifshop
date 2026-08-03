@@ -2,8 +2,9 @@ import json
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.core import mail
 from django.db.models import Sum
 from django.test import Client, TestCase
@@ -26,7 +27,7 @@ from finance.models import (
 from finance.financial_alerts import run_due_financial_alerts
 from orders.models import Order
 from products.models import GoodsReceipt, PurchaseReturn, Supplier, Warehouse
-from system_management.models import Brand, Store, UserProfile
+from system_management.models import Brand, ModulePermission, RoleGroup, Store, UserProfile
 
 
 class FinanceFlowTests(TestCase):
@@ -1573,9 +1574,136 @@ class FinanceFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Kế hoạch so với thực tế')
+        self.assertContains(response, 'Bước tiếp theo: nhập số tiền kế hoạch')
+        self.assertContains(response, 'Nhập khoản Thu / Chi')
+        self.assertContains(response, 'id="fpi_form_amount"')
+        self.assertContains(response, 'Số tiền kế hoạch (VNĐ)')
+        self.assertContains(response, 'function fpDistributeAnnualAmount(totalAmount)')
+        self.assertContains(response, 'id="btn_distribute_annual_amount"')
+        self.assertContains(response, 'id="fpi_category_empty"')
+        self.assertContains(response, 'id="financial_plan_locked"')
+        self.assertContains(response, 'function fpParseMoney(value)')
+        self.assertContains(response, "fpLoad(r.id,function(){fpOpenPlanItemModal();})")
         self.assertContains(response, 'Lịch thanh toán nhà cung cấp')
         self.assertContains(response, 'Dự báo dòng tiền tương lai')
         self.assertContains(response, 'Cảnh báo tài chính')
+
+    def test_financial_plan_item_requires_positive_planned_amount(self):
+        plan = self._create_current_month_plan()
+        category = FinanceCategory.objects.create(name='Khoản cần nhập tiền', type=1)
+
+        response = self.client.post(
+            reverse('api_save_financial_plan_item'),
+            data=json.dumps({
+                'plan_id': plan.id,
+                'direction': 1,
+                'category_id': category.id,
+                'planned_amount': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Số tiền kế hoạch phải lớn hơn 0', response.json()['message'])
+        self.assertFalse(FinancialPlanItem.objects.filter(plan=plan, category=category).exists())
+
+    def test_financial_plan_rejects_duplicate_store_period(self):
+        self._create_current_month_plan()
+
+        response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'name': 'Kế hoạch trùng kỳ',
+                'period_type': 'month',
+                'period_value': date.today().strftime('%Y-%m'),
+                'store_id': self.store.id,
+                'status': 0,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Đã có kế hoạch tháng', response.json()['message'])
+
+    def test_financial_plan_rejects_invalid_alert_email(self):
+        response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'period_type': 'month',
+                'period_value': date.today().strftime('%Y-%m'),
+                'store_id': self.store.id,
+                'alert_enabled': True,
+                'alert_email_recipients': 'email-khong-hop-le',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Email cảnh báo không hợp lệ', response.json()['message'])
+
+    def test_locked_financial_plan_cannot_be_deleted(self):
+        plan = self._create_current_month_plan()
+        plan.status = 2
+        plan.save(update_fields=['status'])
+
+        response = self.client.post(
+            reverse('api_delete_financial_plan'),
+            data=json.dumps({'id': plan.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Kế hoạch đã khóa', response.json()['message'])
+        self.assertTrue(FinancialPlan.objects.filter(id=plan.id).exists())
+
+    def test_company_plan_is_not_visible_to_another_brand(self):
+        other_brand = Brand.objects.create(name='Finance Brand khác')
+        other_plan = FinancialPlan.objects.create(
+            code='KHTC-BRAND-KHAC',
+            name='Kế hoạch công ty khác',
+            brand=other_brand,
+            store=None,
+            period_type='month',
+            start_date=date.today().replace(day=1),
+            end_date=date.today(),
+            status=1,
+            created_by=self.other_user,
+        )
+
+        payload = self.client.get(reverse('api_get_financial_plans')).json()
+
+        self.assertNotIn(other_plan.id, [row['id'] for row in payload['plans']])
+
+    def test_financial_plan_view_only_role_cannot_create_plan(self):
+        group = Group.objects.create(name='Finance chỉ xem')
+        role = RoleGroup.objects.create(
+            brand=self.brand,
+            name='Finance chỉ xem',
+            group=group,
+        )
+        ModulePermission.objects.create(
+            role_group=role,
+            module='finance',
+            action='view',
+            is_allowed=True,
+        )
+        self.user.groups.add(group)
+
+        page_response = self.client.get(reverse('financial_plan_tbl'))
+        save_response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'period_type': 'month',
+                'period_value': date.today().strftime('%Y-%m'),
+                'store_id': self.store.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(page_response.status_code, 200)
+        self.assertEqual(save_response.status_code, 403)
+        self.assertIn('không có quyền lập mới', save_response.json()['message'])
 
     def test_yearly_financial_plan_and_budget_item_are_saved_with_correct_period(self):
         year = date.today().year + 1
@@ -1646,6 +1774,42 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(payload['summary']['actual_expense'], 250.0)
         expense_row = next(row for row in payload['items'] if row['direction'] == 2)
         self.assertEqual(expense_row['variance'], -350.0)
+
+    def test_financial_plan_actual_amount_respects_selected_cashbook(self):
+        plan = self._create_current_month_plan()
+        category = FinanceCategory.objects.create(name='Thu theo quỹ', type=1)
+        cashbook_a = CashBook.objects.create(name='Quỹ kế hoạch A')
+        cashbook_b = CashBook.objects.create(name='Quỹ kế hoạch B')
+        FinancialPlanItem.objects.create(
+            plan=plan,
+            direction=1,
+            category=category,
+            cash_book=cashbook_a,
+            planned_amount=Decimal('1000'),
+        )
+        Receipt.objects.create(
+            code='PT-PLAN-CASH-A', store=self.store, category=category,
+            cash_book=cashbook_a, amount=Decimal('300'), receipt_date=date.today(),
+            status=1, created_by=self.user,
+        )
+        Receipt.objects.create(
+            code='PT-PLAN-CASH-B', store=self.store, category=category,
+            cash_book=cashbook_b, amount=Decimal('700'), receipt_date=date.today(),
+            status=1, created_by=self.user,
+        )
+
+        payload = self.client.get(
+            reverse('api_get_financial_plans'), {'plan_id': plan.id},
+        ).json()['dashboard']
+
+        self.assertEqual(payload['summary']['actual_income'], 1000.0)
+        self.assertEqual(payload['items'][0]['actual_amount'], 300.0)
+
+        details = self.client.get(
+            reverse('api_financial_plan_item_details', args=[payload['items'][0]['id']]),
+        ).json()
+        self.assertEqual(details['total'], 300.0)
+        self.assertEqual([row['code'] for row in details['rows']], ['PT-PLAN-CASH-A'])
 
     def test_financial_forecast_warns_when_future_budget_makes_cash_negative(self):
         plan = self._create_current_month_plan()
@@ -1954,3 +2118,30 @@ class FinanceFlowTests(TestCase):
         plan.refresh_from_db()
         self.assertIsNotNone(plan.last_alert_run_at)
         self.assertIsNotNone(plan.last_alert_sent)
+
+    def test_financial_alert_scheduler_can_retry_after_send_error(self):
+        plan = self._create_current_month_plan()
+        plan.alert_enabled = True
+        plan.alert_lead_days = '0'
+        plan.alert_email_recipients = 'ketoan@example.com'
+        plan.save(update_fields=['alert_enabled', 'alert_lead_days', 'alert_email_recipients'])
+        SupplierPaymentSchedule.objects.create(
+            code='LCT-EMAIL-RETRY', plan=plan, store=self.store, supplier=self.supplier,
+            due_date=date.today(), gross_amount=Decimal('100'), amount=Decimal('100'),
+            priority=1, status=0, created_by=self.user,
+        )
+        run_time = datetime.combine(date.today(), time(9, 0))
+
+        with patch(
+            'finance.financial_alerts._send_plan_alert_email',
+            side_effect=RuntimeError('SMTP tạm thời lỗi'),
+        ):
+            failed_result = run_due_financial_alerts(now=run_time)
+
+        plan.refresh_from_db()
+        self.assertEqual(failed_result['totals']['error'], 1)
+        self.assertIsNone(plan.last_alert_run_at)
+
+        retry_result = run_due_financial_alerts(now=run_time)
+
+        self.assertEqual(retry_result['totals']['sent'], 1)

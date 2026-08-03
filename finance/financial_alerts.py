@@ -6,7 +6,9 @@ from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -34,17 +36,46 @@ def _parse_lead_days(value):
 
 def _parse_recipients(plan):
     recipients = []
+
+    def append_recipient(raw_email):
+        email = str(raw_email or '').strip().lower()
+        if not email or email in recipients:
+            return
+        try:
+            validate_email(email)
+        except ValidationError:
+            return
+        recipients.append(email)
+
     for value in re.split(r'[,;\s]+', plan.alert_email_recipients or ''):
-        value = value.strip()
-        if value and '@' in value and value not in recipients:
-            recipients.append(value)
+        append_recipient(value)
     if not recipients and plan.created_by and plan.created_by.email:
-        recipients.append(plan.created_by.email)
-    if plan.store_id and plan.store.brand.owner_id:
-        owner_email = plan.store.brand.owner.email
-        if owner_email and owner_email not in recipients:
-            recipients.append(owner_email)
+        append_recipient(plan.created_by.email)
+    plan_brand = plan.store.brand if plan.store_id else plan.brand
+    if plan_brand and plan_brand.owner_id:
+        owner_email = plan_brand.owner.email
+        append_recipient(owner_email)
     return recipients
+
+
+def _cashbooks_for_plan(plan):
+    from system_management.models import Brand
+
+    queryset = CashBook.objects.filter(is_active=True)
+    if not plan.brand_id:
+        referenced_ids = list(plan.items.exclude(cash_book_id=None).values_list('cash_book_id', flat=True))
+        referenced_ids += list(
+            plan.supplier_schedules.exclude(cash_book_id=None).values_list('cash_book_id', flat=True)
+        )
+        return queryset.filter(id__in=referenced_ids)
+    scope = Q(brand_id=plan.brand_id)
+    company_brand_ids = list(
+        Brand.objects.filter(brand_type=Brand.TYPE_COMPANY, is_active=True)
+        .values_list('id', flat=True)[:2]
+    )
+    if len(company_brand_ids) == 1 and company_brand_ids[0] == plan.brand_id:
+        scope |= Q(brand_id__isnull=True)
+    return queryset.filter(scope)
 
 
 def collect_financial_plan_alerts(plan, *, today=None):
@@ -99,19 +130,31 @@ def collect_financial_plan_alerts(plan, *, today=None):
         row['category_id']: Decimal(str(row['total'] or 0))
         for row in receipt_queryset.values('category_id').annotate(total=Sum('amount'))
     }
+    receipt_cashbook_actuals = {
+        (row['category_id'], row['cash_book_id']): Decimal(str(row['total'] or 0))
+        for row in receipt_queryset.values('category_id', 'cash_book_id').annotate(total=Sum('amount'))
+    }
     payment_actuals = {
         row['category_id']: Decimal(str(row['total'] or 0))
         for row in payment_queryset.values('category_id').annotate(total=Sum('amount'))
     }
+    payment_cashbook_actuals = {
+        (row['category_id'], row['cash_book_id']): Decimal(str(row['total'] or 0))
+        for row in payment_queryset.values('category_id', 'cash_book_id').annotate(total=Sum('amount'))
+    }
     monthly_actuals = {1: defaultdict(lambda: Decimal('0')), 2: defaultdict(lambda: Decimal('0'))}
-    for receipt in receipt_queryset.values('receipt_date', 'category_id', 'amount'):
+    for receipt in receipt_queryset.values('receipt_date', 'category_id', 'cash_book_id', 'amount'):
         month = date(receipt['receipt_date'].year, receipt['receipt_date'].month, 1)
-        monthly_actuals[1][(month, receipt['category_id'])] += Decimal(str(receipt['amount'] or 0))
-    for payment in payment_queryset.values('payment_date', 'category_id', 'amount'):
+        monthly_actuals[1][
+            (month, receipt['category_id'], receipt['cash_book_id'])
+        ] += Decimal(str(receipt['amount'] or 0))
+    for payment in payment_queryset.values('payment_date', 'category_id', 'cash_book_id', 'amount'):
         month = date(payment['payment_date'].year, payment['payment_date'].month, 1)
-        monthly_actuals[2][(month, payment['category_id'])] += Decimal(str(payment['amount'] or 0))
+        monthly_actuals[2][
+            (month, payment['category_id'], payment['cash_book_id'])
+        ] += Decimal(str(payment['amount'] or 0))
 
-    cashbooks = list(CashBook.objects.filter(is_active=True))
+    cashbooks = list(_cashbooks_for_plan(plan))
     balances = {cashbook.id: Decimal(str(cashbook.balance or 0)) for cashbook in cashbooks}
     minimums = {cashbook.id: Decimal(str(cashbook.minimum_balance or 0)) for cashbook in cashbooks}
     events = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
@@ -127,11 +170,15 @@ def collect_financial_plan_alerts(plan, *, today=None):
         if allocations:
             scheduled_pool = scheduled_by_item[item.id]
             for allocation in allocations:
+                actual = sum(
+                    amount
+                    for (month, category_id, cashbook_id), amount in monthly_actuals[item.direction].items()
+                    if month == allocation.month
+                    and category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
+                )
                 remaining = max(
-                    Decimal(str(allocation.planned_amount or 0))
-                    - monthly_actuals[item.direction].get(
-                        (allocation.month, item.category_id), Decimal('0')
-                    ),
+                    Decimal(str(allocation.planned_amount or 0)) - actual,
                     Decimal('0'),
                 )
                 if item.direction == 2:
@@ -152,8 +199,15 @@ def collect_financial_plan_alerts(plan, *, today=None):
                 )
         else:
             actuals = receipt_actuals if item.direction == 1 else payment_actuals
+            cashbook_actuals = (
+                receipt_cashbook_actuals if item.direction == 1 else payment_cashbook_actuals
+            )
+            actual = (
+                cashbook_actuals.get((item.category_id, item.cash_book_id), Decimal('0'))
+                if item.cash_book_id else actuals.get(item.category_id, Decimal('0'))
+            )
             remaining = max(
-                Decimal(str(item.planned_amount or 0)) - actuals.get(item.category_id, Decimal('0')),
+                Decimal(str(item.planned_amount or 0)) - actual,
                 Decimal('0'),
             )
             if item.direction == 2:
@@ -223,7 +277,8 @@ def run_due_financial_alerts(now=None):
         try:
             with transaction.atomic():
                 plan = FinancialPlan.objects.select_related(
-                    'created_by', 'store', 'store__brand', 'store__brand__owner',
+                    'brand', 'brand__owner', 'created_by', 'store',
+                    'store__brand', 'store__brand__owner',
                 ).select_for_update(of=('self',)).get(id=plan_id)
                 if plan.last_alert_run_at:
                     last_run = _local_now(plan.last_alert_run_at)
@@ -246,6 +301,10 @@ def run_due_financial_alerts(now=None):
             totals[status] += 1
             results.append({'plan_id': plan_id, 'status': status, 'alert_count': len(alerts)})
         except Exception as exc:
+            FinancialPlan.objects.filter(
+                id=plan_id,
+                last_alert_run_at=now,
+            ).update(last_alert_run_at=None)
             totals['error'] += 1
             results.append({'plan_id': plan_id, 'status': 'error', 'error': str(exc)})
     return {'totals': totals, 'results': results}

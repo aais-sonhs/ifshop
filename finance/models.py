@@ -11,6 +11,14 @@ class FinanceCategory(SoftDeleteModel):
         (1, 'Thu'),
         (2, 'Chi'),
     ]
+    brand = models.ForeignKey(
+        'system_management.Brand',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='finance_categories',
+        verbose_name='Thương hiệu',
+    )
     name = models.CharField(max_length=255, verbose_name='Tên danh mục')
     type = models.IntegerField(choices=TYPE_CHOICES, verbose_name='Loại')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
@@ -29,6 +37,14 @@ class FinanceCategory(SoftDeleteModel):
 
 class CashBook(SoftDeleteModel):
     """Danh mục quỹ (Sổ quỹ)"""
+    brand = models.ForeignKey(
+        'system_management.Brand',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='cash_books',
+        verbose_name='Thương hiệu',
+    )
     name = models.CharField(max_length=255, verbose_name='Tên quỹ')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     balance = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số dư')
@@ -256,6 +272,14 @@ class FinancialPlan(SoftDeleteModel):
 
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã kế hoạch')
     name = models.CharField(max_length=255, verbose_name='Tên kế hoạch')
+    brand = models.ForeignKey(
+        'system_management.Brand',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='financial_plans',
+        verbose_name='Thương hiệu',
+    )
     store = models.ForeignKey(
         'system_management.Store',
         on_delete=models.SET_NULL,

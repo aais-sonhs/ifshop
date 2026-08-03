@@ -8,7 +8,9 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.core.validators import validate_email
 from django.http import JsonResponse
 from django.db import transaction, IntegrityError
 from django.db.models import (
@@ -48,7 +50,14 @@ from .services import (
 from customers.models import Customer
 from orders.models import Order
 from products.models import GoodsReceipt, PurchaseReturn, Supplier
-from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required, can_manage_users
+from core.store_utils import (
+    brand_owner_required,
+    can_access_module,
+    can_manage_users,
+    filter_by_store,
+    get_managed_store_ids,
+    get_user_store,
+)
 from core.unique_codes import save_with_generated_code
 from system_management.menu_config import is_menu_visible_for_user
 
@@ -63,6 +72,11 @@ def financial_plan_menu_required(view_func):
     """Ẩn chức năng phải đi cùng chặn URL/API trực tiếp theo thương hiệu."""
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
+        if not can_access_module(request.user, 'finance', 'view'):
+            message = 'Bạn không có quyền xem Kế hoạch tài chính.'
+            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return _forbid_json(message)
+            return redirect('/dashboard/')
         if not is_menu_visible_for_user(request.user, 'financial_plans'):
             message = 'Chức năng Kế hoạch tài chính đang tắt cho thương hiệu này.'
             if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -70,6 +84,20 @@ def financial_plan_menu_required(view_func):
             return redirect('/dashboard/')
         return view_func(request, *args, **kwargs)
     return wrapper
+
+
+def _financial_plan_action_denied(request, action):
+    if can_access_module(request.user, 'finance', action):
+        return None
+    labels = {
+        'add': 'lập mới',
+        'edit': 'điều chỉnh',
+        'delete': 'xóa',
+        'approve': 'khóa hoặc mở khóa',
+    }
+    return _forbid_json(
+        f'Bạn không có quyền {labels.get(action, action)} Kế hoạch tài chính.'
+    )
 
 
 def _get_default_store_for_request(request):
@@ -84,6 +112,88 @@ def _get_default_store_for_request(request):
     if not store_ids:
         return None
     return Store.objects.filter(id__in=store_ids).order_by('id').first()
+
+
+def _managed_company_brand_ids(user):
+    """Các công ty có cửa hàng nằm trong phạm vi dữ liệu của user."""
+    from system_management.models import Store
+
+    store_ids = get_managed_store_ids(user)
+    if not store_ids:
+        return []
+    return list(
+        Store.objects.filter(id__in=store_ids)
+        .values_list('brand_id', flat=True)
+        .distinct()
+    )
+
+
+def _default_finance_brand_id(request):
+    brand_ids = _managed_company_brand_ids(request.user)
+    if len(brand_ids) == 1:
+        return brand_ids[0]
+    store = get_user_store(request)
+    return store.brand_id if store else None
+
+
+def _finance_master_for_user(queryset, request):
+    """Lọc danh mục/quỹ theo công ty và vẫn đọc được dữ liệu cũ một công ty."""
+    from system_management.models import Brand
+
+    brand_ids = _managed_company_brand_ids(request.user)
+    if not brand_ids:
+        return queryset.none()
+    scope = Q(brand_id__in=brand_ids)
+    company_brand_ids = list(
+        Brand.objects.filter(brand_type=Brand.TYPE_COMPANY, is_active=True)
+        .values_list('id', flat=True)[:2]
+    )
+    if len(company_brand_ids) == 1 and company_brand_ids[0] in brand_ids:
+        scope |= Q(brand_id__isnull=True)
+    return queryset.filter(scope)
+
+
+def _suppliers_for_user(queryset, request):
+    """Nhà cung cấp đã phát sinh hoặc được tạo trong phạm vi công ty hiện tại."""
+    store_ids = get_managed_store_ids(request.user)
+    if not store_ids:
+        return queryset.none()
+    return queryset.filter(
+        Q(goods_receipts__warehouse__store_id__in=store_ids)
+        | Q(payments__store_id__in=store_ids)
+        | Q(payment_schedules__store_id__in=store_ids)
+        | Q(created_by__profile__store_id__in=store_ids)
+        | Q(created_by__owned_brands__stores__id__in=store_ids)
+    ).distinct()
+
+
+def _normalize_plan_recipient_emails(raw_value):
+    recipients = []
+    invalid = []
+    for raw_email in re.split(r'[,;\s]+', str(raw_value or '').strip()):
+        email = raw_email.strip().lower()
+        if not email or email in recipients:
+            continue
+        try:
+            validate_email(email)
+        except ValidationError:
+            invalid.append(raw_email.strip())
+            continue
+        recipients.append(email)
+    if invalid:
+        raise ValueError('Email cảnh báo không hợp lệ: ' + ', '.join(invalid))
+    return ','.join(recipients)
+
+
+def _validate_finance_document_master_scope(request, document, direction):
+    if document.category_id and not _finance_master_for_user(
+        FinanceCategory.objects.filter(type=direction, is_active=True), request,
+    ).filter(id=document.category_id).exists():
+        raise ValueError('Danh mục thu/chi không thuộc thương hiệu của bạn.')
+    if document.cash_book_id and not _finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).filter(id=document.cash_book_id).exists():
+        raise ValueError('Quỹ không thuộc thương hiệu của bạn.')
 
 
 def _filter_receipts_for_user(queryset, request):
@@ -585,8 +695,12 @@ def _adjust_cashbook_balance(cash_book_id, amount_delta, validate_non_negative=F
 @login_required(login_url="/login/")
 @brand_owner_required
 def receipt_tbl(request):
-    categories = list(FinanceCategory.objects.filter(type=1, is_active=True).values('id', 'name'))
-    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    categories = list(_finance_master_for_user(
+        FinanceCategory.objects.filter(type=1, is_active=True), request,
+    ).values('id', 'name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).values('id', 'name'))
     payment_methods = _serialize_payment_methods()
     from core.store_utils import get_managed_store_ids
     store_ids = get_managed_store_ids(request.user)
@@ -604,10 +718,16 @@ def receipt_tbl(request):
 @login_required(login_url="/login/")
 @brand_owner_required
 def payment_tbl(request):
-    categories = list(FinanceCategory.objects.filter(type=2, is_active=True).values('id', 'name'))
-    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name', 'balance'))
+    categories = list(_finance_master_for_user(
+        FinanceCategory.objects.filter(type=2, is_active=True), request,
+    ).values('id', 'name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).values('id', 'name', 'balance'))
     payment_methods = _serialize_payment_methods()
-    suppliers = list(Supplier.objects.filter(is_active=True).values('id', 'code', 'name'))
+    suppliers = list(_suppliers_for_user(
+        Supplier.objects.filter(is_active=True), request,
+    ).values('id', 'code', 'name'))
     goods_receipts_qs = GoodsReceipt.objects.select_related('supplier')
     goods_receipts_qs = filter_by_store(goods_receipts_qs, request, field_name='warehouse__store')
     goods_receipts = list(goods_receipts_qs.values(
@@ -641,7 +761,9 @@ def finance_list_tbl(request):
 
 @login_required(login_url="/login/")
 def cashbook_tbl(request):
-    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).values('id', 'name'))
     context = {
         'active_tab': 'cashbook_tbl',
         'cashbooks': cashbooks,
@@ -707,20 +829,30 @@ def financial_plan_tbl(request):
     )
     return render(request, 'finance/financial_plan.html', {
         'active_tab': 'financial_plan_tbl',
+        'can_add_financial_plan': can_access_module(request.user, 'finance', 'add'),
+        'can_edit_financial_plan': can_access_module(request.user, 'finance', 'edit'),
+        'can_delete_financial_plan': can_access_module(request.user, 'finance', 'delete'),
+        'can_approve_financial_plan': can_access_module(request.user, 'finance', 'approve'),
         'stores': stores,
         'has_multiple_stores': len(stores) > 1,
         'categories': list(
-            FinanceCategory.objects.filter(is_active=True)
-            .values('id', 'name', 'type')
+            _finance_master_for_user(
+                FinanceCategory.objects.filter(is_active=True), request,
+            )
+            .values('id', 'name', 'type', 'brand_id')
             .order_by('type', 'name')
         ),
         'cashbooks': list(
-            CashBook.objects.filter(is_active=True)
+            _finance_master_for_user(
+                CashBook.objects.filter(is_active=True), request,
+            )
             .values('id', 'name', 'balance', 'minimum_balance')
             .order_by('name')
         ),
         'suppliers': list(
-            Supplier.objects.filter(is_active=True)
+            _suppliers_for_user(
+                Supplier.objects.filter(is_active=True), request,
+            )
             .values('id', 'code', 'name', 'payment_term_days', 'payment_priority')
             .order_by('name')
         ),
@@ -917,6 +1049,7 @@ def api_save_receipt(request):
 
         # 3. Đồng bộ loại thanh toán chuẩn và quỹ mặc định theo method option đã chọn.
         _apply_payment_method_defaults(r)
+        _validate_finance_document_master_scope(request, r, 1)
 
         # 4. Ghi phiếu và áp/hoàn tác hiệu ứng quỹ + công nợ đơn hàng trong cùng transaction.
         save_receipt_with_effect(r, old_effect=old_effect)
@@ -1533,6 +1666,11 @@ def api_save_payment(request):
 
             # 4. Bổ sung cấu hình phương thức thanh toán nếu user chọn method option.
             _apply_payment_method_defaults(p)
+            _validate_finance_document_master_scope(request, p, 2)
+            if p.supplier_id and not _suppliers_for_user(
+                Supplier.objects.all(), request,
+            ).filter(id=p.supplier_id).exists():
+                raise ValueError('Nhà cung cấp không thuộc phạm vi cửa hàng của bạn.')
 
             new_amount = Decimal(str(p.amount or 0))
             new_status = int(p.status)
@@ -1614,7 +1752,7 @@ def api_delete_payment(request):
 @login_required(login_url="/login/")
 def api_get_finance_categories(request):
     type_display_map = dict(FinanceCategory.TYPE_CHOICES)
-    cats = list(FinanceCategory.objects.values(
+    cats = list(_finance_master_for_user(FinanceCategory.objects.all(), request).values(
         'id',
         'name',
         'type',
@@ -1642,9 +1780,12 @@ def api_save_finance_category(request):
         data = json.loads(request.body)
         cid = data.get('id')
         if cid:
-            c = FinanceCategory.objects.get(id=cid)
+            c = _finance_master_for_user(FinanceCategory.objects.all(), request).get(id=cid)
         else:
-            c = FinanceCategory()
+            brand_id = _default_finance_brand_id(request)
+            if not brand_id:
+                raise ValueError('Không xác định được thương hiệu để tạo danh mục thu chi.')
+            c = FinanceCategory(brand_id=brand_id)
         c.name = data.get('name', '')
         c.type = data.get('type', 1)
         c.description = data.get('description', '')
@@ -1658,7 +1799,7 @@ def api_save_finance_category(request):
 
 @login_required(login_url="/login/")
 def api_get_cashbooks(request):
-    books = list(CashBook.objects.values(
+    books = list(_finance_master_for_user(CashBook.objects.all(), request).values(
         'id', 'name', 'description', 'balance', 'minimum_balance', 'is_active',
     ))
     data = [{
@@ -1682,9 +1823,12 @@ def api_save_cashbook(request):
         data = json.loads(request.body)
         bid = data.get('id')
         if bid:
-            b = CashBook.objects.get(id=bid)
+            b = _finance_master_for_user(CashBook.objects.all(), request).get(id=bid)
         else:
-            b = CashBook()
+            brand_id = _default_finance_brand_id(request)
+            if not brand_id:
+                raise ValueError('Không xác định được thương hiệu để tạo sổ quỹ.')
+            b = CashBook(brand_id=brand_id)
         b.name = data.get('name', '')
         b.description = data.get('description', '')
         minimum_balance = _parse_payment_decimal(
@@ -1865,7 +2009,9 @@ def api_delete_payment_method(request):
 @login_required(login_url="/login/")
 @brand_owner_required
 def setting_payment_methods(request):
-    cashbooks = list(CashBook.objects.filter(is_active=True).values('id', 'name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).values('id', 'name'))
     context = {
         'active_tab': 'setting_payment_methods',
         'cashbooks': cashbooks,
@@ -2147,7 +2293,12 @@ def _financial_plans_for_user(request):
     store_ids = get_managed_store_ids(request.user)
     if request.user.is_superuser or not store_ids:
         return FinancialPlan.objects.none()
-    return FinancialPlan.objects.filter(Q(store_id__in=store_ids) | Q(store_id__isnull=True))
+    brand_ids = _managed_company_brand_ids(request.user)
+    return FinancialPlan.objects.filter(
+        Q(store_id__in=store_ids)
+        | Q(store_id__isnull=True, brand_id__in=brand_ids)
+        | Q(store_id__isnull=True, brand_id__isnull=True, created_by=request.user)
+    )
 
 
 def _get_financial_plan(request, plan_id, for_update=False):
@@ -2192,10 +2343,15 @@ def _plan_payments(request, plan, end_date=None):
 
 
 def _actual_amounts_by_category(queryset):
-    return {
+    category_totals = {
         row['category_id']: Decimal(str(row['total'] or 0))
         for row in queryset.values('category_id').annotate(total=Sum('amount'))
     }
+    category_cashbook_totals = {
+        (row['category_id'], row['cash_book_id']): Decimal(str(row['total'] or 0))
+        for row in queryset.values('category_id', 'cash_book_id').annotate(total=Sum('amount'))
+    }
+    return category_totals, category_cashbook_totals
 
 
 def _serialize_financial_plan(plan):
@@ -2203,6 +2359,7 @@ def _serialize_financial_plan(plan):
         'id': plan.id,
         'code': plan.code,
         'name': plan.name,
+        'brand_id': plan.brand_id,
         'store_id': plan.store_id,
         'store': plan.store.name if plan.store else 'Toàn công ty',
         'period_type': plan.period_type,
@@ -2306,8 +2463,8 @@ def _financial_plan_dashboard(request, plan):
     today = date.today()
     receipt_queryset = _plan_receipts(request, plan)
     payment_queryset = _plan_payments(request, plan)
-    receipt_totals = _actual_amounts_by_category(receipt_queryset)
-    payment_totals = _actual_amounts_by_category(payment_queryset)
+    receipt_totals, receipt_cashbook_totals = _actual_amounts_by_category(receipt_queryset)
+    payment_totals, payment_cashbook_totals = _actual_amounts_by_category(payment_queryset)
     receipt_monthly = _monthly_actuals(receipt_queryset, 'receipt_date')
     payment_monthly = _monthly_actuals(payment_queryset, 'payment_date')
     items = list(
@@ -2347,10 +2504,16 @@ def _financial_plan_dashboard(request, plan):
             monthly_summary[month]['actual_expense'] += amount
 
     for item in items:
+        category_totals = receipt_totals if item.direction == 1 else payment_totals
+        category_cashbook_totals = (
+            receipt_cashbook_totals if item.direction == 1 else payment_cashbook_totals
+        )
         actual = (
-            receipt_totals.get(item.category_id, Decimal('0'))
-            if item.direction == 1
-            else payment_totals.get(item.category_id, Decimal('0'))
+            category_cashbook_totals.get(
+                (item.category_id, item.cash_book_id), Decimal('0'),
+            )
+            if item.cash_book_id
+            else category_totals.get(item.category_id, Decimal('0'))
         )
         planned = Decimal(str(item.planned_amount or 0))
         if item.direction == 1:
@@ -2400,9 +2563,11 @@ def _financial_plan_dashboard(request, plan):
                 'month_label': allocation.month.strftime('%m/%Y'),
                 'planned_amount': float(allocation.planned_amount),
                 'actual_amount': float(sum(
-                    amount for (month, category_id, _cashbook_id), amount in (
+                    amount for (month, category_id, cashbook_id), amount in (
                         receipt_monthly.items() if item.direction == 1 else payment_monthly.items()
-                    ) if month == allocation.month and category_id == item.category_id
+                    ) if month == allocation.month
+                    and category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
                 )),
                 'expected_date': allocation.expected_date.isoformat() if allocation.expected_date else '',
                 'note': allocation.note or '',
@@ -2506,9 +2671,11 @@ def _financial_plan_dashboard(request, plan):
             scheduled_pool = outstanding_scheduled_by_item.get(item.id, Decimal('0'))
             for allocation in allocations:
                 actual = sum(
-                    amount for (month, category_id, _cashbook_id), amount in (
+                    amount for (month, category_id, cashbook_id), amount in (
                         receipt_monthly.items() if item.direction == 1 else payment_monthly.items()
-                    ) if month == allocation.month and category_id == item.category_id
+                    ) if month == allocation.month
+                    and category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
                 )
                 remaining = max(
                     Decimal(str(allocation.planned_amount or 0)) - actual,
@@ -2550,7 +2717,9 @@ def _financial_plan_dashboard(request, plan):
                 item.cash_book_id,
             )
 
-    cashbooks = list(CashBook.objects.filter(is_active=True).order_by('name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).order_by('name'))
     current_balance = sum(
         (Decimal(str(cashbook.balance or 0)) for cashbook in cashbooks),
         Decimal('0'),
@@ -2691,6 +2860,15 @@ def api_save_financial_plan(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        denied = _financial_plan_action_denied(
+            request, 'edit' if data.get('id') else 'add',
+        )
+        if denied:
+            return denied
+        if int(data.get('status', 1)) == 2:
+            denied = _financial_plan_action_denied(request, 'approve')
+            if denied:
+                return denied
         period_type = str(data.get('period_type') or 'month')
         if period_type not in dict(FinancialPlan.PERIOD_CHOICES):
             raise ValueError('Kỳ kế hoạch không hợp lệ.')
@@ -2716,10 +2894,26 @@ def api_save_financial_plan(request):
 
         store_ids = get_managed_store_ids(request.user)
         store_id = data.get('store_id') or None
-        if store_id and int(store_id) not in store_ids:
-            raise ValueError('Cửa hàng không thuộc phạm vi quản lý.')
+        if store_id:
+            try:
+                store_id = int(store_id)
+            except (TypeError, ValueError):
+                raise ValueError('Cửa hàng không hợp lệ.')
+            if store_id not in store_ids:
+                raise ValueError('Cửa hàng không thuộc phạm vi quản lý.')
         if not store_id and len(store_ids) == 1:
             store_id = store_ids[0]
+        from system_management.models import Store
+        selected_store = (
+            Store.objects.select_related('brand').filter(id=store_id).first()
+            if store_id else None
+        )
+        brand_ids = _managed_company_brand_ids(request.user)
+        brand_id = selected_store.brand_id if selected_store else (
+            brand_ids[0] if len(brand_ids) == 1 else None
+        )
+        if not brand_id:
+            raise ValueError('Vui lòng chọn cửa hàng để xác định thương hiệu của kế hoạch.')
 
         with transaction.atomic():
             plan_id = data.get('id')
@@ -2728,6 +2922,10 @@ def api_save_financial_plan(request):
                 plan = _get_financial_plan(request, plan_id, for_update=True)
                 if not plan:
                     raise ValueError('Không tìm thấy kế hoạch.')
+                if plan.status == 2 and int(data.get('status', 1)) != 2:
+                    denied = _financial_plan_action_denied(request, 'approve')
+                    if denied:
+                        return denied
                 dates_outside = plan.items.filter(
                     Q(expected_date__lt=start_date) | Q(expected_date__gt=end_date)
                 ).exists() or plan.supplier_schedules.filter(
@@ -2750,8 +2948,28 @@ def api_save_financial_plan(request):
             else:
                 plan = FinancialPlan(created_by=request.user)
                 auto_code = True
+            duplicate_plans = FinancialPlan.objects.select_for_update().filter(
+                brand_id=brand_id,
+                period_type=period_type,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            duplicate_plans = (
+                duplicate_plans.filter(store_id=store_id)
+                if store_id else duplicate_plans.filter(store_id__isnull=True)
+            )
+            if plan.pk:
+                duplicate_plans = duplicate_plans.exclude(id=plan.id)
+            if duplicate_plans.exists():
+                target_name = selected_store.name if selected_store else 'Toàn công ty'
+                period_label = 'tháng' if period_type == 'month' else 'năm'
+                raise ValueError(
+                    f'Đã có kế hoạch {period_label} '
+                    f'cho {target_name} trong kỳ này.'
+                )
             plan.code = (data.get('code') or plan.code or _generate_planning_code(FinancialPlan, 'KHTC')).strip()
             plan.name = (data.get('name') or default_name).strip()
+            plan.brand_id = brand_id
             plan.store_id = store_id
             plan.period_type = period_type
             plan.start_date = start_date
@@ -2773,7 +2991,9 @@ def api_save_financial_plan(request):
                     raise ValueError('Số ngày cảnh báo phải từ 0 đến 365.')
                 lead_days.append(lead_day)
             plan.alert_lead_days = ','.join(str(day) for day in sorted(set(lead_days))) or '3,7,15'
-            plan.alert_email_recipients = (data.get('alert_email_recipients') or '').strip()
+            plan.alert_email_recipients = _normalize_plan_recipient_emails(
+                data.get('alert_email_recipients'),
+            )
             save_with_generated_code(
                 plan,
                 lambda: _generate_planning_code(FinancialPlan, 'KHTC'),
@@ -2803,10 +3023,15 @@ def api_delete_financial_plan(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        denied = _financial_plan_action_denied(request, 'delete')
+        if denied:
+            return denied
         with transaction.atomic():
             plan = _get_financial_plan(request, data.get('id'), for_update=True)
             if not plan:
                 raise ValueError('Không tìm thấy kế hoạch.')
+            if plan.status == 2:
+                raise ValueError('Kế hoạch đã khóa nên không thể xóa. Hãy mở khóa trước khi xóa.')
             if plan.supplier_schedules.filter(status=1).exists():
                 raise ValueError('Kế hoạch đã có lịch thanh toán hoàn thành nên không thể xóa.')
             waiting_schedules = list(
@@ -2835,6 +3060,11 @@ def api_save_financial_plan_item(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        denied = _financial_plan_action_denied(
+            request, 'edit' if data.get('id') else 'add',
+        )
+        if denied:
+            return denied
         with transaction.atomic():
             plan = _get_financial_plan(request, data.get('plan_id'), for_update=True)
             if not plan:
@@ -2844,8 +3074,13 @@ def api_save_financial_plan_item(request):
             direction = int(data.get('direction'))
             if direction not in (1, 2):
                 raise ValueError('Loại ngân sách không hợp lệ.')
-            category = FinanceCategory.objects.filter(
-                id=data.get('category_id'), type=direction, is_active=True,
+            category = _finance_master_for_user(
+                FinanceCategory.objects.all(), request,
+            ).filter(
+                Q(brand_id=plan.brand_id) | Q(brand_id__isnull=True),
+                id=data.get('category_id'),
+                type=direction,
+                is_active=True,
             ).first()
             if not category:
                 raise ValueError('Danh mục thu/chi không hợp lệ.')
@@ -2879,8 +3114,8 @@ def api_save_financial_plan_item(request):
                 if parsed_allocations else data.get('planned_amount')
             )
             amount = _parse_payment_decimal(amount_source, 'Số tiền kế hoạch')
-            if amount < 0:
-                raise ValueError('Số tiền kế hoạch không được âm.')
+            if amount <= 0:
+                raise ValueError('Số tiền kế hoạch phải lớn hơn 0.')
             expected_date = parse_date(data.get('expected_date') or '')
             if expected_date and not plan.start_date <= expected_date <= plan.end_date:
                 raise ValueError('Ngày dự kiến phải nằm trong kỳ kế hoạch.')
@@ -2891,9 +3126,21 @@ def api_save_financial_plan_item(request):
             revision_reason = (data.get('revision_reason') or '').strip()
             if item_id and not revision_reason:
                 raise ValueError('Vui lòng nhập lý do điều chỉnh ngân sách.')
+            cash_book_id = data.get('cash_book_id') or None
+            cash_book = None
+            if cash_book_id:
+                cash_book = _finance_master_for_user(
+                    CashBook.objects.all(), request,
+                ).filter(
+                    Q(brand_id=plan.brand_id) | Q(brand_id__isnull=True),
+                    id=cash_book_id,
+                    is_active=True,
+                ).first()
+                if not cash_book:
+                    raise ValueError('Quỹ dự kiến không thuộc thương hiệu của kế hoạch.')
             item.direction = direction
             item.category = category
-            item.cash_book_id = data.get('cash_book_id') or None
+            item.cash_book = cash_book
             item.planned_amount = amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
             item.expected_date = expected_date
             item.include_in_forecast = str(data.get('include_in_forecast', True)).lower() not in ('false', '0')
@@ -2938,6 +3185,9 @@ def api_delete_financial_plan_item(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        denied = _financial_plan_action_denied(request, 'delete')
+        if denied:
+            return denied
         with transaction.atomic():
             item = FinancialPlanItem.objects.select_related('plan').select_for_update().filter(id=data.get('id')).first()
             plan = _get_financial_plan(request, item.plan_id, for_update=True) if item else None
@@ -2991,6 +3241,8 @@ def api_financial_plan_item_details(request, item_id):
                 Q(store_id=item.plan.store_id) |
                 Q(store_id__isnull=True, order__store_id=item.plan.store_id)
             )
+        if item.cash_book_id:
+            queryset = queryset.filter(cash_book_id=item.cash_book_id)
         for receipt in queryset.order_by('receipt_date', 'id'):
             rows.append({
                 'id': receipt.id,
@@ -3016,6 +3268,8 @@ def api_financial_plan_item_details(request, item_id):
                 Q(store_id=item.plan.store_id) |
                 Q(store_id__isnull=True, goods_receipt__warehouse__store_id=item.plan.store_id)
             )
+        if item.cash_book_id:
+            queryset = queryset.filter(cash_book_id=item.cash_book_id)
         for payment in queryset.order_by('payment_date', 'id'):
             rows.append({
                 'id': payment.id,
@@ -3090,7 +3344,11 @@ def _build_supplier_payment_suggestions(request, plan):
     lại được xếp theo ưu tiên NCC, ngày đến hạn rồi mới đến ngày nhập.
     """
     today = date.today()
-    cashbooks = list(CashBook.objects.filter(is_active=True).order_by('name'))
+    cashbooks = list(_finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).filter(
+        Q(brand_id=plan.brand_id) | Q(brand_id__isnull=True),
+    ).order_by('name'))
     cashbook_map = {cashbook.id: cashbook for cashbook in cashbooks}
     ledger = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
 
@@ -3121,8 +3379,10 @@ def _build_supplier_payment_suggestions(request, plan):
             for allocation in allocations:
                 monthly_actuals = receipt_monthly if item.direction == 1 else payment_monthly
                 actual = sum(
-                    amount for (month, category_id, _cashbook_id), amount in monthly_actuals.items()
-                    if month == allocation.month and category_id == item.category_id
+                    amount for (month, category_id, cashbook_id), amount in monthly_actuals.items()
+                    if month == allocation.month
+                    and category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
                 )
                 remaining = max(
                     Decimal(str(allocation.planned_amount or 0)) - actual,
@@ -3134,11 +3394,13 @@ def _build_supplier_payment_suggestions(request, plan):
         else:
             actual = (
                 sum(
-                    amount for (_month, category_id, _cashbook_id), amount in receipt_monthly.items()
+                    amount for (_month, category_id, cashbook_id), amount in receipt_monthly.items()
                     if category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
                 ) if item.direction == 1 else sum(
-                    amount for (_month, category_id, _cashbook_id), amount in payment_monthly.items()
+                    amount for (_month, category_id, cashbook_id), amount in payment_monthly.items()
                     if category_id == item.category_id
+                    and (not item.cash_book_id or cashbook_id == item.cash_book_id)
                 )
             )
             remaining = max(Decimal(str(item.planned_amount or 0)) - actual, Decimal('0'))
@@ -3313,6 +3575,9 @@ def api_suggest_supplier_payment_schedules(request):
 def api_apply_supplier_payment_suggestions(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    denied = _financial_plan_action_denied(request, 'add')
+    if denied:
+        return denied
     try:
         data = json.loads(request.body)
         with transaction.atomic():
@@ -3323,7 +3588,11 @@ def api_apply_supplier_payment_suggestions(request):
                 raise ValueError('Kế hoạch đã khóa, không thể xếp lịch.')
             # Giữ nguyên số dư trong suốt lượt tính và tạo lịch để hai kế toán
             # không cùng lúc dùng chung một phần tiền khả dụng.
-            list(CashBook.objects.select_for_update().filter(is_active=True))
+            list(_finance_master_for_user(
+                CashBook.objects.select_for_update().filter(is_active=True), request,
+            ).filter(
+                Q(brand_id=plan.brand_id) | Q(brand_id__isnull=True),
+            ))
             current_suggestions = {
                 row['key']: row for row in _build_supplier_payment_suggestions(request, plan)
                 if not row['insufficient']
@@ -3430,7 +3699,12 @@ def _sync_supplier_schedule_payment(schedule, actor):
     payment.supplier_id = schedule.supplier_id
     payment.goods_receipt_id = schedule.goods_receipt_id
     payment.category_id = schedule.plan_item.category_id if schedule.plan_item_id else (
-        FinanceCategory.objects.filter(type=2, is_active=True, name__iexact='Nhập hàng')
+        FinanceCategory.objects.filter(
+            Q(brand_id=schedule.plan.brand_id) | Q(brand_id__isnull=True),
+            type=2,
+            is_active=True,
+            name__iexact='Nhập hàng',
+        )
         .values_list('id', flat=True).first()
     )
     payment.cash_book_id = schedule.cash_book_id
@@ -3460,6 +3734,11 @@ def api_save_supplier_payment_schedule(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
+        denied = _financial_plan_action_denied(
+            request, 'edit' if data.get('id') else 'add',
+        )
+        if denied:
+            return denied
         with transaction.atomic():
             plan = _get_financial_plan(request, data.get('plan_id'), for_update=True)
             if not plan:
@@ -3506,7 +3785,9 @@ def api_save_supplier_payment_schedule(request):
             else:
                 supplier_id = data.get('supplier_id') or None
                 store_id = plan.store_id or (_get_default_store_for_request(request).id if _get_default_store_for_request(request) else None)
-            if not supplier_id or not Supplier.objects.filter(id=supplier_id, is_active=True).exists():
+            if not supplier_id or not _suppliers_for_user(
+                Supplier.objects.filter(is_active=True), request,
+            ).filter(id=supplier_id).exists():
                 raise ValueError('Vui lòng chọn nhà cung cấp.')
 
             gross = _parse_payment_decimal(data.get('gross_amount'), 'Số tiền trước khuyến mãi')
@@ -3539,7 +3820,15 @@ def api_save_supplier_payment_schedule(request):
             schedule.store_id = store_id
             schedule.supplier_id = supplier_id
             schedule.goods_receipt = receipt
-            schedule.cash_book_id = data.get('cash_book_id') or (plan_item.cash_book_id if plan_item else None)
+            cash_book_id = data.get('cash_book_id') or (plan_item.cash_book_id if plan_item else None)
+            if cash_book_id and not _finance_master_for_user(
+                CashBook.objects.filter(is_active=True), request,
+            ).filter(
+                Q(brand_id=plan.brand_id) | Q(brand_id__isnull=True),
+                id=cash_book_id,
+            ).exists():
+                raise ValueError('Quỹ dự kiến không thuộc thương hiệu của kế hoạch.')
+            schedule.cash_book_id = cash_book_id
             schedule.due_date = due_date
             schedule.gross_amount = gross
             schedule.promotion_mode = calculator.promotion_mode
@@ -3588,6 +3877,9 @@ def api_save_supplier_payment_schedule(request):
 def api_delete_supplier_payment_schedule(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    denied = _financial_plan_action_denied(request, 'delete')
+    if denied:
+        return denied
     try:
         data = json.loads(request.body)
         with transaction.atomic():
@@ -3598,6 +3890,8 @@ def api_delete_supplier_payment_schedule(request):
             ).first()
             if not schedule or not _get_financial_plan(request, schedule.plan_id):
                 raise ValueError('Không tìm thấy lịch thanh toán.')
+            if schedule.plan.status == 2:
+                raise ValueError('Kế hoạch đã khóa, không thể hủy lịch thanh toán.')
             if schedule.status == 1 or (schedule.payment and schedule.payment.status == 1):
                 raise ValueError('Lịch đã thanh toán nên không thể hủy.')
             revision_reason = (data.get('revision_reason') or '').strip()

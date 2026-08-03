@@ -12,7 +12,7 @@
     <div class="card-body">
         <div class="row mb-2" style="row-gap:6px;">
             <div class="col-md-4">
-                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="Tìm tên, mã KH, SĐT, email, công ty...">
+                <input type="text" class="form-control form-control-sm" id="filter_search" placeholder="Tìm tên, mã KH, SĐT khách/điểm nhận, email, công ty...">
             </div>
             <div class="col-md-2">
                 <select class="form-control form-control-sm" id="filter_customer_group">
@@ -710,7 +710,9 @@ function filterCustomers(list){
                 d.company_address, deliveryAddressSearch, d.note, d.group
             ].join(' ');
             var textMatched = normalizeCustomerText(searchable).indexOf(keyword) >= 0;
-            var phoneMatched = keywordDigits.length >= 3 && onlyDigits(d.phone || '').indexOf(keywordDigits) >= 0;
+            var phoneMatched = keywordDigits.length >= 3 && getCustomerSearchPhones(d).some(function(phone){
+                return onlyDigits(phone).indexOf(keywordDigits) >= 0;
+            });
             if(!textMatched && !phoneMatched) return false;
         }
         if(filters.group && String(d.group_id || '') !== filters.group) return false;
@@ -797,6 +799,14 @@ function normalizeCustomerText(value){
 
 function onlyDigits(value){
     return String(value || '').replace(/\D/g, '');
+}
+
+function getCustomerSearchPhones(customer){
+    var phones = [customer.phone || ''];
+    (customer.delivery_addresses || []).forEach(function(item){
+        if(item.phone) phones.push(item.phone);
+    });
+    return phones;
 }
 
 function isPhoneLike(value){
@@ -919,7 +929,11 @@ function findBestCustomerMatch(list, term){
     var normalized = normalizeCustomerText(term);
     var digits = onlyDigits(term);
     if(digits.length >= 3){
-        var phoneMatch = list.find(function(c){ return onlyDigits(c.phone || '') === digits; });
+        var phoneMatch = list.find(function(c){
+            return getCustomerSearchPhones(c).some(function(phone){
+                return onlyDigits(phone) === digits;
+            });
+        });
         if(phoneMatch) return phoneMatch;
     }
     var exactTextMatch = list.find(function(c){

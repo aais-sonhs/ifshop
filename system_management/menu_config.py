@@ -59,6 +59,12 @@ BRAND_MENU_CATALOG = (
             {'key': 'finance_list', 'label': 'Danh sách thu chi'},
             {'key': 'cashbooks', 'label': 'Sổ quỹ'},
             {'key': 'supplier_debts', 'label': 'Công nợ nhà cung cấp'},
+            {
+                'key': 'financial_plans',
+                'label': 'Kế hoạch tài chính',
+                'badge': 'Mới',
+                'help': 'Lập ngân sách, dự báo dòng tiền và xếp lịch trả nhà cung cấp.',
+            },
         ),
     },
     {

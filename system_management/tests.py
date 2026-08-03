@@ -830,12 +830,17 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(page_response.status_code, 200)
         self.assertContains(page_response, 'Cấu hình menu theo thương hiệu')
         self.assertContains(page_response, 'Giá dịch vụ')
+        self.assertContains(page_response, 'Kế hoạch tài chính')
+        self.assertContains(page_response, 'id="menu_financial_plans"')
+        self.assertContains(page_response, 'data-menu-key="financial_plans"')
+        self.assertContains(page_response, 'Lập ngân sách, dự báo dòng tiền và xếp lịch trả nhà cung cấp.')
         self.assertContains(page_response, 'Báo cáo nhân viên bán hàng')
 
         api_response = self.client.get(reverse('api_get_brand_menu_settings'))
         self.assertEqual(api_response.status_code, 200)
         brands = {row['id']: row for row in api_response.json()['data']}
         self.assertTrue(brands[self.brand.id]['menu_visibility']['service_prices'])
+        self.assertTrue(brands[self.brand.id]['menu_visibility']['financial_plans'])
         self.assertTrue(brands[self.other_brand.id]['menu_visibility']['service_prices'])
 
     def test_superadmin_can_hide_brand_menu_and_service_price_access(self):
@@ -847,6 +852,7 @@ class SystemManagementScopeTests(TestCase):
                 'menu_visibility': {
                     'products': False,
                     'service_prices': False,
+                    'financial_plans': False,
                 },
             }),
             content_type='application/json',
@@ -855,12 +861,13 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(response.json()['status'], 'ok')
         self.assertFalse(response.json()['menu_visibility']['products'])
         self.assertFalse(response.json()['menu_visibility']['service_prices'])
+        self.assertFalse(response.json()['menu_visibility']['financial_plans'])
         self.assertTrue(response.json()['menu_visibility']['orders'])
 
         self.brand.refresh_from_db()
         self.assertEqual(
             self.brand.menu_visibility,
-            {'products': False, 'service_prices': False},
+            {'products': False, 'service_prices': False, 'financial_plans': False},
         )
         self.other_brand.refresh_from_db()
         self.assertEqual(self.other_brand.menu_visibility, {})
@@ -870,7 +877,24 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(owner_menu.status_code, 200)
         self.assertNotContains(owner_menu, 'href="/product-tbl/"')
         self.assertNotContains(owner_menu, 'href="/service-price-tbl/"')
+        self.assertNotContains(owner_menu, 'href="/finance-plan/"')
         self.assertContains(owner_menu, 'href="/order-tbl/"')
+
+        financial_plan_page = self.client.get(reverse('financial_plan_tbl'))
+        self.assertEqual(financial_plan_page.status_code, 302)
+        self.assertEqual(financial_plan_page.url, '/dashboard/')
+        self.assertEqual(
+            self.client.get(reverse('api_get_financial_plans')).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse('api_save_financial_plan'),
+                data=json.dumps({}),
+                content_type='application/json',
+            ).status_code,
+            403,
+        )
 
         service_page = self.client.get(reverse('service_price_tbl'))
         self.assertEqual(service_page.status_code, 302)
@@ -905,6 +929,7 @@ class SystemManagementScopeTests(TestCase):
         other_menu = self.client.get(reverse('brand_tbl'))
         self.assertContains(other_menu, 'href="/product-tbl/"')
         self.assertContains(other_menu, 'href="/service-price-tbl/"')
+        self.assertContains(other_menu, 'href="/finance-plan/"')
 
         self.client.force_login(self.superuser)
         self.assertEqual(self.client.get(reverse('service_price_tbl')).status_code, 200)
@@ -1122,10 +1147,16 @@ class SystemManagementScopeTests(TestCase):
         response = self.client.get(reverse('product_guide'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Hướng dẫn sử dụng Digimart cho cửa hàng bán lẻ')
-        self.assertContains(response, 'Cập nhật 01/08/2026')
+        self.assertContains(response, 'Cập nhật 03/08/2026')
         self.assertContains(response, 'Phạm vi hiện tại')
         self.assertContains(response, 'Tài liệu này chỉ trình bày quy trình bán lẻ')
         self.assertContains(response, 'id="guideSearch"')
+        self.assertContains(response, 'id="recent-updates"')
+        self.assertContains(response, 'Cập nhật nghiệp vụ ngày 02–03/08/2026')
+        self.assertContains(response, 'Phiếu chi mua hàng và khuyến mãi nhà cung cấp')
+        self.assertContains(response, 'không còn nút duyệt nhanh ngay tại cột Trạng thái')
+        self.assertContains(response, 'Tiền phiếu chi tự tính = Số tiền trước khuyến mãi − Khuyến mãi')
+        self.assertContains(response, 'BC Bán hàng bỏ lựa chọn Nhóm theo')
         self.assertContains(response, 'Bắt đầu theo vai trò')
         self.assertContains(response, 'Thiết lập ban đầu')
         self.assertContains(response, 'Quy trình bán lẻ')
@@ -1154,6 +1185,16 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'BC nhập xuất tồn theo danh mục')
         self.assertContains(response, 'Chọn Từ ngày và Đến ngày')
         self.assertContains(response, 'Thu chi và sổ quỹ')
+        self.assertContains(response, 'id="financial-plan-guide"')
+        self.assertContains(response, 'Hướng dẫn lập kế hoạch tài chính lần đầu')
+        self.assertContains(response, 'Chức năng riêng trên Digimart · Sapo chưa có')
+        self.assertContains(response, 'Điểm khác biệt so với Sapo')
+        self.assertContains(response, 'Không có một mục Kế hoạch tài chính riêng')
+        self.assertContains(response, 'Gợi ý cho lần thiết lập đầu tiên')
+        self.assertContains(response, '1. Lập ngân sách thu/chi')
+        self.assertContains(response, 'Bước 4 · Xếp lịch thanh toán nhà cung cấp')
+        self.assertContains(response, 'Ví dụ: lập kế hoạch tiền tháng 08/2026')
+        self.assertContains(response, 'Kế hoạch tài chính không thay thế BC Tài chính')
         self.assertContains(response, 'Báo cáo lợi nhuận dự kiến từ báo giá')
         self.assertContains(response, 'Báo cáo → BC LN dự kiến (/report-quotation-profit/)')
         self.assertContains(response, 'Thử CK CTV chỉ mô phỏng trên trình duyệt')
@@ -1167,6 +1208,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'chỉ có tối đa một dòng giá dịch vụ trong cùng một tháng')
         self.assertContains(response, 'Cấu hình menu theo từng thương hiệu')
         self.assertContains(response, 'Hệ thống → Cấu hình menu (/brand-menu-settings/)')
+        self.assertContains(response, 'dùng công tắc Kế hoạch tài chính để bật hoặc tắt riêng chức năng')
         self.assertContains(response, 'khách thu phí một lần')
         self.assertContains(response, 'thương hiệu A không làm đổi menu của thương hiệu B')
         self.assertContains(
@@ -1194,10 +1236,10 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Tồn đầu kỳ + Nhập trong kỳ − Xuất trong kỳ')
         self.assertContains(response, 'Giá trị xuất trong kỳ')
         self.assertContains(response, 'Giá vốn ghi nhận tại từng giao dịch')
-        self.assertContains(response, 'Tổng chi trên BC Tài chính')
-        self.assertContains(response, 'Tổng phiếu chi + Tổng hàng nhập')
+        self.assertContains(response, 'Tổng chi phí trên BC Tài chính')
+        self.assertContains(response, 'Chi phí khác + Hàng nhập sau khuyến mãi')
         self.assertContains(response, 'Lãi/Lỗ trên BC Tài chính')
-        self.assertContains(response, 'Tổng thu − Tổng chi')
+        self.assertContains(response, 'Tổng thu − Tổng chi phí')
         self.assertContains(response, 'id="sales-report-guide"')
         self.assertContains(response, 'Cách đọc Báo cáo bán hàng')
         self.assertContains(response, 'Phạm vi mặc định chỉ lấy đơn')

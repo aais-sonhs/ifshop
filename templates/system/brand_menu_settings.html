@@ -12,6 +12,7 @@
             <i class="fas fa-info-circle mr-1"></i>
             Chỉ Super Admin thay đổi được cấu hình này. Menu chưa từng cấu hình sẽ mặc định hiển thị.
             Tắt menu chỉ áp dụng cho tài khoản thuộc thương hiệu đã chọn.
+            Công tắc <strong>Kế hoạch tài chính</strong> nằm trong nhóm <strong>Tài chính</strong>.
         </div>
 
         <div class="row align-items-end mb-3">
@@ -60,7 +61,11 @@
                     <div class="card-body py-2">
                         {% for item in group.items %}
                         <div class="menu-setting-row d-flex align-items-center py-2">
-                            <label class="mb-0 flex-grow-1" for="menu_{{ item.key }}">{{ item.label }}</label>
+                            <label class="mb-0 flex-grow-1 pr-2" for="menu_{{ item.key }}">
+                                <span>{{ item.label }}</span>
+                                {% if item.badge %}<span class="badge badge-success ml-1">{{ item.badge }}</span>{% endif %}
+                                {% if item.help %}<small class="d-block text-muted mt-1">{{ item.help }}</small>{% endif %}
+                            </label>
                             <div class="custom-control custom-switch">
                                 <input
                                     type="checkbox"

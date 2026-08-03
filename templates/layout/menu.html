@@ -649,12 +649,14 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
+                        {% if brand_menu.financial_plans %}
                         <li class="nav-item">
                             <a href="{% url 'financial_plan_tbl' %}" class="nav-link {% if active_tab == 'financial_plan_tbl' %} active{% endif %}">
                                 <i class="far fa-circle nav-icon"></i>
                                 <p>Kế hoạch tài chính</p>
                             </a>
                         </li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}

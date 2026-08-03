@@ -4,14 +4,254 @@ RETAIL_GUIDE_META = {
     'title': 'Hướng dẫn sử dụng Digimart cho cửa hàng bán lẻ',
     'subtitle': (
         'Tài liệu thao tác từ lúc khai báo sản phẩm đến bán hàng, thu tiền, quản lý công nợ, '
-        'nhập kho, trả hàng và đọc báo cáo.'
+        'nhập kho, trả hàng, lập kế hoạch tài chính và đọc báo cáo.'
     ),
-    'revision_date': '01/08/2026',
+    'revision_date': '03/08/2026',
     'audience': 'Chủ cửa hàng, quản lý, nhân viên bán hàng, nhân viên kho và kế toán.',
     'scope': (
         'Tài liệu này chỉ trình bày quy trình bán lẻ. Các mô hình F&B, spa, thời trang chuyên sâu '
         'và nhà thuốc sẽ được bổ sung sau.'
     ),
+}
+
+
+RETAIL_RECENT_UPDATES = [
+    {
+        'date': '02/08/2026',
+        'title': 'Phiếu thu, phiếu chi và người duyệt',
+        'path': 'Tài chính → Phiếu thu / Phiếu chi',
+        'items': [
+            'Danh sách phiếu thu đổi tên cột “Người tạo đơn” thành “Người tạo”; cột “Người tạo phiếu” vẫn cho biết tài khoản lập phiếu thu.',
+            'Danh sách phiếu chi bỏ cột Người tạo và hiển thị Người duyệt; không còn nút duyệt nhanh ngay tại cột Trạng thái.',
+            'Muốn duyệt phiếu chi, mở Sửa và chuyển Trạng thái từ Nháp sang Hoàn thành. Tài khoản đang đăng nhập được ghi nhận là Người duyệt.',
+            'Nếu người dùng tự tạo phiếu chi ở trạng thái Hoàn thành, chính tài khoản đó đồng thời là người duyệt.',
+        ],
+    },
+    {
+        'date': '02/08/2026',
+        'title': 'Phiếu chi mua hàng và khuyến mãi nhà cung cấp',
+        'path': 'Kho & Sản phẩm → Phiếu nhập; Tài chính → Phiếu chi / Công nợ NCC',
+        'items': [
+            'Khi phiếu nhập chuyển Hoàn thành, hệ thống tự tạo một phiếu chi Nháp gắn với phiếu nhập để kế toán kiểm tra và duyệt; các phiếu nhập cũ đủ điều kiện cũng đã được bổ sung phiếu chi Nháp.',
+            'Số tiền trước khuyến mãi lấy tự động từ tổng phiếu nhập, tức tổng Số lượng thực nhận × Đơn giá nhập; không nhập lại bằng tay trên phiếu chi liên kết.',
+            'Kế toán chỉ nhập Khuyến mãi theo phần trăm hoặc số tiền. Tiền phiếu chi tự tính = Số tiền trước khuyến mãi − Khuyến mãi.',
+            'Nếu số lượng hoặc đơn giá của phiếu nhập thay đổi, phiếu chi liên kết còn Nháp được tính lại; phiếu đã Hoàn thành không tự đổi để giữ lịch sử đã duyệt.',
+            'Khuyến mãi được lưu trên phiếu chi, không sửa giá trị gốc của phiếu nhập. Công nợ NCC được giảm bởi cả tiền thực chi và khuyến mãi, còn sổ quỹ chỉ giảm theo tiền thực chi.',
+        ],
+    },
+    {
+        'date': '02/08/2026',
+        'title': 'Kỳ Báo cáo bán hàng và Báo cáo tài chính',
+        'path': 'Báo cáo → BC Bán hàng / BC Tài chính',
+        'items': [
+            'Có thể chọn kỳ Theo tháng, Theo năm hoặc Khoảng ngày; các mốc nhanh vẫn dùng được để đối chiếu tức thời.',
+            'BC Bán hàng bỏ lựa chọn Nhóm theo. Hệ thống tự gom theo ngày khi xem tháng, theo tháng khi xem năm và chọn mức phù hợp khi xem khoảng ngày.',
+            'BC Tài chính tách Chi phí khác, Hàng nhập trước khuyến mãi, Khuyến mãi nhà cung cấp và Hàng nhập sau khuyến mãi.',
+            'Phiếu chi đã gắn phiếu nhập chỉ là dòng tiền thanh toán và không bị cộng thêm lần nữa vào chi phí hàng nhập.',
+        ],
+    },
+    {
+        'date': '02–03/08/2026',
+        'title': 'Kế hoạch tài chính và lịch thanh toán nhà cung cấp',
+        'path': 'Tài chính → Kế hoạch tài chính',
+        'items': [
+            'Lập ngân sách thu/chi theo tháng hoặc năm; kế hoạch năm được phân bổ chi tiết theo 12 tháng và so sánh với chứng từ thực tế.',
+            'Theo dõi biểu đồ kế hoạch–thực tế, dự báo số dư chung và dự báo riêng từng quỹ/tài khoản.',
+            'Khai báo số dư tối thiểu cần giữ cho từng quỹ; khai báo hạn thanh toán và mức ưu tiên trên từng nhà cung cấp.',
+            'Hệ thống đề xuất lịch trả công nợ theo ưu tiên, hạn hợp đồng và khả năng tiền; có thể chia một phiếu nhập thành nhiều đợt nhưng luôn giữ số dư tối thiểu.',
+            'Đề xuất đủ tiền được chọn để tạo lịch cùng phiếu chi Nháp; đề xuất thiếu nguồn chỉ cảnh báo và không cho áp dụng. Kế toán vẫn là người chuyển phiếu chi sang Hoàn thành.',
+            'Có cảnh báo vượt ngân sách, lịch chi đến hạn/quá hạn và thiếu tiền tương lai; có thể gửi email trước 3, 7, 15 ngày hoặc theo cấu hình.',
+            'Mỗi lần sửa hoặc xóa phải ghi lý do; hệ thống lưu phiên bản và ảnh chụp kế hoạch để tra lại lịch sử điều chỉnh.',
+            'Super Admin có thể bật/tắt riêng menu Kế hoạch tài chính cho từng thương hiệu tại Cấu hình menu.',
+        ],
+    },
+]
+
+
+RETAIL_FINANCIAL_PLAN_GUIDE = {
+    'title': 'Hướng dẫn lập kế hoạch tài chính lần đầu',
+    'intro': (
+        'Kế hoạch tài chính là nơi trả lời câu hỏi “từ nay đến cuối kỳ doanh nghiệp dự kiến thu bao nhiêu, '
+        'phải chi bao nhiêu và có thời điểm nào thiếu tiền hay không?”. Đây là công cụ lập kế hoạch nội bộ '
+        'của Digimart, tách riêng với báo cáo tài chính dùng để xem số đã phát sinh.'
+    ),
+    'comparison': [
+        {
+            'label': 'Trên Sapo',
+            'icon': 'fas fa-store',
+            'body': (
+                'Không có một mục Kế hoạch tài chính riêng để cùng lúc lập ngân sách thu/chi, '
+                'dự báo số dư tương lai và xếp lịch trả nhà cung cấp theo nguồn tiền.'
+            ),
+        },
+        {
+            'label': 'Trên Digimart',
+            'icon': 'fas fa-chart-line',
+            'body': (
+                'Các công việc trên được đặt trong một kỳ kế hoạch. Số kế hoạch được đối chiếu với '
+                'chứng từ thực tế và cảnh báo sớm khi có nguy cơ vượt ngân sách hoặc thiếu tiền.'
+            ),
+        },
+        {
+            'label': 'Giá trị với người quản lý',
+            'icon': 'fas fa-lightbulb',
+            'body': (
+                'Không phải chờ đến lúc hóa đơn đến hạn hoặc quỹ xuống thấp mới xử lý; người quản lý '
+                'có thể đổi ngày chi, chia đợt thanh toán hoặc chuẩn bị thêm nguồn tiền từ trước.'
+            ),
+        },
+    ],
+    'first_time_note': (
+        'Lần đầu chỉ cần tạo một kế hoạch cho tháng đang vận hành, nhập các khoản lớn và chắc chắn nhất, '
+        'sau đó kiểm tra dự báo. Không cần nhập mọi khoản nhỏ ngay từ đầu; có thể bổ sung dần khi quy trình đã ổn định.'
+    ),
+    'goals': [
+        {
+            'title': '1. Lập ngân sách thu/chi',
+            'body': 'Đặt hạn mức dự kiến cho từng danh mục Thu và Chi theo tháng hoặc năm.',
+        },
+        {
+            'title': '2. So sánh kế hoạch–thực tế',
+            'body': 'Biết khoản nào đã đạt, còn lại bao nhiêu hoặc đang vượt ngân sách dự kiến.',
+        },
+        {
+            'title': '3. Dự báo số dư tương lai',
+            'body': 'Ghép số dư hiện tại, phần ngân sách còn lại và lịch thanh toán để nhìn số tiền dự kiến theo thời gian.',
+        },
+        {
+            'title': '4. Xếp lịch trả nhà cung cấp',
+            'body': 'Ưu tiên công nợ quan trọng, bám hạn hợp đồng và chia đợt chi khi một lần thanh toán chưa phù hợp.',
+        },
+        {
+            'title': '5. Cảnh báo thiếu tiền',
+            'body': 'Phát hiện sớm ngày số dư chung hoặc từng quỹ có nguy cơ xuống dưới mức an toàn.',
+        },
+    ],
+    'preparation': [
+        'Đối chiếu số dư hiện tại của từng quỹ tiền mặt, tài khoản ngân hàng và ví điện tử.',
+        'Tại Sổ quỹ, nhập Số dư tối thiểu cần giữ cho từng quỹ. Đây là phần tiền an toàn không nên dùng để xếp lịch chi.',
+        'Tại Nhà cung cấp, nhập Số ngày thanh toán và Mức ưu tiên: Khẩn cấp, Cao, Bình thường hoặc Thấp.',
+        'Chuẩn hóa Danh mục thu chi để kế hoạch và chứng từ thực tế dùng cùng một danh mục.',
+        'Chuẩn bị các khoản dự kiến chắc chắn nhất: doanh thu/thu nợ, lương, thuê mặt bằng, thuế, vận hành và tiền hàng nhà cung cấp.',
+    ],
+    'workflow': [
+        {
+            'title': 'Bước 1 · Tạo kỳ kế hoạch',
+            'path': 'Tài chính → Kế hoạch tài chính → Thêm kế hoạch',
+            'actions': [
+                'Chọn Theo tháng nếu điều hành ngắn hạn; chọn Theo năm nếu cần nhìn toàn năm.',
+                'Chọn đúng cửa hàng. Nếu lập kế hoạch chung, giữ phạm vi tất cả cửa hàng được quản lý.',
+                'Đặt trạng thái Đang áp dụng cho kế hoạch dùng để theo dõi thực tế.',
+                'Nếu cần email, bật cảnh báo, nhập các mốc báo trước như 3,7,15 ngày và danh sách email nhận.',
+            ],
+            'result': 'Có một kỳ kế hoạch đúng phạm vi, dùng làm khung cho ngân sách và lịch chi.',
+        },
+        {
+            'title': 'Bước 2 · Nhập ngân sách Thu và Chi',
+            'path': 'Trong kế hoạch → Khoản ngân sách',
+            'actions': [
+                'Chọn loại Thu hoặc Chi, sau đó chọn đúng danh mục nghiệp vụ.',
+                'Nhập số tiền kế hoạch, ngày dự kiến và quỹ dự kiến nhận/chi.',
+                'Bật Đưa vào dự báo đối với khoản sẽ ảnh hưởng đến dòng tiền tương lai.',
+                'Kế hoạch năm cần phân bổ từng tháng; tổng 12 tháng tự trở thành ngân sách cả năm.',
+            ],
+            'result': 'Hệ thống có cơ sở để so sánh thực tế và dựng đường dự báo dòng tiền.',
+        },
+        {
+            'title': 'Bước 3 · Đọc kế hoạch so với thực tế',
+            'path': 'Trong kế hoạch → Bảng Kế hoạch và thực tế / Biểu đồ theo tháng',
+            'actions': [
+                'Kế hoạch là số đã nhập; Thực tế lấy từ phiếu thu/phiếu chi Hoàn thành đúng kỳ và đúng phạm vi.',
+                'Chênh lệch cho biết phần còn lại hoặc phần đã vượt so với ngân sách.',
+                'Bấm vào danh mục để mở danh sách chứng từ tạo nên số Thực tế.',
+                'Khi cần đổi ngân sách, nhập lý do điều chỉnh để lưu một phiên bản mới.',
+            ],
+            'result': 'Quản lý giải thích được vì sao một khoản đạt thấp, cao hoặc vượt kế hoạch.',
+        },
+        {
+            'title': 'Bước 4 · Xếp lịch thanh toán nhà cung cấp',
+            'path': 'Trong kế hoạch → Lịch thanh toán NCC',
+            'actions': [
+                'Có thể bấm Xếp lịch chi để lập thủ công cho một công nợ cụ thể.',
+                'Bấm Đề xuất tự động để hệ thống xếp theo Mức ưu tiên NCC → Hạn hợp đồng → Ngày nhập hàng.',
+                'Kiểm tra ngày đề xuất, quỹ, số tiền, đợt thanh toán và lý do của từng dòng.',
+                'Chỉ chọn dòng đủ nguồn tiền. Dòng Chưa đủ nguồn tiền chỉ dùng để cảnh báo và không thể áp dụng.',
+                'Bấm Tạo phiếu chi Nháp đã chọn; sau đó kế toán mở phiếu chi, nhập khuyến mãi nếu có và chuyển Hoàn thành để duyệt.',
+            ],
+            'result': 'Có lịch chi khả thi nhưng tiền chưa bị trừ cho tới khi kế toán hoàn thành phiếu chi.',
+        },
+        {
+            'title': 'Bước 5 · Theo dõi dự báo và cảnh báo',
+            'path': 'Trong kế hoạch → Dự báo dòng tiền / Cảnh báo tài chính',
+            'actions': [
+                'Đọc biểu đồ để tìm ngày số dư dự kiến giảm mạnh hoặc xuống âm.',
+                'Xem riêng từng quỹ để phát hiện quỹ xuống dưới Số dư tối thiểu dù tổng tiền toàn doanh nghiệp vẫn còn dương.',
+                'Xử lý cảnh báo vượt ngân sách, lịch chi đến hạn/quá hạn và thiếu tiền trước ngày dự kiến.',
+                'Điều chỉnh ngày thu, ngày chi, chia đợt thanh toán hoặc bổ sung nguồn tiền; luôn ghi rõ lý do thay đổi.',
+            ],
+            'result': 'Doanh nghiệp chủ động quyết định thời điểm chi thay vì chỉ phát hiện thiếu tiền khi đến hạn.',
+        },
+    ],
+    'terms': [
+        {
+            'name': 'Kế hoạch',
+            'source': 'Số tiền người dùng dự kiến cho từng danh mục.',
+            'meaning': 'Mục tiêu hoặc hạn mức quản trị; chưa làm thay đổi sổ quỹ.',
+        },
+        {
+            'name': 'Thực tế',
+            'source': 'Phiếu thu/phiếu chi Hoàn thành đúng kỳ, cửa hàng, danh mục và quỹ.',
+            'meaning': 'Số đã phát sinh và được duyệt; phiếu Nháp không được tính.',
+        },
+        {
+            'name': 'Còn lại',
+            'source': 'max(Kế hoạch − Thực tế, 0).',
+            'meaning': 'Phần ngân sách chưa phát sinh, được dùng trong dự báo nếu bật Đưa vào dự báo.',
+        },
+        {
+            'name': 'Số dư dự báo',
+            'source': 'Số dư hiện tại + Thu còn lại − Chi còn lại − Lịch chi chưa thanh toán.',
+            'meaning': 'Ước tính tương lai, không phải số dư kế toán đã chốt.',
+        },
+        {
+            'name': 'Số dư tối thiểu',
+            'source': 'Mức tiền an toàn đặt riêng trên từng quỹ.',
+            'meaning': 'Hệ thống giữ lại khi đề xuất lịch chi và dùng làm ngưỡng cảnh báo.',
+        },
+        {
+            'name': 'Phiếu chi Nháp từ lịch',
+            'source': 'Được tạo khi áp dụng lịch thủ công hoặc đề xuất tự động.',
+            'meaning': 'Chờ kế toán kiểm tra; chưa trừ quỹ và chưa được coi là đã thanh toán.',
+        },
+    ],
+    'example': {
+        'title': 'Ví dụ: lập kế hoạch tiền tháng 08/2026',
+        'inputs': [
+            'Tài khoản ngân hàng hiện có 200 triệu đồng; Số dư tối thiểu cần giữ là 50 triệu đồng.',
+            'Dự kiến thu công nợ khách hàng 120 triệu đồng ngày 10/08.',
+            'Dự kiến chi vận hành 40 triệu đồng ngày 15/08.',
+            'Phiếu nhập của NCC A có công nợ 180 triệu đồng, ưu tiên Cao và đến hạn ngày 12/08.',
+        ],
+        'calculation': [
+            'Đầu kỳ có thể dùng an toàn: 200 − 50 = 150 triệu đồng.',
+            'Sau khoản thu ngày 10/08, số dư dự kiến là 200 + 120 = 320 triệu đồng.',
+            'Nếu trả NCC A ngày 12/08, số dư còn 320 − 180 = 140 triệu đồng, vẫn cao hơn mức tối thiểu 50 triệu đồng.',
+            'Sau chi vận hành ngày 15/08, số dư cuối kỳ dự kiến là 140 − 40 = 100 triệu đồng.',
+        ],
+        'decision': [
+            'Hệ thống có thể đề xuất trả đủ 180 triệu đồng cho NCC A ngày 12/08 vì quỹ vẫn an toàn.',
+            'Nếu NCC giảm giá 10%, kế toán nhập KM 10% trên phiếu chi: KM = 18 triệu, Tiền phiếu chi = 162 triệu đồng.',
+            'Khi phiếu chi Hoàn thành, công nợ được tất toán 180 triệu nhưng quỹ chỉ giảm 162 triệu đồng.',
+        ],
+    },
+    'rules': [
+        'Không nhập số để làm cho biểu đồ “đẹp”; chỉ nhập các khoản có căn cứ và cập nhật khi giả định thay đổi.',
+        'Kế hoạch tài chính không thay thế BC Tài chính. Kế hoạch nhìn về tương lai, báo cáo phản ánh chứng từ đã phát sinh.',
+        'Không coi lịch thanh toán hoặc phiếu chi Nháp là đã trả tiền. Chỉ phiếu chi Hoàn thành mới ghi người duyệt và trừ quỹ.',
+        'Đề xuất tự động là phương án hỗ trợ quyết định; kế toán vẫn phải kiểm tra công nợ, khuyến mãi, quỹ và ngày chi.',
+        'Mỗi tuần nên rà lại khoản thu chậm, khoản chi mới, công nợ đến hạn và cảnh báo thiếu tiền.',
+        'Mỗi lần sửa/xóa phải ghi lý do để Lịch sử điều chỉnh cho biết ai thay đổi, thay đổi lúc nào và vì sao.',
+    ],
 }
 
 
@@ -33,8 +273,8 @@ RETAIL_ROLE_START = [
     },
     {
         'role': 'Kế toán',
-        'start': 'Đọc Thanh toán, Sổ quỹ, Công nợ, BC Tài chính và BC Bán hàng.',
-        'responsibility': 'Đối chiếu tiền thực thu, chứng từ thu chi, công nợ và số liệu báo cáo.',
+        'start': 'Đọc Thanh toán, Sổ quỹ, Công nợ, Kế hoạch tài chính, BC Tài chính và BC Bán hàng.',
+        'responsibility': 'Đối chiếu tiền thực thu, duyệt phiếu chi, lập lịch thanh toán, theo dõi ngân sách, công nợ và số liệu báo cáo.',
     },
 ]
 
@@ -65,6 +305,7 @@ RETAIL_SETUP_STEPS = [
         'path': 'Tài chính → Sổ quỹ; Cài đặt → Phương thức TT',
         'actions': [
             'Tạo các quỹ thực tế: Quỹ tiền mặt, Tài khoản ngân hàng, Ví điện tử.',
+            'Khai báo Số dư tối thiểu cần giữ cho từng quỹ để dự báo và xếp lịch chi không dùng hết tiền an toàn.',
             'Gắn mỗi phương thức thanh toán với đúng tài khoản/quỹ mặc định.',
             'Đặt thứ tự ưu tiên: số nhỏ hiển thị trước, ví dụ Tiền mặt = 1, Chuyển khoản = 2.',
         ],
@@ -96,6 +337,7 @@ RETAIL_SETUP_STEPS = [
         'actions': [
             'Nhập mã, tên, số điện thoại và nhóm khách nếu cần theo dõi lịch sử hoặc công nợ.',
             'Nhập nhà cung cấp và gắn vào sản phẩm để xem báo cáo tiêu thụ theo nhà cung cấp.',
+            'Với nhà cung cấp có công nợ, nhập Số ngày thanh toán và Mức ưu tiên để hệ thống đề xuất lịch chi đúng hạn.',
             'Không tạo nhiều hồ sơ trùng số điện thoại hoặc trùng tên cho cùng một đối tượng.',
         ],
         'result': 'Theo dõi đúng lịch sử mua, công nợ và nguồn hàng.',
@@ -239,6 +481,7 @@ RETAIL_OPERATION_GUIDES = [
             'Nhập số lượng thực nhận và giá nhập thực tế trên từng dòng.',
             'Kiểm tra tổng tiền, ghi chú chênh lệch với đơn đặt hàng nếu có.',
             'Chỉ chuyển Hoàn thành khi đã nhận và kiểm hàng.',
+            'Sau khi Hoàn thành, mở Tài chính → Phiếu chi để kiểm tra phiếu chi Nháp được tạo tự động cho lần nhập này.',
             'Kiểm tra tồn kho và Lịch sử nhập của sản phẩm sau khi hoàn thành.',
         ],
         'checks': [
@@ -248,6 +491,8 @@ RETAIL_OPERATION_GUIDES = [
             'Ảnh trên đơn lấy từ hồ sơ sản phẩm. Nếu hiện Chưa có ảnh, hãy bổ sung ảnh tại danh sách sản phẩm trước khi gửi đơn cho nhà cung cấp.',
             'Mở Tạo/Sửa đơn đặt hàng rồi đóng ngay sẽ không hỏi xác nhận; hệ thống chỉ cảnh báo khi thông tin hoặc dòng sản phẩm đã thực sự thay đổi.',
             'Phiếu Nháp dùng để chuẩn bị và chưa nên coi là hàng đã nhận.',
+            'Có thể sửa số lượng thực nhận hoặc đơn giá nhập khi phát hiện hàng hỏng/chênh lệch; phiếu chi liên kết còn Nháp sẽ lấy lại tổng tiền mới.',
+            'Không nhập khuyến mãi của nhà cung cấp vào phiếu nhập. Kế toán ghi khoản này trên phiếu chi để giữ nguyên chứng từ nhập kho.',
             'Không chọn nhầm kho nếu doanh nghiệp có nhiều điểm bán.',
             'Giá nhập sai có thể làm sai lịch sử mua và giá vốn tham khảo.',
             'BC Nhập hàng theo nhà cung cấp chỉ nên đối chiếu các phiếu Hoàn thành.',
@@ -303,21 +548,26 @@ RETAIL_OPERATION_GUIDES = [
         'anchor': 'finance',
         'icon': 'fas fa-cash-register',
         'title': 'Thu chi và sổ quỹ',
-        'intro': 'Sổ quỹ phản ánh tiền vào ra; BC Bán hàng phản ánh hoạt động bán. Hai báo cáo trả lời hai câu hỏi khác nhau.',
-        'path': 'Tài chính → Phiếu thu / Phiếu chi / Sổ quỹ',
+        'intro': 'Ghi đúng tiền thực thu, thực chi, khuyến mãi nhà cung cấp và người duyệt để sổ quỹ, công nợ và báo cáo khớp nhau.',
+        'path': 'Tài chính → Phiếu thu / Phiếu chi / Sổ quỹ / Công nợ NCC; Báo cáo → BC Tài chính',
         'steps': [
             'Tạo phiếu thu khi thực tế nhận tiền và phiếu chi khi thực tế chi tiền.',
             'Chọn đúng ngày, cửa hàng, quỹ, phương thức, đối tượng và chứng từ liên quan.',
-            'Ghi nội dung đủ rõ để người khác biết khoản tiền phát sinh vì việc gì.',
-            'Chỉ chứng từ Hoàn thành mới nên dùng để chốt quỹ.',
+            'Với phiếu nhập đã Hoàn thành, mở phiếu chi Nháp do hệ thống tự tạo thay vì tìm và chọn lại phiếu nhập trong danh sách dài.',
+            'Kiểm tra Số tiền trước khuyến mãi được lấy từ tổng phiếu nhập; chọn Khuyến mãi theo % hoặc tiền rồi nhập đúng ưu đãi của nhà cung cấp.',
+            'Kiểm tra Tiền phiếu chi được tự tính. Đây là số thực tế sẽ bị trừ khỏi quỹ khi chứng từ Hoàn thành.',
+            'Ghi nội dung đủ rõ, mở Sửa và chuyển Trạng thái từ Nháp sang Hoàn thành để duyệt. Tài khoản đang đăng nhập được lưu là Người duyệt.',
             'Cuối ngày đối chiếu riêng tiền mặt, ngân hàng và ví điện tử.',
-            'Mở BC Tài chính để xem Tổng thu, Tổng phiếu chi, Tổng hàng nhập, Tổng chi và Lãi/Lỗ theo công thức quản trị.',
+            'Mở BC Tài chính, chọn Theo tháng, Theo năm hoặc Khoảng ngày rồi đối chiếu Tổng thu, Chi phí khác, Hàng nhập sau KM, Tổng chi phí và Lãi/Lỗ.',
         ],
         'checks': [
+            'Danh sách phiếu chi hiển thị Người duyệt, không hiển thị Người tạo và không có nút duyệt nhanh tại cột Trạng thái.',
+            'Phiếu chi Nháp chưa trừ quỹ. Khi chuyển sang Hoàn thành, hệ thống ghi người duyệt và trừ đúng Tiền phiếu chi.',
+            'Khuyến mãi nhà cung cấp làm giảm công nợ phải trả nhưng không làm tăng số dư quỹ.',
+            'Phiếu chi mua hàng gắn với phiếu nhập không được tính thêm một lần vào chi phí vì giá trị hàng đã được ghi nhận từ phiếu nhập.',
             'Không dùng Doanh thu thay cho Tổng thu: đơn còn nợ có doanh thu nhưng chưa có đủ tiền thu.',
             'Không dùng Lợi nhuận gộp thay cho Lãi/Lỗ tài chính: hai chỉ tiêu có phạm vi chi phí khác nhau.',
             'Một khoản tiền chỉ được ghi một lần vào đúng quỹ.',
-            'Phiếu nhập và phiếu chi mua hàng có thể cùng xuất hiện trong công thức quản trị của BC Tài chính; cần hiểu rõ trước khi kết luận.',
         ],
     },
     {
@@ -446,12 +696,14 @@ RETAIL_OPERATION_GUIDES = [
             'Bật hoặc tắt từng menu; công tắc ở tên nhóm dùng để đổi toàn bộ menu con trong nhóm.',
             'Dùng Bật tất cả hoặc Tắt tất cả khi cần cấu hình nhanh, sau đó kiểm tra lại từng nhóm.',
             'Bấm Lưu cấu hình và đăng nhập bằng tài khoản thuộc thương hiệu đó để kiểm tra sidebar.',
+            'Trong nhóm Tài chính, dùng công tắc Kế hoạch tài chính để bật hoặc tắt riêng chức năng lập kế hoạch cho thương hiệu.',
             'Với khách thu phí một lần, có thể tắt Quản trị → Giá dịch vụ hàng tháng; khách thu phí hằng tháng thì bật lại mục này.',
         ],
         'checks': [
             'Mỗi thương hiệu có cấu hình riêng; thay đổi thương hiệu A không làm đổi menu của thương hiệu B.',
             'Menu chưa từng cấu hình hoặc menu mới được bổ sung sau này mặc định hiển thị.',
             'Nhóm cha tự ẩn khi toàn bộ menu con trong nhóm đều bị tắt.',
+            'Khi Kế hoạch tài chính bị tắt, menu bị ẩn và tài khoản của thương hiệu cũng không thể mở trực tiếp trang hoặc API kế hoạch.',
             'Điều kiện mô hình kinh doanh và phân quyền người dùng vẫn được áp dụng cùng cấu hình của Super Admin.',
             'Khi Giá dịch vụ bị tắt, chủ thương hiệu không thể mở trực tiếp trang hoặc API Giá dịch vụ.',
             'Menu hệ thống riêng của Super Admin không bị ảnh hưởng bởi cấu hình theo thương hiệu.',
@@ -683,30 +935,51 @@ RETAIL_FORMULA_GROUPS = [
                 'note': 'Không bằng Doanh thu nếu có công nợ hoặc thu tiền khác ngày bán.',
             },
             {
-                'name': 'Tổng phiếu chi',
+                'name': 'Tiền thực chi',
                 'formula': 'Tổng số tiền phiếu chi Hoàn thành trong kỳ',
-                'example': 'Chi vận chuyển 1 triệu + chi vận hành 2 triệu = 3 triệu',
-                'meaning': 'Dòng tiền chi theo phiếu chi.',
-                'note': 'Lọc theo Ngày chi.',
+                'example': 'Trả NCC 8 triệu + chi vận hành 2 triệu = 10 triệu',
+                'meaning': 'Dòng tiền thật đã ra khỏi các quỹ theo Ngày chi.',
+                'note': 'Dùng để đối chiếu sổ quỹ; không đồng nghĩa toàn bộ là chi phí mới trong kỳ.',
             },
             {
-                'name': 'Tổng hàng nhập',
+                'name': 'Chi phí khác',
+                'formula': 'Tổng phiếu chi Hoàn thành không gắn phiếu nhập',
+                'example': 'Vận chuyển 1 triệu + vận hành 2 triệu = 3 triệu',
+                'meaning': 'Các khoản chi ngoài giá trị hàng nhập.',
+                'note': 'Phiếu chi gắn phiếu nhập bị loại khỏi chỉ tiêu này để không cộng trùng.',
+            },
+            {
+                'name': 'Hàng nhập trước khuyến mãi',
                 'formula': 'Tổng tiền phiếu nhập Hoàn thành trong kỳ',
                 'example': 'Phiếu nhập 1: 5 triệu + phiếu nhập 2: 7 triệu = 12 triệu',
-                'meaning': 'Giá trị hàng nhập theo chứng từ kho.',
+                'meaning': 'Giá trị gốc của hàng nhập theo chứng từ kho.',
                 'note': 'Lọc theo Ngày nhập và kho thuộc cửa hàng.',
             },
             {
-                'name': 'Tổng chi trên BC Tài chính',
-                'formula': 'Tổng phiếu chi + Tổng hàng nhập',
-                'example': '3 triệu + 12 triệu = 15 triệu',
-                'meaning': 'Tổng chi theo công thức quản trị hiện tại.',
-                'note': 'Nếu một lần mua hàng vừa có phiếu nhập vừa có phiếu chi, cả hai có thể cùng được cộng.',
+                'name': 'Khuyến mãi nhà cung cấp',
+                'formula': 'Tổng KM trên phiếu chi Hoàn thành gắn các phiếu nhập trong kỳ',
+                'example': 'Hàng nhập 12 triệu, NCC khuyến mãi 1 triệu',
+                'meaning': 'Khoản được nhà cung cấp giảm, làm giảm giá trị phải trả.',
+                'note': 'Không phải tiền thu vào nên không làm tăng số dư quỹ.',
+            },
+            {
+                'name': 'Hàng nhập sau khuyến mãi',
+                'formula': 'Hàng nhập trước KM − Khuyến mãi nhà cung cấp',
+                'example': '12 triệu − 1 triệu = 11 triệu',
+                'meaning': 'Giá trị hàng nhập thực tế sau ưu đãi nhà cung cấp.',
+                'note': 'Khuyến mãi của từng phiếu không được trừ vượt giá trị gốc của phiếu nhập.',
+            },
+            {
+                'name': 'Tổng chi phí trên BC Tài chính',
+                'formula': 'Chi phí khác + Hàng nhập sau khuyến mãi',
+                'example': '3 triệu + 11 triệu = 14 triệu',
+                'meaning': 'Tổng chi phí theo công thức quản trị hiện tại.',
+                'note': 'Phiếu chi trả tiền hàng chỉ là dòng tiền và không bị cộng thêm lần nữa.',
             },
             {
                 'name': 'Lãi/Lỗ trên BC Tài chính',
-                'formula': 'Tổng thu − Tổng chi',
-                'example': '20 triệu − 15 triệu = 5 triệu',
+                'formula': 'Tổng thu − Tổng chi phí',
+                'example': '20 triệu − 14 triệu = 6 triệu',
                 'meaning': 'Chênh lệch thu chi theo công thức quản trị.',
                 'note': 'Không phải Lợi nhuận gộp bán hàng.',
             },
@@ -740,8 +1013,8 @@ RETAIL_SALES_REPORT_SCOPE = [
         'detail': 'Mọi số tổng và bảng chi tiết thay đổi theo bộ lọc. Khi lọc sản phẩm, doanh thu, phí và đã thu được phân bổ cho phần hàng đang xem.',
     },
     {
-        'name': 'Xem theo ngày / tháng / năm',
-        'detail': 'Chỉ thay đổi cách gom nhóm thời gian, không thay đổi tổng dữ liệu cùng phạm vi.',
+        'name': 'Kỳ báo cáo: tháng / năm / khoảng ngày',
+        'detail': 'Không cần chọn Nhóm theo. Hệ thống tự gom theo ngày khi xem tháng, theo tháng khi xem năm và chọn mức phù hợp với khoảng ngày.',
     },
     {
         'name': 'Riêng tab Hàng bán chậm',

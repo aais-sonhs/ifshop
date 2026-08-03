@@ -1,11 +1,12 @@
 import json
 import logging
 import re
+from functools import wraps
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import JsonResponse
@@ -49,12 +50,26 @@ from orders.models import Order
 from products.models import GoodsReceipt, PurchaseReturn, Supplier
 from core.store_utils import filter_by_store, get_user_store, get_managed_store_ids, brand_owner_required, can_manage_users
 from core.unique_codes import save_with_generated_code
+from system_management.menu_config import is_menu_visible_for_user
 
 logger = logging.getLogger(__name__)
 
 
 def _forbid_json(message='Bạn không có quyền thực hiện thao tác này'):
     return JsonResponse({'status': 'error', 'message': message}, status=403)
+
+
+def financial_plan_menu_required(view_func):
+    """Ẩn chức năng phải đi cùng chặn URL/API trực tiếp theo thương hiệu."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not is_menu_visible_for_user(request.user, 'financial_plans'):
+            message = 'Chức năng Kế hoạch tài chính đang tắt cho thương hiệu này.'
+            if request.path.startswith('/api/') or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return _forbid_json(message)
+            return redirect('/dashboard/')
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 
 def _get_default_store_for_request(request):
@@ -667,6 +682,7 @@ def supplier_debt_tbl(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def financial_plan_tbl(request):
     """Lập ngân sách, lịch chi nhà cung cấp và theo dõi dự báo dòng tiền."""
     from system_management.models import Store
@@ -1483,7 +1499,7 @@ def api_save_payment(request):
             linked_schedule = (
                 SupplierPaymentSchedule.objects
                 .select_related('goods_receipt', 'goods_receipt__warehouse')
-                .select_for_update()
+                .select_for_update(of=('self',))
                 .filter(payment_id=p.id)
                 .first()
                 if p.id else None
@@ -2648,6 +2664,7 @@ def _financial_plan_dashboard(request, plan):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_get_financial_plans(request):
     plans = list(_financial_plans_for_user(request).select_related('store'))
     selected = None
@@ -2668,6 +2685,7 @@ def api_get_financial_plans(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_save_financial_plan(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -2779,6 +2797,7 @@ def api_save_financial_plan(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_delete_financial_plan(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -2810,6 +2829,7 @@ def api_delete_financial_plan(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_save_financial_plan_item(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -2912,6 +2932,7 @@ def api_save_financial_plan_item(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_delete_financial_plan_item(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -2939,6 +2960,7 @@ def api_delete_financial_plan_item(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_financial_plan_item_details(request, item_id):
     item = FinancialPlanItem.objects.select_related('plan', 'category').filter(id=item_id).first()
     if not item or not _get_financial_plan(request, item.plan_id):
@@ -3023,6 +3045,7 @@ def api_financial_plan_item_details(request, item_id):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_financial_plan_revision_detail(request, revision_id):
     revision = FinancialPlanRevision.objects.select_related('plan', 'created_by').filter(
         id=revision_id
@@ -3266,6 +3289,7 @@ def _build_supplier_payment_suggestions(request, plan):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_suggest_supplier_payment_schedules(request):
     plan = _get_financial_plan(request, request.GET.get('plan_id'))
     if not plan:
@@ -3285,6 +3309,7 @@ def api_suggest_supplier_payment_schedules(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_apply_supplier_payment_suggestions(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -3381,7 +3406,7 @@ def _sync_supplier_schedule_payment(schedule, actor):
         raise ValueError('Lịch đã thanh toán nên không thể sửa.')
     if not payment and schedule.goods_receipt_id:
         payment = (
-            Payment.objects.select_for_update()
+            Payment.objects.select_for_update(of=('self',))
             .filter(
                 goods_receipt_id=schedule.goods_receipt_id,
                 status=0,
@@ -3429,6 +3454,7 @@ def _sync_supplier_schedule_payment(schedule, actor):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_save_supplier_payment_schedule(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -3558,13 +3584,16 @@ def api_save_supplier_payment_schedule(request):
 
 @login_required(login_url="/login/")
 @brand_owner_required
+@financial_plan_menu_required
 def api_delete_supplier_payment_schedule(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
         with transaction.atomic():
-            schedule = SupplierPaymentSchedule.objects.select_related('plan', 'payment').select_for_update().filter(
+            schedule = SupplierPaymentSchedule.objects.select_related('plan', 'payment').select_for_update(
+                of=('self',)
+            ).filter(
                 id=data.get('id')
             ).first()
             if not schedule or not _get_financial_plan(request, schedule.plan_id):

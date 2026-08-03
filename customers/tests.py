@@ -321,6 +321,18 @@ class CustomerScopeTests(TestCase):
         self.assertNotContains(response, '<th data-col="code">Mã KH</th>', html=True)
         self.assertNotContains(response, "customerColConfig.td('code'")
 
+    def test_customer_list_search_includes_delivery_address_phones(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('customer_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'SĐT khách/điểm nhận')
+        self.assertContains(response, 'function getCustomerSearchPhones(customer)')
+        self.assertContains(response, '(customer.delivery_addresses || []).forEach(function(item)')
+        self.assertContains(response, 'getCustomerSearchPhones(d).some(function(phone)')
+        self.assertContains(response, 'getCustomerSearchPhones(c).some(function(phone)')
+
     def test_customer_create_and_edit_only_confirm_close_when_form_changed(self):
         self.client.force_login(self.manager)
 

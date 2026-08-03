@@ -25,9 +25,11 @@ from .menu_config import (
 from .retail_docs import (
     RETAIL_DAILY_CHECKLIST,
     RETAIL_FAQS,
+    RETAIL_FINANCIAL_PLAN_GUIDE,
     RETAIL_FORMULA_GROUPS,
     RETAIL_GUIDE_META,
     RETAIL_OPERATION_GUIDES,
+    RETAIL_RECENT_UPDATES,
     RETAIL_REPORT_EXAMPLES,
     RETAIL_ROLE_START,
     RETAIL_SALES_REPORT_SCOPE,
@@ -458,6 +460,8 @@ def product_guide(request):
     context = {
         'active_tab': 'product_guide',
         'guide_meta': RETAIL_GUIDE_META,
+        'recent_updates': RETAIL_RECENT_UPDATES,
+        'financial_plan_guide': RETAIL_FINANCIAL_PLAN_GUIDE,
         'role_start': RETAIL_ROLE_START,
         'setup_steps': RETAIL_SETUP_STEPS,
         'operation_guides': RETAIL_OPERATION_GUIDES,

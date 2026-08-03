@@ -224,7 +224,7 @@ def run_due_financial_alerts(now=None):
             with transaction.atomic():
                 plan = FinancialPlan.objects.select_related(
                     'created_by', 'store', 'store__brand', 'store__brand__owner',
-                ).select_for_update().get(id=plan_id)
+                ).select_for_update(of=('self',)).get(id=plan_id)
                 if plan.last_alert_run_at:
                     last_run = _local_now(plan.last_alert_run_at)
                     if last_run.date() == now.date():

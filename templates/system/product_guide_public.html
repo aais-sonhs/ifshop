@@ -987,6 +987,8 @@
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-title">Mục lục bán lẻ</div>
         <a href="#start"><i class="fas fa-play-circle"></i> Bắt đầu từ đâu?</a>
+        <a href="#recent-updates"><i class="fas fa-history"></i> Cập nhật 02–03/08</a>
+        <a href="#financial-plan-guide"><i class="fas fa-chart-area"></i> Kế hoạch tài chính (Sapo chưa có)</a>
         <a href="#setup"><i class="fas fa-cogs"></i> Thiết lập ban đầu</a>
         <div class="sidebar-group">
             {% for guide in operation_guides %}
@@ -1025,6 +1027,30 @@
             <div class="empty-search" id="emptySearch">
                 Không tìm thấy mục phù hợp. Hãy thử từ khóa ngắn hơn như “công nợ”, “giá vốn”, “trả hàng” hoặc “tồn kho”.
             </div>
+
+            <section class="section searchable" id="recent-updates">
+                <div class="section-head">
+                    <span class="eyebrow"><i class="fas fa-history"></i> Thay đổi mới</span>
+                    <h2>Cập nhật nghiệp vụ ngày 02–03/08/2026</h2>
+                    <p>Phần này tóm tắt các thay đổi từ hôm qua đến hôm nay. Các chương thao tác và công thức phía dưới đã được cập nhật theo cùng quy trình.</p>
+                </div>
+                <div class="section-body">
+                    <div class="grid-2">
+                        {% for update in recent_updates %}
+                        <article class="card recent-update searchable">
+                            <span class="role-label"><i class="far fa-calendar-alt" style="margin-right:5px;"></i>{{ update.date }}</span>
+                            <h3>{{ update.title }}</h3>
+                            <span class="path"><i class="fas fa-map-marker-alt"></i> {{ update.path }}</span>
+                            <ul class="check-list">
+                                {% for item in update.items %}
+                                <li>{{ item }}</li>
+                                {% endfor %}
+                            </ul>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
 
             <section class="section searchable">
                 <div class="section-head">
@@ -1113,6 +1139,140 @@
                         </div>
                     </details>
                     {% endfor %}
+                </div>
+            </section>
+
+            <section class="section searchable" id="financial-plan-guide">
+                <div class="section-head">
+                    <span class="eyebrow"><i class="fas fa-chart-area"></i> Chức năng riêng trên Digimart · Sapo chưa có</span>
+                    <h2>{{ financial_plan_guide.title }}</h2>
+                    <p>{{ financial_plan_guide.intro }}</p>
+                </div>
+                <div class="section-body">
+                    <h3>Điểm khác biệt so với Sapo</h3>
+                    <p style="color:var(--muted);margin-bottom:14px;">
+                        Phần này được tách thành một mục riêng vì đây là quy trình mới với khách chuyển từ Sapo sang Digimart.
+                    </p>
+                    <div class="grid-3 plan-comparison searchable" style="margin-bottom:20px;">
+                        {% for item in financial_plan_guide.comparison %}
+                        <article class="card">
+                            <span class="role-label"><i class="{{ item.icon }}" style="margin-right:5px;"></i>{{ item.label }}</span>
+                            <p>{{ item.body }}</p>
+                        </article>
+                        {% endfor %}
+                    </div>
+
+                    <div class="important">
+                        <strong>Hiểu đúng trước khi dùng:</strong>
+                        Kế hoạch tài chính nhìn về tương lai và không tự tạo số dư thật. Chỉ phiếu thu hoặc phiếu chi
+                        <strong>Hoàn thành</strong> mới trở thành số Thực tế và tác động tới quỹ.
+                    </div>
+
+                    <div class="result-box first-time-note searchable" style="margin:0 0 24px;">
+                        <strong>Gợi ý cho lần thiết lập đầu tiên:</strong> {{ financial_plan_guide.first_time_note }}
+                    </div>
+
+                    <h3>1. Chức năng này giúp doanh nghiệp làm gì?</h3>
+                    <div class="grid-3" style="margin:14px 0 24px;">
+                        {% for goal in financial_plan_guide.goals %}
+                        <article class="card plan-goal searchable">
+                            <h4>{{ goal.title }}</h4>
+                            <p>{{ goal.body }}</p>
+                        </article>
+                        {% endfor %}
+                    </div>
+
+                    <div class="grid-2" style="margin-bottom:26px;">
+                        <div class="guide-checks plan-preparation searchable">
+                            <h3><i class="fas fa-clipboard-list"></i> 2. Dữ liệu cần chuẩn bị</h3>
+                            <ul class="check-list">
+                                {% for item in financial_plan_guide.preparation %}
+                                <li>{{ item }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div class="card searchable">
+                            <h3>Ai nên lập và ai nên duyệt?</h3>
+                            <p><strong>Chủ doanh nghiệp / quản lý:</strong> đặt mục tiêu, mức tiền an toàn và quyết định ưu tiên.</p>
+                            <p><strong>Kế toán:</strong> nhập ngân sách, kiểm tra công nợ, theo dõi cảnh báo và duyệt phiếu chi.</p>
+                            <p><strong>Kho / nhập hàng:</strong> hoàn thành đúng phiếu nhập, số lượng và đơn giá; không tự quyết định khuyến mãi hoặc thời điểm chi nếu không được giao.</p>
+                        </div>
+                    </div>
+
+                    <h3>3. Quy trình lập kế hoạch lần đầu</h3>
+                    <p style="color:var(--muted);margin-bottom:14px;">Thực hiện theo đúng thứ tự dưới đây vì dữ liệu của bước trước là đầu vào cho bước sau.</p>
+                    {% for step in financial_plan_guide.workflow %}
+                    <details class="guide plan-workflow searchable" {% if forloop.first %}open{% endif %}>
+                        <summary>
+                            <span class="guide-icon"><i class="fas fa-check"></i></span>
+                            <span>
+                                <span class="guide-summary-title">{{ step.title }}</span>
+                                <span class="guide-summary-intro">{{ step.path }}</span>
+                            </span>
+                        </summary>
+                        <div class="guide-content">
+                            <ol class="number-list">
+                                {% for action in step.actions %}
+                                <li>{{ action }}</li>
+                                {% endfor %}
+                            </ol>
+                            <div class="result-box"><strong>Kết quả cần có:</strong> {{ step.result }}</div>
+                        </div>
+                    </details>
+                    {% endfor %}
+
+                    <h3 style="margin-top:28px;">4. Ý nghĩa các số trên màn hình</h3>
+                    <div class="table-wrap" style="margin:12px 0 26px;">
+                        <table class="reference plan-terms searchable">
+                            <thead>
+                                <tr><th>Khái niệm</th><th>Nguồn dữ liệu / công thức</th><th>Cách hiểu</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for term in financial_plan_guide.terms %}
+                                <tr>
+                                    <td>{{ term.name }}</td>
+                                    <td>{{ term.source }}</td>
+                                    <td>{{ term.meaning }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3>5. {{ financial_plan_guide.example.title }}</h3>
+                    <div class="grid-3" style="margin:12px 0 26px;">
+                        <article class="card plan-example searchable">
+                            <h4>Dữ liệu đầu vào</h4>
+                            <ul class="clean-list">
+                                {% for item in financial_plan_guide.example.inputs %}<li>• {{ item }}</li>{% endfor %}
+                            </ul>
+                        </article>
+                        <article class="card plan-example searchable">
+                            <h4>Hệ thống dự báo</h4>
+                            <ul class="clean-list">
+                                {% for item in financial_plan_guide.example.calculation %}<li>• {{ item }}</li>{% endfor %}
+                            </ul>
+                        </article>
+                        <article class="card plan-example searchable">
+                            <h4>Quyết định và phê duyệt</h4>
+                            <ul class="clean-list">
+                                {% for item in financial_plan_guide.example.decision %}<li>• {{ item }}</li>{% endfor %}
+                            </ul>
+                        </article>
+                    </div>
+
+                    <div class="guide-checks plan-rules searchable">
+                        <h3><i class="fas fa-shield-alt"></i> 6. Nguyên tắc vận hành an toàn</h3>
+                        <ul class="check-list">
+                            {% for item in financial_plan_guide.rules %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div style="margin-top:22px;">
+                        <a class="btn" href="/finance-plan/"><i class="fas fa-external-link-alt"></i> Mở Kế hoạch tài chính</a>
+                    </div>
                 </div>
             </section>
 
@@ -1362,7 +1522,7 @@
             searchInput.addEventListener('input', function () {
                 var term = normalize(searchInput.value);
                 var topBlocks = Array.prototype.slice.call(document.querySelectorAll(
-                    '.setup-card, #operations > .section-body > details, .formula-group, .scope-item, .report-table, .example, .time-card, .problem, .faq-item'
+                    '.recent-update, .setup-card, #operations > .section-body > details, .plan-comparison, .first-time-note, .plan-goal, .plan-preparation, .plan-workflow, .plan-terms, .plan-example, .plan-rules, .formula-group, .scope-item, .report-table, .example, .time-card, .problem, .faq-item'
                 ));
                 var matches = 0;
 

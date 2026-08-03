@@ -75,7 +75,7 @@
             <div class="table-responsive">
                 <table id="cashbook_balance_tbl" class="table table-bordered table-sm mb-0">
                     <thead>
-                        <tr><th style="width:60px;">STT</th><th>Quỹ</th><th>Mô tả</th><th class="text-right">Số dư hiện tại</th></tr>
+                        <tr><th style="width:60px;">STT</th><th>Quỹ</th><th>Mô tả</th><th class="text-right">Số dư tối thiểu</th><th class="text-right">Số dư hiện tại</th>{% if can_manage_cashbooks %}<th></th>{% endif %}</tr>
                     </thead>
                     <tbody></tbody>
                 </table>
@@ -122,6 +122,11 @@
                     <label for="cashbook_description">Mô tả</label>
                     <textarea class="form-control" id="cashbook_description" rows="2" placeholder="VD: Tiền mặt tại quầy thu ngân"></textarea>
                 </div>
+                <div class="form-group mt-3 mb-0">
+                    <label for="cashbook_minimum_balance">Số dư tối thiểu cần giữ</label>
+                    <input type="number" min="0" class="form-control" id="cashbook_minimum_balance" value="0">
+                    <small class="text-muted">Hệ thống cảnh báo và không đề xuất lịch chi làm quỹ xuống dưới mức này.</small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
@@ -153,6 +158,7 @@ $(document).ready(function(){
         $('#cashbook_id').val('');
         $('#cashbook_name').val('');
         $('#cashbook_description').val('');
+        $('#cashbook_minimum_balance').val('0');
         $('#cashbook_modal_title').text('Tạo quỹ');
         $('#modal_cashbook').modal('show');
         setTimeout(function(){ $('#cashbook_name').trigger('focus'); }, 250);
@@ -176,7 +182,8 @@ $(document).ready(function(){
             data: JSON.stringify({
                 id: $('#cashbook_id').val() || null,
                 name: name,
-                description: $.trim($('#cashbook_description').val() || '')
+                description: $.trim($('#cashbook_description').val() || ''),
+                minimum_balance: $('#cashbook_minimum_balance').val() || 0
             })
         }).done(function(response){
             if(response.status === 'ok'){
@@ -193,6 +200,16 @@ $(document).ready(function(){
         }).always(function(){
             $button.prop('disabled', false);
         });
+    });
+    {% endif %}
+    {% if can_manage_cashbooks %}
+    $(document).on('click', '.btn-edit-cashbook', function(){
+        var book = $(this).data('book');
+        if(typeof book === 'string') book = JSON.parse(book);
+        $('#cashbook_id').val(book.id);$('#cashbook_name').val(book.name || '');
+        $('#cashbook_description').val(book.description || '');
+        $('#cashbook_minimum_balance').val(book.minimum_balance || 0);
+        $('#cashbook_modal_title').text('Sửa quỹ');$('#modal_cashbook').modal('show');
     });
     {% endif %}
     $('#cashbook_entry_page_size').val(String(CASHBOOK_ENTRY_PAGE_STATE.page_size));
@@ -379,12 +396,14 @@ function renderCashbookBalances(books){
             '<td>'+(index + 1)+'</td>' +
             '<td><strong>'+escapeHtml(book.name)+'</strong></td>' +
             '<td>'+escapeHtml(book.description || '')+'</td>' +
+            '<td class="text-right">'+fmtD(book.minimum_balance || 0)+'</td>' +
             '<td class="text-right font-weight-bold '+balanceClass+'">'+fmtD(bookBalance)+'</td>' +
+            {% if can_manage_cashbooks %}'<td><button class="btn btn-xs btn-outline-primary btn-edit-cashbook" data-book=\''+escapeHtml(JSON.stringify(book))+'\'><i class="fas fa-edit"></i></button></td>' +{% endif %}
             '</tr>';
     });
 
     $('#cashbook_balance_tbl tbody').html(
-        html || '<tr><td colspan="4" class="text-center text-muted">Chưa có quỹ hoạt động</td></tr>'
+        html || '<tr><td colspan="{% if can_manage_cashbooks %}6{% else %}5{% endif %}" class="text-center text-muted">Chưa có quỹ hoạt động</td></tr>'
     );
     $('#cashbook_balance_total').text(fmtD(totalBalance));
 }

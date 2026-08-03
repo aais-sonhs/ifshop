@@ -32,6 +32,12 @@ class CashBook(SoftDeleteModel):
     name = models.CharField(max_length=255, verbose_name='Tên quỹ')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     balance = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số dư')
+    minimum_balance = models.DecimalField(
+        max_digits=18,
+        decimal_places=0,
+        default=0,
+        verbose_name='Số dư tối thiểu cần giữ',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -268,6 +274,19 @@ class FinancialPlan(SoftDeleteModel):
     end_date = models.DateField(verbose_name='Đến ngày')
     status = models.IntegerField(choices=STATUS_CHOICES, default=1, verbose_name='Trạng thái')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
+    alert_enabled = models.BooleanField(default=False, verbose_name='Bật cảnh báo tự động')
+    alert_lead_days = models.CharField(
+        max_length=50,
+        default='3,7,15',
+        verbose_name='Số ngày cảnh báo trước',
+    )
+    alert_email_recipients = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='Email nhận cảnh báo',
+    )
+    last_alert_run_at = models.DateTimeField(null=True, blank=True, verbose_name='Lần kiểm tra cảnh báo')
+    last_alert_sent = models.DateTimeField(null=True, blank=True, verbose_name='Lần gửi cảnh báo')
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -345,6 +364,80 @@ class FinancialPlanItem(SoftDeleteModel):
         return f'{self.plan.code} - {self.get_direction_display()} - {self.category.name}'
 
 
+class FinancialPlanAllocation(SoftDeleteModel):
+    """Phân bổ một khoản ngân sách vào từng tháng của kỳ kế hoạch."""
+
+    item = models.ForeignKey(
+        FinancialPlanItem,
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        verbose_name='Khoản ngân sách',
+    )
+    month = models.DateField(verbose_name='Tháng phân bổ')
+    planned_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=0,
+        default=0,
+        verbose_name='Số tiền phân bổ',
+    )
+    expected_date = models.DateField(null=True, blank=True, verbose_name='Ngày dự kiến phát sinh')
+    note = models.TextField(blank=True, default='', verbose_name='Ghi chú')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'financial_plan_allocations'
+        verbose_name = 'Phân bổ ngân sách theo tháng'
+        verbose_name_plural = 'Phân bổ ngân sách theo tháng'
+        ordering = ['month', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['item', 'month'],
+                name='uniq_financial_plan_item_month',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.item} - {self.month:%m/%Y}'
+
+
+class FinancialPlanRevision(models.Model):
+    """Ảnh chụp kế hoạch sau mỗi lần điều chỉnh để phục vụ kiểm toán."""
+
+    plan = models.ForeignKey(
+        FinancialPlan,
+        on_delete=models.CASCADE,
+        related_name='revisions',
+        verbose_name='Kế hoạch',
+    )
+    version = models.PositiveIntegerField(verbose_name='Phiên bản')
+    reason = models.CharField(max_length=500, blank=True, default='', verbose_name='Lý do điều chỉnh')
+    snapshot = models.JSONField(default=dict, verbose_name='Dữ liệu kế hoạch')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='financial_plan_revisions_created',
+        verbose_name='Người điều chỉnh',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'financial_plan_revisions'
+        verbose_name = 'Lịch sử điều chỉnh kế hoạch'
+        verbose_name_plural = 'Lịch sử điều chỉnh kế hoạch'
+        ordering = ['-version', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan', 'version'],
+                name='uniq_financial_plan_revision_version',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.plan.code} - v{self.version}'
+
+
 class SupplierPaymentSchedule(SoftDeleteModel):
     """Lịch dự kiến thanh toán công nợ nhà cung cấp."""
 
@@ -358,6 +451,10 @@ class SupplierPaymentSchedule(SoftDeleteModel):
         (0, 'Chờ thanh toán'),
         (1, 'Đã thanh toán'),
         (2, 'Đã hủy'),
+    )
+    SOURCE_CHOICES = (
+        ('manual', 'Xếp thủ công'),
+        ('automatic', 'Hệ thống đề xuất'),
     )
 
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã lịch chi')
@@ -444,6 +541,14 @@ class SupplierPaymentSchedule(SoftDeleteModel):
         verbose_name='Mức ưu tiên',
     )
     status = models.IntegerField(choices=STATUS_CHOICES, default=0, verbose_name='Trạng thái')
+    source = models.CharField(
+        max_length=15,
+        choices=SOURCE_CHOICES,
+        default='manual',
+        verbose_name='Nguồn tạo lịch',
+    )
+    installment_no = models.PositiveIntegerField(default=1, verbose_name='Đợt thanh toán')
+    suggestion_reason = models.TextField(blank=True, default='', verbose_name='Lý do đề xuất')
     payment = models.OneToOneField(
         Payment,
         on_delete=models.SET_NULL,

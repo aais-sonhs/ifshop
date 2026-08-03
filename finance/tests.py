@@ -1,9 +1,11 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth.models import User
+from django.core import mail
+from django.db.models import Sum
 from django.test import Client, TestCase
 from django.urls import reverse
 from openpyxl import load_workbook
@@ -13,12 +15,15 @@ from finance.models import (
     CashBook,
     FinanceCategory,
     FinancialPlan,
+    FinancialPlanAllocation,
     FinancialPlanItem,
+    FinancialPlanRevision,
     Payment,
     PaymentMethodOption,
     Receipt,
     SupplierPaymentSchedule,
 )
+from finance.financial_alerts import run_due_financial_alerts
 from orders.models import Order
 from products.models import GoodsReceipt, PurchaseReturn, Supplier, Warehouse
 from system_management.models import Brand, Store, UserProfile
@@ -1757,3 +1762,195 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(second_response.json()['status'], 'error')
         self.assertIn('100', second_response.json()['message'])
         self.assertEqual(SupplierPaymentSchedule.objects.filter(goods_receipt=receipt).count(), 1)
+
+    def test_yearly_budget_allocations_drive_monthly_comparison_and_revision_history(self):
+        year = date.today().year
+        plan_response = self.client.post(
+            reverse('api_save_financial_plan'),
+            data=json.dumps({
+                'period_type': 'year',
+                'period_value': str(year),
+                'store_id': self.store.id,
+                'status': 1,
+            }),
+            content_type='application/json',
+        )
+        plan = FinancialPlan.objects.get(id=plan_response.json()['id'])
+        category = FinanceCategory.objects.create(name='Chi phân bổ tháng', type=2)
+        allocations = [{
+            'month': f'{year}-{month:02d}',
+            'planned_amount': month * 100,
+            'expected_date': f'{year}-{month:02d}-15',
+        } for month in range(1, 13)]
+
+        response = self.client.post(
+            reverse('api_save_financial_plan_item'),
+            data=json.dumps({
+                'plan_id': plan.id,
+                'direction': 2,
+                'category_id': category.id,
+                'planned_amount': 0,
+                'allocations': allocations,
+                'include_in_forecast': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        item = FinancialPlanItem.objects.get(id=response.json()['id'])
+        self.assertEqual(item.planned_amount, Decimal('7800'))
+        self.assertEqual(FinancialPlanAllocation.objects.filter(item=item).count(), 12)
+        dashboard = self.client.get(
+            reverse('api_get_financial_plans'), {'plan_id': plan.id},
+        ).json()['dashboard']
+        self.assertEqual(len(dashboard['monthly_summary']), 12)
+        self.assertEqual(dashboard['monthly_summary'][0]['planned_expense'], 100.0)
+        self.assertGreaterEqual(len(dashboard['revisions']), 2)
+
+        missing_reason_response = self.client.post(
+            reverse('api_save_financial_plan_item'),
+            data=json.dumps({
+                'id': item.id,
+                'plan_id': plan.id,
+                'direction': 2,
+                'category_id': category.id,
+                'planned_amount': 7800,
+                'allocations': allocations,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(missing_reason_response.json()['status'], 'error')
+        self.assertIn('lý do', missing_reason_response.json()['message'].lower())
+
+    def test_forecast_is_calculated_for_each_cashbook_and_respects_minimum_balance(self):
+        plan = self._create_current_month_plan()
+        cashbook = CashBook.objects.create(
+            name='Quỹ an toàn', balance=Decimal('1000'), minimum_balance=Decimal('500'),
+        )
+        category = FinanceCategory.objects.create(name='Chi theo quỹ', type=2)
+        FinancialPlanItem.objects.create(
+            plan=plan,
+            direction=2,
+            category=category,
+            cash_book=cashbook,
+            planned_amount=Decimal('700'),
+            expected_date=plan.end_date,
+        )
+
+        dashboard = self.client.get(
+            reverse('api_get_financial_plans'), {'plan_id': plan.id},
+        ).json()['dashboard']
+        row = next(
+            row for row in dashboard['cashbook_forecasts']
+            if row['cash_book_id'] == cashbook.id
+        )
+
+        self.assertEqual(row['current_balance'], 1000.0)
+        self.assertEqual(row['minimum_balance'], 500.0)
+        self.assertEqual(row['forecast_balance'], 300.0)
+        self.assertTrue(row['shortage_date'])
+        self.assertTrue(any(alert['type'] == 'cashbook_shortage' for alert in dashboard['alerts']))
+
+    def test_auto_schedule_splits_supplier_debt_using_priority_and_safe_cash_balances(self):
+        plan = self._create_current_month_plan()
+        self.supplier.payment_priority = 1
+        self.supplier.payment_term_days = 0
+        self.supplier.save(update_fields=['payment_priority', 'payment_term_days'])
+        cashbook_a = CashBook.objects.create(
+            name='Quỹ đề xuất A', balance=Decimal('600'), minimum_balance=Decimal('100'),
+        )
+        cashbook_b = CashBook.objects.create(
+            name='Quỹ đề xuất B', balance=Decimal('400'), minimum_balance=Decimal('100'),
+        )
+        income_category = FinanceCategory.objects.create(name='Thu dự kiến cho lịch', type=1)
+        import_category = FinanceCategory.objects.create(name='Nhập hàng', type=2)
+        income_item = FinancialPlanItem.objects.create(
+            plan=plan, direction=1, category=income_category, cash_book=cashbook_a,
+            planned_amount=Decimal('300'), expected_date=min(date.today() + timedelta(days=1), plan.end_date),
+        )
+        FinancialPlanItem.objects.create(
+            plan=plan, direction=2, category=import_category,
+            planned_amount=Decimal('1000'), expected_date=plan.end_date,
+        )
+        receipt = GoodsReceipt.objects.create(
+            code='PN-AUTO-SPLIT', supplier=self.supplier, warehouse=self.warehouse,
+            status=1, total_amount=Decimal('1000'), receipt_date=date.today(), created_by=self.user,
+        )
+
+        suggestion_response = self.client.get(
+            reverse('api_suggest_supplier_payment_schedules'), {'plan_id': plan.id},
+        )
+        payload = suggestion_response.json()
+        self.assertEqual(payload['status'], 'ok', msg=suggestion_response.content.decode())
+        funded = [row for row in payload['suggestions'] if not row['insufficient']]
+        self.assertGreaterEqual(len(funded), 2)
+        self.assertEqual(sum(row['gross_amount'] for row in funded), 1000.0)
+        self.assertEqual(payload['summary']['unfunded_amount'], 0)
+        self.assertEqual(funded[0]['priority'], 1)
+
+        apply_response = self.client.post(
+            reverse('api_apply_supplier_payment_suggestions'),
+            data=json.dumps({
+                'plan_id': plan.id,
+                'suggestion_keys': [row['key'] for row in funded],
+                'revision_reason': 'Chấp nhận lịch tự động kiểm thử',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(apply_response.json()['status'], 'ok', msg=apply_response.content.decode())
+        schedules = SupplierPaymentSchedule.objects.filter(goods_receipt=receipt)
+        self.assertEqual(schedules.count(), len(funded))
+        self.assertEqual(
+            schedules.aggregate(total=Sum('gross_amount'))['total'], Decimal('1000'),
+        )
+        self.assertFalse(schedules.exclude(source='automatic').exists())
+        self.assertEqual(Payment.objects.filter(goods_receipt=receipt, status=0).count(), len(funded))
+        self.assertEqual(income_item.cash_book_id, cashbook_a.id)
+
+    def test_plan_item_detail_returns_completed_documents_only(self):
+        plan = self._create_current_month_plan()
+        category = FinanceCategory.objects.create(name='Chi xem chi tiết', type=2)
+        item = FinancialPlanItem.objects.create(
+            plan=plan, direction=2, category=category, planned_amount=Decimal('500'),
+        )
+        Payment.objects.create(
+            code='PC-DETAIL-DONE', store=self.store, category=category,
+            amount=Decimal('200'), payment_date=date.today(), status=1, created_by=self.user,
+        )
+        Payment.objects.create(
+            code='PC-DETAIL-DRAFT', store=self.store, category=category,
+            amount=Decimal('300'), payment_date=date.today(), status=0, created_by=self.user,
+        )
+
+        response = self.client.get(reverse('api_financial_plan_item_details', args=[item.id]))
+
+        self.assertEqual(response.json()['status'], 'ok')
+        self.assertEqual(response.json()['total'], 200.0)
+        self.assertEqual([row['code'] for row in response.json()['rows']], ['PC-DETAIL-DONE'])
+
+    def test_financial_alert_scheduler_sends_due_supplier_and_cash_warning_email(self):
+        plan = self._create_current_month_plan()
+        plan.alert_enabled = True
+        plan.alert_lead_days = '3'
+        plan.alert_email_recipients = 'ketoan@example.com'
+        plan.save(update_fields=['alert_enabled', 'alert_lead_days', 'alert_email_recipients'])
+        due_date = min(date.today() + timedelta(days=3), plan.end_date)
+        actual_lead = max((due_date - date.today()).days, 0)
+        plan.alert_lead_days = str(actual_lead)
+        plan.save(update_fields=['alert_lead_days'])
+        SupplierPaymentSchedule.objects.create(
+            code='LCT-EMAIL-001', plan=plan, store=self.store, supplier=self.supplier,
+            due_date=due_date, gross_amount=Decimal('100'), amount=Decimal('100'),
+            priority=1, status=0, created_by=self.user,
+        )
+
+        result = run_due_financial_alerts(
+            now=datetime.combine(date.today(), time(9, 0)),
+        )
+
+        self.assertEqual(result['totals']['sent'], 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Cảnh báo tài chính', mail.outbox[0].subject)
+        plan.refresh_from_db()
+        self.assertIsNotNone(plan.last_alert_run_at)
+        self.assertIsNotNone(plan.last_alert_sent)

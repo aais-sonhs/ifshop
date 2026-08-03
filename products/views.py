@@ -2199,6 +2199,8 @@ def api_get_suppliers(request):
         'tax_code',
         'contact_person',
         'note',
+        'payment_term_days',
+        'payment_priority',
         'is_active',
     )
     data = [{
@@ -2211,6 +2213,11 @@ def api_get_suppliers(request):
         'tax_code': row['tax_code'] or '',
         'contact_person': row['contact_person'] or '',
         'note': row['note'] or '',
+        'payment_term_days': row['payment_term_days'],
+        'payment_priority': row['payment_priority'],
+        'payment_priority_display': dict(Supplier.PAYMENT_PRIORITY_CHOICES).get(
+            row['payment_priority'], ''
+        ),
         'is_active': row['is_active'],
     } for row in supplier_rows]
     return JsonResponse({
@@ -2264,6 +2271,14 @@ def api_save_supplier(request):
         sup.tax_code = data.get('tax_code', '')
         sup.contact_person = data.get('contact_person', '')
         sup.note = data.get('note', '')
+        payment_term_days = int(data.get('payment_term_days') or 0)
+        payment_priority = int(data.get('payment_priority') or 3)
+        if payment_term_days < 0 or payment_term_days > 3650:
+            raise ValueError('Số ngày được nợ phải từ 0 đến 3.650 ngày.')
+        if payment_priority not in dict(Supplier.PAYMENT_PRIORITY_CHOICES):
+            raise ValueError('Mức ưu tiên thanh toán không hợp lệ.')
+        sup.payment_term_days = payment_term_days
+        sup.payment_priority = payment_priority
         sup.is_active = data.get('is_active', True)
         save_with_generated_code(sup, _generate_next_supplier_code, auto_code)
         return JsonResponse({
@@ -2279,6 +2294,8 @@ def api_save_supplier(request):
                 'tax_code': sup.tax_code or '',
                 'contact_person': sup.contact_person or '',
                 'note': sup.note or '',
+                'payment_term_days': sup.payment_term_days,
+                'payment_priority': sup.payment_priority,
                 'is_active': sup.is_active,
             }
         })

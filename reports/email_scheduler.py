@@ -224,8 +224,15 @@ def run_due_email_jobs(now=None):
             'status': result['status'],
         })
 
+    # Dùng chung nhịp cron hiện có để cảnh báo tài chính không cần thêm một
+    # tiến trình nền riêng. Import tại đây tránh phụ thuộc vòng giữa apps.
+    from finance.financial_alerts import run_due_financial_alerts
+    financial_alerts = run_due_financial_alerts(now=now)
+
     has_errors = bool(
-        stock_totals.get('error') or daily_totals.get('error')
+        stock_totals.get('error')
+        or daily_totals.get('error')
+        or financial_alerts['totals'].get('error')
     )
     logger.info(
         'Hoàn tất lượt email scheduler: thời_điểm=%s, stock_alerts=%s, '
@@ -246,4 +253,5 @@ def run_due_email_jobs(now=None):
             'totals': daily_totals,
             'results': daily_results,
         },
+        'financial_alerts': financial_alerts,
     }

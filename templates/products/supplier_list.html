@@ -57,7 +57,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã NCC</th><th>Tên NCC</th><th>SĐT</th><th>Email</th><th>Địa chỉ</th><th>MST</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <thead><tr><th>STT</th><th>Mã NCC</th><th>Tên NCC</th><th>SĐT</th><th>Email</th><th>Địa chỉ</th><th>MST</th><th>Hạn nợ</th><th>Ưu tiên chi</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -84,6 +84,10 @@
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>MST</label><input type="text" class="form-control" id="inp_tax_code"></div></div>
                     <div class="col-md-6"><div class="form-group"><label>Người liên hệ</label><input type="text" class="form-control" id="inp_contact_person"></div></div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6"><div class="form-group"><label>Số ngày được nợ</label><input type="number" min="0" max="3650" class="form-control" id="inp_payment_term_days" value="0"><small class="text-muted">Dùng để tính ngày đến hạn khi đề xuất lịch chi.</small></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Ưu tiên thanh toán</label><select class="form-control" id="inp_payment_priority"><option value="1">Khẩn cấp</option><option value="2">Cao</option><option value="3" selected>Bình thường</option><option value="4">Thấp</option></select></div></div>
                 </div>
                 <div class="form-group"><label>Địa chỉ</label><textarea class="form-control" id="inp_address" rows="2"></textarea></div>
                 <div class="form-group"><label>Ghi chú</label><textarea class="form-control" id="inp_note" rows="2"></textarea></div>
@@ -159,7 +163,7 @@ $(document).ready(function() {
     });
 
     $('#btn_add').click(function() {
-        $('#edit_id').val(''); $('input[id^=inp_],textarea[id^=inp_]').val('');
+        $('#edit_id').val(''); $('input[id^=inp_],textarea[id^=inp_]').val('');$('#inp_payment_term_days').val('0');$('#inp_payment_priority').val('3');
         var closeTrackingToken = startSupplierFormCloseTracking();
         $('#modal_title').text('Thêm NCC'); $('#modal_form').modal('show');
         scheduleSupplierFormCloseBaselineCapture(closeTrackingToken);
@@ -167,7 +171,8 @@ $(document).ready(function() {
     $('#btn_save').click(function() {
         var data = { id: $('#edit_id').val()||null, code:$('#inp_code').val(), name:$('#inp_name').val(),
             phone:$('#inp_phone').val(), email:$('#inp_email').val(), address:$('#inp_address').val(),
-            tax_code:$('#inp_tax_code').val(), contact_person:$('#inp_contact_person').val(), note:$('#inp_note').val() };
+            tax_code:$('#inp_tax_code').val(), contact_person:$('#inp_contact_person').val(), note:$('#inp_note').val(),
+            payment_term_days:$('#inp_payment_term_days').val()||0, payment_priority:$('#inp_payment_priority').val()||3 };
         if(!data.code||!data.name){alert('Vui lòng nhập mã và tên');return;}
         $.ajax({url:'/api/suppliers/save/',type:'POST',contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'},data:JSON.stringify(data),
@@ -200,6 +205,8 @@ function getSupplierFormCloseSnapshot() {
         email: getSupplierFormCloseFieldValue('#inp_email'),
         tax_code: getSupplierFormCloseFieldValue('#inp_tax_code'),
         contact_person: getSupplierFormCloseFieldValue('#inp_contact_person'),
+        payment_term_days: getSupplierFormCloseFieldValue('#inp_payment_term_days'),
+        payment_priority: getSupplierFormCloseFieldValue('#inp_payment_priority'),
         address: getSupplierFormCloseFieldValue('#inp_address'),
         note: getSupplierFormCloseFieldValue('#inp_note')
     });
@@ -242,7 +249,7 @@ function escapeSupplierHtml(value){
 
 function loadData(){
     if(SUPPLIER_LOAD_XHR) SUPPLIER_LOAD_XHR.abort();
-    $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-muted">Đang tải...</td></tr>');
+    $('#data_tbl tbody').html('<tr><td colspan="11" class="text-center text-muted">Đang tải...</td></tr>');
     SUPPLIER_LOAD_XHR = $.get('/api/suppliers/', {
         q: ($('#supplier_search').val() || '').trim(),
         status: $('#supplier_status').val() || '',
@@ -269,6 +276,8 @@ function loadData(){
                 '<td>' + escapeSupplierHtml(d.email) + '</td>' +
                 '<td>' + escapeSupplierHtml(d.address) + '</td>' +
                 '<td>' + escapeSupplierHtml(d.tax_code) + '</td>' +
+                '<td>' + Number(d.payment_term_days || 0) + ' ngày</td>' +
+                '<td>' + escapeSupplierHtml(d.payment_priority_display || '') + '</td>' +
                 '<td>' + (d.is_active
                     ? '<span class="badge badge-success">HĐ</span>'
                     : '<span class="badge badge-secondary">Ngừng</span>') + '</td>' +
@@ -277,11 +286,11 @@ function loadData(){
                     '<button class="btn btn-xs btn-outline-danger btn-delete-supplier" data-id="' + d.id + '">Xóa</button>' +
                 '</div></td></tr>';
         });
-        $('#data_tbl tbody').html(h || '<tr><td colspan="9" class="text-center text-muted">Không có nhà cung cấp phù hợp.</td></tr>');
+        $('#data_tbl tbody').html(h || '<tr><td colspan="11" class="text-center text-muted">Không có nhà cung cấp phù hợp.</td></tr>');
         renderSupplierPagination(meta);
     }).fail(function(xhr, status){
         if(status === 'abort') return;
-        $('#data_tbl tbody').html('<tr><td colspan="9" class="text-center text-danger">Không tải được danh sách nhà cung cấp.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="11" class="text-center text-danger">Không tải được danh sách nhà cung cấp.</td></tr>');
         $('#supplier_pagination_summary').html('<span class="text-danger">Không tải được dữ liệu.</span>');
         $('#supplier_pagination').html('');
     }).always(function(){
@@ -343,6 +352,7 @@ function editItem(d){
     $('#edit_id').val(d.id);$('#inp_code').val(d.code || '');$('#inp_name').val(d.name || '');$('#inp_phone').val(d.phone || '');
     $('#inp_email').val(d.email || '');$('#inp_address').val(d.address || '');$('#inp_tax_code').val(d.tax_code || '');
     $('#inp_contact_person').val(d.contact_person || '');$('#inp_note').val(d.note || '');
+    $('#inp_payment_term_days').val(d.payment_term_days || 0);$('#inp_payment_priority').val(d.payment_priority || 3);
     var closeTrackingToken = startSupplierFormCloseTracking();
     $('#modal_title').text('Sửa NCC');$('#modal_form').modal('show');
     scheduleSupplierFormCloseBaselineCapture(closeTrackingToken);

@@ -19,6 +19,7 @@ from django.db.models import (
     OuterRef,
     Prefetch,
     Q,
+    Max,
     Subquery,
     Sum,
     Value,
@@ -35,6 +36,8 @@ from .models import (
     PaymentMethodOption,
     FinancialPlan,
     FinancialPlanItem,
+    FinancialPlanAllocation,
+    FinancialPlanRevision,
     SupplierPaymentSchedule,
 )
 from .services import (
@@ -697,12 +700,12 @@ def financial_plan_tbl(request):
         ),
         'cashbooks': list(
             CashBook.objects.filter(is_active=True)
-            .values('id', 'name', 'balance')
+            .values('id', 'name', 'balance', 'minimum_balance')
             .order_by('name')
         ),
         'suppliers': list(
             Supplier.objects.filter(is_active=True)
-            .values('id', 'code', 'name')
+            .values('id', 'code', 'name', 'payment_term_days', 'payment_priority')
             .order_by('name')
         ),
         'goods_receipts': goods_receipts,
@@ -1639,12 +1642,15 @@ def api_save_finance_category(request):
 
 @login_required(login_url="/login/")
 def api_get_cashbooks(request):
-    books = list(CashBook.objects.values('id', 'name', 'description', 'balance', 'is_active'))
+    books = list(CashBook.objects.values(
+        'id', 'name', 'description', 'balance', 'minimum_balance', 'is_active',
+    ))
     data = [{
         'id': row['id'],
         'name': row['name'],
         'description': row['description'] or '',
         'balance': float(row['balance']),
+        'minimum_balance': float(row['minimum_balance']),
         'is_active': row['is_active'],
     } for row in books]
     return JsonResponse({'data': data})
@@ -1665,6 +1671,13 @@ def api_save_cashbook(request):
             b = CashBook()
         b.name = data.get('name', '')
         b.description = data.get('description', '')
+        minimum_balance = _parse_payment_decimal(
+            data.get('minimum_balance', b.minimum_balance or 0),
+            'Số dư tối thiểu',
+        )
+        if minimum_balance < 0:
+            raise ValueError('Số dư tối thiểu không được âm.')
+        b.minimum_balance = minimum_balance.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         b.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
     except Exception as e:
@@ -2183,20 +2196,113 @@ def _serialize_financial_plan(plan):
         'status': plan.status,
         'status_display': plan.get_status_display(),
         'note': plan.note or '',
+        'alert_enabled': plan.alert_enabled,
+        'alert_lead_days': plan.alert_lead_days or '3,7,15',
+        'alert_email_recipients': plan.alert_email_recipients or '',
+        'last_alert_sent': (
+            plan.last_alert_sent.strftime('%d/%m/%Y %H:%M')
+            if plan.last_alert_sent else ''
+        ),
     }
+
+
+def _month_start(value):
+    return date(value.year, value.month, 1)
+
+
+def _iter_plan_months(plan):
+    current = _month_start(plan.start_date)
+    final = _month_start(plan.end_date)
+    while current <= final:
+        yield current
+        current = date(current.year + (1 if current.month == 12 else 0), (current.month % 12) + 1, 1)
+
+
+def _month_end(month_value):
+    return date(
+        month_value.year,
+        month_value.month,
+        monthrange(month_value.year, month_value.month)[1],
+    )
+
+
+def _plan_snapshot(plan):
+    items = []
+    for item in plan.items.select_related('category', 'cash_book').prefetch_related('allocations'):
+        items.append({
+            'id': item.id,
+            'direction': item.direction,
+            'category_id': item.category_id,
+            'category': item.category.name,
+            'cash_book_id': item.cash_book_id,
+            'planned_amount': float(item.planned_amount or 0),
+            'expected_date': item.expected_date.isoformat() if item.expected_date else '',
+            'include_in_forecast': item.include_in_forecast,
+            'allocations': [{
+                'month': allocation.month.isoformat(),
+                'planned_amount': float(allocation.planned_amount or 0),
+                'expected_date': allocation.expected_date.isoformat() if allocation.expected_date else '',
+            } for allocation in item.allocations.all()],
+        })
+    schedules = [{
+        'id': schedule.id,
+        'code': schedule.code,
+        'supplier_id': schedule.supplier_id,
+        'goods_receipt_id': schedule.goods_receipt_id,
+        'due_date': schedule.due_date.isoformat(),
+        'gross_amount': float(schedule.gross_amount or 0),
+        'amount': float(schedule.amount or 0),
+        'priority': schedule.priority,
+        'status': schedule.status,
+        'source': schedule.source,
+        'installment_no': schedule.installment_no,
+    } for schedule in plan.supplier_schedules.all()]
+    return {
+        'plan': _serialize_financial_plan(plan),
+        'items': items,
+        'schedules': schedules,
+    }
+
+
+def _record_plan_revision(plan, actor, reason):
+    latest_version = plan.revisions.aggregate(version=Max('version'))['version'] or 0
+    return FinancialPlanRevision.objects.create(
+        plan=plan,
+        version=latest_version + 1,
+        reason=(reason or 'Điều chỉnh kế hoạch')[:500],
+        snapshot=_plan_snapshot(plan),
+        created_by=actor,
+    )
+
+
+def _monthly_actuals(queryset, date_field):
+    result = defaultdict(lambda: Decimal('0'))
+    for row in queryset.values(date_field, 'category_id', 'cash_book_id', 'amount'):
+        document_date = row[date_field]
+        if not document_date:
+            continue
+        key = (_month_start(document_date), row['category_id'], row['cash_book_id'])
+        result[key] += Decimal(str(row['amount'] or 0))
+    return result
 
 
 def _financial_plan_dashboard(request, plan):
     today = date.today()
-    receipt_totals = _actual_amounts_by_category(_plan_receipts(request, plan))
-    payment_totals = _actual_amounts_by_category(_plan_payments(request, plan))
+    receipt_queryset = _plan_receipts(request, plan)
+    payment_queryset = _plan_payments(request, plan)
+    receipt_totals = _actual_amounts_by_category(receipt_queryset)
+    payment_totals = _actual_amounts_by_category(payment_queryset)
+    receipt_monthly = _monthly_actuals(receipt_queryset, 'receipt_date')
+    payment_monthly = _monthly_actuals(payment_queryset, 'payment_date')
     items = list(
-        plan.items.select_related('category', 'cash_book').order_by('direction', 'category__name')
+        plan.items.select_related('category', 'cash_book')
+        .prefetch_related('allocations')
+        .order_by('direction', 'category__name')
     )
     schedules = list(
         plan.supplier_schedules.select_related(
             'supplier', 'goods_receipt', 'cash_book', 'plan_item', 'payment',
-        ).order_by('status', 'due_date', 'priority', 'id')
+        ).order_by('status', 'priority', 'due_date', 'id')
     )
 
     item_rows = []
@@ -2205,6 +2311,24 @@ def _financial_plan_dashboard(request, plan):
     actual_income = sum(receipt_totals.values(), Decimal('0'))
     actual_expense = sum(payment_totals.values(), Decimal('0'))
     alerts = []
+    plan_months = list(_iter_plan_months(plan))
+    monthly_summary = {
+        month: {
+            'month': month.isoformat(),
+            'label': month.strftime('%m/%Y'),
+            'planned_income': Decimal('0'),
+            'planned_expense': Decimal('0'),
+            'actual_income': Decimal('0'),
+            'actual_expense': Decimal('0'),
+        }
+        for month in plan_months
+    }
+    for (month, _category_id, _cashbook_id), amount in receipt_monthly.items():
+        if month in monthly_summary:
+            monthly_summary[month]['actual_income'] += amount
+    for (month, _category_id, _cashbook_id), amount in payment_monthly.items():
+        if month in monthly_summary:
+            monthly_summary[month]['actual_expense'] += amount
 
     for item in items:
         actual = (
@@ -2217,6 +2341,17 @@ def _financial_plan_dashboard(request, plan):
             planned_income += planned
         else:
             planned_expense += planned
+        allocations = list(item.allocations.all())
+        if allocations:
+            for allocation in allocations:
+                if allocation.month in monthly_summary:
+                    key = 'planned_income' if item.direction == 1 else 'planned_expense'
+                    monthly_summary[allocation.month][key] += Decimal(str(allocation.planned_amount or 0))
+        elif plan_months:
+            fallback_month = _month_start(item.expected_date or plan.end_date)
+            fallback_month = fallback_month if fallback_month in monthly_summary else plan_months[-1]
+            key = 'planned_income' if item.direction == 1 else 'planned_expense'
+            monthly_summary[fallback_month][key] += planned
         variance = actual - planned
         if item.direction == 2 and planned and actual > planned:
             alerts.append({
@@ -2243,11 +2378,47 @@ def _financial_plan_dashboard(request, plan):
             'expected_date': item.expected_date.isoformat() if item.expected_date else '',
             'include_in_forecast': item.include_in_forecast,
             'note': item.note or '',
+            'allocations': [{
+                'id': allocation.id,
+                'month': allocation.month.isoformat(),
+                'month_label': allocation.month.strftime('%m/%Y'),
+                'planned_amount': float(allocation.planned_amount),
+                'actual_amount': float(sum(
+                    amount for (month, category_id, _cashbook_id), amount in (
+                        receipt_monthly.items() if item.direction == 1 else payment_monthly.items()
+                    ) if month == allocation.month and category_id == item.category_id
+                )),
+                'expected_date': allocation.expected_date.isoformat() if allocation.expected_date else '',
+                'note': allocation.note or '',
+            } for allocation in allocations],
         })
 
     schedule_rows = []
     outstanding_scheduled_by_item = defaultdict(lambda: Decimal('0'))
     event_totals = defaultdict(lambda: {'income': Decimal('0'), 'expense': Decimal('0'), 'details': []})
+    cashbook_events = defaultdict(
+        lambda: defaultdict(lambda: {'income': Decimal('0'), 'expense': Decimal('0'), 'details': []})
+    )
+
+    def add_forecast_event(event_date, direction, amount, detail, cash_book_id=None):
+        amount = Decimal(str(amount or 0))
+        if amount <= 0:
+            return
+        key = 'income' if direction == 1 else 'expense'
+        event_totals[event_date][key] += amount
+        event_totals[event_date]['details'].append(detail)
+        cashbook_events[cash_book_id][event_date][key] += amount
+        cashbook_events[cash_book_id][event_date]['details'].append(detail)
+
+    lead_days = []
+    for raw_day in re.split(r'[,;\s]+', plan.alert_lead_days or '3,7,15'):
+        try:
+            parsed_day = int(raw_day)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= parsed_day <= 365:
+            lead_days.append(parsed_day)
+    alert_horizon = max(lead_days or [7])
 
     for schedule in schedules:
         effective_status = (
@@ -2257,9 +2428,12 @@ def _financial_plan_dashboard(request, plan):
         if effective_status == 0:
             outstanding_scheduled_by_item[schedule.plan_item_id] += Decimal(str(schedule.amount or 0))
             event_date = min(max(schedule.due_date, today), plan.end_date)
-            event_totals[event_date]['expense'] += Decimal(str(schedule.amount or 0))
-            event_totals[event_date]['details'].append(
-                f'{schedule.code} · {schedule.supplier.name}'
+            add_forecast_event(
+                event_date,
+                2,
+                schedule.amount,
+                f'{schedule.code} · {schedule.supplier.name}',
+                schedule.cash_book_id,
             )
             if schedule.due_date < today:
                 alerts.append({
@@ -2268,7 +2442,7 @@ def _financial_plan_dashboard(request, plan):
                     'date': schedule.due_date.isoformat(),
                     'message': f'{schedule.code} của {schedule.supplier.name} đã quá hạn thanh toán.',
                 })
-            elif schedule.due_date <= today + timedelta(days=7):
+            elif schedule.due_date <= today + timedelta(days=alert_horizon):
                 alerts.append({
                     'type': 'supplier_due',
                     'level': 'warning',
@@ -2298,6 +2472,10 @@ def _financial_plan_dashboard(request, plan):
             'payment_id': schedule.payment_id,
             'payment_code': schedule.payment.code if schedule.payment else '',
             'note': schedule.note or '',
+            'source': schedule.source,
+            'source_display': schedule.get_source_display(),
+            'installment_no': schedule.installment_no,
+            'suggestion_reason': schedule.suggestion_reason or '',
         })
 
     item_actuals = {
@@ -2307,34 +2485,71 @@ def _financial_plan_dashboard(request, plan):
     for item in items:
         if not item.include_in_forecast:
             continue
-        planned = Decimal(str(item.planned_amount or 0))
-        actual = item_actuals.get(item.id, Decimal('0'))
-        remaining = max(planned - actual, Decimal('0'))
-        if item.direction == 2:
-            remaining = max(
-                remaining - outstanding_scheduled_by_item.get(item.id, Decimal('0')),
-                Decimal('0'),
+        allocations = list(item.allocations.all())
+        if allocations:
+            scheduled_pool = outstanding_scheduled_by_item.get(item.id, Decimal('0'))
+            for allocation in allocations:
+                actual = sum(
+                    amount for (month, category_id, _cashbook_id), amount in (
+                        receipt_monthly.items() if item.direction == 1 else payment_monthly.items()
+                    ) if month == allocation.month and category_id == item.category_id
+                )
+                remaining = max(
+                    Decimal(str(allocation.planned_amount or 0)) - actual,
+                    Decimal('0'),
+                )
+                if item.direction == 2:
+                    covered_by_schedules = min(remaining, scheduled_pool)
+                    remaining -= covered_by_schedules
+                    scheduled_pool -= covered_by_schedules
+                if not remaining:
+                    continue
+                event_date = allocation.expected_date or _month_end(allocation.month)
+                event_date = min(max(event_date, today, plan.start_date), plan.end_date)
+                add_forecast_event(
+                    event_date,
+                    item.direction,
+                    remaining,
+                    f'{item.get_direction_display()} · {item.category.name} · {allocation.month:%m/%Y}',
+                    item.cash_book_id,
+                )
+        else:
+            planned = Decimal(str(item.planned_amount or 0))
+            actual = item_actuals.get(item.id, Decimal('0'))
+            remaining = max(planned - actual, Decimal('0'))
+            if item.direction == 2:
+                remaining = max(
+                    remaining - outstanding_scheduled_by_item.get(item.id, Decimal('0')),
+                    Decimal('0'),
+                )
+            if not remaining:
+                continue
+            event_date = item.expected_date or plan.end_date
+            event_date = min(max(event_date, today, plan.start_date), plan.end_date)
+            add_forecast_event(
+                event_date,
+                item.direction,
+                remaining,
+                f'{item.get_direction_display()} · {item.category.name}',
+                item.cash_book_id,
             )
-        if not remaining:
-            continue
-        event_date = item.expected_date or plan.end_date
-        event_date = min(max(event_date, today), plan.end_date)
-        key = 'income' if item.direction == 1 else 'expense'
-        event_totals[event_date][key] += remaining
-        event_totals[event_date]['details'].append(
-            f'{item.get_direction_display()} · {item.category.name}'
-        )
 
-    current_balance = Decimal(str(
-        CashBook.objects.filter(is_active=True).aggregate(total=Sum('balance'))['total'] or 0
-    ))
+    cashbooks = list(CashBook.objects.filter(is_active=True).order_by('name'))
+    current_balance = sum(
+        (Decimal(str(cashbook.balance or 0)) for cashbook in cashbooks),
+        Decimal('0'),
+    )
+    minimum_balance = sum(
+        (Decimal(str(cashbook.minimum_balance or 0)) for cashbook in cashbooks),
+        Decimal('0'),
+    )
     running_balance = current_balance
     forecast_rows = []
-    first_shortage_date = today if current_balance < 0 else None
+    first_shortage_date = today if current_balance < minimum_balance else None
     for event_date in sorted(event_totals):
         event = event_totals[event_date]
         running_balance += event['income'] - event['expense']
-        if running_balance < 0 and first_shortage_date is None:
+        if running_balance < minimum_balance and first_shortage_date is None:
             first_shortage_date = event_date
         forecast_rows.append({
             'date': event_date.isoformat(),
@@ -2344,12 +2559,67 @@ def _financial_plan_dashboard(request, plan):
             'details': event['details'],
         })
     if first_shortage_date:
+        shortage_level = 'danger' if running_balance < 0 else 'warning'
         alerts.insert(0, {
             'type': 'cash_shortage',
-            'level': 'danger',
+            'level': shortage_level,
             'date': first_shortage_date.isoformat(),
-            'message': f'Dự kiến thiếu tiền từ ngày {first_shortage_date.strftime("%d/%m/%Y")}.',
+            'message': (
+                f'Dự kiến số dư xuống dưới mức an toàn từ ngày '
+                f'{first_shortage_date.strftime("%d/%m/%Y")}.'
+            ),
         })
+
+    cashbook_forecasts = []
+    cashbook_map = {cashbook.id: cashbook for cashbook in cashbooks}
+    forecast_cashbook_ids = list(cashbook_map)
+    if None in cashbook_events:
+        forecast_cashbook_ids.append(None)
+    for cashbook_id in forecast_cashbook_ids:
+        cashbook = cashbook_map.get(cashbook_id)
+        balance = Decimal(str(cashbook.balance or 0)) if cashbook else Decimal('0')
+        safe_balance = Decimal(str(cashbook.minimum_balance or 0)) if cashbook else Decimal('0')
+        shortage_date = today if balance < safe_balance else None
+        points = []
+        for event_date in sorted(cashbook_events.get(cashbook_id, {})):
+            event = cashbook_events[cashbook_id][event_date]
+            balance += event['income'] - event['expense']
+            if balance < safe_balance and shortage_date is None:
+                shortage_date = event_date
+            points.append({
+                'date': event_date.isoformat(),
+                'income': float(event['income']),
+                'expense': float(event['expense']),
+                'balance': float(balance),
+                'details': event['details'],
+            })
+        if shortage_date:
+            alerts.append({
+                'type': 'cashbook_shortage',
+                'level': 'danger' if balance < 0 else 'warning',
+                'date': shortage_date.isoformat(),
+                'message': (
+                    f'{cashbook.name if cashbook else "Khoản chưa chọn quỹ"} xuống dưới '
+                    f'số dư tối thiểu từ ngày {shortage_date.strftime("%d/%m/%Y")}.'
+                ),
+            })
+        cashbook_forecasts.append({
+            'cash_book_id': cashbook_id,
+            'cash_book': cashbook.name if cashbook else 'Chưa xác định quỹ',
+            'current_balance': float(cashbook.balance or 0) if cashbook else 0,
+            'minimum_balance': float(safe_balance),
+            'forecast_balance': float(balance),
+            'shortage_date': shortage_date.isoformat() if shortage_date else '',
+            'points': points,
+        })
+
+    revisions = [{
+        'id': revision.id,
+        'version': revision.version,
+        'reason': revision.reason,
+        'created_by': _get_user_display_name(revision.created_by),
+        'created_at': revision.created_at.strftime('%d/%m/%Y %H:%M'),
+    } for revision in plan.revisions.select_related('created_by')[:20]]
 
     return {
         'plan': _serialize_financial_plan(plan),
@@ -2359,13 +2629,20 @@ def _financial_plan_dashboard(request, plan):
             'actual_income': float(actual_income),
             'actual_expense': float(actual_expense),
             'current_balance': float(current_balance),
+            'minimum_balance': float(minimum_balance),
             'forecast_balance': float(running_balance),
             'alert_count': len(alerts),
         },
         'items': item_rows,
         'schedules': schedule_rows,
         'forecast': forecast_rows,
+        'cashbook_forecasts': cashbook_forecasts,
+        'monthly_summary': [{
+            key: (float(value) if isinstance(value, Decimal) else value)
+            for key, value in row.items()
+        } for row in monthly_summary.values()],
         'alerts': alerts,
+        'revisions': revisions,
     }
 
 
@@ -2428,6 +2705,7 @@ def api_save_financial_plan(request):
 
         with transaction.atomic():
             plan_id = data.get('id')
+            revision_reason = (data.get('revision_reason') or '').strip()
             if plan_id:
                 plan = _get_financial_plan(request, plan_id, for_update=True)
                 if not plan:
@@ -2436,11 +2714,20 @@ def api_save_financial_plan(request):
                     Q(expected_date__lt=start_date) | Q(expected_date__gt=end_date)
                 ).exists() or plan.supplier_schedules.filter(
                     Q(due_date__lt=start_date) | Q(due_date__gt=end_date)
+                ).exists() or FinancialPlanAllocation.objects.filter(
+                    item__plan=plan,
+                ).filter(
+                    Q(month__lt=_month_start(start_date)) |
+                    Q(month__gt=_month_start(end_date)) |
+                    Q(expected_date__lt=start_date) |
+                    Q(expected_date__gt=end_date)
                 ).exists()
                 if dates_outside:
                     raise ValueError(
                         'Không thể đổi kỳ vì đang có khoản ngân sách hoặc lịch chi nằm ngoài kỳ mới.'
                     )
+                if not revision_reason:
+                    raise ValueError('Vui lòng nhập lý do điều chỉnh kế hoạch.')
                 auto_code = False
             else:
                 plan = FinancialPlan(created_by=request.user)
@@ -2455,10 +2742,29 @@ def api_save_financial_plan(request):
             if plan.status not in dict(FinancialPlan.STATUS_CHOICES):
                 raise ValueError('Trạng thái kế hoạch không hợp lệ.')
             plan.note = data.get('note', '')
+            plan.alert_enabled = str(data.get('alert_enabled', False)).lower() in ('true', '1')
+            lead_days = []
+            for raw_day in re.split(r'[,;\s]+', str(data.get('alert_lead_days') or '3,7,15')):
+                if not raw_day:
+                    continue
+                try:
+                    lead_day = int(raw_day)
+                except ValueError:
+                    raise ValueError('Số ngày cảnh báo phải là các số, ví dụ: 3,7,15.')
+                if lead_day < 0 or lead_day > 365:
+                    raise ValueError('Số ngày cảnh báo phải từ 0 đến 365.')
+                lead_days.append(lead_day)
+            plan.alert_lead_days = ','.join(str(day) for day in sorted(set(lead_days))) or '3,7,15'
+            plan.alert_email_recipients = (data.get('alert_email_recipients') or '').strip()
             save_with_generated_code(
                 plan,
                 lambda: _generate_planning_code(FinancialPlan, 'KHTC'),
                 auto_code,
+            )
+            _record_plan_revision(
+                plan,
+                request.user,
+                revision_reason or 'Khởi tạo kế hoạch',
             )
         return JsonResponse({'status': 'ok', 'message': 'Đã lưu kế hoạch.', 'id': plan.id})
     except (ValueError, IntegrityError) as exc:
@@ -2523,7 +2829,36 @@ def api_save_financial_plan_item(request):
             ).first()
             if not category:
                 raise ValueError('Danh mục thu/chi không hợp lệ.')
-            amount = _parse_payment_decimal(data.get('planned_amount'), 'Số tiền kế hoạch')
+            allocation_payload = data.get('allocations') or []
+            parsed_allocations = []
+            seen_allocation_months = set()
+            for allocation_data in allocation_payload:
+                allocation_month = parse_date(str(allocation_data.get('month') or '')[:7] + '-01')
+                if not allocation_month or not plan.start_date <= allocation_month <= plan.end_date:
+                    raise ValueError('Tháng phân bổ không nằm trong kỳ kế hoạch.')
+                if allocation_month in seen_allocation_months:
+                    raise ValueError(f'Tháng {allocation_month:%m/%Y} bị nhập trùng.')
+                seen_allocation_months.add(allocation_month)
+                allocation_amount = _parse_payment_decimal(
+                    allocation_data.get('planned_amount'),
+                    f'Ngân sách tháng {allocation_month:%m/%Y}',
+                ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+                if allocation_amount < 0:
+                    raise ValueError('Số tiền phân bổ không được âm.')
+                allocation_date = parse_date(allocation_data.get('expected_date') or '')
+                if allocation_date and _month_start(allocation_date) != allocation_month:
+                    raise ValueError('Ngày dự kiến phải nằm đúng tháng phân bổ.')
+                parsed_allocations.append({
+                    'month': allocation_month,
+                    'planned_amount': allocation_amount,
+                    'expected_date': allocation_date,
+                    'note': (allocation_data.get('note') or '').strip(),
+                })
+            amount_source = (
+                sum((row['planned_amount'] for row in parsed_allocations), Decimal('0'))
+                if parsed_allocations else data.get('planned_amount')
+            )
+            amount = _parse_payment_decimal(amount_source, 'Số tiền kế hoạch')
             if amount < 0:
                 raise ValueError('Số tiền kế hoạch không được âm.')
             expected_date = parse_date(data.get('expected_date') or '')
@@ -2533,6 +2868,9 @@ def api_save_financial_plan_item(request):
             item = plan.items.select_for_update().filter(id=item_id).first() if item_id else FinancialPlanItem(plan=plan)
             if item_id and not item:
                 raise ValueError('Không tìm thấy khoản ngân sách.')
+            revision_reason = (data.get('revision_reason') or '').strip()
+            if item_id and not revision_reason:
+                raise ValueError('Vui lòng nhập lý do điều chỉnh ngân sách.')
             item.direction = direction
             item.category = category
             item.cash_book_id = data.get('cash_book_id') or None
@@ -2541,6 +2879,30 @@ def api_save_financial_plan_item(request):
             item.include_in_forecast = str(data.get('include_in_forecast', True)).lower() not in ('false', '0')
             item.note = data.get('note', '')
             item.save()
+            allocation_months = []
+            for allocation_data in parsed_allocations:
+                allocation_months.append(allocation_data['month'])
+                allocation = FinancialPlanAllocation.all_objects.filter(
+                    item=item,
+                    month=allocation_data['month'],
+                ).first()
+                if not allocation:
+                    allocation = FinancialPlanAllocation(item=item, month=allocation_data['month'])
+                allocation.is_deleted = False
+                allocation.deleted_at = None
+                allocation.planned_amount = allocation_data['planned_amount']
+                allocation.expected_date = allocation_data['expected_date']
+                allocation.note = allocation_data['note']
+                allocation.save()
+            if parsed_allocations:
+                item.allocations.exclude(month__in=allocation_months).delete()
+            else:
+                item.allocations.all().delete()
+            _record_plan_revision(
+                plan,
+                request.user,
+                revision_reason or f'Thêm ngân sách {category.name}',
+            )
         return JsonResponse({'status': 'ok', 'message': 'Đã lưu khoản ngân sách.', 'id': item.id})
     except IntegrityError:
         return JsonResponse({'status': 'error', 'message': 'Danh mục này đã có trong kế hoạch.'})
@@ -2555,15 +2917,129 @@ def api_delete_financial_plan_item(request):
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
         data = json.loads(request.body)
-        item = FinancialPlanItem.objects.select_related('plan').filter(id=data.get('id')).first()
-        if not item or not _get_financial_plan(request, item.plan_id):
-            raise ValueError('Không tìm thấy khoản ngân sách.')
-        if item.supplier_schedules.exclude(status=2).exists():
-            raise ValueError('Khoản ngân sách đang có lịch thanh toán nhà cung cấp.')
-        item.delete()
+        with transaction.atomic():
+            item = FinancialPlanItem.objects.select_related('plan').select_for_update().filter(id=data.get('id')).first()
+            plan = _get_financial_plan(request, item.plan_id, for_update=True) if item else None
+            if not item or not plan:
+                raise ValueError('Không tìm thấy khoản ngân sách.')
+            if plan.status == 2:
+                raise ValueError('Kế hoạch đã khóa, không thể chỉnh sửa.')
+            if item.supplier_schedules.exclude(status=2).exists():
+                raise ValueError('Khoản ngân sách đang có lịch thanh toán nhà cung cấp.')
+            reason = (data.get('revision_reason') or '').strip()
+            if not reason:
+                raise ValueError('Vui lòng nhập lý do xóa khoản ngân sách.')
+            category_name = item.category.name
+            item.delete()
+            _record_plan_revision(plan, request.user, f'{reason} (xóa {category_name})')
         return JsonResponse({'status': 'ok', 'message': 'Đã xóa khoản ngân sách.'})
     except Exception as exc:
         return JsonResponse({'status': 'error', 'message': str(exc)})
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def api_financial_plan_item_details(request, item_id):
+    item = FinancialPlanItem.objects.select_related('plan', 'category').filter(id=item_id).first()
+    if not item or not _get_financial_plan(request, item.plan_id):
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy khoản ngân sách.'})
+    month_value = request.GET.get('month')
+    month_start = parse_date(f'{month_value}-01') if month_value else None
+    if month_value and not month_start:
+        return JsonResponse({'status': 'error', 'message': 'Tháng không hợp lệ.'})
+    if month_start:
+        range_start = month_start
+        range_end = _month_end(month_start)
+    else:
+        range_start = item.plan.start_date
+        range_end = item.plan.end_date
+
+    rows = []
+    if item.direction == 1:
+        queryset = _filter_receipts_for_user(
+            Receipt.objects.select_related('customer', 'cash_book').filter(
+                status=1,
+                category_id=item.category_id,
+                receipt_date__range=(range_start, range_end),
+            ),
+            request,
+        )
+        if item.plan.store_id:
+            queryset = queryset.filter(
+                Q(store_id=item.plan.store_id) |
+                Q(store_id__isnull=True, order__store_id=item.plan.store_id)
+            )
+        for receipt in queryset.order_by('receipt_date', 'id'):
+            rows.append({
+                'id': receipt.id,
+                'type': 'receipt',
+                'code': receipt.code,
+                'date': receipt.receipt_date.isoformat(),
+                'amount': float(receipt.amount),
+                'cash_book': receipt.cash_book.name if receipt.cash_book else '',
+                'target': receipt.customer.name if receipt.customer else '',
+                'description': receipt.description or '',
+            })
+    else:
+        queryset = _filter_payments_for_user(
+            Payment.objects.select_related('supplier', 'customer', 'cash_book').filter(
+                status=1,
+                category_id=item.category_id,
+                payment_date__range=(range_start, range_end),
+            ),
+            request,
+        )
+        if item.plan.store_id:
+            queryset = queryset.filter(
+                Q(store_id=item.plan.store_id) |
+                Q(store_id__isnull=True, goods_receipt__warehouse__store_id=item.plan.store_id)
+            )
+        for payment in queryset.order_by('payment_date', 'id'):
+            rows.append({
+                'id': payment.id,
+                'type': 'payment',
+                'code': payment.code,
+                'date': payment.payment_date.isoformat(),
+                'amount': float(payment.amount),
+                'cash_book': payment.cash_book.name if payment.cash_book else '',
+                'target': (
+                    payment.supplier.name if payment.supplier
+                    else (payment.customer.name if payment.customer else '')
+                ),
+                'description': payment.description or '',
+            })
+    return JsonResponse({
+        'status': 'ok',
+        'item': {
+            'id': item.id,
+            'direction': item.direction,
+            'category': item.category.name,
+            'period': f'{range_start:%d/%m/%Y} - {range_end:%d/%m/%Y}',
+        },
+        'rows': rows,
+        'total': sum(row['amount'] for row in rows),
+    })
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def api_financial_plan_revision_detail(request, revision_id):
+    revision = FinancialPlanRevision.objects.select_related('plan', 'created_by').filter(
+        id=revision_id
+    ).first()
+    if not revision or not _get_financial_plan(request, revision.plan_id):
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiên bản kế hoạch.'})
+    return JsonResponse({
+        'status': 'ok',
+        'revision': {
+            'id': revision.id,
+            'version': revision.version,
+            'reason': revision.reason,
+            'created_by': _get_user_display_name(revision.created_by),
+            'created_at': revision.created_at.strftime('%d/%m/%Y %H:%M'),
+            'snapshot': revision.snapshot,
+        },
+    })
 
 
 def _goods_receipt_schedule_capacity(receipt, current_schedule_id=None):
@@ -2581,6 +3057,322 @@ def _goods_receipt_schedule_capacity(receipt, current_schedule_id=None):
         schedules = schedules.exclude(id=current_schedule_id)
     scheduled = Decimal(str(schedules.aggregate(total=Sum('gross_amount'))['total'] or 0))
     return payable, settled, scheduled, max(payable - settled - scheduled, Decimal('0'))
+
+
+def _build_supplier_payment_suggestions(request, plan):
+    """Xếp thử công nợ vào các quỹ mà vẫn giữ số dư tối thiểu.
+
+    Thu kế hoạch làm tăng khả năng chi ở ngày dự kiến; các lịch chi đã có và
+    những ngân sách chi không phải nhập hàng được giữ chỗ trước. Công nợ còn
+    lại được xếp theo ưu tiên NCC, ngày đến hạn rồi mới đến ngày nhập.
+    """
+    today = date.today()
+    cashbooks = list(CashBook.objects.filter(is_active=True).order_by('name'))
+    cashbook_map = {cashbook.id: cashbook for cashbook in cashbooks}
+    ledger = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
+
+    receipt_monthly = _monthly_actuals(_plan_receipts(request, plan), 'receipt_date')
+    payment_monthly = _monthly_actuals(_plan_payments(request, plan), 'payment_date')
+    items = list(
+        plan.items.select_related('category', 'cash_book')
+        .prefetch_related('allocations')
+        .order_by('direction', 'id')
+    )
+    import_item = next(
+        (
+            item for item in items
+            if item.direction == 2 and 'nhập' in item.category.name.lower()
+        ),
+        next((item for item in items if item.direction == 2), None),
+    )
+
+    for item in items:
+        if not item.include_in_forecast or not item.cash_book_id:
+            continue
+        is_import_budget = item.direction == 2 and import_item and item.id == import_item.id
+        if is_import_budget:
+            # Công nợ phiếu nhập bên dưới chính là chi tiết của ngân sách này.
+            continue
+        allocations = list(item.allocations.all())
+        if allocations:
+            for allocation in allocations:
+                monthly_actuals = receipt_monthly if item.direction == 1 else payment_monthly
+                actual = sum(
+                    amount for (month, category_id, _cashbook_id), amount in monthly_actuals.items()
+                    if month == allocation.month and category_id == item.category_id
+                )
+                remaining = max(
+                    Decimal(str(allocation.planned_amount or 0)) - actual,
+                    Decimal('0'),
+                )
+                event_date = allocation.expected_date or _month_end(allocation.month)
+                event_date = min(max(event_date, today, plan.start_date), plan.end_date)
+                ledger[item.cash_book_id][event_date] += remaining if item.direction == 1 else -remaining
+        else:
+            actual = (
+                sum(
+                    amount for (_month, category_id, _cashbook_id), amount in receipt_monthly.items()
+                    if category_id == item.category_id
+                ) if item.direction == 1 else sum(
+                    amount for (_month, category_id, _cashbook_id), amount in payment_monthly.items()
+                    if category_id == item.category_id
+                )
+            )
+            remaining = max(Decimal(str(item.planned_amount or 0)) - actual, Decimal('0'))
+            event_date = min(max(item.expected_date or plan.end_date, today, plan.start_date), plan.end_date)
+            ledger[item.cash_book_id][event_date] += remaining if item.direction == 1 else -remaining
+
+    committed_schedules = SupplierPaymentSchedule.objects.filter(
+        status=0,
+        cash_book_id__isnull=False,
+        due_date__range=(max(today, plan.start_date), plan.end_date),
+        store_id__in=get_managed_store_ids(request.user),
+    )
+    if plan.store_id:
+        committed_schedules = committed_schedules.filter(store_id=plan.store_id)
+    for schedule in committed_schedules:
+        event_date = min(max(schedule.due_date, today, plan.start_date), plan.end_date)
+        ledger[schedule.cash_book_id][event_date] -= Decimal(str(schedule.amount or 0))
+
+    receipts = list(
+        filter_by_store(
+            GoodsReceipt.objects.select_related('supplier', 'warehouse').filter(
+                status=1,
+                receipt_date__lte=plan.end_date,
+                supplier_id__isnull=False,
+            ),
+            request,
+            field_name='warehouse__store',
+        ).order_by('receipt_date', 'id')
+    )
+    if plan.store_id:
+        receipts = [
+            receipt for receipt in receipts
+            if receipt.warehouse_id and receipt.warehouse.store_id == plan.store_id
+        ]
+
+    candidates = []
+    for receipt in receipts:
+        _payable, _settled, _scheduled, available = _goods_receipt_schedule_capacity(receipt)
+        if available <= 0:
+            continue
+        contractual_due = receipt.receipt_date + timedelta(
+            days=int(receipt.supplier.payment_term_days or 0)
+        )
+        if contractual_due > plan.end_date:
+            continue
+        desired_date = min(max(contractual_due, today, plan.start_date), plan.end_date)
+        candidates.append({
+            'receipt': receipt,
+            'remaining': available,
+            'contractual_due': contractual_due,
+            'desired_date': desired_date,
+            'priority': receipt.supplier.payment_priority or 3,
+        })
+    candidates.sort(key=lambda row: (
+        row['priority'], row['contractual_due'], row['receipt'].receipt_date, row['receipt'].id,
+    ))
+
+    def available_balance(cashbook, target_date):
+        balance = Decimal(str(cashbook.balance or 0))
+        for event_date, delta in ledger[cashbook.id].items():
+            if event_date <= target_date:
+                balance += delta
+        return max(balance - Decimal(str(cashbook.minimum_balance or 0)), Decimal('0'))
+
+    suggestions = []
+    for candidate in candidates:
+        receipt = candidate['receipt']
+        remaining = candidate['remaining']
+        candidate_dates = {candidate['desired_date'], plan.end_date}
+        for cashbook_id in cashbook_map:
+            candidate_dates.update(
+                event_date for event_date, delta in ledger[cashbook_id].items()
+                if delta > 0 and event_date >= candidate['desired_date']
+            )
+        for suggested_date in sorted(
+            event_date for event_date in candidate_dates
+            if candidate['desired_date'] <= event_date <= plan.end_date
+        ):
+            ranked_books = sorted(
+                cashbooks,
+                key=lambda cashbook: available_balance(cashbook, suggested_date),
+                reverse=True,
+            )
+            for cashbook in ranked_books:
+                capacity = available_balance(cashbook, suggested_date)
+                if capacity <= 0 or remaining <= 0:
+                    continue
+                amount = min(capacity, remaining)
+                ledger[cashbook.id][suggested_date] -= amount
+                installment_no = len([
+                    row for row in suggestions if row['goods_receipt_id'] == receipt.id
+                ]) + 1
+                late = suggested_date > candidate['contractual_due']
+                suggestions.append({
+                    'key': f'{receipt.id}:{cashbook.id}:{suggested_date.isoformat()}:{installment_no}',
+                    'goods_receipt_id': receipt.id,
+                    'goods_receipt': receipt.code,
+                    'supplier_id': receipt.supplier_id,
+                    'supplier': receipt.supplier.name,
+                    'plan_item_id': import_item.id if import_item else None,
+                    'cash_book_id': cashbook.id,
+                    'cash_book': cashbook.name,
+                    'contractual_due_date': candidate['contractual_due'].isoformat(),
+                    'due_date': suggested_date.isoformat(),
+                    'gross_amount': float(amount),
+                    'amount': float(amount),
+                    'priority': candidate['priority'],
+                    'priority_display': dict(Supplier.PAYMENT_PRIORITY_CHOICES).get(
+                        candidate['priority'], ''
+                    ),
+                    'installment_no': installment_no,
+                    'late': late,
+                    'insufficient': False,
+                    'reason': (
+                        f'Ưu tiên {dict(Supplier.PAYMENT_PRIORITY_CHOICES).get(candidate["priority"], "")}; '
+                        f'hạn nợ {candidate["contractual_due"]:%d/%m/%Y}; '
+                        f'quỹ vẫn giữ tối thiểu {int(cashbook.minimum_balance or 0):,}đ.'
+                    ),
+                })
+                remaining -= amount
+            if remaining <= 0:
+                break
+        if remaining > 0:
+            suggestions.append({
+                'key': f'{receipt.id}:unfunded',
+                'goods_receipt_id': receipt.id,
+                'goods_receipt': receipt.code,
+                'supplier_id': receipt.supplier_id,
+                'supplier': receipt.supplier.name,
+                'plan_item_id': import_item.id if import_item else None,
+                'cash_book_id': None,
+                'cash_book': 'Chưa đủ nguồn tiền',
+                'contractual_due_date': candidate['contractual_due'].isoformat(),
+                'due_date': plan.end_date.isoformat(),
+                'gross_amount': float(remaining),
+                'amount': float(remaining),
+                'priority': candidate['priority'],
+                'priority_display': dict(Supplier.PAYMENT_PRIORITY_CHOICES).get(
+                    candidate['priority'], ''
+                ),
+                'installment_no': 0,
+                'late': True,
+                'insufficient': True,
+                'reason': 'Không có quỹ nào còn đủ tiền sau khi giữ số dư tối thiểu.',
+            })
+    return suggestions
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def api_suggest_supplier_payment_schedules(request):
+    plan = _get_financial_plan(request, request.GET.get('plan_id'))
+    if not plan:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy kế hoạch.'})
+    suggestions = _build_supplier_payment_suggestions(request, plan)
+    return JsonResponse({
+        'status': 'ok',
+        'suggestions': suggestions,
+        'summary': {
+            'funded_count': len([row for row in suggestions if not row['insufficient']]),
+            'unfunded_count': len([row for row in suggestions if row['insufficient']]),
+            'funded_amount': sum(row['amount'] for row in suggestions if not row['insufficient']),
+            'unfunded_amount': sum(row['amount'] for row in suggestions if row['insufficient']),
+        },
+    })
+
+
+@login_required(login_url="/login/")
+@brand_owner_required
+def api_apply_supplier_payment_suggestions(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        with transaction.atomic():
+            plan = _get_financial_plan(request, data.get('plan_id'), for_update=True)
+            if not plan:
+                raise ValueError('Không tìm thấy kế hoạch.')
+            if plan.status == 2:
+                raise ValueError('Kế hoạch đã khóa, không thể xếp lịch.')
+            # Giữ nguyên số dư trong suốt lượt tính và tạo lịch để hai kế toán
+            # không cùng lúc dùng chung một phần tiền khả dụng.
+            list(CashBook.objects.select_for_update().filter(is_active=True))
+            current_suggestions = {
+                row['key']: row for row in _build_supplier_payment_suggestions(request, plan)
+                if not row['insufficient']
+            }
+            selected_keys = list(dict.fromkeys(data.get('suggestion_keys') or []))
+            if not selected_keys:
+                raise ValueError('Vui lòng chọn ít nhất một đề xuất có đủ nguồn tiền.')
+            created = []
+            for suggestion_key in selected_keys:
+                suggestion = current_suggestions.get(str(suggestion_key))
+                if not suggestion:
+                    raise ValueError('Đề xuất đã thay đổi. Vui lòng tính lại trước khi áp dụng.')
+                receipt = filter_by_store(
+                    GoodsReceipt.objects.select_related('supplier', 'warehouse').filter(
+                        id=suggestion['goods_receipt_id'], status=1,
+                    ),
+                    request,
+                    field_name='warehouse__store',
+                ).first()
+                if not receipt:
+                    raise ValueError('Phiếu nhập trong đề xuất không còn hợp lệ.')
+                gross = Decimal(str(suggestion['gross_amount'])).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP
+                )
+                _payable, _settled, _scheduled, available = _goods_receipt_schedule_capacity(receipt)
+                if gross > available:
+                    raise ValueError(f'Công nợ {receipt.code} vừa thay đổi. Vui lòng tính lại đề xuất.')
+                schedule = SupplierPaymentSchedule(
+                    code=_generate_planning_code(SupplierPaymentSchedule, 'LCT'),
+                    plan=plan,
+                    plan_item_id=suggestion.get('plan_item_id'),
+                    store_id=receipt.warehouse.store_id if receipt.warehouse_id else None,
+                    supplier_id=receipt.supplier_id,
+                    goods_receipt=receipt,
+                    cash_book_id=suggestion['cash_book_id'],
+                    due_date=parse_date(suggestion['due_date']),
+                    gross_amount=gross,
+                    promotion_mode='amount',
+                    promotion_amount=0,
+                    promotion_percent=0,
+                    amount=gross,
+                    priority=suggestion['priority'],
+                    status=0,
+                    source='automatic',
+                    installment_no=(
+                        SupplierPaymentSchedule.objects.filter(goods_receipt=receipt)
+                        .aggregate(max_no=Max('installment_no'))['max_no'] or 0
+                    ) + 1,
+                    suggestion_reason=suggestion['reason'],
+                    note='Hệ thống đề xuất; chờ kế toán kiểm tra và duyệt.',
+                    created_by=request.user,
+                )
+                save_with_generated_code(
+                    schedule,
+                    lambda: _generate_planning_code(SupplierPaymentSchedule, 'LCT'),
+                    True,
+                )
+                payment = _sync_supplier_schedule_payment(schedule, request.user)
+                created.append({'schedule': schedule.code, 'payment': payment.code})
+            _record_plan_revision(
+                plan,
+                request.user,
+                data.get('revision_reason') or f'Áp dụng {len(created)} đề xuất lịch thanh toán tự động',
+            )
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Đã tạo {len(created)} lịch và phiếu chi Nháp.',
+            'created': created,
+        })
+    except ValueError as exc:
+        return JsonResponse({'status': 'error', 'message': str(exc)})
+    except Exception as exc:
+        logger.exception('Không thể áp dụng đề xuất lịch thanh toán')
+        return JsonResponse({'status': 'error', 'message': str(exc)})
 
 
 def _sync_supplier_schedule_payment(schedule, actor):
@@ -2649,6 +3441,7 @@ def api_save_supplier_payment_schedule(request):
             if plan.status == 2:
                 raise ValueError('Kế hoạch đã khóa, không thể chỉnh sửa.')
             schedule_id = data.get('id')
+            revision_reason = (data.get('revision_reason') or '').strip()
             schedule = (
                 plan.supplier_schedules.select_for_update().filter(id=schedule_id).first()
                 if schedule_id else SupplierPaymentSchedule(plan=plan, created_by=request.user)
@@ -2657,6 +3450,8 @@ def api_save_supplier_payment_schedule(request):
                 raise ValueError('Không tìm thấy lịch thanh toán.')
             if schedule_id and (schedule.status == 1 or (schedule.payment and schedule.payment.status == 1)):
                 raise ValueError('Lịch đã thanh toán nên không thể sửa.')
+            if schedule_id and not revision_reason:
+                raise ValueError('Vui lòng nhập lý do điều chỉnh lịch thanh toán.')
 
             plan_item_id = data.get('plan_item_id') or None
             plan_item = plan.items.filter(id=plan_item_id, direction=2).first() if plan_item_id else None
@@ -2727,6 +3522,14 @@ def api_save_supplier_payment_schedule(request):
             schedule.amount = calculator.amount
             schedule.priority = priority
             schedule.status = 0
+            source = str(data.get('source') or schedule.source or 'manual')
+            schedule.source = source if source in dict(SupplierPaymentSchedule.SOURCE_CHOICES) else 'manual'
+            if not schedule_id:
+                schedule.installment_no = (
+                    SupplierPaymentSchedule.objects.filter(goods_receipt=receipt)
+                    .aggregate(max_no=Max('installment_no'))['max_no'] or 0
+                ) + 1 if receipt else 1
+            schedule.suggestion_reason = (data.get('suggestion_reason') or '').strip()
             schedule.note = data.get('note', '')
             save_with_generated_code(
                 schedule,
@@ -2734,6 +3537,14 @@ def api_save_supplier_payment_schedule(request):
                 auto_code,
             )
             payment = _sync_supplier_schedule_payment(schedule, request.user)
+            _record_plan_revision(
+                plan,
+                request.user,
+                revision_reason or (
+                    f'Xếp lịch thanh toán {schedule.code}' if not schedule_id
+                    else f'Điều chỉnh lịch thanh toán {schedule.code}'
+                ),
+            )
         return JsonResponse({
             'status': 'ok', 'message': 'Đã xếp lịch và tạo phiếu chi Nháp.',
             'id': schedule.id, 'payment_id': payment.id, 'payment_code': payment.code,
@@ -2760,6 +3571,9 @@ def api_delete_supplier_payment_schedule(request):
                 raise ValueError('Không tìm thấy lịch thanh toán.')
             if schedule.status == 1 or (schedule.payment and schedule.payment.status == 1):
                 raise ValueError('Lịch đã thanh toán nên không thể hủy.')
+            revision_reason = (data.get('revision_reason') or '').strip()
+            if not revision_reason:
+                raise ValueError('Vui lòng nhập lý do hủy lịch thanh toán.')
             schedule.status = 2
             schedule.save(update_fields=['status', 'updated_at'])
             if schedule.payment and schedule.payment.status == 0:
@@ -2768,6 +3582,11 @@ def api_delete_supplier_payment_schedule(request):
                     f'{schedule.payment.note or ""}\n[HỦY LỊCH] {schedule.code}'
                 ).strip()
                 schedule.payment.save(update_fields=['status', 'note', 'updated_at'])
+            _record_plan_revision(
+                schedule.plan,
+                request.user,
+                f'{revision_reason} (hủy {schedule.code})',
+            )
         return JsonResponse({'status': 'ok', 'message': 'Đã hủy lịch và phiếu chi Nháp liên quan.'})
     except Exception as exc:
         return JsonResponse({'status': 'error', 'message': str(exc)})

@@ -5,6 +5,12 @@ from core.soft_delete import SoftDeleteModel
 
 class Supplier(SoftDeleteModel):
     """Nhà cung cấp"""
+    PAYMENT_PRIORITY_CHOICES = (
+        (1, 'Khẩn cấp'),
+        (2, 'Cao'),
+        (3, 'Bình thường'),
+        (4, 'Thấp'),
+    )
     code = models.CharField(max_length=50, unique=True, verbose_name='Mã NCC')
     name = models.CharField(max_length=255, verbose_name='Tên nhà cung cấp')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Số điện thoại')
@@ -13,6 +19,15 @@ class Supplier(SoftDeleteModel):
     tax_code = models.CharField(max_length=20, blank=True, null=True, verbose_name='Mã số thuế')
     contact_person = models.CharField(max_length=100, blank=True, null=True, verbose_name='Người liên hệ')
     note = models.TextField(blank=True, null=True, verbose_name='Ghi chú')
+    payment_term_days = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Số ngày được nợ',
+    )
+    payment_priority = models.IntegerField(
+        choices=PAYMENT_PRIORITY_CHOICES,
+        default=3,
+        verbose_name='Ưu tiên thanh toán',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

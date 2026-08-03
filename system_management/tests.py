@@ -1187,6 +1187,8 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(response, 'Thu chi và sổ quỹ')
         self.assertContains(response, 'id="financial-plan-guide"')
         self.assertContains(response, 'Hướng dẫn lập kế hoạch tài chính lần đầu')
+        self.assertContains(response, 'class="sidebar-feature-link" href="#financial-plan-guide"')
+        self.assertContains(response, '<span class="sidebar-badge">Mới</span>', html=True)
         self.assertContains(response, 'Chức năng riêng trên Digimart · Sapo chưa có')
         self.assertContains(response, 'Điểm khác biệt so với Sapo')
         self.assertContains(response, 'Không có một mục Kế hoạch tài chính riêng')

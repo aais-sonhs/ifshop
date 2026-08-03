@@ -164,6 +164,22 @@
             width: 18px;
         }
 
+        .sidebar a.sidebar-feature-link {
+            background: rgba(118, 201, 189, 0.1);
+            border: 1px solid rgba(118, 201, 189, 0.28);
+        }
+
+        .sidebar-feature-link .sidebar-badge {
+            background: #f59e0b;
+            border-radius: 999px;
+            color: #fff;
+            font-size: 0.61rem;
+            font-weight: 900;
+            margin-left: auto;
+            padding: 2px 6px;
+            text-transform: uppercase;
+        }
+
         .sidebar-group {
             border-top: 1px solid rgba(255, 255, 255, 0.09);
             margin-top: 12px;
@@ -988,11 +1004,17 @@
         <div class="sidebar-title">Mục lục bán lẻ</div>
         <a href="#start"><i class="fas fa-play-circle"></i> Bắt đầu từ đâu?</a>
         <a href="#recent-updates"><i class="fas fa-history"></i> Cập nhật 02–03/08</a>
-        <a href="#financial-plan-guide"><i class="fas fa-chart-area"></i> Kế hoạch tài chính (Sapo chưa có)</a>
         <a href="#setup"><i class="fas fa-cogs"></i> Thiết lập ban đầu</a>
         <div class="sidebar-group">
             {% for guide in operation_guides %}
             <a href="#{{ guide.anchor }}"><i class="{{ guide.icon }}"></i> {{ guide.title }}</a>
+            {% if guide.anchor == 'finance' %}
+            <a class="sidebar-feature-link" href="#financial-plan-guide">
+                <i class="fas fa-chart-area"></i>
+                <span>Kế hoạch tài chính</span>
+                <span class="sidebar-badge">Mới</span>
+            </a>
+            {% endif %}
             {% endfor %}
         </div>
         <div class="sidebar-group">

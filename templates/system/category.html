@@ -97,6 +97,23 @@
                     </div>
                 </div>
             </div>
+            <!-- Danh mục kho -->
+            <div class="col-md-6">
+                <div class="card card-outline card-info system-category-section" data-system-category-scope="warehouse">
+                    <div class="card-header">
+                        <h5 class="card-title">Danh mục kho</h5>
+                        <div class="card-tools">
+                            <button class="btn btn-sm btn-info" id="btn_add_warehouse_cat"><i class="fas fa-plus"></i> Thêm</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-bordered" id="warehouse_cat_tbl">
+                            <thead><tr><th>Mã kho</th><th>Tên kho</th><th>Thao tác</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="row mt-3">
             <!-- Danh mục sản phẩm -->
@@ -134,23 +151,9 @@
                     </div>
                 </div>
             </div>
-            <!-- Danh mục kho và vị trí sản phẩm -->
+            <!-- Danh mục vị trí sản phẩm -->
             <div class="col-md-6">
-                <div class="card card-outline card-info system-category-section" data-system-category-scope="warehouse">
-                    <div class="card-header">
-                        <h5 class="card-title">Danh mục kho</h5>
-                        <div class="card-tools">
-                            <button class="btn btn-sm btn-info" id="btn_add_warehouse_cat"><i class="fas fa-plus"></i> Thêm</button>
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <table class="table table-sm table-bordered" id="warehouse_cat_tbl">
-                            <thead><tr><th>Mã kho</th><th>Tên kho</th><th>Thao tác</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card card-outline card-teal mt-3 system-category-section" data-system-category-scope="location">
+                <div class="card card-outline card-teal system-category-section" data-system-category-scope="location">
                     <div class="card-header">
                         <h5 class="card-title">Danh mục vị trí sản phẩm</h5>
                         <div class="card-tools">

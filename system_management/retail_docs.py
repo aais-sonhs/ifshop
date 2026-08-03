@@ -17,6 +17,19 @@ RETAIL_GUIDE_META = {
 
 RETAIL_RECENT_UPDATES = [
     {
+        'date': '03/08/2026',
+        'title': 'Phân loại chi trên phiếu chi',
+        'path': 'Quản trị → Phân loại → nhóm Phân loại chi; Tài chính → Phiếu chi',
+        'items': [
+            'Phiếu chi có thêm trường Phân loại chi, hoạt động độc lập với Danh mục chi.',
+            'Danh mục chi cho biết khoản tiền được chi vào việc gì, ví dụ Chi văn phòng; Phân loại chi dùng để gom nhóm quản trị, ví dụ Chi thường xuyên hoặc Chi lương.',
+            'Quản trị → Phân loại là trang cài đặt chung cho nhiều nhóm phân loại. Trong nhóm Phân loại chi, chủ thương hiệu có thể tạo, sửa, ngừng sử dụng hoặc xóa từng giá trị.',
+            'Phân loại chi đã có phiếu chi không được xóa; hãy chuyển sang Ngừng sử dụng để giữ lịch sử.',
+            'Danh sách phiếu chi có thể tìm, lọc và xuất Excel theo Phân loại chi. Phiếu cũ chưa phân loại vẫn được giữ nguyên.',
+            'Super Admin có thể bật hoặc tắt menu tổng Phân loại cho từng thương hiệu tại Cấu hình menu.',
+        ],
+    },
+    {
         'date': '02/08/2026',
         'title': 'Phiếu thu, phiếu chi và người duyệt',
         'path': 'Tài chính → Phiếu thu / Phiếu chi',
@@ -572,6 +585,8 @@ RETAIL_OPERATION_GUIDES = [
         'steps': [
             'Tạo phiếu thu khi thực tế nhận tiền và phiếu chi khi thực tế chi tiền.',
             'Chọn đúng ngày, cửa hàng, quỹ, phương thức, đối tượng và chứng từ liên quan.',
+            'Trên phiếu chi, chọn Danh mục chi để ghi khoản chi cụ thể và chọn Phân loại chi để gom nhóm quản trị. Ví dụ: Danh mục chi = Chi văn phòng; Phân loại chi = Chi thường xuyên.',
+            'Nếu chưa có lựa chọn phù hợp, chủ thương hiệu vào Quản trị → Phân loại, tìm khung Phân loại chi để khai báo. Phân loại Ngừng sử dụng sẽ không xuất hiện khi tạo phiếu mới.',
             'Với phiếu nhập đã Hoàn thành, mở phiếu chi Nháp do hệ thống tự tạo thay vì tìm và chọn lại phiếu nhập trong danh sách dài.',
             'Kiểm tra Số tiền trước khuyến mãi được lấy từ tổng phiếu nhập; chọn Khuyến mãi theo % hoặc tiền rồi nhập đúng ưu đãi của nhà cung cấp.',
             'Kiểm tra Tiền phiếu chi được tự tính. Đây là số thực tế sẽ bị trừ khỏi quỹ khi chứng từ Hoàn thành.',
@@ -580,6 +595,8 @@ RETAIL_OPERATION_GUIDES = [
             'Mở BC Tài chính, chọn Theo tháng, Theo năm hoặc Khoảng ngày rồi đối chiếu Tổng thu, Chi phí khác, Hàng nhập sau KM, Tổng chi phí và Lãi/Lỗ.',
         ],
         'checks': [
+            'Danh mục chi và Phân loại chi là hai trường độc lập; không dùng Phân loại chi để thay thế tên khoản chi cụ thể.',
+            'Có thể tìm, lọc danh sách và xuất Excel theo Phân loại chi; phiếu cũ chưa phân loại vẫn xem được bình thường.',
             'Danh sách phiếu chi hiển thị Người duyệt, không hiển thị Người tạo và không có nút duyệt nhanh tại cột Trạng thái.',
             'Phiếu chi Nháp chưa trừ quỹ. Khi chuyển sang Hoàn thành, hệ thống ghi người duyệt và trừ đúng Tiền phiếu chi.',
             'Khuyến mãi nhà cung cấp làm giảm công nợ phải trả nhưng không làm tăng số dư quỹ.',

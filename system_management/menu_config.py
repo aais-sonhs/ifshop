@@ -105,6 +105,11 @@ BRAND_MENU_CATALOG = (
             {'key': 'brand_info', 'label': 'Thông tin công ty'},
             {'key': 'business_config', 'label': 'Mô hình kinh doanh'},
             {'key': 'categories', 'label': 'Danh mục'},
+            {
+                'key': 'classifications',
+                'label': 'Phân loại',
+                'help': 'Mở trang cài đặt các nhóm phân loại, trong đó có Phân loại chi.',
+            },
             {'key': 'service_prices', 'label': 'Giá dịch vụ hàng tháng'},
         ),
     },
@@ -131,14 +136,21 @@ BRAND_MENU_KEYS = frozenset(
     for item in group['items']
 )
 
+LEGACY_MENU_KEY_ALIASES = {
+    'classifications': 'expense_classifications',
+}
+
 
 def resolve_brand_menu_visibility(brand=None):
     """Trả về đủ mọi khóa; khóa chưa cấu hình luôn mặc định được hiển thị."""
     configured = brand.menu_visibility if brand and isinstance(brand.menu_visibility, dict) else {}
-    return {
-        key: configured.get(key, True) if isinstance(configured.get(key, True), bool) else True
-        for key in BRAND_MENU_KEYS
-    }
+    visibility = {}
+    for key in BRAND_MENU_KEYS:
+        value = configured.get(key)
+        if not isinstance(value, bool):
+            value = configured.get(LEGACY_MENU_KEY_ALIASES.get(key, ''))
+        visibility[key] = value if isinstance(value, bool) else True
+    return visibility
 
 
 def resolve_brand_menu_groups(visibility):

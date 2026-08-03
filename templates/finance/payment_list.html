@@ -15,7 +15,7 @@
                 <div class="row align-items-end" style="row-gap:6px;">
                     <div class="col-md-4">
                         <label class="small mb-0 text-muted">Tìm kiếm</label>
-                        <input type="text" class="form-control form-control-sm" id="f_search" placeholder="Mã phiếu, NCC/KH, phiếu nhập, diễn giải...">
+                        <input type="text" class="form-control form-control-sm" id="f_search" placeholder="Mã phiếu, NCC/KH, danh mục, phân loại...">
                     </div>
                     <div class="col-md-2">
                         <label class="small mb-0 text-muted">Từ ngày</label>
@@ -85,6 +85,13 @@
                         </select>
                     </div>
                     <div class="col-md-2">
+                        <label class="small mb-0 text-muted">Phân loại chi</label>
+                        <select class="form-control form-control-sm" id="f_expense_classification">
+                            <option value="">Tất cả</option>
+                            {% for item in expense_classifications %}<option value="{{ item.id }}">{{ item.name }}{% if not item.is_active %} (Ngừng sử dụng){% endif %}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <label class="small mb-0 text-muted">Thực chi từ</label>
                         <input type="number" class="form-control form-control-sm" id="f_amount_from" min="0" placeholder="0">
                     </div>
@@ -93,7 +100,7 @@
                         <input type="number" class="form-control form-control-sm" id="f_amount_to" min="0" placeholder="∞">
                     </div>
                     {% if has_multiple_stores %}
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="small mb-0 text-muted">Cửa hàng</label>
                         <select class="form-control form-control-sm" id="f_store">
                             <option value="">Tất cả cửa hàng</option>
@@ -101,7 +108,7 @@
                         </select>
                     </div>
                     {% endif %}
-                    <div class="{% if has_multiple_stores %}col-md-3{% else %}col-md-6{% endif %}">
+                    <div class="{% if has_multiple_stores %}col-md-2{% else %}col-md-4{% endif %}">
                         <div class="d-flex justify-content-end" style="gap:6px;">
                             <button type="button" class="btn btn-sm btn-primary" id="btn_apply_filters"><i class="fas fa-search mr-1"></i>Lọc</button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn_clear_filters"><i class="fas fa-times mr-1"></i>Xóa lọc</button>
@@ -124,7 +131,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Trước KM</th><th>Khuyến mãi</th><th>Thực chi</th><th>HTTT</th>
+                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục chi</th><th>Phân loại chi</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Trước KM</th><th>Khuyến mãi</th><th>Thực chi</th><th>HTTT</th>
                     <th id="payment_date_header" aria-sort="descending">
                         <button type="button" class="btn btn-link btn-sm p-0 text-dark font-weight-bold"
                                 id="btn_sort_payment_date" title="Sắp xếp Ngày chi tăng/giảm dần">
@@ -148,8 +155,9 @@
             <div class="modal-body">
                 <input type="hidden" id="edit_id">
                 <div class="row">
-                    <div class="col-md-6"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
-                    <div class="col-md-6"><div class="form-group"><label>Danh mục</label><select class="form-control form-control-sm" id="inp_category_id"><option value="">-- Chọn --</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Danh mục chi</label><select class="form-control form-control-sm" id="inp_category_id"><option value="">-- Chọn danh mục --</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select><small class="text-muted">Khoản chi cụ thể, ví dụ: Chi văn phòng.</small></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Phân loại chi</label><select class="form-control form-control-sm" id="inp_expense_classification_id"><option value="">-- Chưa phân loại --</option>{% for item in expense_classifications %}<option value="{{ item.id }}"{% if not item.is_active %} data-inactive="1" disabled{% endif %}>{{ item.name }}{% if not item.is_active %} (Ngừng sử dụng){% endif %}</option>{% endfor %}</select><small class="text-muted">Nhóm quản trị, ví dụ: Chi thường xuyên.</small></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div></div>
@@ -307,6 +315,7 @@ function getPaymentFilters(){
         date_to: $('#f_date_to').val() || '',
         status: $('#f_status').val() || '',
         category_id: $('#f_category').val() || '',
+        expense_classification_id: $('#f_expense_classification').val() || '',
         supplier_id: $('#f_supplier').val() || '',
         cash_book_id: $('#f_cashbook').val() || '',
         payment_method_option_id: $('#f_method').val() || '',
@@ -388,10 +397,11 @@ $(document).ready(function(){
 
     $('#btn_add').click(function(){
         $('#edit_id').val('');$('#inp_description,#inp_note').val('');$('#inp_amount').val(0);
+        $('#inp_expense_classification_id option[data-inactive="1"]').prop('disabled', true);
         $('#inp_promotion_mode').val('amount');
         $('#inp_promotion_amount,#inp_promotion_percent').val(0);
         syncPaymentPromotion();
-        $('#inp_category_id,#inp_cash_book_id,#inp_supplier_id,#inp_goods_receipt_id').val('').trigger('change');
+        $('#inp_category_id,#inp_expense_classification_id,#inp_cash_book_id,#inp_supplier_id,#inp_goods_receipt_id').val('').trigger('change');
         // Tự động điền ngày hôm nay
         var today = new Date().toISOString().split('T')[0];
         $('#inp_payment_date').val(today);
@@ -406,6 +416,7 @@ $(document).ready(function(){
     $('#btn_save').click(function(){
         var $methodOpt = $('#inp_payment_method option:selected');
         var data={id:$('#edit_id').val()||null,code:$('#inp_code').val(),category_id:$('#inp_category_id').val(),
+            expense_classification_id:$('#inp_expense_classification_id').val(),
             cash_book_id:$('#inp_cash_book_id').val(),supplier_id:$('#inp_supplier_id').val(),
             goods_receipt_id:$('#inp_goods_receipt_id').val(),
             gross_amount:$('#inp_amount').val(),promotion_mode:$('#inp_promotion_mode').val(),
@@ -448,7 +459,7 @@ $(document).ready(function(){
     });
     $('#btn_clear_filters').click(function(){
         $('#f_search, #f_date_from, #f_date_to, #f_amount_from, #f_amount_to').val('');
-        $('#f_status, #f_category, #f_supplier, #f_cashbook, #f_method, #f_goods_receipt_state, #f_payment_type, #f_store').val('');
+        $('#f_status, #f_category, #f_expense_classification, #f_supplier, #f_cashbook, #f_method, #f_goods_receipt_state, #f_payment_type, #f_store').val('');
         resetPaymentPage();
         loadData();
     });
@@ -486,6 +497,7 @@ function getPaymentFormCloseSnapshot(){
     return JSON.stringify({
         code: getPaymentFormCloseFieldValue('#inp_code'),
         category_id: getPaymentFormCloseFieldValue('#inp_category_id'),
+        expense_classification_id: getPaymentFormCloseFieldValue('#inp_expense_classification_id'),
         supplier_id: getPaymentFormCloseFieldValue('#inp_supplier_id'),
         goods_receipt_id: getPaymentFormCloseFieldValue('#inp_goods_receipt_id'),
         cash_book_id: getPaymentFormCloseFieldValue('#inp_cash_book_id'),
@@ -604,22 +616,25 @@ function loadData(){
             var promotionLabel = Number(d.promotion_amount || 0) > 0
                 ? fmtD(d.promotion_amount) + (d.promotion_mode === 'percent' ? '<small class="text-muted d-block">'+Number(d.promotion_percent || 0).toLocaleString('vi-VN')+'%</small>' : '')
                 : '—';
-            h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+d.target+'</td>'+
+            h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+(d.expense_classification || '')+'</td><td>'+d.target+'</td>'+
                 '<td>'+grBadge+'</td>'+
                 '<td class="text-right">'+fmtD(d.gross_amount)+'</td><td class="text-right text-success">'+promotionLabel+'</td><td class="text-right font-weight-bold">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
                 '<td>'+(d.approved_by || '')+'</td><td>'+d.status_display+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
-        });$('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        });$('#data_tbl tbody').html(h||'<tr><td colspan="15" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         renderPaymentPagination(res.meta || {});
     }).fail(function(){
-        $('#data_tbl tbody').html('<tr><td colspan="14" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="15" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
         $('#payment_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#payment_pagination').html('');
     });
 }
 function editItem(d){
     $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_category_id').val(d.category_id);
+    $('#inp_expense_classification_id option[data-inactive="1"]').prop('disabled', true);
+    $('#inp_expense_classification_id option[value="'+(d.expense_classification_id || '')+'"]').prop('disabled', false);
+    $('#inp_expense_classification_id').val(d.expense_classification_id || '');
     $('#inp_cash_book_id').val(d.cash_book_id);$('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
     $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
     $('#inp_amount').val(d.gross_amount);$('#inp_promotion_mode').val(d.promotion_mode || 'amount');

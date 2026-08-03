@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from customers.models import Customer
 from finance.models import (
     CashBook,
+    ExpenseClassification,
     FinanceCategory,
     FinancialPlan,
     FinancialPlanAllocation,
@@ -419,6 +420,7 @@ class FinanceFlowTests(TestCase):
             'f_date_to',
             'f_status',
             'f_category',
+            'f_expense_classification',
             'f_supplier',
             'f_cashbook',
             'f_method',
@@ -453,9 +455,136 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'function setPaymentGrossInputMode(isLinkedReceipt)')
         self.assertContains(response, ".prop('readonly', !!isLinkedReceipt)")
         self.assertContains(response, 'Tự lấy từ tổng số lượng × đơn giá của phiếu nhập')
+        self.assertContains(response, 'id="inp_expense_classification_id"')
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertNotContains(response, 'btn-approve-payment')
         self.assertNotContains(response, '/api/payments/approve/')
+
+    def test_expense_classification_settings_and_payment_flow(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        page_response = self.client.get(reverse('classification_tbl'))
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'Phân loại hệ thống')
+        self.assertContains(page_response, 'Nhóm phân loại')
+        self.assertContains(page_response, 'Chi thường xuyên')
+
+        create_response = self.client.post(
+            reverse('api_save_expense_classification'),
+            data=json.dumps({
+                'name': 'Chi thường xuyên',
+                'description': 'Các khoản chi vận hành định kỳ',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(create_response.json()['status'], 'ok')
+        classification = ExpenseClassification.objects.get(name='Chi thường xuyên')
+        self.assertEqual(classification.brand, self.brand)
+
+        payment_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-PHAN-LOAI-001',
+                'expense_classification_id': classification.id,
+                'gross_amount': '1000000',
+                'promotion_mode': 'amount',
+                'promotion_amount': '0',
+                'payment_date': '2026-08-03',
+                'status': 0,
+                'payment_method': 2,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(payment_response.status_code, 200)
+        self.assertEqual(payment_response.json()['status'], 'ok')
+        payment = Payment.objects.get(code='PC-PHAN-LOAI-001')
+        self.assertEqual(payment.expense_classification, classification)
+
+        list_response = self.client.get(reverse('api_get_payments'), {
+            'expense_classification_id': classification.id,
+            'page': 1,
+            'page_size': 25,
+        })
+        self.assertEqual(list_response.status_code, 200)
+        row = next(item for item in list_response.json()['data'] if item['id'] == payment.id)
+        self.assertEqual(row['expense_classification'], 'Chi thường xuyên')
+        self.assertEqual(row['expense_classification_id'], classification.id)
+
+        export_response = self.client.get(reverse('export_payments_excel'), {
+            'expense_classification_id': classification.id,
+        })
+        worksheet = load_workbook(BytesIO(export_response.content), data_only=True).active
+        headers = [cell.value for cell in worksheet[4]]
+        self.assertIn('Phân loại chi', headers)
+        classification_column = headers.index('Phân loại chi') + 1
+        self.assertEqual(worksheet.cell(row=5, column=classification_column).value, 'Chi thường xuyên')
+
+        deactivate_response = self.client.post(
+            reverse('api_save_expense_classification'),
+            data=json.dumps({
+                'id': classification.id,
+                'name': classification.name,
+                'description': classification.description,
+                'is_active': False,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(deactivate_response.json()['status'], 'ok')
+
+        edit_response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'code': payment.code,
+                'expense_classification_id': classification.id,
+                'gross_amount': '1000000',
+                'promotion_mode': 'amount',
+                'promotion_amount': '0',
+                'payment_date': '2026-08-03',
+                'status': 0,
+                'payment_method': 2,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(edit_response.json()['status'], 'ok')
+        payment.refresh_from_db()
+        self.assertEqual(payment.expense_classification, classification)
+
+        delete_response = self.client.post(
+            reverse('api_delete_expense_classification'),
+            data=json.dumps({'id': classification.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_response.json()['status'], 'error')
+        self.assertIn('Ngừng sử dụng', delete_response.json()['message'])
+
+    def test_payment_rejects_expense_classification_from_another_brand(self):
+        other_brand = Brand.objects.create(name='Thương hiệu không thuộc quyền')
+        foreign_classification = ExpenseClassification.objects.create(
+            brand=other_brand,
+            name='Chi ngoài phạm vi',
+        )
+
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-PHAN-LOAI-SAI',
+                'expense_classification_id': foreign_classification.id,
+                'gross_amount': '100000',
+                'payment_date': '2026-08-03',
+                'status': 0,
+                'payment_method': 2,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('Phân loại chi không thuộc thương hiệu', response.json()['message'])
+        self.assertFalse(Payment.objects.filter(code='PC-PHAN-LOAI-SAI').exists())
 
     def test_payment_form_cashbook_options_include_current_balance(self):
         cash_book = CashBook.objects.create(
@@ -496,7 +625,7 @@ class FinanceFlowTests(TestCase):
             count=2,
         )
         for field_name in (
-            'code', 'category_id', 'supplier_id', 'goods_receipt_id',
+            'code', 'category_id', 'expense_classification_id', 'supplier_id', 'goods_receipt_id',
             'cash_book_id', 'amount', 'promotion_mode', 'promotion_amount',
             'promotion_percent', 'payment_date',
             'payment_method_option_id', 'status', 'description', 'note',

@@ -782,7 +782,7 @@ class SystemManagementScopeTests(TestCase):
     def test_superadmin_is_redirected_from_brand_owned_system_settings(self):
         self.client.force_login(self.superuser)
 
-        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'printer_setting_tbl', 'print_template_setting', 'print_brand_tbl'):
+        for route_name in ('role_group_tbl', 'permission_tbl', 'category_tbl', 'classification_tbl', 'printer_setting_tbl', 'print_template_setting', 'print_brand_tbl'):
             response = self.client.get(reverse(route_name))
             self.assertEqual(response.status_code, 302, msg=route_name)
             self.assertEqual(response.url, '/brand-tbl/')
@@ -831,6 +831,8 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(page_response, 'Cấu hình menu theo thương hiệu')
         self.assertContains(page_response, 'Giá dịch vụ')
         self.assertContains(page_response, 'Kế hoạch tài chính')
+        self.assertContains(page_response, 'Phân loại')
+        self.assertContains(page_response, 'id="menu_classifications"')
         self.assertContains(page_response, 'id="menu_financial_plans"')
         self.assertContains(page_response, 'data-menu-key="financial_plans"')
         self.assertContains(page_response, 'Lập ngân sách, dự báo dòng tiền và xếp lịch trả nhà cung cấp.')
@@ -853,6 +855,7 @@ class SystemManagementScopeTests(TestCase):
                     'products': False,
                     'service_prices': False,
                     'financial_plans': False,
+                    'classifications': False,
                 },
             }),
             content_type='application/json',
@@ -862,12 +865,18 @@ class SystemManagementScopeTests(TestCase):
         self.assertFalse(response.json()['menu_visibility']['products'])
         self.assertFalse(response.json()['menu_visibility']['service_prices'])
         self.assertFalse(response.json()['menu_visibility']['financial_plans'])
+        self.assertFalse(response.json()['menu_visibility']['classifications'])
         self.assertTrue(response.json()['menu_visibility']['orders'])
 
         self.brand.refresh_from_db()
         self.assertEqual(
             self.brand.menu_visibility,
-            {'products': False, 'service_prices': False, 'financial_plans': False},
+            {
+                'products': False,
+                'service_prices': False,
+                'financial_plans': False,
+                'classifications': False,
+            },
         )
         self.other_brand.refresh_from_db()
         self.assertEqual(self.other_brand.menu_visibility, {})
@@ -878,6 +887,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertNotContains(owner_menu, 'href="/product-tbl/"')
         self.assertNotContains(owner_menu, 'href="/service-price-tbl/"')
         self.assertNotContains(owner_menu, 'href="/finance-plan/"')
+        self.assertNotContains(owner_menu, 'href="/classification-tbl/"')
         self.assertContains(owner_menu, 'href="/order-tbl/"')
 
         financial_plan_page = self.client.get(reverse('financial_plan_tbl'))
@@ -893,6 +903,14 @@ class SystemManagementScopeTests(TestCase):
                 data=json.dumps({}),
                 content_type='application/json',
             ).status_code,
+            403,
+        )
+
+        classification_page = self.client.get(reverse('classification_tbl'))
+        self.assertEqual(classification_page.status_code, 302)
+        self.assertEqual(classification_page.url, '/dashboard/')
+        self.assertEqual(
+            self.client.get(reverse('api_get_expense_classifications')).status_code,
             403,
         )
 
@@ -930,6 +948,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertContains(other_menu, 'href="/product-tbl/"')
         self.assertContains(other_menu, 'href="/service-price-tbl/"')
         self.assertContains(other_menu, 'href="/finance-plan/"')
+        self.assertContains(other_menu, 'href="/classification-tbl/"')
 
         self.client.force_login(self.superuser)
         self.assertEqual(self.client.get(reverse('service_price_tbl')).status_code, 200)

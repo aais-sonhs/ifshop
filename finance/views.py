@@ -33,6 +33,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from .models import (
     FinanceCategory,
+    ExpenseClassification,
     CashBook,
     Receipt,
     Payment,
@@ -194,6 +195,29 @@ def _validate_finance_document_master_scope(request, document, direction):
         CashBook.objects.filter(is_active=True), request,
     ).filter(id=document.cash_book_id).exists():
         raise ValueError('Quỹ không thuộc thương hiệu của bạn.')
+    if getattr(document, 'expense_classification_id', None):
+        classification = _finance_master_for_user(
+            ExpenseClassification.objects.all(), request,
+        ).filter(id=document.expense_classification_id).first()
+        if not classification:
+            raise ValueError('Phân loại chi không thuộc thương hiệu của bạn.')
+        if not classification.is_active:
+            existing_classification_id = (
+                Payment.objects.filter(id=document.id)
+                .values_list('expense_classification_id', flat=True)
+                .first()
+                if document.id else None
+            )
+            if existing_classification_id != classification.id:
+                raise ValueError('Phân loại chi đã ngừng sử dụng, vui lòng chọn phân loại khác.')
+        if document.store_id and classification.brand_id:
+            from system_management.models import Store
+
+            store_brand_id = Store.objects.filter(id=document.store_id).values_list(
+                'brand_id', flat=True,
+            ).first()
+            if store_brand_id and classification.brand_id != store_brand_id:
+                raise ValueError('Phân loại chi không thuộc thương hiệu của phiếu chi.')
 
 
 def _filter_receipts_for_user(queryset, request):
@@ -448,6 +472,7 @@ def _apply_payment_filters(queryset, request):
     payment_method_option_id = request.GET.get('payment_method_option_id') or request.GET.get('method_id')
     payment_type = request.GET.get('payment_type')
     category_id = request.GET.get('category_id')
+    expense_classification_id = request.GET.get('expense_classification_id')
     supplier_id = request.GET.get('supplier_id')
     store_id = request.GET.get('store_id')
     status = request.GET.get('status')
@@ -476,6 +501,8 @@ def _apply_payment_filters(queryset, request):
 
     if category_id:
         queryset = queryset.filter(category_id=category_id)
+    if expense_classification_id:
+        queryset = queryset.filter(expense_classification_id=expense_classification_id)
     if supplier_id:
         queryset = queryset.filter(supplier_id=supplier_id)
 
@@ -507,6 +534,7 @@ def _apply_payment_filters(queryset, request):
             Q(customer__code__icontains=search) |
             Q(goods_receipt__code__icontains=search) |
             Q(category__name__icontains=search) |
+            Q(expense_classification__name__icontains=search) |
             Q(cash_book__name__icontains=search) |
             Q(payment_method_option__name__icontains=search) |
             Q(description__icontains=search) |
@@ -721,6 +749,9 @@ def payment_tbl(request):
     categories = list(_finance_master_for_user(
         FinanceCategory.objects.filter(type=2, is_active=True), request,
     ).values('id', 'name'))
+    expense_classifications = list(_finance_master_for_user(
+        ExpenseClassification.objects.all(), request,
+    ).values('id', 'name', 'is_active'))
     cashbooks = list(_finance_master_for_user(
         CashBook.objects.filter(is_active=True), request,
     ).values('id', 'name', 'balance'))
@@ -743,6 +774,7 @@ def payment_tbl(request):
     context = {
         'active_tab': 'payment_tbl',
         'categories': categories,
+        'expense_classifications': expense_classifications,
         'cashbooks': cashbooks,
         'payment_methods': payment_methods,
         'suppliers': suppliers,
@@ -1117,6 +1149,8 @@ def _serialize_payment_list(payments):
         'id': p.id, 'code': p.code,
         'category': p.category.name if p.category else '',
         'category_id': p.category_id,
+        'expense_classification': p.expense_classification.name if p.expense_classification else '',
+        'expense_classification_id': p.expense_classification_id,
         'cash_book': p.cash_book.name if p.cash_book else '',
         'cash_book_id': p.cash_book_id,
         'supplier': p.supplier.name if p.supplier else '',
@@ -1534,6 +1568,7 @@ def api_get_payments(request):
         Payment.objects
         .select_related(
             'category',
+            'expense_classification',
             'cash_book',
             'supplier',
             'customer',
@@ -1612,6 +1647,7 @@ def api_save_payment(request):
             auto_code = not requested_code and not p.code
             p.code = requested_code or (p.code or _generate_next_payment_code())
             p.category_id = data.get('category_id') or None
+            p.expense_classification_id = data.get('expense_classification_id') or None
             p.cash_book_id = data.get('cash_book_id') or None
             p.supplier_id = data.get('supplier_id') or None
             p.goods_receipt_id = data.get('goods_receipt_id') or None
@@ -1791,6 +1827,106 @@ def api_save_finance_category(request):
         c.description = data.get('description', '')
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+# ============ API: EXPENSE CLASSIFICATION ============
+
+def _expense_classification_access_denied(request):
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình phân loại chi')
+    if not is_menu_visible_for_user(request.user, 'classifications'):
+        return _forbid_json('Menu Phân loại đang bị tắt cho thương hiệu này')
+    return None
+
+
+@login_required(login_url="/login/")
+def api_get_expense_classifications(request):
+    denied = _expense_classification_access_denied(request)
+    if denied:
+        return denied
+    rows = list(_finance_master_for_user(
+        ExpenseClassification.objects.all(), request,
+    ).values('id', 'name', 'description', 'is_active'))
+    return JsonResponse({'data': [{
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'] or '',
+        'is_active': row['is_active'],
+    } for row in rows]})
+
+
+@login_required(login_url="/login/")
+def api_save_expense_classification(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    denied = _expense_classification_access_denied(request)
+    if denied:
+        return denied
+    try:
+        data = json.loads(request.body)
+        name = (data.get('name') or '').strip()
+        if not name:
+            raise ValueError('Vui lòng nhập tên phân loại chi.')
+        classification_id = data.get('id')
+        scoped = _finance_master_for_user(ExpenseClassification.objects.all(), request)
+        duplicate = scoped.filter(name__iexact=name)
+        if classification_id:
+            duplicate = duplicate.exclude(id=classification_id)
+        if duplicate.exists():
+            raise ValueError('Tên phân loại chi đã tồn tại trong thương hiệu này.')
+        if classification_id:
+            classification = scoped.get(id=classification_id)
+        else:
+            brand_id = _default_finance_brand_id(request)
+            if not brand_id:
+                raise ValueError('Không xác định được thương hiệu để tạo phân loại chi.')
+            classification = ExpenseClassification(brand_id=brand_id)
+        classification.name = name
+        classification.description = (data.get('description') or '').strip()
+        is_active = data.get('is_active', True)
+        if not isinstance(is_active, bool):
+            raise ValueError('Trạng thái phân loại chi không hợp lệ.')
+        classification.is_active = is_active
+        classification.save()
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Đã lưu phân loại chi.',
+            'id': classification.id,
+        })
+    except ExpenseClassification.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phân loại chi.'})
+    except (ValueError, json.JSONDecodeError) as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_delete_expense_classification(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    denied = _expense_classification_access_denied(request)
+    if denied:
+        return denied
+    try:
+        data = json.loads(request.body)
+        classification = _finance_master_for_user(
+            ExpenseClassification.objects.all(), request,
+        ).get(id=data.get('id'))
+        payment_count = Payment.objects.filter(expense_classification=classification).count()
+        if payment_count:
+            raise ValueError(
+                f'Phân loại này đang được dùng trên {payment_count} phiếu chi. '
+                'Hãy chuyển sang trạng thái Ngừng sử dụng để giữ đúng lịch sử.'
+            )
+        classification.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Đã xóa phân loại chi.'})
+    except ExpenseClassification.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phân loại chi.'})
+    except (ValueError, json.JSONDecodeError) as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -2184,7 +2320,7 @@ def export_payments_excel(request):
     from datetime import datetime
 
     payments = Payment.objects.select_related(
-        'category', 'cash_book', 'supplier', 'customer', 'goods_receipt',
+        'category', 'expense_classification', 'cash_book', 'supplier', 'customer', 'goods_receipt',
         'goods_receipt__warehouse', 'payment_method_option', 'created_by', 'approved_by',
         'supplier_schedule',
     )
@@ -2198,6 +2334,7 @@ def export_payments_excel(request):
         {'key': 'stt', 'label': 'STT', 'width': 6},
         {'key': 'code', 'label': 'Mã phiếu', 'width': 14},
         {'key': 'category', 'label': 'Danh mục', 'width': 16},
+        {'key': 'expense_classification', 'label': 'Phân loại chi', 'width': 18},
         {'key': 'target', 'label': 'Người nhận', 'width': 22},
         {'key': 'goods_receipt', 'label': 'Phiếu nhập', 'width': 16},
         {'key': 'gross_amount', 'label': 'Tiền trước KM', 'width': 16},
@@ -2231,6 +2368,7 @@ def export_payments_excel(request):
             'stt': i,
             'code': p.code,
             'category': p.category.name if p.category else '',
+            'expense_classification': p.expense_classification.name if p.expense_classification else '',
             'target': target,
             'goods_receipt': p.goods_receipt.code if p.goods_receipt else '',
             'gross_amount': gross_amount,

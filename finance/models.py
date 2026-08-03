@@ -35,6 +35,32 @@ class FinanceCategory(SoftDeleteModel):
         return f"{'Thu' if self.type == 1 else 'Chi'} - {self.name}"
 
 
+class ExpenseClassification(SoftDeleteModel):
+    """Nhóm quản trị dùng để phân loại các khoản chi độc lập với danh mục chi."""
+    brand = models.ForeignKey(
+        'system_management.Brand',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='expense_classifications',
+        verbose_name='Thương hiệu',
+    )
+    name = models.CharField(max_length=255, verbose_name='Tên phân loại chi')
+    description = models.TextField(blank=True, default='', verbose_name='Mô tả')
+    is_active = models.BooleanField(default=True, verbose_name='Đang sử dụng')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'expense_classifications'
+        verbose_name = 'Phân loại chi'
+        verbose_name_plural = 'Phân loại chi'
+        ordering = ['name', 'id']
+
+    def __str__(self):
+        return self.name
+
+
 class CashBook(SoftDeleteModel):
     """Danh mục quỹ (Sổ quỹ)"""
     brand = models.ForeignKey(
@@ -192,6 +218,14 @@ class Payment(SoftDeleteModel):
                               related_name='payments', verbose_name='Cửa hàng')
     category = models.ForeignKey(FinanceCategory, on_delete=models.SET_NULL, null=True,
                                  related_name='payments', verbose_name='Danh mục')
+    expense_classification = models.ForeignKey(
+        ExpenseClassification,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payments',
+        verbose_name='Phân loại chi',
+    )
     cash_book = models.ForeignKey(CashBook, on_delete=models.SET_NULL, null=True,
                                   related_name='payments', verbose_name='Quỹ')
     payment_method_option = models.ForeignKey(

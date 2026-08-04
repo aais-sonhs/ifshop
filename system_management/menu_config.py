@@ -103,8 +103,6 @@ BRAND_MENU_CATALOG = (
             {'key': 'role_groups', 'label': 'Nhóm vai trò'},
             {'key': 'permissions', 'label': 'Phân quyền'},
             {'key': 'brand_info', 'label': 'Thông tin công ty'},
-            {'key': 'business_config', 'label': 'Mô hình kinh doanh'},
-            {'key': 'categories', 'label': 'Danh mục'},
             {'key': 'service_prices', 'label': 'Giá dịch vụ hàng tháng'},
         ),
     },
@@ -113,6 +111,8 @@ BRAND_MENU_CATALOG = (
         'label': 'Cài đặt',
         'icon': 'fas fa-sliders-h',
         'items': (
+            {'key': 'business_config', 'label': 'Cài đặt công ty'},
+            {'key': 'categories', 'label': 'Danh mục'},
             {'key': 'quotation_settings', 'label': 'Cài đặt báo giá'},
             {'key': 'order_settings', 'label': 'Cài đặt đơn hàng'},
             {'key': 'stock_alert_email', 'label': 'Báo email tồn kho'},

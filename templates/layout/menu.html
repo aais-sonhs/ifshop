@@ -785,8 +785,8 @@ $(document).ready(function(){
                 {% endif %}
 
                 {% if is_brand_owner and brand_menu_groups.administration %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'system_log_tbl' or active_tab == 'service_price_tbl' %}menu-open{% endif %}" data-menu-key="admin">
-                    <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'business_config_tbl' or active_tab == 'system_log_tbl' or active_tab == 'service_price_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'system_log_tbl' or active_tab == 'service_price_tbl' %}menu-open{% endif %}" data-menu-key="admin">
+                    <a href="#" class="nav-link {% if active_tab == 'user_management_tbl' or active_tab == 'role_group_tbl' or active_tab == 'permission_tbl' or active_tab == 'brand_tbl' or active_tab == 'system_log_tbl' or active_tab == 'service_price_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-tools"></i>
                         <p>Quản trị <i class="right fas fa-angle-left"></i></p>
                     </a>
@@ -831,14 +831,6 @@ $(document).ready(function(){
                             </a>
                         </li>
                         {% endif %}
-                        {% if brand_menu.business_config %}
-                        <li class="nav-item">
-                            <a href="{% url 'business_config_tbl' %}" class="nav-link {% if active_tab == 'business_config_tbl' %} active{% endif %}">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>Mô hình kinh doanh</p>
-                            </a>
-                        </li>
-                        {% endif %}
                         {% if brand_menu.service_prices %}
                         <li class="nav-item">
                             <a href="{% url 'service_price_tbl' %}" class="nav-link {% if active_tab == 'service_price_tbl' %}active{% endif %}">
@@ -851,12 +843,20 @@ $(document).ready(function(){
                 </li>
                 {% endif %}
                 {% if is_brand_owner and brand_menu_groups.settings %}
-                <li class="nav-item has-treeview nav-section {% if active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}menu-open{% endif %}" data-menu-key="settings">
-                    <a href="#" class="nav-link {% if active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}active{% endif %}">
+                <li class="nav-item has-treeview nav-section {% if active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}menu-open{% endif %}" data-menu-key="settings">
+                    <a href="#" class="nav-link {% if active_tab == 'business_config_tbl' or active_tab == 'category_tbl' or active_tab == 'setting_quotation' or active_tab == 'setting_order' or active_tab == 'stock_alert_email_setting' or active_tab == 'daily_email_report_setting' or active_tab == 'setting_payment_methods' or active_tab == 'printer_setting_tbl' or active_tab == 'print_template_setting' or active_tab == 'print_brand_tbl' %}active{% endif %}">
                         <i class="nav-icon fas fa-sliders-h"></i>
                         <p>Cài đặt <i class="right fas fa-angle-left"></i></p>
                     </a>
                     <ul class="nav nav-treeview">
+                        {% if brand_menu.business_config %}
+                        <li class="nav-item">
+                            <a href="{% url 'business_config_tbl' %}" class="nav-link {% if active_tab == 'business_config_tbl' %} active{% endif %}">
+                                <i class="far fa-circle nav-icon"></i>
+                                <p>Cài đặt công ty</p>
+                            </a>
+                        </li>
+                        {% endif %}
                         {% if brand_menu.categories %}
                         <li class="nav-item">
                             <a href="{% url 'category_tbl' %}" class="nav-link {% if active_tab == 'category_tbl' %} active{% endif %}">

@@ -140,6 +140,27 @@ class OrderRiskFlowTests(TestCase):
         self.assertNotIn(self.brand.id, brand_ids)
         self.assertEqual(payload['order']['store_brand_id'], self.brand.id)
 
+    def test_order_list_has_toggleable_note_column(self):
+        order = self._create_order(code='DH-NOTE-COLUMN')
+        order.note = 'Giao hàng sau 17h'
+        order.save(update_fields=['note'])
+
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<th data-col="note">Ghi chú</th>', html=True)
+        self.assertContains(
+            response,
+            "{key: 'note',      label: 'Ghi chú',        default: true}",
+        )
+        self.assertContains(response, "orderColConfig.td('note', noteHtml)")
+        self.assertContains(response, "escapeHtml(noteText)")
+        self.assertContains(response, 'colspan="15"', count=2)
+
+        api_response = self.client.get(reverse('api_get_orders'), {'text': order.code})
+        self.assertEqual(api_response.status_code, 200)
+        self.assertEqual(api_response.json()['data'][0]['note'], order.note)
+
     def test_print_order_can_switch_brand_and_persist_issuing_brand(self):
         print_label = Brand.objects.create(
             name='Z Brand Invoice',

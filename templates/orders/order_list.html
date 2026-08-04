@@ -111,7 +111,7 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="payment_method">PT thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:190px;">Thao tác</th></tr></thead>
+                <thead><tr><th style="width:44px;" class="text-center"><input type="checkbox" id="check_all_orders" style="width:18px;height:18px;cursor:pointer;"></th><th data-col="stt">STT</th><th data-col="code">Mã ĐH</th><th data-col="customer">Khách hàng</th><th data-col="warehouse">Kho</th><th data-col="date">Ngày đặt</th><th data-col="created_at">Ngày tạo</th><th data-col="creator">Người tạo</th><th data-col="products">Sản phẩm</th><th data-col="note">Ghi chú</th><th data-col="total">Tổng tiền</th><th data-col="payment">Thanh toán</th><th data-col="payment_method">PT thanh toán</th><th data-col="status">Trạng thái</th><th data-col="actions" style="min-width:190px;">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -1133,6 +1133,16 @@
     font-weight: 500;
     white-space: nowrap;
     line-height: 1.6;
+}
+#data_tbl .order-list-note {
+    min-width: 160px;
+    max-width: 280px;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
 }
 #data_tbl .btn-action-group.order-action-stack {
     display: inline-flex;
@@ -3763,6 +3773,7 @@ var orderColConfig = new ColumnConfig({
         {key: 'created_at', label: 'Ngày tạo',      default: false},
         {key: 'creator',   label: 'Người tạo',      default: false},
         {key: 'products',  label: 'Sản phẩm',       default: false},
+        {key: 'note',      label: 'Ghi chú',        default: true},
         {key: 'total',     label: 'Tổng tiền',      default: true},
         {key: 'payment',   label: 'Thanh toán',     default: true},
         {key: 'payment_method', label: 'PT thanh toán', default: false},
@@ -7066,6 +7077,10 @@ function loadData(){
             if(d.has_warranty_certificate){
                 productHtml += ' <span class="badge badge-success" title="Đã lưu phiếu bảo hành"><i class="fas fa-shield-alt mr-1"></i>Đã có PBH</span>';
             }
+            var noteText = String(d.note || '').trim();
+            var noteHtml = noteText
+                ? '<div class="order-list-note" title="' + escapeAttr(noteText.replace(/\s+/g, ' ')) + '">' + escapeHtml(noteText) + '</div>'
+                : '<span class="text-muted">—</span>';
             // Hiển thị trạng thái + badge duyệt
             var statusHtml = getStatusBadgeHtml(d.status, d.status_display);
             if(d.approval_status === 1){
@@ -7084,6 +7099,7 @@ function loadData(){
                 orderColConfig.td('created_at', escapeHtml(d.created_at || ''))+
                 orderColConfig.td('creator', escapeHtml(d.creator_name || ''))+
                 orderColConfig.td('products', productHtml)+
+                orderColConfig.td('note', noteHtml)+
                 orderColConfig.td('total', fmt(d.final_amount) + 'đ', 'class="text-right"')+
                 orderColConfig.td('payment', paymentHtml)+
                 orderColConfig.td('payment_method', escapeHtml(d.payment_method_display || ''))+
@@ -7091,13 +7107,13 @@ function loadData(){
                 orderColConfig.td('actions', actions, 'class="text-center"')+
                 '</tr>';
         });
-        $('#data_tbl tbody').html(h||'<tr><td colspan="14" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#data_tbl tbody').html(h||'<tr><td colspan="15" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         $('#check_all_orders').prop('checked', false);
         orderColConfig.apply();
         refreshBulkToolbar();
     }).fail(function(xhr, status){
         if(status === 'abort') return;
-        $('#data_tbl tbody').html('<tr><td colspan="14" class="text-center text-danger">Không tải được danh sách đơn hàng.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="15" class="text-center text-danger">Không tải được danh sách đơn hàng.</td></tr>');
         $('#order_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#order_pagination').html('');
         renderOrderStatusCounts({status_counts:{}});

@@ -6,7 +6,7 @@ RETAIL_GUIDE_META = {
         'Tài liệu thao tác từ lúc khai báo sản phẩm đến bán hàng, thu tiền, quản lý công nợ, '
         'nhập kho, trả hàng, lập kế hoạch tài chính và đọc báo cáo.'
     ),
-    'revision_date': '03/08/2026',
+    'revision_date': '04/08/2026',
     'audience': 'Chủ cửa hàng, quản lý, nhân viên bán hàng, nhân viên kho và kế toán.',
     'scope': (
         'Tài liệu này chỉ trình bày quy trình bán lẻ. Các mô hình F&B, spa, thời trang chuyên sâu '
@@ -16,6 +16,28 @@ RETAIL_GUIDE_META = {
 
 
 RETAIL_RECENT_UPDATES = [
+    {
+        'date': '04/08/2026',
+        'title': 'Kỳ báo cáo theo lịch tài chính của công ty',
+        'path': 'Quản trị → Mô hình kinh doanh → Tài chính; Báo cáo → BC Bán hàng / BC Tài chính',
+        'items': [
+            'Chủ thương hiệu thiết lập Ngày bắt đầu kỳ báo cáo riêng cho công ty trong khoảng từ ngày 1 đến ngày 28. Nhãn thiết lập được tô đỏ để dễ nhận biết.',
+            'BC Bán hàng và BC Tài chính dùng chung mốc này, giúp số liệu trên phần mềm khớp với kỳ kế toán theo dõi bên ngoài.',
+            'Khi chọn Theo tháng, kỳ bắt đầu đúng ngày đã cấu hình trong tháng được chọn và kết thúc vào ngày liền trước mốc đó của tháng sau. Ví dụ mốc ngày 10 thì tháng 02 là 10/02–09/03.',
+            'Khi chọn Theo năm, kỳ bắt đầu tại mốc của tháng 01 năm được chọn và kết thúc vào ngày liền trước mốc tháng 01 năm sau. Ví dụ mốc ngày 10 thì năm 2026 là 10/01/2026–09/01/2027.',
+            'Nếu công ty dùng lịch theo tháng dương thông thường, giữ giá trị mặc định là ngày 1.',
+        ],
+    },
+    {
+        'date': '04/08/2026',
+        'title': 'Cột ghi chú trên danh sách đơn hàng',
+        'path': 'Bán hàng → DS Đơn hàng',
+        'items': [
+            'Danh sách đơn hàng có thêm cột Ghi chú, lấy trực tiếp nội dung ghi chú đã lưu trên từng đơn.',
+            'Cột Ghi chú hiển thị mặc định và có thể ẩn hoặc hiện lại trong Tùy chỉnh hiển thị giống các cột khác.',
+            'Ghi chú dài được thu gọn tối đa ba dòng để bảng dễ đọc; rê chuột lên nội dung để xem toàn bộ.',
+        ],
+    },
     {
         'date': '03/08/2026',
         'title': 'Phân loại chi trên phiếu chi',
@@ -335,12 +357,13 @@ RETAIL_SETUP_STEPS = [
     },
     {
         'title': '3. Tạo quỹ và phương thức thanh toán',
-        'path': 'Tài chính → Sổ quỹ; Cài đặt → Phương thức TT',
+        'path': 'Tài chính → Sổ quỹ; Cài đặt → Phương thức TT; Quản trị → Mô hình kinh doanh → Tài chính',
         'actions': [
             'Tạo các quỹ thực tế: Quỹ tiền mặt, Tài khoản ngân hàng, Ví điện tử.',
             'Khai báo Số dư tối thiểu cần giữ cho từng quỹ để dự báo và xếp lịch chi không dùng hết tiền an toàn.',
             'Gắn mỗi phương thức thanh toán với đúng tài khoản/quỹ mặc định.',
             'Đặt thứ tự ưu tiên: số nhỏ hiển thị trước, ví dụ Tiền mặt = 1, Chuyển khoản = 2.',
+            'Nếu công ty chốt kỳ không theo tháng dương, nhập Ngày bắt đầu kỳ báo cáo từ 1 đến 28; BC Bán hàng và BC Tài chính sẽ dùng chung mốc này.',
         ],
         'result': 'Khi thu hoặc hoàn tiền, hệ thống chọn đúng quỹ để đối soát.',
     },
@@ -453,6 +476,7 @@ RETAIL_OPERATION_GUIDES = [
             'Thanh trạng thái khi tạo hoặc sửa đơn đi theo luồng: Báo giá → Đơn hàng → Đang đóng gói → Đã xuất kho → Hoàn thành; không còn bước Đang xử lý.',
             'Khi đơn đang ở bước Đơn hàng, chọn In → Phiếu đóng hàng A5 sẽ tự chuyển đơn sang Đang đóng gói và ghi vào lịch sử đơn.',
             'Trong DS Đơn hàng, bộ lọc Trạng thái chỉ hiển thị tại tab Tất cả, gồm: Chưa hoàn thành, Đã hoàn thành, Chưa xuất kho, Đã xuất kho và Đang đóng gói. Chưa hoàn thành không tính đơn đã Hủy.',
+            'Cột Ghi chú trên DS Đơn hàng lấy ghi chú của từng đơn; dùng Tùy chỉnh hiển thị để ẩn hoặc hiện cột khi cần.',
             'Đã xuất kho nghĩa là hàng đã rời kho; đơn chỉ Hoàn thành sau khi đã thanh toán đủ và được duyệt nếu có yêu cầu duyệt.',
             'Ngày đặt hàng là ngày BC Bán hàng dùng để ghi nhận doanh thu.',
             'Nếu đơn cần duyệt, phải đủ điều kiện duyệt trước khi xuất kho.',
@@ -593,6 +617,7 @@ RETAIL_OPERATION_GUIDES = [
             'Kiểm tra Tiền phiếu chi được tự tính. Đây là số thực tế sẽ bị trừ khỏi quỹ khi chứng từ Hoàn thành.',
             'Ghi nội dung đủ rõ, mở Sửa và chuyển Trạng thái từ Nháp sang Hoàn thành để duyệt. Tài khoản đang đăng nhập được lưu là Người duyệt.',
             'Cuối ngày đối chiếu riêng tiền mặt, ngân hàng và ví điện tử.',
+            'Nếu công ty dùng kỳ kế toán riêng, kiểm tra Ngày bắt đầu kỳ báo cáo tại Quản trị → Mô hình kinh doanh → Tài chính trước khi đối chiếu.',
             'Mở BC Tài chính, chọn Theo tháng, Theo năm hoặc Khoảng ngày rồi đối chiếu Tổng thu, Chi phí khác, Hàng nhập sau KM, Tổng chi phí và Lãi/Lỗ.',
         ],
         'checks': [
@@ -1464,8 +1489,8 @@ RETAIL_TROUBLESHOOTING = [
     },
     {
         'problem': 'Báo cáo thiếu đơn',
-        'cause': 'Sai khoảng ngày, cửa hàng, phạm vi đơn hoặc bộ lọc.',
-        'check': 'Xóa bộ lọc, kiểm tra Ngày đặt hàng và thử phạm vi Tất cả đơn chưa hủy.',
+        'cause': 'Sai kỳ báo cáo, khoảng ngày, cửa hàng, phạm vi đơn hoặc bộ lọc.',
+        'check': 'Kiểm tra Ngày bắt đầu kỳ báo cáo của công ty, xóa bộ lọc, kiểm tra Ngày đặt hàng và thử phạm vi Tất cả đơn chưa hủy.',
     },
     {
         'problem': 'Công nợ âm trên BC Bán hàng',

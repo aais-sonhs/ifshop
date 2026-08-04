@@ -3446,10 +3446,14 @@ def api_report_purchases(request):
 @report_permission_required
 def report_inventory(request):
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     context = {
         'active_tab': 'report_inventory',
-        'inventory_movement_from_date': today.replace(day=1).isoformat(),
-        'inventory_movement_to_date': today.isoformat(),
+        'inventory_movement_from_date': default_from.isoformat(),
+        'inventory_movement_to_date': default_to.isoformat(),
     }
     return render(request, "reports/report_inventory.html", context)
 
@@ -3586,12 +3590,16 @@ def api_report_inventory(request):
 
 
 def _inventory_movement_date_range(request):
-    """Chuẩn hóa kỳ báo cáo nhập xuất tồn, mặc định từ đầu tháng đến hôm nay."""
+    """Chuẩn hóa kỳ nhập xuất tồn, mặc định theo trọn kỳ báo cáo của công ty."""
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     raw_from_date = (request.GET.get('from_date') or '').strip()
     raw_to_date = (request.GET.get('to_date') or '').strip()
-    from_date = parse_date(raw_from_date) if raw_from_date else today.replace(day=1)
-    to_date = parse_date(raw_to_date) if raw_to_date else today
+    from_date = parse_date(raw_from_date) if raw_from_date else default_from
+    to_date = parse_date(raw_to_date) if raw_to_date else default_to
     if raw_from_date and not from_date:
         raise ValueError('Từ ngày không hợp lệ.')
     if raw_to_date and not to_date:

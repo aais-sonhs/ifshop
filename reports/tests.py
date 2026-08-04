@@ -546,12 +546,15 @@ class SalesReportTests(TestCase):
 
         purchase_page = self.client.get(reverse('report_purchases'))
         staff_page = self.client.get(reverse('report_staff_sales'))
+        inventory_page = self.client.get(reverse('report_inventory'))
         expected_from_input = f'value="{period_start.isoformat()}"'
         expected_to_input = f'value="{period_end.isoformat()}"'
         self.assertContains(purchase_page, expected_from_input)
         self.assertContains(purchase_page, expected_to_input)
         self.assertContains(staff_page, expected_from_input)
         self.assertContains(staff_page, expected_to_input)
+        self.assertContains(inventory_page, expected_from_input)
+        self.assertContains(inventory_page, expected_to_input)
 
         purchase_payload = self.client.get(reverse('api_report_purchases')).json()
         self.assertEqual(
@@ -571,6 +574,11 @@ class SalesReportTests(TestCase):
 
         finance_payload = self.client.get(reverse('api_report_finance')).json()
         self.assertEqual(finance_payload['summary']['order_revenue'], 100.0)
+        inventory_movement_payload = self.client.get(
+            reverse('api_report_inventory_movement'),
+        ).json()
+        self.assertEqual(inventory_movement_payload['from_date'], period_start.isoformat())
+        self.assertEqual(inventory_movement_payload['to_date'], period_end.isoformat())
         debt_page = self.client.get(reverse('report_finance_order_debt'))
         self.assertEqual(debt_page.context['filters']['from_date'], period_start.isoformat())
         self.assertEqual(debt_page.context['filters']['to_date'], period_end.isoformat())
@@ -584,6 +592,11 @@ class SalesReportTests(TestCase):
         staff_sheet = load_workbook(BytesIO(staff_export.content), data_only=True)['BC Doanh thu NV']
         self.assertIn(period_start.isoformat(), staff_sheet['A2'].value)
         self.assertIn(period_end.isoformat(), staff_sheet['A2'].value)
+        inventory_movement_export = self.client.get(reverse('export_inventory_movement_excel'))
+        self.assertIn(
+            f'BC_Nhap_xuat_ton_theo_SP_{period_start:%Y%m%d}_{period_end:%Y%m%d}.xlsx',
+            inventory_movement_export['Content-Disposition'],
+        )
 
     def test_sales_report_month_timeline_uses_company_financial_period(self):
         BusinessConfig.objects.create(

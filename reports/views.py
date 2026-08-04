@@ -1156,12 +1156,12 @@ def quotation_profit_report_privileged_required(view_func):
 def _get_sales_report_filters(request):
     today = datetime.now().date()
     financial_period_start_day = get_financial_period_start_day(request.user)
-    current_period_start, _ = current_financial_month_bounds(
+    current_period_start, current_period_end = current_financial_month_bounds(
         today,
         financial_period_start_day,
     )
     from_date = request.GET.get('from_date') or current_period_start.strftime('%Y-%m-%d')
-    to_date = request.GET.get('to_date') or today.strftime('%Y-%m-%d')
+    to_date = request.GET.get('to_date') or current_period_end.strftime('%Y-%m-%d')
     time_group = (request.GET.get('time_group') or 'day').strip().lower()
     if time_group not in ('day', 'month', 'year'):
         time_group = 'day'
@@ -2722,12 +2722,12 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
 def _get_quotation_profit_filters(request):
     today = datetime.now().date()
-    default_from, _ = current_financial_month_bounds(
+    default_from, default_to = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
     from_date = parse_date(request.GET.get('from_date') or '') or default_from
-    to_date = parse_date(request.GET.get('to_date') or '') or today
+    to_date = parse_date(request.GET.get('to_date') or '') or default_to
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
@@ -3151,7 +3151,7 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
 @quotation_profit_report_privileged_required
 def report_quotation_profit(request):
     today = datetime.now().date()
-    default_from, _ = current_financial_month_bounds(
+    default_from, default_to = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
@@ -3161,7 +3161,7 @@ def report_quotation_profit(request):
         {
             'active_tab': 'report_quotation_profit',
             'report_from_date': default_from.isoformat(),
-            'report_to_date': today.isoformat(),
+            'report_to_date': default_to.isoformat(),
         },
     )
 
@@ -3346,7 +3346,7 @@ def report_purchases(request):
     from products.models import Supplier
 
     today = datetime.now().date()
-    default_from, _ = current_financial_month_bounds(
+    default_from, default_to = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
@@ -3359,7 +3359,7 @@ def report_purchases(request):
         'active_tab': 'report_purchases',
         'suppliers': list(suppliers),
         'report_from_date': default_from.isoformat(),
-        'report_to_date': today.isoformat(),
+        'report_to_date': default_to.isoformat(),
     }
     return render(request, "reports/report_purchases.html", context)
 
@@ -3399,14 +3399,14 @@ def api_report_purchases(request):
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date, _ = current_financial_month_bounds(
-            today,
-            get_financial_period_start_day(request.user),
-        )
-        from_date = from_date.strftime('%Y-%m-%d')
+        from_date = default_from.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to.strftime('%Y-%m-%d')
 
     supplier_id = _parse_filter_int(request.GET.get('supplier_id'))
     receipts = _purchase_report_receipts(
@@ -4030,12 +4030,12 @@ def _with_positive_order_debt(orders):
 def report_finance_order_debt(request):
     """Bảng chi tiết các đơn hàng còn công nợ trong kỳ báo cáo."""
     today = datetime.now().date()
-    default_from_date, _ = current_financial_month_bounds(
+    default_from_date, default_to_date = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
     from_date = parse_date(request.GET.get('from_date') or '') or default_from_date
-    to_date = parse_date(request.GET.get('to_date') or '') or today
+    to_date = parse_date(request.GET.get('to_date') or '') or default_to_date
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
@@ -4190,14 +4190,14 @@ def api_report_finance(request):
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
     today = datetime.now().date()
-    default_from_date, _ = current_financial_month_bounds(
+    default_from_date, default_to_date = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
     if not from_date:
         from_date = default_from_date.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to_date.strftime('%Y-%m-%d')
 
     from finance.models import Payment, Receipt
     from products.models import GoodsReceipt
@@ -4497,14 +4497,14 @@ def api_report_customers(request):
 def report_staff_sales(request):
     """Báo cáo doanh thu nhân viên bán hàng"""
     today = datetime.now().date()
-    default_from, _ = current_financial_month_bounds(
+    default_from, default_to = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
     context = {
         'active_tab': 'report_staff_sales',
         'report_from_date': default_from.isoformat(),
-        'report_to_date': today.isoformat(),
+        'report_to_date': default_to.isoformat(),
     }
     return render(request, "reports/report_staff_sales.html", context)
 
@@ -4522,14 +4522,14 @@ def api_report_staff_sales(request):
         customer_kind = ''
 
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date, _ = current_financial_month_bounds(
-            today,
-            get_financial_period_start_day(request.user),
-        )
-        from_date = from_date.strftime('%Y-%m-%d')
+        from_date = default_from.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to.strftime('%Y-%m-%d')
 
     # Doanh thu chỉ được ghi nhận khi đơn đã xuất kho, theo exported_at.
     orders = Order.objects.filter(
@@ -4703,14 +4703,14 @@ def export_staff_sales_excel(request):
         customer_kind = ''
 
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date, _ = current_financial_month_bounds(
-            today,
-            get_financial_period_start_day(request.user),
-        )
-        from_date = from_date.strftime('%Y-%m-%d')
+        from_date = default_from.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to.strftime('%Y-%m-%d')
 
     # Lấy dữ liệu (tái sử dụng logic)
     orders = Order.objects.filter(
@@ -5969,14 +5969,14 @@ def export_purchases_excel(request):
     from_date = request.GET.get('from_date')
     to_date = request.GET.get('to_date')
     today = datetime.now().date()
+    default_from, default_to = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date, _ = current_financial_month_bounds(
-            today,
-            get_financial_period_start_day(request.user),
-        )
-        from_date = from_date.strftime('%Y-%m-%d')
+        from_date = default_from.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to.strftime('%Y-%m-%d')
 
     supplier_id = _parse_filter_int(request.GET.get('supplier_id'))
     receipts = _purchase_report_receipts(
@@ -6110,14 +6110,14 @@ def export_finance_excel(request):
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
     today = datetime.now().date()
-    default_from_date, _ = current_financial_month_bounds(
+    default_from_date, default_to_date = current_financial_month_bounds(
         today,
         get_financial_period_start_day(request.user),
     )
     if not from_date:
         from_date = default_from_date.strftime('%Y-%m-%d')
     if not to_date:
-        to_date = today.strftime('%Y-%m-%d')
+        to_date = default_to_date.strftime('%Y-%m-%d')
 
     receipts, payments, goods_receipts = _get_finance_report_querysets(
         request,

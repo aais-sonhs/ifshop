@@ -151,11 +151,11 @@
         <div class="row align-items-end" id="quotation_profit_filters">
             <div class="col-xl-2 col-md-3 mb-2">
                 <label class="small text-muted mb-1">Từ ngày chứng từ</label>
-                <input type="date" class="form-control form-control-sm" id="qp_from_date">
+                <input type="date" class="form-control form-control-sm" id="qp_from_date" value="{{ report_from_date }}">
             </div>
             <div class="col-xl-2 col-md-3 mb-2">
                 <label class="small text-muted mb-1">Đến ngày chứng từ</label>
-                <input type="date" class="form-control form-control-sm" id="qp_to_date">
+                <input type="date" class="form-control form-control-sm" id="qp_to_date" value="{{ report_to_date }}">
             </div>
             <div class="col-xl-3 col-md-6 mb-2">
                 <label class="small text-muted mb-1">Phạm vi chứng từ</label>
@@ -430,16 +430,8 @@
     function formatPercent(value){
         return Number(value || 0).toLocaleString('vi-VN', {maximumFractionDigits: 2}) + '%';
     }
-    function localDateValue(date){
-        var value = date || new Date();
-        var month = String(value.getMonth() + 1).padStart(2, '0');
-        var day = String(value.getDate()).padStart(2, '0');
-        return value.getFullYear() + '-' + month + '-' + day;
-    }
-    function firstDayOfMonth(){
-        var today = new Date();
-        return new Date(today.getFullYear(), today.getMonth(), 1);
-    }
+    var DEFAULT_REPORT_FROM_DATE = '{{ report_from_date|escapejs }}';
+    var DEFAULT_REPORT_TO_DATE = '{{ report_to_date|escapejs }}';
     function buildParams(){
         var params = new URLSearchParams();
         [
@@ -757,8 +749,8 @@
         $row.find('.ctv-margin').text(formatPercent(remainingMargin));
     }
     function resetFilters(){
-        $('#qp_from_date').val(localDateValue(firstDayOfMonth()));
-        $('#qp_to_date').val(localDateValue(new Date()));
+        $('#qp_from_date').val(DEFAULT_REPORT_FROM_DATE);
+        $('#qp_to_date').val(DEFAULT_REPORT_TO_DATE);
         $('#qp_status').val('active');
         $('#qp_source').val('all');
         $('#qp_validity').val('all');
@@ -771,8 +763,8 @@
     }
 
     $(function(){
-        $('#qp_from_date').val(localDateValue(firstDayOfMonth()));
-        $('#qp_to_date').val(localDateValue(new Date()));
+        $('#qp_from_date').val(DEFAULT_REPORT_FROM_DATE);
+        $('#qp_to_date').val(DEFAULT_REPORT_TO_DATE);
         $('#qp_page_size').val(String(quotationProfitPageState.pageSize));
         initColumnConfig();
         loadReport();

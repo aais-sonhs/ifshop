@@ -2722,7 +2722,10 @@ def _build_sales_report_payload(request, include_filter_options=True):
 
 def _get_quotation_profit_filters(request):
     today = datetime.now().date()
-    default_from = today.replace(day=1)
+    default_from, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     from_date = parse_date(request.GET.get('from_date') or '') or default_from
     to_date = parse_date(request.GET.get('to_date') or '') or today
     if from_date > to_date:
@@ -3147,10 +3150,19 @@ def _build_quotation_profit_payload(request, include_filter_options=True):
 @report_permission_required
 @quotation_profit_report_privileged_required
 def report_quotation_profit(request):
+    today = datetime.now().date()
+    default_from, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     return render(
         request,
         'reports/report_quotation_profit.html',
-        {'active_tab': 'report_quotation_profit'},
+        {
+            'active_tab': 'report_quotation_profit',
+            'report_from_date': default_from.isoformat(),
+            'report_to_date': today.isoformat(),
+        },
     )
 
 
@@ -3333,6 +3345,11 @@ def api_report_sales(request):
 def report_purchases(request):
     from products.models import Supplier
 
+    today = datetime.now().date()
+    default_from, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     store_ids = get_managed_store_ids(request.user)
     suppliers = Supplier.objects.filter(
         goods_receipts__warehouse__store_id__in=store_ids,
@@ -3341,6 +3358,8 @@ def report_purchases(request):
     context = {
         'active_tab': 'report_purchases',
         'suppliers': list(suppliers),
+        'report_from_date': default_from.isoformat(),
+        'report_to_date': today.isoformat(),
     }
     return render(request, "reports/report_purchases.html", context)
 
@@ -3381,7 +3400,11 @@ def api_report_purchases(request):
     to_date = request.GET.get('to_date')
     today = datetime.now().date()
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date, _ = current_financial_month_bounds(
+            today,
+            get_financial_period_start_day(request.user),
+        )
+        from_date = from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
@@ -4473,7 +4496,16 @@ def api_report_customers(request):
 @report_permission_required
 def report_staff_sales(request):
     """Báo cáo doanh thu nhân viên bán hàng"""
-    context = {'active_tab': 'report_staff_sales'}
+    today = datetime.now().date()
+    default_from, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
+    context = {
+        'active_tab': 'report_staff_sales',
+        'report_from_date': default_from.isoformat(),
+        'report_to_date': today.isoformat(),
+    }
     return render(request, "reports/report_staff_sales.html", context)
 
 
@@ -4491,7 +4523,11 @@ def api_report_staff_sales(request):
 
     today = datetime.now().date()
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date, _ = current_financial_month_bounds(
+            today,
+            get_financial_period_start_day(request.user),
+        )
+        from_date = from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
@@ -4668,7 +4704,11 @@ def export_staff_sales_excel(request):
 
     today = datetime.now().date()
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date, _ = current_financial_month_bounds(
+            today,
+            get_financial_period_start_day(request.user),
+        )
+        from_date = from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
@@ -5930,7 +5970,11 @@ def export_purchases_excel(request):
     to_date = request.GET.get('to_date')
     today = datetime.now().date()
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date, _ = current_financial_month_bounds(
+            today,
+            get_financial_period_start_day(request.user),
+        )
+        from_date = from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 

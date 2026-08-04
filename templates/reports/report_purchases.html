@@ -9,8 +9,8 @@
     </div>
     <div class="card-body">
         <div class="row mb-3">
-            <div class="col-md-2"><label class="small text-muted mb-1">Từ ngày</label><input type="date" class="form-control form-control-sm" id="filter_from_date"></div>
-            <div class="col-md-2"><label class="small text-muted mb-1">Đến ngày</label><input type="date" class="form-control form-control-sm" id="filter_to_date"></div>
+            <div class="col-md-2"><label class="small text-muted mb-1">Từ ngày</label><input type="date" class="form-control form-control-sm" id="filter_from_date" value="{{ report_from_date }}"></div>
+            <div class="col-md-2"><label class="small text-muted mb-1">Đến ngày</label><input type="date" class="form-control form-control-sm" id="filter_to_date" value="{{ report_to_date }}"></div>
             <div class="col-md-3">
                 <label class="small text-muted mb-1">Nhà cung cấp</label>
                 <select class="form-control form-control-sm" id="filter_supplier">
@@ -124,17 +124,7 @@ var purchaseDetailPageState = {
         return [25, 50, 100, 200].indexOf(saved) >= 0 ? saved : 25;
     })()
 };
-function localDateInputValue(date){
-    var d = date || new Date();
-    var month = String(d.getMonth() + 1).padStart(2, '0');
-    var day = String(d.getDate()).padStart(2, '0');
-    return d.getFullYear() + '-' + month + '-' + day;
-}
 $(document).ready(function(){
-    var today = new Date();
-    var first = new Date(today.getFullYear(), today.getMonth(), 1);
-    $('#filter_from_date').val(localDateInputValue(first));
-    $('#filter_to_date').val(localDateInputValue(today));
     $('#purchase_supplier_page_size').val(String(purchaseSupplierPageState.pageSize));
     $('#purchase_detail_page_size').val(String(purchaseDetailPageState.pageSize));
     loadReport();

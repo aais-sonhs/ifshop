@@ -500,6 +500,76 @@ class SalesReportTests(TestCase):
         self.assertEqual(financial_time_bucket(date(2026, 3, 9), 'month', 10), ('2026-02', '02/2026'))
         self.assertEqual(financial_time_bucket(date(2026, 3, 10), 'month', 10), ('2026-03', '03/2026'))
 
+    def test_purchase_and_staff_reports_default_to_company_financial_period(self):
+        today = date.today()
+        start_day = 2 if today.day == 1 else min(today.day, 28)
+        period_start, _ = current_financial_month_bounds(today, start_day)
+        outside_date = period_start - timedelta(days=1)
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Brand Report',
+            financial_period_start_day=start_day,
+        )
+
+        supplier = Supplier.objects.create(code='NCC-RP-PERIOD', name='NCC theo kỳ')
+        for code, receipt_date in (
+            ('PN-RP-IN-PERIOD', period_start),
+            ('PN-RP-OUT-PERIOD', outside_date),
+        ):
+            GoodsReceipt.objects.create(
+                code=code,
+                supplier=supplier,
+                warehouse=self.warehouse,
+                receipt_date=receipt_date,
+                total_amount=100,
+                status=1,
+                created_by=self.user,
+            )
+
+        for code, order_date, salesperson in (
+            ('DH-RP-STAFF-IN-PERIOD', period_start, 'Nhân viên trong kỳ'),
+            ('DH-RP-STAFF-OUT-PERIOD', outside_date, 'Nhân viên ngoài kỳ'),
+        ):
+            Order.objects.create(
+                code=code,
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=5,
+                total_amount=100,
+                final_amount=100,
+                order_date=order_date,
+                salesperson=salesperson,
+                created_by=self.user,
+            )
+
+        purchase_page = self.client.get(reverse('report_purchases'))
+        staff_page = self.client.get(reverse('report_staff_sales'))
+        expected_from_input = f'value="{period_start.isoformat()}"'
+        self.assertContains(purchase_page, expected_from_input)
+        self.assertContains(staff_page, expected_from_input)
+
+        purchase_payload = self.client.get(reverse('api_report_purchases')).json()
+        self.assertEqual(
+            [row['code'] for row in purchase_payload['data']],
+            ['PN-RP-IN-PERIOD'],
+        )
+
+        staff_payload = self.client.get(reverse('api_report_staff_sales')).json()
+        self.assertEqual(
+            [row['salesperson'] for row in staff_payload['staff_data']],
+            ['Nhân viên trong kỳ'],
+        )
+
+        purchase_export = self.client.get(reverse('export_purchases_excel'))
+        self.assertIn(
+            f'BC_Nhap_hang_{period_start.isoformat()}_{today.isoformat()}.xlsx',
+            purchase_export['Content-Disposition'],
+        )
+        staff_export = self.client.get(reverse('export_staff_sales_excel'))
+        staff_sheet = load_workbook(BytesIO(staff_export.content), data_only=True)['BC Doanh thu NV']
+        self.assertIn(period_start.isoformat(), staff_sheet['A2'].value)
+
     def test_sales_report_month_timeline_uses_company_financial_period(self):
         BusinessConfig.objects.create(
             brand=self.brand,
@@ -3639,6 +3709,28 @@ class QuotationProfitReportTests(TestCase):
         self.assertContains(response, 'target="_blank"')
         self.assertContains(response, 'Thử CK CTV')
         self.assertContains(response, 'không sửa hoặc lưu vào báo giá')
+
+    def test_report_defaults_to_company_financial_period(self):
+        today = date.today()
+        start_day = 2 if today.day == 1 else min(today.day, 28)
+        period_start, _ = current_financial_month_bounds(today, start_day)
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Brand LN báo giá',
+            financial_period_start_day=start_day,
+        )
+
+        page_response = self.client.get(reverse('report_quotation_profit'))
+        self.assertContains(
+            page_response,
+            f'id="qp_from_date" value="{period_start.isoformat()}"',
+        )
+        self.assertContains(page_response, 'var DEFAULT_REPORT_FROM_DATE =')
+        self.assertContains(page_response, "$('#qp_from_date').val(DEFAULT_REPORT_FROM_DATE);")
+
+        payload = self.client.get(reverse('api_report_quotation_profit')).json()
+        self.assertEqual(payload['filters']['from_date'], period_start.isoformat())
+        self.assertEqual(payload['filters']['to_date'], today.isoformat())
 
     def test_report_page_has_pagination_and_persistent_column_visibility(self):
         response = self.client.get(reverse('report_quotation_profit'))

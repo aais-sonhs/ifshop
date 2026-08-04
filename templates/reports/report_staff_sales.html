@@ -89,11 +89,11 @@
         <div class="row mb-3 align-items-end">
             <div class="col-md-2">
                 <label class="small text-muted mb-1">Từ ngày xuất kho</label>
-                <input type="date" class="form-control form-control-sm" id="filter_from_date">
+                <input type="date" class="form-control form-control-sm" id="filter_from_date" value="{{ report_from_date }}">
             </div>
             <div class="col-md-2">
                 <label class="small text-muted mb-1">Đến ngày xuất kho</label>
-                <input type="date" class="form-control form-control-sm" id="filter_to_date">
+                <input type="date" class="form-control form-control-sm" id="filter_to_date" value="{{ report_to_date }}">
             </div>
             <div class="col-md-2" id="store_filter_wrap" style="display:none;">
                 <label class="small text-muted mb-1">Cửa hàng</label>
@@ -342,11 +342,6 @@ var staffSalesPageState = {
 };
 
 $(document).ready(function(){
-    var today = new Date();
-    var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    $('#filter_from_date').val(firstDay.toISOString().split('T')[0]);
-    $('#filter_to_date').val(today.toISOString().split('T')[0]);
-
     initStaffSalesColumnConfig();
     loadReport();
 

@@ -38,7 +38,13 @@ from products.models import (
     Supplier,
     Warehouse,
 )
-from system_management.models import Brand, Store, UserProfile
+from system_management.models import Brand, BusinessConfig, Store, UserProfile
+from reports.financial_periods import (
+    current_financial_month_bounds,
+    financial_month_bounds,
+    financial_time_bucket,
+    financial_year_bounds,
+)
 from reports.models import (
     DailyEmailReport,
     StockAlert,
@@ -425,6 +431,11 @@ class SalesReportTests(TestCase):
     def test_finance_report_page_shows_expense_formula_cards(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Brand Report',
+            financial_period_start_day=10,
+        )
 
         response = self.client.get(reverse('report_finance'))
 
@@ -466,10 +477,71 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'function syncFinancePeriodDates()')
         self.assertContains(response, 'function setFinanceQuickPeriod(range)')
         self.assertContains(response, 'function updateFinancePeriodSummary()')
-        self.assertContains(response, 'new Date(monthYear, monthNumber, 0).getDate()')
-        self.assertContains(response, 'financeDateValue(selectedYear, 1, 1)')
-        self.assertContains(response, 'financeDateValue(selectedYear, 12, 31)')
+        self.assertContains(response, 'var FINANCIAL_PERIOD_START_DAY = parseInt(\'10\'')
+        self.assertContains(response, 'Kỳ công ty bắt đầu ngày 10')
+        self.assertContains(response, 'function financeMonthBounds(year, month)')
+        self.assertContains(response, 'function financeYearBounds(year)')
+        self.assertContains(response, 'end.setDate(end.getDate() - 1)')
         self.assertContains(response, 'syncFinancePeriodDates();\n    var storeId', count=1)
+
+    def test_financial_period_helpers_use_next_period_start_minus_one_day(self):
+        self.assertEqual(
+            financial_month_bounds(2026, 2, 10),
+            (date(2026, 2, 10), date(2026, 3, 9)),
+        )
+        self.assertEqual(
+            financial_year_bounds(2026, 10),
+            (date(2026, 1, 10), date(2027, 1, 9)),
+        )
+        self.assertEqual(
+            current_financial_month_bounds(date(2026, 3, 5), 10),
+            (date(2026, 2, 10), date(2026, 3, 9)),
+        )
+        self.assertEqual(financial_time_bucket(date(2026, 3, 9), 'month', 10), ('2026-02', '02/2026'))
+        self.assertEqual(financial_time_bucket(date(2026, 3, 10), 'month', 10), ('2026-03', '03/2026'))
+
+    def test_sales_report_month_timeline_uses_company_financial_period(self):
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Brand Report',
+            financial_period_start_day=10,
+        )
+        for code, order_date in (
+            ('DH-FIN-PERIOD-FEB', date(2026, 3, 9)),
+            ('DH-FIN-PERIOD-MAR', date(2026, 3, 10)),
+        ):
+            order = Order.objects.create(
+                code=code,
+                store=self.store,
+                customer=self.customer,
+                warehouse=self.warehouse,
+                status=5,
+                total_amount=100,
+                final_amount=100,
+                order_date=order_date,
+                created_by=self.user,
+            )
+            OrderItem.objects.create(
+                order=order,
+                product=self.product,
+                quantity=1,
+                unit_price=100,
+                cost_price=60,
+                total_price=100,
+            )
+
+        response = self.client.get(reverse('api_report_sales'), {
+            'from_date': '2026-03-09',
+            'to_date': '2026-03-10',
+            'time_group': 'month',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        timeline = response.json()['timeline']
+        self.assertEqual(
+            [(row['period_key'], row['date']) for row in timeline],
+            [('2026-02', '02/2026'), ('2026-03', '03/2026')],
+        )
 
     def test_customer_report_page_has_pagination(self):
         response = self.client.get(reverse('report_customers'))
@@ -1599,9 +1671,10 @@ class SalesReportTests(TestCase):
         self.assertContains(response, "if(periodType==='year') return 'month';")
         self.assertContains(response, "if(dayCount<=730) return 'month';")
         self.assertContains(response, 'var timeGroup=getAutomaticTimeGroup()')
-        self.assertContains(response, 'new Date(monthYear,monthNumber,0).getDate()')
-        self.assertContains(response, 'salesDateValue(selectedYear,1,1)')
-        self.assertContains(response, 'salesDateValue(selectedYear,12,31)')
+        self.assertContains(response, 'var FINANCIAL_PERIOD_START_DAY=parseInt(')
+        self.assertContains(response, 'function salesFinancialMonthBounds(year,month)')
+        self.assertContains(response, 'function salesFinancialYearBounds(year)')
+        self.assertContains(response, 'end.setDate(end.getDate()-1)')
         self.assertContains(response, "$('#filter_period_type').val('range');")
         self.assertContains(response, 'syncSalesPeriodDates();\n    syncRevenueDateBasisUi();', count=1)
         self.assertContains(response, 'syncSalesPeriodDates();\n    var from=$(\'#filter_from_date\')', count=1)
@@ -1827,7 +1900,7 @@ class SalesReportTests(TestCase):
         self.assertContains(response, 'id="order_detail_from_date"')
         self.assertContains(response, 'id="order_detail_to_date"')
         self.assertContains(response, 'function setOrderDetailCurrentMonth()')
-        self.assertContains(response, 'new Date(today.getFullYear(),today.getMonth()+1,0)')
+        self.assertContains(response, 'var monthBounds=currentSalesFinancialMonthBounds(today)')
         self.assertContains(response, 'function getDateFilteredOrderDetails()')
         self.assertContains(response, "orderDate<from")
         self.assertContains(response, "orderDate>to")

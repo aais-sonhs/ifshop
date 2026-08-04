@@ -49,6 +49,8 @@
             <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="previous_month">Tháng trước</button>
             <button type="button" class="btn btn-xs btn-outline-primary finance-quick-period" data-range="current_year">Năm nay</button>
             <span class="badge badge-light border px-2 py-1 ml-1" id="finance_period_summary"></span>
+            <span class="badge badge-info px-2 py-1">Kỳ công ty bắt đầu ngày {{ biz.financial_period_start_day|default:1 }}</span>
+            {% if is_brand_owner %}<a class="small" href="{% url 'business_config_tbl' %}"><i class="fas fa-cog mr-1"></i>Thiết lập</a>{% endif %}
         </div>
         <!-- TỔNG QUAN -->
         <div class="row mb-3">
@@ -220,6 +222,7 @@
 
 {% block extra_js %}
 <script>
+var FINANCIAL_PERIOD_START_DAY = parseInt('{{ biz.financial_period_start_day|default:1 }}', 10) || 1;
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function fmtD(n){ return fmt(n) + 'đ'; }
 function financeDateValue(year, month, day){
@@ -228,6 +231,30 @@ function financeDateValue(year, month, day){
 function financePeriodDateLabel(value){
     var parts = String(value || '').split('-');
     return parts.length === 3 ? parts[2]+'/'+parts[1]+'/'+parts[0] : value;
+}
+function financeMonthBounds(year, month){
+    var start = new Date(year, month - 1, FINANCIAL_PERIOD_START_DAY);
+    var end = new Date(year, month, FINANCIAL_PERIOD_START_DAY);
+    end.setDate(end.getDate() - 1);
+    return {start: start, end: end};
+}
+function currentFinanceMonthBounds(today){
+    var anchor = new Date(today.getFullYear(), today.getMonth(), FINANCIAL_PERIOD_START_DAY);
+    if(today.getDate() < FINANCIAL_PERIOD_START_DAY){
+        anchor = new Date(today.getFullYear(), today.getMonth() - 1, FINANCIAL_PERIOD_START_DAY);
+    }
+    return financeMonthBounds(anchor.getFullYear(), anchor.getMonth() + 1);
+}
+function financeYearBounds(year){
+    var start = new Date(year, 0, FINANCIAL_PERIOD_START_DAY);
+    var end = new Date(year + 1, 0, FINANCIAL_PERIOD_START_DAY);
+    end.setDate(end.getDate() - 1);
+    return {start: start, end: end};
+}
+function currentFinanceYear(today){
+    return today < new Date(today.getFullYear(), 0, FINANCIAL_PERIOD_START_DAY)
+        ? today.getFullYear() - 1
+        : today.getFullYear();
 }
 function updateFinancePeriodSummary(){
     var fromDate = $('#filter_from_date').val();
@@ -244,15 +271,16 @@ function applyFinanceQuickPeriodState(){
     var yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
     var date7 = new Date(today); date7.setDate(date7.getDate()-6);
     var date30 = new Date(today); date30.setDate(date30.getDate()-29);
-    var previousMonth = new Date(today.getFullYear(), today.getMonth()-1, 1);
+    var currentMonth = currentFinanceMonthBounds(today);
+    var previousMonth = new Date(currentMonth.start.getFullYear(), currentMonth.start.getMonth()-1, FINANCIAL_PERIOD_START_DAY);
     var periodType = $('#filter_period_type').val() || 'month';
     var fromDate = $('#filter_from_date').val();
     var toDate = $('#filter_to_date').val();
     var matched = '';
 
-    if(periodType === 'month' && $('#filter_month').val() === financeDateValue(today.getFullYear(), today.getMonth()+1, 1).slice(0, 7)) matched = 'current_month';
+    if(periodType === 'month' && $('#filter_month').val() === financeDateValue(currentMonth.start.getFullYear(), currentMonth.start.getMonth()+1, 1).slice(0, 7)) matched = 'current_month';
     else if(periodType === 'month' && $('#filter_month').val() === financeDateValue(previousMonth.getFullYear(), previousMonth.getMonth()+1, 1).slice(0, 7)) matched = 'previous_month';
-    else if(periodType === 'year' && String($('#filter_year').val()) === String(today.getFullYear())) matched = 'current_year';
+    else if(periodType === 'year' && String($('#filter_year').val()) === String(currentFinanceYear(today))) matched = 'current_year';
     else if(periodType === 'range' && fromDate === financeDateValue(today.getFullYear(), today.getMonth()+1, today.getDate()) && toDate === fromDate) matched = 'today';
     else if(periodType === 'range' && fromDate === financeDateValue(yesterday.getFullYear(), yesterday.getMonth()+1, yesterday.getDate()) && toDate === fromDate) matched = 'yesterday';
     else if(periodType === 'range' && fromDate === financeDateValue(date7.getFullYear(), date7.getMonth()+1, date7.getDate()) && toDate === financeDateValue(today.getFullYear(), today.getMonth()+1, today.getDate())) matched = '7d';
@@ -278,17 +306,18 @@ function syncFinancePeriodDates(){
         var monthParts = monthValue.split('-');
         var monthYear = parseInt(monthParts[0], 10);
         var monthNumber = parseInt(monthParts[1], 10);
-        var lastDay = new Date(monthYear, monthNumber, 0).getDate();
-        $('#filter_from_date').val(financeDateValue(monthYear, monthNumber, 1));
-        $('#filter_to_date').val(financeDateValue(monthYear, monthNumber, lastDay));
+        var monthBounds = financeMonthBounds(monthYear, monthNumber);
+        $('#filter_from_date').val(financeDateValue(monthBounds.start.getFullYear(), monthBounds.start.getMonth()+1, monthBounds.start.getDate()));
+        $('#filter_to_date').val(financeDateValue(monthBounds.end.getFullYear(), monthBounds.end.getMonth()+1, monthBounds.end.getDate()));
     } else if(periodType === 'year'){
         var selectedYear = parseInt($('#filter_year').val(), 10);
         if(!selectedYear || selectedYear < 2000 || selectedYear > 2100){
             selectedYear = today.getFullYear();
             $('#filter_year').val(selectedYear);
         }
-        $('#filter_from_date').val(financeDateValue(selectedYear, 1, 1));
-        $('#filter_to_date').val(financeDateValue(selectedYear, 12, 31));
+        var yearBounds = financeYearBounds(selectedYear);
+        $('#filter_from_date').val(financeDateValue(yearBounds.start.getFullYear(), yearBounds.start.getMonth()+1, yearBounds.start.getDate()));
+        $('#filter_to_date').val(financeDateValue(yearBounds.end.getFullYear(), yearBounds.end.getMonth()+1, yearBounds.end.getDate()));
     }
     updateFinancePeriodSummary();
     applyFinanceQuickPeriodState();
@@ -296,14 +325,15 @@ function syncFinancePeriodDates(){
 function setFinanceQuickPeriod(range){
     var today = new Date();
     if(range === 'current_month' || range === 'previous_month'){
+        var currentMonth = currentFinanceMonthBounds(today);
         var selectedMonth = range === 'current_month'
-            ? new Date(today.getFullYear(), today.getMonth(), 1)
-            : new Date(today.getFullYear(), today.getMonth()-1, 1);
+            ? currentMonth.start
+            : new Date(currentMonth.start.getFullYear(), currentMonth.start.getMonth()-1, FINANCIAL_PERIOD_START_DAY);
         $('#filter_period_type').val('month');
         $('#filter_month').val(financeDateValue(selectedMonth.getFullYear(), selectedMonth.getMonth()+1, 1).slice(0, 7));
     }else if(range === 'current_year'){
         $('#filter_period_type').val('year');
-        $('#filter_year').val(today.getFullYear());
+        $('#filter_year').val(currentFinanceYear(today));
     }else{
         var fromDate = new Date(today);
         var toDate = new Date(today);
@@ -324,8 +354,9 @@ function setFinanceQuickPeriod(range){
 }
 $(document).ready(function(){
     var today = new Date();
-    $('#filter_month').val(financeDateValue(today.getFullYear(), today.getMonth() + 1, 1).slice(0, 7));
-    $('#filter_year').val(today.getFullYear());
+    var currentMonth = currentFinanceMonthBounds(today);
+    $('#filter_month').val(financeDateValue(currentMonth.start.getFullYear(), currentMonth.start.getMonth() + 1, 1).slice(0, 7));
+    $('#filter_year').val(currentFinanceYear(today));
     syncFinancePeriodDates();
     loadReport();
     $('#filter_period_type').change(function(){ syncFinancePeriodDates(); loadReport(); });

@@ -75,6 +75,8 @@
                         <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="7d">7 ngày</button>
                         <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="30d">30 ngày</button>
                         <button class="btn btn-xs btn-outline-primary btn-quick-range" data-range="month">Tháng này</button>
+                        <span class="badge badge-info px-2 py-1">Kỳ công ty bắt đầu ngày {{ biz.financial_period_start_day|default:1 }}</span>
+                        {% if is_brand_owner %}<a class="small" href="{% url 'business_config_tbl' %}"><i class="fas fa-cog mr-1"></i>Thiết lập</a>{% endif %}
                     </div>
                     <div class="mt-2 d-flex align-items-center flex-wrap" id="sales_report_filter_summary" style="gap:6px;"></div>
                     <div class="row mt-2"><div class="col-md-12 text-right">
@@ -514,6 +516,7 @@
 <script src="/static/js/column_config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+var FINANCIAL_PERIOD_START_DAY=parseInt('{{ biz.financial_period_start_day|default:1 }}',10)||1;
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
 function fmtD(n){return fmt(n)+'đ';}
 function escapeHtml(value){return $('<div>').text(value || '').html();}
@@ -720,6 +723,30 @@ function toIsoDate(d){
 function salesDateValue(year, month, day){
     return String(year).padStart(4, '0')+'-'+String(month).padStart(2, '0')+'-'+String(day).padStart(2, '0');
 }
+function salesFinancialMonthBounds(year,month){
+    var start=new Date(year,month-1,FINANCIAL_PERIOD_START_DAY);
+    var end=new Date(year,month,FINANCIAL_PERIOD_START_DAY);
+    end.setDate(end.getDate()-1);
+    return {start:start,end:end};
+}
+function currentSalesFinancialMonthBounds(today){
+    var anchor=new Date(today.getFullYear(),today.getMonth(),FINANCIAL_PERIOD_START_DAY);
+    if(today.getDate()<FINANCIAL_PERIOD_START_DAY){
+        anchor=new Date(today.getFullYear(),today.getMonth()-1,FINANCIAL_PERIOD_START_DAY);
+    }
+    return salesFinancialMonthBounds(anchor.getFullYear(),anchor.getMonth()+1);
+}
+function salesFinancialYearBounds(year){
+    var start=new Date(year,0,FINANCIAL_PERIOD_START_DAY);
+    var end=new Date(year+1,0,FINANCIAL_PERIOD_START_DAY);
+    end.setDate(end.getDate()-1);
+    return {start:start,end:end};
+}
+function currentSalesFinancialYear(today){
+    return today<new Date(today.getFullYear(),0,FINANCIAL_PERIOD_START_DAY)
+        ? today.getFullYear()-1
+        : today.getFullYear();
+}
 function syncSalesPeriodDates(){
     var periodType=$('#filter_period_type').val()||'month';
     var today=new Date();
@@ -736,26 +763,26 @@ function syncSalesPeriodDates(){
         var monthParts=monthValue.split('-');
         var monthYear=parseInt(monthParts[0],10);
         var monthNumber=parseInt(monthParts[1],10);
-        var lastDay=new Date(monthYear,monthNumber,0).getDate();
-        $('#filter_from_date').val(salesDateValue(monthYear,monthNumber,1));
-        $('#filter_to_date').val(salesDateValue(monthYear,monthNumber,lastDay));
+        var monthBounds=salesFinancialMonthBounds(monthYear,monthNumber);
+        $('#filter_from_date').val(toIsoDate(monthBounds.start));
+        $('#filter_to_date').val(toIsoDate(monthBounds.end));
     }else if(periodType==='year'){
         var selectedYear=parseInt($('#filter_year').val(),10);
         if(!selectedYear||selectedYear<2000||selectedYear>2100){
             selectedYear=today.getFullYear();
             $('#filter_year').val(selectedYear);
         }
-        $('#filter_from_date').val(salesDateValue(selectedYear,1,1));
-        $('#filter_to_date').val(salesDateValue(selectedYear,12,31));
+        var yearBounds=salesFinancialYearBounds(selectedYear);
+        $('#filter_from_date').val(toIsoDate(yearBounds.start));
+        $('#filter_to_date').val(toIsoDate(yearBounds.end));
     }
     applyQuickRangeState();
 }
 function setOrderDetailCurrentMonth(){
     var today=new Date();
-    var firstDay=new Date(today.getFullYear(),today.getMonth(),1);
-    var lastDay=new Date(today.getFullYear(),today.getMonth()+1,0);
-    $('#order_detail_from_date').val(toIsoDate(firstDay));
-    $('#order_detail_to_date').val(toIsoDate(lastDay));
+    var monthBounds=currentSalesFinancialMonthBounds(today);
+    $('#order_detail_from_date').val(toIsoDate(monthBounds.start));
+    $('#order_detail_to_date').val(toIsoDate(monthBounds.end));
 }
 function getDateFilteredOrderDetails(){
     var from=$('#order_detail_from_date').val()||'';
@@ -781,7 +808,7 @@ function applyQuickRangeState(){
     $('.btn-quick-range').removeClass('btn-primary').addClass('btn-outline-primary');
     var today=new Date();
     var from=$('#filter_from_date').val(), to=$('#filter_to_date').val();
-    var monthStart=new Date(today.getFullYear(), today.getMonth(), 1);
+    var monthStart=currentSalesFinancialMonthBounds(today).start;
     var date7=new Date(today); date7.setDate(date7.getDate()-6);
     var date30=new Date(today); date30.setDate(date30.getDate()-29);
     var matched='';
@@ -795,7 +822,7 @@ function applyQuickRangeState(){
 }
 function setQuickRange(range){
     var today=new Date(), from=new Date(today), to=new Date(today);
-    if(range==='month'){ from=new Date(today.getFullYear(), today.getMonth(), 1); }
+    if(range==='month'){ from=currentSalesFinancialMonthBounds(today).start; }
     else if(range==='7d'){ from.setDate(from.getDate()-6); }
     else if(range==='30d'){ from.setDate(from.getDate()-29); }
     $('#filter_period_type').val('range');
@@ -1223,9 +1250,9 @@ function showSalesReportTab(tabId){
 }
 
 $(document).ready(function(){
-    var today=new Date(), firstDay=new Date(today.getFullYear(),today.getMonth(),1);
-    $('#filter_month').val(toIsoDate(firstDay).slice(0,7));
-    $('#filter_year').val(today.getFullYear());
+    var today=new Date(), currentMonth=currentSalesFinancialMonthBounds(today);
+    $('#filter_month').val(toIsoDate(currentMonth.start).slice(0,7));
+    $('#filter_year').val(currentSalesFinancialYear(today));
     $('#filter_period_type').val('month');
     syncSalesPeriodDates();
     $('#filter_order_scope').val('realized');
@@ -1336,13 +1363,13 @@ $(document).ready(function(){
     $('#filter_search').on('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); loadReport(); }});
     $('.btn-quick-range').click(function(){ setQuickRange($(this).data('range')); });
     $('#btn_reset_filter').click(function(){
-        var resetToday=new Date(), resetFirstDay=new Date(resetToday.getFullYear(),resetToday.getMonth(),1);
+        var resetToday=new Date(), resetMonth=currentSalesFinancialMonthBounds(resetToday);
         $('#filter_customer_kind,#filter_customer_group,#filter_category,#filter_product_type,#filter_profit,#filter_store_id,#filter_customer_id,#filter_product_id,#filter_salesperson,#supplier_sales_filter').val('');
         $('#filter_order_scope').val('realized');
         $('#filter_search,#filter_revenue_min,#filter_revenue_max,#filter_cost_min,#filter_cost_max,#filter_line_profit_min,#filter_line_profit_max,#filter_profit_min,#filter_profit_max').val('');
         $('#filter_period_type').val('month');
-        $('#filter_month').val(toIsoDate(resetFirstDay).slice(0,7));
-        $('#filter_year').val(resetToday.getFullYear());
+        $('#filter_month').val(toIsoDate(resetMonth.start).slice(0,7));
+        $('#filter_year').val(currentSalesFinancialYear(resetToday));
         syncSalesPeriodDates();
         applyTimeGroupUi(getTimeGroupText());
         loadReport();

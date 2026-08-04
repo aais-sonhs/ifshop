@@ -807,6 +807,7 @@ def api_get_business_config(request):
             'opt_loyalty_rate': c.opt_loyalty_rate,
             'opt_commission': c.opt_commission,
             'opt_allow_negative_stock': c.opt_allow_negative_stock,
+            'financial_period_start_day': c.financial_period_start_day,
         },
         'business_types': BusinessConfig.BUSINESS_TYPE_CHOICES,
     })
@@ -831,7 +832,10 @@ def api_save_business_config(request):
             pass
         if not brand:
             brand = get_company_brand_for_user(request.user)
-        c = BusinessConfig.get_config(brand=brand)
+        if brand:
+            c, _ = BusinessConfig.objects.get_or_create(brand=brand)
+        else:
+            c = BusinessConfig.get_config()
         c.business_type = data.get('business_type', 'custom')
         c.business_name = data.get('business_name', c.business_name)
         c.mod_orders = data.get('mod_orders', True)
@@ -855,6 +859,13 @@ def api_save_business_config(request):
         c.opt_loyalty_rate = data.get('opt_loyalty_rate', 10000)
         c.opt_commission = data.get('opt_commission', False)
         c.opt_allow_negative_stock = data.get('opt_allow_negative_stock', False)
+        try:
+            financial_period_start_day = int(data.get('financial_period_start_day', 1))
+        except (TypeError, ValueError):
+            raise ValueError('Ngày bắt đầu kỳ báo cáo phải là số từ 1 đến 28.')
+        if not 1 <= financial_period_start_day <= 28:
+            raise ValueError('Ngày bắt đầu kỳ báo cáo phải nằm trong khoảng từ 1 đến 28.')
+        c.financial_period_start_day = financial_period_start_day
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu cấu hình thành công! Reload trang để thấy thay đổi trên menu.'})
     except Exception as e:

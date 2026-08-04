@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User, Group
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 
 class UserProfile(models.Model):
@@ -327,6 +328,12 @@ class BusinessConfig(models.Model):
     opt_loyalty_rate = models.IntegerField(default=10000, verbose_name='Mỗi X đồng = 1 điểm')
     opt_commission = models.BooleanField(default=False, verbose_name='Hoa hồng nhân viên')
     opt_allow_negative_stock = models.BooleanField(default=False, verbose_name='Cho phép tồn âm (bán khi hết hàng)')
+    financial_period_start_day = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        verbose_name='Ngày bắt đầu kỳ báo cáo',
+        help_text='Áp dụng chung cho báo cáo bán hàng và báo cáo tài chính.',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -340,18 +347,21 @@ class BusinessConfig(models.Model):
 
     @classmethod
     def get_config(cls, brand=None):
-        """Lấy config theo brand. Nếu không có, fallback về config mặc định (pk=1)"""
+        """Lấy config theo brand; nếu chưa có thì dùng bản mặc định không gắn brand."""
         if brand:
             try:
                 return cls.objects.get(brand=brand)
             except cls.DoesNotExist:
                 pass
-        # Fallback to default singleton
-        config, _ = cls.objects.get_or_create(pk=1, defaults={
-            'business_type': 'custom',
-            'business_name': 'Doanh nghiệp',
-        })
-        return config
+        # Không dùng pk cố định: bản ghi đầu tiên có thể là cấu hình riêng của
+        # một công ty, khiến công ty khác đọc nhầm cấu hình đó.
+        config = cls.objects.filter(brand__isnull=True).order_by('pk').first()
+        if config:
+            return config
+        return cls.objects.create(
+            business_type='custom',
+            business_name='Doanh nghiệp',
+        )
 
 
 class Brand(models.Model):

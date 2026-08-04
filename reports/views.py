@@ -51,6 +51,11 @@ from .stock_alerts import (
     parse_recipient_emails,
     send_stock_alert_email,
 )
+from .financial_periods import (
+    current_financial_month_bounds,
+    financial_time_bucket,
+    get_financial_period_start_day,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1150,7 +1155,12 @@ def quotation_profit_report_privileged_required(view_func):
 
 def _get_sales_report_filters(request):
     today = datetime.now().date()
-    from_date = request.GET.get('from_date') or today.replace(day=1).strftime('%Y-%m-%d')
+    financial_period_start_day = get_financial_period_start_day(request.user)
+    current_period_start, _ = current_financial_month_bounds(
+        today,
+        financial_period_start_day,
+    )
+    from_date = request.GET.get('from_date') or current_period_start.strftime('%Y-%m-%d')
     to_date = request.GET.get('to_date') or today.strftime('%Y-%m-%d')
     time_group = (request.GET.get('time_group') or 'day').strip().lower()
     if time_group not in ('day', 'month', 'year'):
@@ -1162,6 +1172,7 @@ def _get_sales_report_filters(request):
         'from_date': from_date,
         'to_date': to_date,
         'time_group': time_group,
+        'financial_period_start_day': financial_period_start_day,
         'order_scope': order_scope,
         'store_id': request.GET.get('store_id') or '',
         'customer_kind': request.GET.get('customer_kind', '').strip(),
@@ -2080,10 +2091,14 @@ def _build_sales_report_payload(request, include_filter_options=True):
         if not row['date_raw']:
             continue
         date_obj = datetime.strptime(row['date_raw'], '%Y-%m-%d')
-        key = date_obj.strftime(time_group_meta['key_format'])
+        key, display_label = financial_time_bucket(
+            date_obj,
+            filters['time_group'],
+            filters['financial_period_start_day'],
+        )
         if key not in daily_map:
             daily_map[key] = {
-                'date': date_obj.strftime(time_group_meta['display_format']),
+                'date': display_label,
                 'count': 0,
                 'goods_amount': 0,
                 'revenue': 0,
@@ -2099,8 +2114,11 @@ def _build_sales_report_payload(request, include_filter_options=True):
         daily_map[key]['gross_cost'] += row['cost']
     for date_key, amount in returns_by_date.items():
         date_obj = datetime.strptime(date_key, '%Y-%m-%d')
-        bucket_key = date_obj.strftime(time_group_meta['key_format'])
-        bucket_label = date_obj.strftime(time_group_meta['display_format'])
+        bucket_key, bucket_label = financial_time_bucket(
+            date_obj,
+            filters['time_group'],
+            filters['financial_period_start_day'],
+        )
         if bucket_key in daily_map:
             daily_map[bucket_key]['returns'] += amount
         else:
@@ -2117,8 +2135,11 @@ def _build_sales_report_payload(request, include_filter_options=True):
             }
     for date_key, amount in return_cost_by_date.items():
         date_obj = datetime.strptime(date_key, '%Y-%m-%d')
-        bucket_key = date_obj.strftime(time_group_meta['key_format'])
-        bucket_label = date_obj.strftime(time_group_meta['display_format'])
+        bucket_key, bucket_label = financial_time_bucket(
+            date_obj,
+            filters['time_group'],
+            filters['financial_period_start_day'],
+        )
         if bucket_key not in daily_map:
             daily_map[bucket_key] = {
                 'date': bucket_label,
@@ -3986,7 +4007,11 @@ def _with_positive_order_debt(orders):
 def report_finance_order_debt(request):
     """Bảng chi tiết các đơn hàng còn công nợ trong kỳ báo cáo."""
     today = datetime.now().date()
-    from_date = parse_date(request.GET.get('from_date') or '') or today.replace(day=1)
+    default_from_date, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
+    from_date = parse_date(request.GET.get('from_date') or '') or default_from_date
     to_date = parse_date(request.GET.get('to_date') or '') or today
     if from_date > to_date:
         from_date, to_date = to_date, from_date
@@ -4142,8 +4167,12 @@ def api_report_finance(request):
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
     today = datetime.now().date()
+    default_from_date, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date = default_from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 
@@ -6037,8 +6066,12 @@ def export_finance_excel(request):
     to_date = request.GET.get('to_date')
     store_id = request.GET.get('store_id')
     today = datetime.now().date()
+    default_from_date, _ = current_financial_month_bounds(
+        today,
+        get_financial_period_start_day(request.user),
+    )
     if not from_date:
-        from_date = today.replace(day=1).strftime('%Y-%m-%d')
+        from_date = default_from_date.strftime('%Y-%m-%d')
     if not to_date:
         to_date = today.strftime('%Y-%m-%d')
 

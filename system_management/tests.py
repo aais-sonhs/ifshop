@@ -1329,6 +1329,49 @@ class SystemManagementScopeTests(TestCase):
         config = BusinessConfig.get_config(brand=self.brand)
         self.assertTrue(config.opt_allow_negative_stock)
 
+    def test_business_config_saves_financial_period_start_day_per_company(self):
+        response = self.client.get(reverse('api_get_business_config'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        self.assertEqual(data['financial_period_start_day'], 1)
+
+        data['financial_period_start_day'] = 10
+        save_response = self.client.post(
+            reverse('api_save_business_config'),
+            data=json.dumps(data),
+            content_type='application/json',
+        )
+
+        self.assertEqual(save_response.status_code, 200)
+        self.assertEqual(save_response.json()['status'], 'ok')
+        config = BusinessConfig.objects.get(brand=self.brand)
+        self.assertEqual(config.financial_period_start_day, 10)
+        self.assertFalse(BusinessConfig.objects.filter(brand=self.other_brand).exists())
+
+        data['financial_period_start_day'] = 29
+        invalid_response = self.client.post(
+            reverse('api_save_business_config'),
+            data=json.dumps(data),
+            content_type='application/json',
+        )
+        self.assertEqual(invalid_response.json()['status'], 'error')
+        self.assertIn('từ 1 đến 28', invalid_response.json()['message'])
+        config.refresh_from_db()
+        self.assertEqual(config.financial_period_start_day, 10)
+
+    def test_business_config_default_does_not_leak_another_company_setting(self):
+        BusinessConfig.objects.all().delete()
+        BusinessConfig.objects.create(
+            brand=self.brand,
+            business_name='Brand A',
+            financial_period_start_day=10,
+        )
+
+        fallback = BusinessConfig.get_config(brand=self.other_brand)
+
+        self.assertIsNone(fallback.brand_id)
+        self.assertEqual(fallback.financial_period_start_day, 1)
+
     def test_business_config_exposes_and_saves_quotation_validity_option(self):
         response = self.client.get(reverse('api_get_business_config'))
         self.assertEqual(response.status_code, 200)

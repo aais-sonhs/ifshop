@@ -79,6 +79,14 @@
                                     <input type="checkbox" class="custom-control-input mod-toggle" id="mod_reports">
                                     <label class="custom-control-label" for="mod_reports">📊 Báo cáo</label>
                                 </div>
+                                <hr class="my-3">
+                                <div class="form-group mb-0">
+                                    <label for="financial_period_start_day"><b>Ngày bắt đầu kỳ báo cáo</b></label>
+                                    <input type="number" min="1" max="28" step="1" class="form-control form-control-sm" id="financial_period_start_day" value="1" style="max-width:120px;">
+                                    <small class="text-muted">
+                                        Dùng chung cho báo cáo bán hàng và tài chính. Ví dụ chọn ngày 10 thì kỳ tháng 2 là 10/02–09/03.
+                                    </small>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -238,6 +246,12 @@ $(document).ready(function(){
         data.opt_loyalty_rate = parseInt($('#opt_loyalty_rate').val()) || 10000;
         data.opt_commission = $('#opt_commission').prop('checked');
         data.opt_allow_negative_stock = $('#opt_allow_negative_stock').prop('checked');
+        data.financial_period_start_day = parseInt($('#financial_period_start_day').val(), 10);
+        if(!data.financial_period_start_day || data.financial_period_start_day < 1 || data.financial_period_start_day > 28){
+            alert('Ngày bắt đầu kỳ báo cáo phải nằm trong khoảng từ 1 đến 28.');
+            $('#financial_period_start_day').focus();
+            return;
+        }
         $.ajax({
             url: '/api/business-config/save/', type: 'POST',
             contentType: 'application/json',
@@ -269,6 +283,7 @@ function loadConfig(){
         $('#opt_loyalty_rate').val(d.opt_loyalty_rate || 10000);
         $('#opt_commission').prop('checked', d.opt_commission);
         $('#opt_allow_negative_stock').prop('checked', d.opt_allow_negative_stock);
+        $('#financial_period_start_day').val(d.financial_period_start_day || 1);
         if(d.opt_loyalty_points) $('#loyalty_rate_group').show();
         updateSubToggles();
     });

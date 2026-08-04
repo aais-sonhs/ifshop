@@ -807,22 +807,23 @@ class SystemManagementScopeTests(TestCase):
             self.assertEqual(response.status_code, 302, msg=route_name)
             self.assertEqual(response['Location'], '/brand-tbl/')
 
-    def test_company_settings_is_a_separate_submenu_under_settings(self):
+    def test_business_config_remains_under_administration(self):
         response = self.client.get(reverse('business_config_tbl'))
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         admin_index = html.index('data-menu-key="admin"')
         settings_index = html.index('data-menu-key="settings"')
-        company_settings_index = html.index(f'href="{reverse("business_config_tbl")}"')
+        business_config_index = html.index(f'href="{reverse("business_config_tbl")}"')
         self.assertLess(admin_index, settings_index)
-        self.assertLess(settings_index, company_settings_index)
-        self.assertNotIn(
+        self.assertLess(admin_index, business_config_index)
+        self.assertLess(business_config_index, settings_index)
+        self.assertIn(
             f'href="{reverse("business_config_tbl")}"',
             html[admin_index:settings_index],
         )
-        self.assertContains(response, '<p>Cài đặt công ty</p>', html=True)
-        self.assertContains(response, 'Cài đặt công ty')
+        self.assertContains(response, '<p>Mô hình kinh doanh</p>', html=True)
+        self.assertContains(response, 'Ngày bắt đầu kỳ báo cáo')
 
     def test_brand_menu_settings_are_superadmin_only(self):
         response = self.client.get(reverse('brand_menu_settings'))

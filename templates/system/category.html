@@ -50,7 +50,7 @@
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-sm table-bordered" id="finance_cat_tbl">
-                            <thead><tr><th>Tên</th><th>Loại</th><th>Thao tác</th></tr></thead>
+                            <thead><tr><th>Tên</th><th>Loại</th><th>Thứ tự ưu tiên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
@@ -67,7 +67,7 @@
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-sm table-bordered" id="cashbook_cat_tbl">
-                            <thead><tr><th>Tên quỹ</th><th>Số dư</th><th>Thao tác</th></tr></thead>
+                            <thead><tr><th>Tên quỹ</th><th>Số dư</th><th>Thứ tự ưu tiên</th><th>Thao tác</th></tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
@@ -90,7 +90,7 @@
                         </div>
                         <div class="table-responsive">
                             <table class="table table-sm table-bordered mb-0" id="expense_classification_tbl">
-                                <thead><tr><th>Tên phân loại</th><th>Danh mục cha</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                                <thead><tr><th>Tên phân loại</th><th>Danh mục cha</th><th>Mô tả</th><th>Thứ tự ưu tiên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -210,6 +210,7 @@
                     <small class="text-muted">Chỉ hiển thị các Danh mục nghiệp vụ có Loại là Chi.</small>
                 </div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="ec_description" rows="2" placeholder="Giải thích khi nào kế toán chọn phân loại này"></textarea></div>
+                <div class="form-group"><label>Thứ tự ưu tiên</label><input type="number" class="form-control" id="ec_sort_order" value="0" min="0" max="9999" step="1"><small class="text-muted">Số nhỏ hiển thị trước.</small></div>
                 <div class="custom-control custom-switch">
                     <input type="checkbox" class="custom-control-input" id="ec_is_active" checked>
                     <label class="custom-control-label" for="ec_is_active">Đang sử dụng trên phiếu chi</label>
@@ -239,6 +240,12 @@
                     <select class="form-control" id="fc_type"><option value="1">Thu</option><option value="2">Chi</option></select>
                 </div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="fc_description" rows="2"></textarea></div>
+                <div class="form-group"><label>Thứ tự ưu tiên</label><input type="number" class="form-control" id="fc_sort_order" value="0" min="0" max="9999" step="1"><small class="text-muted">Số nhỏ hiển thị trước trong cùng loại Thu hoặc Chi.</small></div>
+                <div class="custom-control custom-switch">
+                    <input type="checkbox" class="custom-control-input" id="fc_is_active" checked>
+                    <label class="custom-control-label" for="fc_is_active">Đang sử dụng trên phiếu thu/chi</label>
+                </div>
+                <small class="text-muted d-block mt-2">Ngừng sử dụng sẽ ẩn danh mục khi tạo phiếu mới nhưng vẫn giữ nguyên chứng từ cũ.</small>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
@@ -260,6 +267,7 @@
                 <input type="hidden" id="cb_id">
                 <div class="form-group"><label>Tên quỹ <span class="text-danger">*</span></label><input type="text" class="form-control" id="cb_name"></div>
                 <div class="form-group"><label>Mô tả</label><textarea class="form-control" id="cb_description" rows="2"></textarea></div>
+                <div class="form-group"><label>Thứ tự ưu tiên</label><input type="number" class="form-control" id="cb_sort_order" value="0" min="0" max="9999" step="1"><small class="text-muted">Số nhỏ hiển thị trước.</small></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
@@ -363,8 +371,10 @@
 function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
 function escapeCategoryHtml(value){ return $('<div>').text(value==null?'':String(value)).html(); }
 var SYSTEM_PRODUCT_CATEGORIES = [];
+var SYSTEM_FINANCE_CATEGORIES = [];
 var SYSTEM_EXPENSE_CATEGORIES = [];
 var EXPENSE_CLASSIFICATIONS = [];
+var SYSTEM_CASHBOOKS = [];
 var PRODUCT_CATEGORY_REQUIRES_PARENT = false;
 var SYSTEM_CATEGORY_FILTER_TIMER = null;
 
@@ -388,15 +398,30 @@ $(document).ready(function(){
         applySystemCategoryFilters();
     });
 
+    $(document).on('keydown', '.finance-master-sort-order', function(event){
+        if(event.key === 'Enter'){
+            event.preventDefault();
+            $(this).blur();
+        } else if(event.key === 'Escape'){
+            event.preventDefault();
+            $(this).val($(this).attr('data-original-value')).blur();
+        }
+    });
+    $(document).on('change', '.finance-master-sort-order', function(){
+        saveFinanceMasterSortOrder(this);
+    });
+
     // ===== DANH MỤC THU CHI =====
     $('#btn_add_finance_cat').click(function(){
         $('#fc_id').val(''); $('#fc_name').val(''); $('#fc_type').val('1'); $('#fc_description').val('');
+        $('#fc_sort_order').val('0');
+        $('#fc_is_active').prop('checked', true);
         $('#fc_modal_title').text('Thêm danh mục thu chi');
         $('#modal_finance_cat').modal('show');
     });
 
     $('#fc_save').click(function(){
-        var data = {id:$('#fc_id').val()||null, name:$('#fc_name').val(), type:parseInt($('#fc_type').val()), description:$('#fc_description').val()};
+        var data = {id:$('#fc_id').val()||null, name:$('#fc_name').val(), type:parseInt($('#fc_type').val()), description:$('#fc_description').val(), sort_order:$('#fc_sort_order').val(), is_active:$('#fc_is_active').prop('checked')};
         if(!data.name){alert('Vui lòng nhập tên');return;}
         $.ajax({url:'/api/finance-categories/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
@@ -411,6 +436,7 @@ $(document).ready(function(){
             return;
         }
         $('#ec_id, #ec_name, #ec_description').val('');
+        $('#ec_sort_order').val('0');
         renderExpenseParentCategoryOptions('');
         $('#ec_is_active').prop('checked', true);
         $('#ec_modal_title').text('Thêm phân loại chi');
@@ -423,6 +449,7 @@ $(document).ready(function(){
             name: ($('#ec_name').val() || '').trim(),
             parent_category_id: $('#ec_parent_category_id').val() || null,
             description: ($('#ec_description').val() || '').trim(),
+            sort_order: $('#ec_sort_order').val(),
             is_active: $('#ec_is_active').prop('checked')
         };
         if(!data.name){alert('Vui lòng nhập tên phân loại chi');return;}
@@ -440,12 +467,13 @@ $(document).ready(function(){
     // ===== QUỸ =====
     $('#btn_add_cashbook').click(function(){
         $('#cb_id').val(''); $('#cb_name').val(''); $('#cb_description').val('');
+        $('#cb_sort_order').val('0');
         $('#cb_modal_title').text('Thêm quỹ');
         $('#modal_cashbook').modal('show');
     });
 
     $('#cb_save').click(function(){
-        var data = {id:$('#cb_id').val()||null, name:$('#cb_name').val(), description:$('#cb_description').val()};
+        var data = {id:$('#cb_id').val()||null, name:$('#cb_name').val(), description:$('#cb_description').val(), sort_order:$('#cb_sort_order').val()};
         if(!data.name){alert('Vui lòng nhập tên');return;}
         $.ajax({url:'/api/cashbooks/save/', type:'POST', contentType:'application/json',
             headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify(data),
@@ -595,20 +623,94 @@ function applySystemCategoryFilters(){
     );
 }
 
+function financeMasterSortOrderInput(masterType, item){
+    var value = Number(item.sort_order || 0);
+    return '<div class="d-flex align-items-center justify-content-center" style="gap:5px;">'+
+        '<input type="number" class="form-control form-control-sm text-center finance-master-sort-order" '+
+        'data-master-type="'+masterType+'" data-id="'+item.id+'" data-original-value="'+value+'" '+
+        'value="'+value+'" min="0" max="9999" step="1" style="width:78px;" '+
+        'title="Nhập số rồi nhấn Enter hoặc bấm ra ngoài để lưu">'+
+        '<span class="finance-master-sort-status small text-muted" aria-live="polite"></span></div>';
+}
+
+function reloadFinanceMaster(masterType){
+    if(masterType === 'finance_category') loadFinanceCats();
+    else if(masterType === 'expense_classification') loadExpenseClassifications();
+    else if(masterType === 'cashbook') loadCashbooks();
+}
+
+function saveFinanceMasterSortOrder(input){
+    var $input = $(input);
+    if($input.prop('disabled')) return;
+    var originalValue = String($input.attr('data-original-value') || '0');
+    var rawValue = String($input.val() == null ? '' : $input.val()).trim();
+    if(!/^\d+$/.test(rawValue) || Number(rawValue) > 9999){
+        $input.val(originalValue);
+        alert('Thứ tự ưu tiên phải là số nguyên từ 0 đến 9999.');
+        return;
+    }
+    var normalizedValue = String(Number(rawValue));
+    if(normalizedValue === originalValue){
+        $input.val(normalizedValue);
+        return;
+    }
+
+    var masterType = String($input.attr('data-master-type') || '');
+    var $status = $input.siblings('.finance-master-sort-status');
+    $input.prop('disabled', true);
+    $status.html('<i class="fas fa-spinner fa-spin" title="Đang lưu"></i>');
+    $.ajax({
+        url:'{% url "api_update_finance_master_sort_order" %}',
+        type:'POST',
+        contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'},
+        data:JSON.stringify({
+            master_type: masterType,
+            id: $input.attr('data-id'),
+            sort_order: normalizedValue
+        }),
+        success:function(response){
+            if(response.status !== 'ok'){
+                $input.val(originalValue);
+                alert(response.message || 'Không lưu được thứ tự ưu tiên.');
+                return;
+            }
+            $input.attr('data-original-value', normalizedValue).val(normalizedValue);
+            $status.html('<i class="fas fa-check text-success" title="Đã lưu"></i>');
+            setTimeout(function(){ reloadFinanceMaster(masterType); }, 350);
+        },
+        error:function(xhr){
+            $input.val(originalValue);
+            var message = xhr.responseJSON && xhr.responseJSON.message
+                ? xhr.responseJSON.message
+                : 'Không lưu được thứ tự ưu tiên.';
+            alert(message);
+        },
+        complete:function(){
+            $input.prop('disabled', false);
+        }
+    });
+}
+
 // ===== LOAD DATA =====
 function loadFinanceCats(){
     $.get('/api/finance-categories/', function(res){
-        SYSTEM_EXPENSE_CATEGORIES = (res.data || []).filter(function(item){
+        SYSTEM_FINANCE_CATEGORIES = res.data || [];
+        SYSTEM_EXPENSE_CATEGORIES = SYSTEM_FINANCE_CATEGORIES.filter(function(item){
             return Number(item.type) === 2 && item.is_active;
         });
         renderExpenseParentCategoryOptions($('#ec_parent_category_id').val() || '');
         var h='';
-        res.data.forEach(function(d){
+        SYSTEM_FINANCE_CATEGORIES.forEach(function(d){
             var typeLabel = d.type === 1 ? '<span class="badge badge-success">Thu</span>' : '<span class="badge badge-danger">Chi</span>';
-            h += '<tr><td>'+d.name+'</td><td>'+typeLabel+'</td>'+
-                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editFC('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\','+d.type+',\''+( d.description||'').replace(/'/g,"\\'")+ '\')">Sửa</button></div></td></tr>';
+            var statusLabel = d.is_active
+                ? '<span class="badge badge-success">Đang sử dụng</span>'
+                : '<span class="badge badge-secondary">Ngừng sử dụng</span>';
+            h += '<tr><td>'+escapeCategoryHtml(d.name)+'</td><td>'+typeLabel+'</td><td>'+financeMasterSortOrderInput('finance_category', d)+'</td><td>'+statusLabel+'</td>'+
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editFC('+d.id+')">Sửa</button> '+
+                '<button class="btn btn-xs btn-outline-danger" onclick="deleteFinanceCategory('+d.id+')">Xóa</button></div></td></tr>';
         });
-        $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#finance_cat_tbl tbody').html(h || '<tr><td colspan="5" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         applySystemCategoryFilters();
     });
 }
@@ -634,15 +736,15 @@ function loadExpenseClassifications(){
                 : '<span class="badge badge-warning">Chưa gán</span>';
             h += '<tr><td><strong>'+escapeCategoryHtml(d.name)+'</strong></td>'+
                 '<td>'+parentLabel+'</td>'+
-                '<td>'+escapeCategoryHtml(d.description||'')+'</td><td>'+statusLabel+'</td>'+
+                '<td>'+escapeCategoryHtml(d.description||'')+'</td><td>'+financeMasterSortOrderInput('expense_classification', d)+'</td><td>'+statusLabel+'</td>'+
                 '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editExpenseClassification('+d.id+')">Sửa</button> '+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteExpenseClassification('+d.id+')">Xóa</button></div></td></tr>';
         });
-        $('#expense_classification_tbl tbody').html(h || '<tr><td colspan="5" class="text-center text-muted">Chưa có phân loại chi</td></tr>');
+        $('#expense_classification_tbl tbody').html(h || '<tr><td colspan="6" class="text-center text-muted">Chưa có phân loại chi</td></tr>');
         applySystemCategoryFilters();
     }).fail(function(xhr){
         var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Không tải được phân loại chi.';
-        $('#expense_classification_tbl tbody').html('<tr><td colspan="5" class="text-center text-danger">'+escapeCategoryHtml(message)+'</td></tr>');
+        $('#expense_classification_tbl tbody').html('<tr><td colspan="6" class="text-center text-danger">'+escapeCategoryHtml(message)+'</td></tr>');
     });
 }
 
@@ -653,6 +755,7 @@ function editExpenseClassification(id){
     $('#ec_name').val(item.name);
     renderExpenseParentCategoryOptions(item.parent_category_id || '');
     $('#ec_description').val(item.description || '');
+    $('#ec_sort_order').val(item.sort_order || 0);
     $('#ec_is_active').prop('checked', !!item.is_active);
     $('#ec_modal_title').text('Sửa phân loại chi');
     $('#modal_expense_classification').modal('show');
@@ -674,11 +777,12 @@ function deleteExpenseClassification(id){
 function loadCashbooks(){
     $.get('/api/cashbooks/', function(res){
         var h='';
-        res.data.forEach(function(d){
-            h += '<tr><td>'+d.name+'</td><td class="text-right">'+fmt(d.balance)+'đ</td>'+
-                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editCB('+d.id+',\''+d.name.replace(/'/g,"\\'")+'\',\''+(d.description||'').replace(/'/g,"\\'")+'\')">Sửa</button></div></td></tr>';
+        SYSTEM_CASHBOOKS = res.data || [];
+        SYSTEM_CASHBOOKS.forEach(function(d){
+            h += '<tr><td>'+escapeCategoryHtml(d.name)+'</td><td class="text-right">'+fmt(d.balance)+'đ</td><td>'+financeMasterSortOrderInput('cashbook', d)+'</td>'+
+                '<td><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick="editCB('+d.id+')">Sửa</button></div></td></tr>';
         });
-        $('#cashbook_cat_tbl tbody').html(h || '<tr><td colspan="3" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        $('#cashbook_cat_tbl tbody').html(h || '<tr><td colspan="4" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
         applySystemCategoryFilters();
     });
 }
@@ -740,14 +844,34 @@ function loadWarehouseCats(){
 }
 
 // ===== EDIT FUNCTIONS =====
-function editFC(id, name, type, desc){
-    $('#fc_id').val(id); $('#fc_name').val(name); $('#fc_type').val(type); $('#fc_description').val(desc);
+function editFC(id){
+    var item = SYSTEM_FINANCE_CATEGORIES.find(function(row){ return Number(row.id) === Number(id); });
+    if(!item) return;
+    $('#fc_id').val(item.id); $('#fc_name').val(item.name); $('#fc_type').val(item.type); $('#fc_description').val(item.description || '');
+    $('#fc_sort_order').val(item.sort_order || 0);
+    $('#fc_is_active').prop('checked', !!item.is_active);
     $('#fc_modal_title').text('Sửa danh mục thu chi');
     $('#modal_finance_cat').modal('show');
 }
 
-function editCB(id, name, desc){
-    $('#cb_id').val(id); $('#cb_name').val(name); $('#cb_description').val(desc);
+function deleteFinanceCategory(id){
+    if(!confirm(
+        'Bạn có chắc muốn xóa danh mục thu chi này?\n\n' +
+        'Nếu đã phát sinh phiếu thu/chi, phân loại con hoặc kế hoạch, hệ thống sẽ không xóa; ' +
+        'bạn có thể Sửa và chuyển sang Ngừng sử dụng.'
+    )) return;
+    $.ajax({url:'{% url "api_delete_finance_category" %}', type:'POST', contentType:'application/json',
+        headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify({id:id}),
+        success:function(r){alert(r.message); if(r.status==='ok') loadFinanceCats();},
+        error:function(xhr){alert(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Không xóa được danh mục thu chi.');}
+    });
+}
+
+function editCB(id){
+    var item = SYSTEM_CASHBOOKS.find(function(row){ return Number(row.id) === Number(id); });
+    if(!item) return;
+    $('#cb_id').val(item.id); $('#cb_name').val(item.name); $('#cb_description').val(item.description || '');
+    $('#cb_sort_order').val(item.sort_order || 0);
     $('#cb_modal_title').text('Sửa quỹ');
     $('#modal_cashbook').modal('show');
 }

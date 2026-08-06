@@ -2450,8 +2450,18 @@ def _apply_goods_receipt_list_filters(queryset, request):
     supplier_id = _to_optional_positive_int(request.GET.get('supplier_id'))
     warehouse_id = _to_optional_positive_int(request.GET.get('warehouse_id'))
     status = (request.GET.get('status') or '').strip()
+    return_state = (request.GET.get('return_state') or '').strip()
     date_from = _parse_list_filter_date(request.GET.get('date_from'))
     date_to = _parse_list_filter_date(request.GET.get('date_to'))
+
+    completed_returns = PurchaseReturn.all_objects.filter(
+        goods_receipt_id=OuterRef('pk'),
+        status=1,
+        is_deleted=False,
+    )
+    queryset = queryset.annotate(
+        has_completed_purchase_return=Exists(completed_returns),
+    )
 
     if search:
         queryset = queryset.filter(
@@ -2469,6 +2479,10 @@ def _apply_goods_receipt_list_filters(queryset, request):
         queryset = queryset.filter(warehouse_id=warehouse_id)
     if status in {'0', '1', '2'}:
         queryset = queryset.filter(status=int(status))
+    if return_state == 'returned':
+        queryset = queryset.filter(has_completed_purchase_return=True)
+    elif return_state == 'not_returned':
+        queryset = queryset.filter(has_completed_purchase_return=False)
     if date_from:
         queryset = queryset.filter(receipt_date__gte=date_from)
     if date_to:
@@ -2513,6 +2527,9 @@ def _serialize_goods_receipt_list(receipts):
             'total_amount': float(total_amount),
             'status': r.status,
             'status_display': r.get_status_display(),
+            'has_purchase_return': bool(
+                getattr(r, 'has_completed_purchase_return', False)
+            ),
             'note': r.note or '',
             'items': items,
         })
@@ -4726,6 +4743,7 @@ def export_goods_receipts_excel(request):
         {'key': 'warehouse', 'label': 'Kho nhập', 'width': 16},
         {'key': 'total_quantity', 'label': 'Số lượng', 'width': 10},
         {'key': 'total_amount', 'label': 'Tổng tiền', 'width': 16},
+        {'key': 'return_state', 'label': 'Trả hàng', 'width': 14},
         {'key': 'status', 'label': 'Trạng thái', 'width': 12},
         {'key': 'created_by', 'label': 'Người tạo', 'width': 14},
         {'key': 'note', 'label': 'Ghi chú', 'width': 24},
@@ -4746,6 +4764,7 @@ def export_goods_receipts_excel(request):
             'warehouse': r.warehouse.name if r.warehouse else '',
             'total_quantity': float(total_quantity),
             'total_amount': float(receipt_total),
+            'return_state': 'Đã trả hàng' if r.has_completed_purchase_return else 'Chưa trả hàng',
             'status': r.get_status_display(),
             'created_by': r.created_by.get_full_name() or r.created_by.username if r.created_by else '',
             'note': r.note or '',

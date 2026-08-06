@@ -3144,6 +3144,96 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(payload['meta']['total_filtered_count'], 1)
         self.assertEqual(payload['meta']['total_all_count'], 2)
 
+    def test_goods_receipt_list_filters_completed_purchase_returns(self):
+        returned_receipt, _ = self._create_completed_goods_receipt(
+            code='P-FILTER-RETURNED',
+        )
+        draft_return_receipt, _ = self._create_completed_goods_receipt(
+            code='P-FILTER-DRAFT-RETURN',
+        )
+        not_returned_receipt, _ = self._create_completed_goods_receipt(
+            code='P-FILTER-NOT-RETURNED',
+        )
+        deleted_return_receipt, _ = self._create_completed_goods_receipt(
+            code='P-FILTER-DELETED-RETURN',
+        )
+        PurchaseReturn.objects.create(
+            code='PTN-FILTER-COMPLETED',
+            goods_receipt=returned_receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            return_date=date.today(),
+            status=1,
+            reason='Trả hàng hoàn thành',
+            created_by=self.user,
+        )
+        PurchaseReturn.objects.create(
+            code='PTN-FILTER-DRAFT',
+            goods_receipt=draft_return_receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            return_date=date.today(),
+            status=0,
+            reason='Phiếu trả còn nháp',
+            created_by=self.user,
+        )
+        deleted_return = PurchaseReturn.objects.create(
+            code='PTN-FILTER-DELETED',
+            goods_receipt=deleted_return_receipt,
+            supplier=self.supplier,
+            warehouse=self.warehouse_a,
+            return_date=date.today(),
+            status=1,
+            reason='Phiếu trả đã xóa',
+            created_by=self.user,
+        )
+        deleted_return.delete()
+
+        page_response = self.client.get(reverse('goods_receipt_tbl'))
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'id="goods_receipt_filter_return_state"')
+        self.assertContains(page_response, 'value="">Tất cả phiếu nhập')
+        self.assertContains(page_response, 'value="returned">Đơn nhập bị trả lại')
+        self.assertNotContains(page_response, 'value="not_returned"')
+
+        returned_response = self.client.get(reverse('api_get_goods_receipts'), {
+            'return_state': 'returned',
+            'page_size': 10,
+        })
+        returned_payload = returned_response.json()
+        self.assertEqual(
+            [row['id'] for row in returned_payload['data']],
+            [returned_receipt.id],
+        )
+        self.assertTrue(returned_payload['data'][0]['has_purchase_return'])
+        self.assertEqual(returned_payload['meta']['total_filtered_count'], 1)
+        self.assertEqual(returned_payload['meta']['total_all_count'], 4)
+
+        not_returned_response = self.client.get(reverse('api_get_goods_receipts'), {
+            'return_state': 'not_returned',
+            'page_size': 10,
+        })
+        self.assertEqual(
+            {row['id'] for row in not_returned_response.json()['data']},
+            {
+                draft_return_receipt.id,
+                not_returned_receipt.id,
+                deleted_return_receipt.id,
+            },
+        )
+
+        export_response = self.client.get(reverse('export_goods_receipts_excel'), {
+            'return_state': 'returned',
+        })
+        workbook = openpyxl.load_workbook(BytesIO(export_response.content), data_only=True)
+        sheet = workbook.active
+        headers = [cell.value for cell in sheet[4]]
+        code_column = headers.index('Mã phiếu') + 1
+        return_column = headers.index('Trả hàng') + 1
+        self.assertEqual(sheet.cell(row=5, column=code_column).value, returned_receipt.code)
+        self.assertEqual(sheet.cell(row=5, column=return_column).value, 'Đã trả hàng')
+        self.assertEqual(sheet.max_row, 6)
+
     def test_purchase_order_list_filters_supplier_status_date_and_product(self):
         target_product = Product.objects.create(
             store=self.store,

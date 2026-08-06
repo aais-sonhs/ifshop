@@ -48,6 +48,15 @@
                     </select>
                 </div>
             </div>
+            <div class="col-xl-2 col-md-4">
+                <div class="form-group mb-2">
+                    <label for="goods_receipt_filter_return_state">Trả hàng</label>
+                    <select class="form-control form-control-sm" id="goods_receipt_filter_return_state">
+                        <option value="">Tất cả phiếu nhập</option>
+                        <option value="returned">Đơn nhập bị trả lại</option>
+                    </select>
+                </div>
+            </div>
             <div class="col-xl-3 col-md-4">
                 <div class="form-group mb-2">
                     <label>Ngày nhập</label>
@@ -272,11 +281,11 @@ $(document).ready(function(){
         clearTimeout(GOODS_RECEIPT_FILTER_TIMER);
         applyGoodsReceiptFilters();
     });
-    $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status, #goods_receipt_date_from, #goods_receipt_date_to').change(applyGoodsReceiptFilters);
+    $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status, #goods_receipt_filter_return_state, #goods_receipt_date_from, #goods_receipt_date_to').change(applyGoodsReceiptFilters);
     $('#btn_clear_goods_receipt_filters').click(function(){
         clearTimeout(GOODS_RECEIPT_FILTER_TIMER);
         $('#goods_receipt_search, #goods_receipt_date_from, #goods_receipt_date_to').val('');
-        $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status').val('').trigger('change.select2');
+        $('#goods_receipt_filter_supplier, #goods_receipt_filter_warehouse, #goods_receipt_filter_status, #goods_receipt_filter_return_state').val('').trigger('change.select2');
         applyGoodsReceiptFilters();
     });
     $('#btn_export_goods_receipts').click(function(){
@@ -1069,6 +1078,7 @@ function getGoodsReceiptFilters(){
         supplier_id: $('#goods_receipt_filter_supplier').val() || '',
         warehouse_id: $('#goods_receipt_filter_warehouse').val() || '',
         status: $('#goods_receipt_filter_status').val() || '',
+        return_state: $('#goods_receipt_filter_return_state').val() || '',
         date_from: $('#goods_receipt_date_from').val() || '',
         date_to: $('#goods_receipt_date_to').val() || ''
     };
@@ -1154,8 +1164,11 @@ function loadData(){
             if(d.status === 0) statusBadge = '<span class="badge badge-secondary">Nháp</span>';
             else if(d.status === 1) statusBadge = '<span class="badge badge-success">Hoàn thành</span>';
             else statusBadge = '<span class="badge badge-danger">Hủy</span>';
+            var returnBadge = d.has_purchase_return
+                ? '<span class="badge badge-warning d-block mt-1">Đã trả hàng</span>'
+                : '';
 
-            h += '<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
+            h += '<tr><td>'+(startIndex+i)+'</td><td>'+d.code+returnBadge+'</td><td>'+d.supplier+'</td><td>'+d.warehouse+'</td>'+
                 '<td>'+fmtDt(d.receipt_date, d.created_at)+'</td><td class="text-center">'+fmt(d.total_quantity)+'</td><td class="text-right">'+fmtD(d.total_amount)+'</td>'+
                 '<td class="text-center">'+statusBadge+'</td>'+
                 '<td class="text-center"><div class="btn-action-group"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button> '+

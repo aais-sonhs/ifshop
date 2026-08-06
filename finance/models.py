@@ -22,6 +22,7 @@ class FinanceCategory(SoftDeleteModel):
     name = models.CharField(max_length=255, verbose_name='Tên danh mục')
     type = models.IntegerField(choices=TYPE_CHOICES, verbose_name='Loại')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự ưu tiên')
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -29,7 +30,7 @@ class FinanceCategory(SoftDeleteModel):
         db_table = 'finance_categories'
         verbose_name = 'Danh mục thu chi'
         verbose_name_plural = 'Danh mục thu chi'
-        ordering = ['type', 'name']
+        ordering = ['type', 'sort_order', 'name', 'id']
 
     def __str__(self):
         return f"{'Thu' if self.type == 1 else 'Chi'} - {self.name}"
@@ -55,6 +56,7 @@ class ExpenseClassification(SoftDeleteModel):
     )
     name = models.CharField(max_length=255, verbose_name='Tên phân loại chi')
     description = models.TextField(blank=True, default='', verbose_name='Mô tả')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự ưu tiên')
     is_active = models.BooleanField(default=True, verbose_name='Đang sử dụng')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -63,7 +65,7 @@ class ExpenseClassification(SoftDeleteModel):
         db_table = 'expense_classifications'
         verbose_name = 'Phân loại chi'
         verbose_name_plural = 'Phân loại chi'
-        ordering = ['name', 'id']
+        ordering = ['sort_order', 'name', 'id']
 
     def __str__(self):
         return self.name
@@ -81,6 +83,7 @@ class CashBook(SoftDeleteModel):
     )
     name = models.CharField(max_length=255, verbose_name='Tên quỹ')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
+    sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự ưu tiên')
     balance = models.DecimalField(max_digits=18, decimal_places=0, default=0, verbose_name='Số dư')
     minimum_balance = models.DecimalField(
         max_digits=18,
@@ -96,7 +99,7 @@ class CashBook(SoftDeleteModel):
         db_table = 'cash_books'
         verbose_name = 'Quỹ'
         verbose_name_plural = 'Quỹ'
-        ordering = ['name']
+        ordering = ['sort_order', 'name', 'id']
 
     def __str__(self):
         return self.name

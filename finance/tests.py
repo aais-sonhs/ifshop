@@ -457,8 +457,512 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'Tự lấy từ tổng số lượng × đơn giá của phiếu nhập')
         self.assertContains(response, 'id="inp_expense_classification_id"')
         self.assertContains(response, "$('#inp_status').val('1')")
-        self.assertNotContains(response, 'btn-approve-payment')
-        self.assertNotContains(response, '/api/payments/approve/')
+        self.assertContains(response, 'btn-approve-payment')
+        self.assertContains(response, '/api/payments/approve/')
+        self.assertContains(response, 'd-inline-flex align-items-center flex-nowrap text-nowrap')
+        self.assertContains(response, 'btn-action-group d-inline-flex flex-nowrap')
+        self.assertContains(response, 'style="gap:6px;"')
+
+    def test_quick_approve_payment_uses_priority_defaults_and_only_deducts_once(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        later_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi ưu tiên sau khi duyệt',
+            type=2,
+            sort_order=20,
+        )
+        priority_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi ưu tiên khi duyệt',
+            type=2,
+            sort_order=2,
+        )
+        later_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=priority_category,
+            name='Phân loại ưu tiên sau khi duyệt',
+            sort_order=30,
+        )
+        priority_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=priority_category,
+            name='Phân loại ưu tiên khi duyệt',
+            sort_order=3,
+        )
+        inactive_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ ngừng sử dụng',
+            sort_order=0,
+            balance=Decimal('5000'),
+            is_active=False,
+        )
+        later_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ ưu tiên sau khi duyệt',
+            sort_order=40,
+            balance=Decimal('5000'),
+        )
+        priority_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ ưu tiên khi duyệt',
+            sort_order=4,
+            balance=Decimal('5000'),
+        )
+        payment = Payment.objects.create(
+            code='PC-DUYET-UU-TIEN-001',
+            store=self.store,
+            amount=Decimal('1200'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        priority_cashbook.refresh_from_db()
+        later_cashbook.refresh_from_db()
+        inactive_cashbook.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.category, priority_category)
+        self.assertEqual(payment.expense_classification, priority_classification)
+        self.assertEqual(payment.cash_book, priority_cashbook)
+        self.assertEqual(payment.approved_by, self.user)
+        self.assertIsNotNone(payment.approved_at)
+        self.assertEqual(priority_cashbook.balance, Decimal('3800'))
+        self.assertEqual(later_cashbook.balance, Decimal('5000'))
+        self.assertEqual(inactive_cashbook.balance, Decimal('5000'))
+        self.assertNotEqual(payment.category, later_category)
+        self.assertNotEqual(payment.expense_classification, later_classification)
+
+        second_response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(second_response.json()['status'], 'error')
+        self.assertIn('Nháp', second_response.json()['message'])
+        priority_cashbook.refresh_from_db()
+        self.assertEqual(priority_cashbook.balance, Decimal('3800'))
+
+    def test_quick_approve_preserves_choices_and_recalculates_linked_receipt_amount(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        priority_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi mặc định',
+            type=2,
+            sort_order=1,
+        )
+        selected_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi đã chọn',
+            type=2,
+            sort_order=20,
+        )
+        selected_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=selected_category,
+            name='Phân loại đã chọn',
+            sort_order=20,
+        )
+        priority_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ mặc định',
+            sort_order=1,
+            balance=Decimal('5000'),
+        )
+        selected_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ đã chọn',
+            sort_order=20,
+            balance=Decimal('5000'),
+        )
+        goods_receipt = self._create_goods_receipt('PN-DUYET-NHANH-001')
+        goods_receipt.total_amount = Decimal('1500')
+        goods_receipt.save(update_fields=['total_amount'])
+        payment = Payment.objects.create(
+            code='PC-DUYET-NHANH-LINKED-001',
+            store=self.store,
+            category=selected_category,
+            expense_classification=selected_classification,
+            cash_book=selected_cashbook,
+            supplier=self.supplier,
+            goods_receipt=goods_receipt,
+            amount=Decimal('900'),
+            promotion_mode='amount',
+            promotion_amount=Decimal('100'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        selected_cashbook.refresh_from_db()
+        priority_cashbook.refresh_from_db()
+        self.assertEqual(payment.category, selected_category)
+        self.assertEqual(payment.expense_classification, selected_classification)
+        self.assertEqual(payment.cash_book, selected_cashbook)
+        self.assertNotEqual(payment.category, priority_category)
+        self.assertEqual(payment.amount, Decimal('1400'))
+        self.assertEqual(selected_cashbook.balance, Decimal('3600'))
+        self.assertEqual(priority_cashbook.balance, Decimal('5000'))
+
+    def test_finance_category_delete_and_deactivate_flow(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        page_response = self.client.get(reverse('category_tbl'))
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, 'id="fc_is_active"')
+        self.assertContains(page_response, 'deleteFinanceCategory')
+        self.assertContains(page_response, 'Ngừng sử dụng')
+
+        unused_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Danh mục chưa phát sinh',
+            type=2,
+        )
+        delete_unused_response = self.client.post(
+            reverse('api_delete_finance_category'),
+            data=json.dumps({'id': unused_category.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_unused_response.json()['status'], 'ok')
+        self.assertFalse(
+            FinanceCategory.objects.filter(id=unused_category.id).exists(),
+        )
+        self.assertTrue(
+            FinanceCategory.all_objects.filter(id=unused_category.id).exists(),
+        )
+
+        used_expense_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Danh mục chi đã phát sinh',
+            type=2,
+        )
+        payment = Payment.objects.create(
+            code='PC-DANH-MUC-DA-DUNG',
+            store=self.store,
+            category=used_expense_category,
+            amount=Decimal('100000'),
+            payment_date=date.today(),
+            created_by=self.user,
+        )
+        payment.delete()
+        ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=used_expense_category,
+            name='Phân loại con đã dùng',
+        )
+        plan = FinancialPlan.objects.create(
+            code='KH-DANH-MUC-DA-DUNG',
+            name='Kế hoạch kiểm tra xóa danh mục',
+            brand=self.brand,
+            store=self.store,
+            start_date=date.today(),
+            end_date=date.today(),
+            created_by=self.user,
+        )
+        plan_item = FinancialPlanItem.objects.create(
+            plan=plan,
+            direction=2,
+            category=used_expense_category,
+            planned_amount=Decimal('100000'),
+        )
+        plan_item.delete()
+
+        delete_used_expense_response = self.client.post(
+            reverse('api_delete_finance_category'),
+            data=json.dumps({'id': used_expense_category.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_used_expense_response.json()['status'], 'error')
+        self.assertIn('phiếu chi', delete_used_expense_response.json()['message'])
+        self.assertIn('phân loại chi', delete_used_expense_response.json()['message'])
+        self.assertIn('khoản kế hoạch', delete_used_expense_response.json()['message'])
+        self.assertIn('Ngừng sử dụng', delete_used_expense_response.json()['message'])
+
+        deactivate_response = self.client.post(
+            reverse('api_save_finance_category'),
+            data=json.dumps({
+                'id': used_expense_category.id,
+                'name': used_expense_category.name,
+                'type': used_expense_category.type,
+                'description': used_expense_category.description,
+                'is_active': False,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(deactivate_response.json()['status'], 'ok')
+        used_expense_category.refresh_from_db()
+        self.assertFalse(used_expense_category.is_active)
+
+        used_income_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Danh mục thu đã phát sinh',
+            type=1,
+        )
+        receipt = Receipt.objects.create(
+            code='PT-DANH-MUC-DA-DUNG',
+            store=self.store,
+            category=used_income_category,
+            amount=Decimal('100000'),
+            receipt_date=date.today(),
+            created_by=self.user,
+        )
+        receipt.delete()
+        delete_used_income_response = self.client.post(
+            reverse('api_delete_finance_category'),
+            data=json.dumps({'id': used_income_category.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_used_income_response.json()['status'], 'error')
+        self.assertIn('phiếu thu', delete_used_income_response.json()['message'])
+
+    def test_finance_master_priority_order(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+
+        page_response = self.client.get(reverse('category_tbl'))
+        self.assertEqual(page_response.status_code, 200)
+        for control_id in ('fc_sort_order', 'cb_sort_order', 'ec_sort_order'):
+            self.assertContains(page_response, f'id="{control_id}"')
+        self.assertContains(page_response, 'Thứ tự ưu tiên')
+        self.assertContains(page_response, 'Số nhỏ hiển thị trước')
+        self.assertContains(page_response, 'finance-master-sort-order')
+        self.assertContains(page_response, "financeMasterSortOrderInput('finance_category', d)")
+        self.assertContains(page_response, "financeMasterSortOrderInput('expense_classification', d)")
+        self.assertContains(page_response, "financeMasterSortOrderInput('cashbook', d)")
+        self.assertContains(page_response, reverse('api_update_finance_master_sort_order'))
+
+        later_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi ưu tiên sau',
+            type=2,
+            sort_order=20,
+        )
+        earlier_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi ưu tiên trước',
+            type=2,
+            sort_order=5,
+        )
+        category_response = self.client.get(reverse('api_get_finance_categories'))
+        category_rows = [
+            row for row in category_response.json()['data']
+            if row['id'] in {later_category.id, earlier_category.id}
+        ]
+        self.assertEqual(
+            [row['id'] for row in category_rows],
+            [earlier_category.id, later_category.id],
+        )
+        self.assertEqual([row['sort_order'] for row in category_rows], [5, 20])
+
+        update_category_response = self.client.post(
+            reverse('api_save_finance_category'),
+            data=json.dumps({
+                'id': later_category.id,
+                'name': later_category.name,
+                'type': later_category.type,
+                'description': '',
+                'sort_order': '2',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update_category_response.json()['status'], 'ok')
+        later_category.refresh_from_db()
+        self.assertEqual(later_category.sort_order, 2)
+
+        later_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=earlier_category,
+            name='Phân loại ưu tiên sau',
+            sort_order=30,
+        )
+        earlier_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=earlier_category,
+            name='Phân loại ưu tiên trước',
+            sort_order=3,
+        )
+        classification_response = self.client.get(
+            reverse('api_get_expense_classifications'),
+        )
+        classification_rows = [
+            row for row in classification_response.json()['data']
+            if row['id'] in {later_classification.id, earlier_classification.id}
+        ]
+        self.assertEqual(
+            [row['id'] for row in classification_rows],
+            [earlier_classification.id, later_classification.id],
+        )
+        self.assertEqual(
+            [row['sort_order'] for row in classification_rows],
+            [3, 30],
+        )
+
+        update_classification_response = self.client.post(
+            reverse('api_save_expense_classification'),
+            data=json.dumps({
+                'id': later_classification.id,
+                'name': later_classification.name,
+                'parent_category_id': earlier_category.id,
+                'description': '',
+                'sort_order': '1',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update_classification_response.json()['status'], 'ok')
+        later_classification.refresh_from_db()
+        self.assertEqual(later_classification.sort_order, 1)
+
+        later_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ ưu tiên sau',
+            sort_order=40,
+        )
+        earlier_cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ ưu tiên trước',
+            sort_order=4,
+        )
+        cashbook_response = self.client.get(reverse('api_get_cashbooks'))
+        cashbook_rows = [
+            row for row in cashbook_response.json()['data']
+            if row['id'] in {later_cashbook.id, earlier_cashbook.id}
+        ]
+        self.assertEqual(
+            [row['id'] for row in cashbook_rows],
+            [earlier_cashbook.id, later_cashbook.id],
+        )
+        self.assertEqual([row['sort_order'] for row in cashbook_rows], [4, 40])
+
+        update_cashbook_response = self.client.post(
+            reverse('api_save_cashbook'),
+            data=json.dumps({
+                'id': later_cashbook.id,
+                'name': later_cashbook.name,
+                'description': '',
+                'sort_order': '0',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update_cashbook_response.json()['status'], 'ok')
+        later_cashbook.refresh_from_db()
+        self.assertEqual(later_cashbook.sort_order, 0)
+
+        invalid_priority_response = self.client.post(
+            reverse('api_save_cashbook'),
+            data=json.dumps({
+                'id': earlier_cashbook.id,
+                'name': earlier_cashbook.name,
+                'sort_order': '-1',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(invalid_priority_response.json()['status'], 'error')
+        self.assertIn('từ 0 đến 9999', invalid_priority_response.json()['message'])
+        earlier_cashbook.refresh_from_db()
+        self.assertEqual(earlier_cashbook.sort_order, 4)
+
+        payment_page_response = self.client.get(reverse('payment_tbl'))
+        payment_page_html = payment_page_response.content.decode()
+        self.assertLess(
+            payment_page_html.index(later_category.name),
+            payment_page_html.index(earlier_category.name),
+        )
+        self.assertLess(
+            payment_page_html.index(later_classification.name),
+            payment_page_html.index(earlier_classification.name),
+        )
+        self.assertLess(
+            payment_page_html.index(later_cashbook.name),
+            payment_page_html.index(earlier_cashbook.name),
+        )
+
+    def test_inline_finance_master_priority_updates_only_sort_order(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi giữ nguyên tên',
+            type=2,
+            description='Giữ nguyên mô tả danh mục',
+            sort_order=10,
+        )
+        classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=category,
+            name='Phân loại giữ nguyên tên',
+            description='Giữ nguyên mô tả phân loại',
+            sort_order=20,
+        )
+        cashbook = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ giữ nguyên tên',
+            description='Giữ nguyên mô tả quỹ',
+            sort_order=30,
+            balance=Decimal('12345'),
+        )
+
+        for master_type, item, new_sort_order in (
+            ('finance_category', category, 3),
+            ('expense_classification', classification, 2),
+            ('cashbook', cashbook, 1),
+        ):
+            response = self.client.post(
+                reverse('api_update_finance_master_sort_order'),
+                data=json.dumps({
+                    'master_type': master_type,
+                    'id': item.id,
+                    'sort_order': new_sort_order,
+                    'name': 'Tên không được phép ghi đè',
+                }),
+                content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+            item.refresh_from_db()
+            self.assertEqual(item.sort_order, new_sort_order)
+
+        self.assertEqual(category.name, 'Chi giữ nguyên tên')
+        self.assertEqual(category.description, 'Giữ nguyên mô tả danh mục')
+        self.assertEqual(classification.name, 'Phân loại giữ nguyên tên')
+        self.assertEqual(classification.description, 'Giữ nguyên mô tả phân loại')
+        self.assertEqual(classification.parent_category, category)
+        self.assertEqual(cashbook.name, 'Quỹ giữ nguyên tên')
+        self.assertEqual(cashbook.description, 'Giữ nguyên mô tả quỹ')
+        self.assertEqual(cashbook.balance, Decimal('12345'))
+
+        invalid_response = self.client.post(
+            reverse('api_update_finance_master_sort_order'),
+            data=json.dumps({
+                'master_type': 'cashbook',
+                'id': cashbook.id,
+                'sort_order': '-1',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(invalid_response.json()['status'], 'error')
+        cashbook.refresh_from_db()
+        self.assertEqual(cashbook.sort_order, 1)
 
     def test_expense_classification_settings_and_payment_flow(self):
         self.brand.owner = self.user

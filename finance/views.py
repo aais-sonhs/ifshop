@@ -1759,6 +1759,140 @@ def api_save_payment(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
+def _apply_payment_priority_defaults(request, payment):
+    """Bổ sung danh mục/phân loại/quỹ còn trống theo thứ tự ưu tiên đã cài đặt."""
+    if payment.expense_classification_id and not payment.category_id:
+        current_classification = _finance_master_for_user(
+            ExpenseClassification.objects.select_related('parent_category'), request,
+        ).filter(id=payment.expense_classification_id).first()
+        if current_classification and current_classification.parent_category_id:
+            payment.category_id = current_classification.parent_category_id
+
+    if not payment.category_id:
+        payment.category = _finance_master_for_user(
+            FinanceCategory.objects.filter(type=2, is_active=True), request,
+        ).first()
+        if not payment.category:
+            raise ValueError(
+                'Chưa có Danh mục chi đang sử dụng. Vui lòng cấu hình danh mục trước khi duyệt.'
+            )
+
+    if not payment.expense_classification_id:
+        payment.expense_classification = _finance_master_for_user(
+            ExpenseClassification.objects.filter(
+                parent_category_id=payment.category_id,
+                is_active=True,
+            ),
+            request,
+        ).first()
+
+    if not payment.cash_book_id:
+        payment.cash_book = _finance_master_for_user(
+            CashBook.objects.filter(is_active=True), request,
+        ).first()
+        if not payment.cash_book:
+            raise ValueError(
+                'Chưa có Quỹ chi đang hoạt động. Vui lòng cấu hình quỹ trước khi duyệt.'
+            )
+
+
+@login_required(login_url="/login/")
+def api_approve_payment(request):
+    """Duyệt nhanh phiếu chi Nháp và tự lấy cấu hình ưu tiên còn thiếu."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    try:
+        data = json.loads(request.body)
+        with transaction.atomic():
+            current_payment = _get_payment_for_user(request, data.get('id'))
+            if not current_payment:
+                return JsonResponse({'status': 'error', 'message': 'Không tìm thấy phiếu chi'})
+
+            # Kiểm phạm vi trước rồi khóa đúng bản ghi, tránh hai lần duyệt cùng trừ quỹ.
+            payment = Payment.objects.select_for_update().get(id=current_payment.id)
+            if payment.status != 0:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Chỉ phiếu chi ở trạng thái Nháp mới được duyệt nhanh.',
+                })
+
+            linked_receipt = _resolve_payment_scope(request, payment)
+            linked_schedule = (
+                SupplierPaymentSchedule.objects
+                .select_related('goods_receipt', 'goods_receipt__warehouse')
+                .select_for_update(of=('self',))
+                .filter(payment_id=payment.id)
+                .first()
+            )
+
+            # Duyệt đúng số đang hiển thị: phiếu nhập/lịch chi là nguồn tiền gốc,
+            # còn cách tính và giá trị khuyến mãi lấy từ phiếu chi Nháp hiện tại.
+            gross_amount = (
+                Decimal(str(payment.amount or 0))
+                + Decimal(str(payment.promotion_amount or 0))
+            )
+            if linked_schedule and linked_schedule.status != 2:
+                payment.goods_receipt_id = linked_schedule.goods_receipt_id
+                payment.supplier_id = linked_schedule.supplier_id
+                payment.store_id = linked_schedule.store_id
+                linked_receipt = linked_schedule.goods_receipt
+                gross_amount = Decimal(str(linked_schedule.gross_amount or 0))
+            elif linked_receipt:
+                gross_amount = Decimal(str(linked_receipt.total_amount or 0))
+
+            _apply_payment_promotion(payment, {
+                'gross_amount': gross_amount,
+                'promotion_mode': payment.promotion_mode or 'amount',
+                'promotion_amount': payment.promotion_amount or 0,
+                'promotion_percent': payment.promotion_percent or 0,
+            })
+            _apply_payment_priority_defaults(request, payment)
+            _validate_finance_document_master_scope(request, payment, 2)
+            if payment.supplier_id and not _suppliers_for_user(
+                Supplier.objects.all(), request,
+            ).filter(id=payment.supplier_id).exists():
+                raise ValueError('Nhà cung cấp không thuộc phạm vi cửa hàng của bạn.')
+
+            _adjust_cashbook_balance(
+                payment.cash_book_id,
+                -Decimal(str(payment.amount or 0)),
+                validate_non_negative=True,
+            )
+            payment.status = 1
+            payment.approved_by = request.user
+            payment.approved_at = timezone.now()
+            payment.save()
+
+            if linked_schedule:
+                linked_schedule.status = 1
+                linked_schedule.promotion_mode = payment.promotion_mode
+                linked_schedule.promotion_amount = payment.promotion_amount
+                linked_schedule.promotion_percent = payment.promotion_percent
+                linked_schedule.amount = payment.amount
+                linked_schedule.save(update_fields=[
+                    'status', 'promotion_mode', 'promotion_amount',
+                    'promotion_percent', 'amount', 'updated_at',
+                ])
+
+        return JsonResponse({
+            'status': 'ok',
+            'message': 'Duyệt phiếu chi thành công',
+            'data': {
+                'category': payment.category.name,
+                'expense_classification': (
+                    payment.expense_classification.name
+                    if payment.expense_classification else ''
+                ),
+                'cash_book': payment.cash_book.name,
+                'amount': float(payment.amount),
+            },
+        })
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
 @login_required(login_url="/login/")
 def api_delete_payment(request):
     if request.method != 'POST':
@@ -1792,6 +1926,57 @@ def api_delete_payment(request):
 
 # ============ API: FINANCE CATEGORY ============
 
+def _parse_finance_master_sort_order(raw_value):
+    if isinstance(raw_value, bool):
+        raise ValueError('Thứ tự ưu tiên phải là số nguyên từ 0 đến 9999.')
+    raw_text = str(0 if raw_value in (None, '') else raw_value).strip()
+    if not raw_text.isdigit():
+        raise ValueError('Thứ tự ưu tiên phải là số nguyên từ 0 đến 9999.')
+    sort_order = int(raw_text)
+    if sort_order > 9999:
+        raise ValueError('Thứ tự ưu tiên phải là số nguyên từ 0 đến 9999.')
+    return sort_order
+
+
+@login_required(login_url="/login/")
+def api_update_finance_master_sort_order(request):
+    """Cập nhật nhanh duy nhất thứ tự ưu tiên của danh mục tài chính."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình thứ tự ưu tiên')
+
+    master_types = {
+        'finance_category': (FinanceCategory, 'danh mục thu chi'),
+        'expense_classification': (ExpenseClassification, 'phân loại chi'),
+        'cashbook': (CashBook, 'quỹ'),
+    }
+    try:
+        data = json.loads(request.body)
+        model_and_label = master_types.get(data.get('master_type'))
+        if not model_and_label:
+            raise ValueError('Loại danh mục cần sắp xếp không hợp lệ.')
+        model, label = model_and_label
+        sort_order = _parse_finance_master_sort_order(data.get('sort_order'))
+        with transaction.atomic():
+            item = _finance_master_for_user(
+                model.objects.select_for_update(), request,
+            ).get(id=data.get('id'))
+            item.sort_order = sort_order
+            item.save(update_fields=['sort_order'])
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'Đã cập nhật thứ tự ưu tiên cho {label}.',
+            'data': {'id': item.id, 'sort_order': item.sort_order},
+        })
+    except (FinanceCategory.DoesNotExist, ExpenseClassification.DoesNotExist, CashBook.DoesNotExist):
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy danh mục cần cập nhật.'})
+    except (ValueError, json.JSONDecodeError) as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
 @login_required(login_url="/login/")
 def api_get_finance_categories(request):
     type_display_map = dict(FinanceCategory.TYPE_CHOICES)
@@ -1800,6 +1985,7 @@ def api_get_finance_categories(request):
         'name',
         'type',
         'description',
+        'sort_order',
         'is_active',
     ))
     data = [{
@@ -1808,6 +1994,7 @@ def api_get_finance_categories(request):
         'type': row['type'],
         'type_display': type_display_map.get(row['type'], ''),
         'description': row['description'] or '',
+        'sort_order': row['sort_order'],
         'is_active': row['is_active'],
     } for row in cats]
     return JsonResponse({'data': data})
@@ -1821,6 +2008,15 @@ def api_save_finance_category(request):
         return _forbid_json('Bạn không có quyền cấu hình danh mục thu chi')
     try:
         data = json.loads(request.body)
+        name = (data.get('name') or '').strip()
+        if not name:
+            raise ValueError('Vui lòng nhập tên danh mục thu chi.')
+        category_type = int(data.get('type', 1))
+        if category_type not in dict(FinanceCategory.TYPE_CHOICES):
+            raise ValueError('Loại danh mục thu chi không hợp lệ.')
+        is_active = data.get('is_active', True)
+        if not isinstance(is_active, bool):
+            raise ValueError('Trạng thái danh mục thu chi không hợp lệ.')
         cid = data.get('id')
         if cid:
             c = _finance_master_for_user(FinanceCategory.objects.all(), request).get(id=cid)
@@ -1829,11 +2025,55 @@ def api_save_finance_category(request):
             if not brand_id:
                 raise ValueError('Không xác định được thương hiệu để tạo danh mục thu chi.')
             c = FinanceCategory(brand_id=brand_id)
-        c.name = data.get('name', '')
-        c.type = data.get('type', 1)
-        c.description = data.get('description', '')
+        c.name = name
+        c.type = category_type
+        c.description = (data.get('description') or '').strip()
+        c.sort_order = _parse_finance_master_sort_order(data.get('sort_order', 0))
+        c.is_active = is_active
         c.save()
         return JsonResponse({'status': 'ok', 'message': 'Lưu thành công'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
+
+
+@login_required(login_url="/login/")
+def api_delete_finance_category(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid method'})
+    if not can_manage_users(request.user):
+        return _forbid_json('Bạn không có quyền cấu hình danh mục thu chi')
+    try:
+        data = json.loads(request.body)
+        category = _finance_master_for_user(
+            FinanceCategory.objects.all(), request,
+        ).get(id=data.get('id'))
+        usages = []
+        receipt_count = Receipt.all_objects.filter(category=category).count()
+        payment_count = Payment.all_objects.filter(category=category).count()
+        classification_count = ExpenseClassification.all_objects.filter(
+            parent_category=category,
+        ).count()
+        plan_item_count = FinancialPlanItem.all_objects.filter(category=category).count()
+        if receipt_count:
+            usages.append(f'{receipt_count} phiếu thu')
+        if payment_count:
+            usages.append(f'{payment_count} phiếu chi')
+        if classification_count:
+            usages.append(f'{classification_count} phân loại chi')
+        if plan_item_count:
+            usages.append(f'{plan_item_count} khoản kế hoạch')
+        if usages:
+            raise ValueError(
+                f'Không thể xóa "{category.name}" vì đang được dùng trên '
+                f'{", ".join(usages)}. Hãy Sửa và chuyển sang Ngừng sử dụng '
+                'để giữ đúng dữ liệu lịch sử.'
+            )
+        category.delete()
+        return JsonResponse({'status': 'ok', 'message': 'Đã xóa danh mục thu chi.'})
+    except FinanceCategory.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Không tìm thấy danh mục thu chi.'})
+    except (ValueError, json.JSONDecodeError) as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 
@@ -1854,13 +2094,14 @@ def api_get_expense_classifications(request):
     rows = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
     ).values(
-        'id', 'name', 'description', 'is_active',
+        'id', 'name', 'description', 'sort_order', 'is_active',
         'parent_category_id', 'parent_category__name',
     ))
     return JsonResponse({'data': [{
         'id': row['id'],
         'name': row['name'],
         'description': row['description'] or '',
+        'sort_order': row['sort_order'],
         'is_active': row['is_active'],
         'parent_category_id': row['parent_category_id'],
         'parent_category': row['parent_category__name'] or '',
@@ -1912,6 +2153,9 @@ def api_save_expense_classification(request):
         classification.name = name
         classification.parent_category = parent_category
         classification.description = (data.get('description') or '').strip()
+        classification.sort_order = _parse_finance_master_sort_order(
+            data.get('sort_order', 0),
+        )
         is_active = data.get('is_active', True)
         if not isinstance(is_active, bool):
             raise ValueError('Trạng thái phân loại chi không hợp lệ.')
@@ -1967,12 +2211,13 @@ def api_delete_expense_classification(request):
 @login_required(login_url="/login/")
 def api_get_cashbooks(request):
     books = list(_finance_master_for_user(CashBook.objects.all(), request).values(
-        'id', 'name', 'description', 'balance', 'minimum_balance', 'is_active',
+        'id', 'name', 'description', 'sort_order', 'balance', 'minimum_balance', 'is_active',
     ))
     data = [{
         'id': row['id'],
         'name': row['name'],
         'description': row['description'] or '',
+        'sort_order': row['sort_order'],
         'balance': float(row['balance']),
         'minimum_balance': float(row['minimum_balance']),
         'is_active': row['is_active'],
@@ -1998,6 +2243,7 @@ def api_save_cashbook(request):
             b = CashBook(brand_id=brand_id)
         b.name = data.get('name', '')
         b.description = data.get('description', '')
+        b.sort_order = _parse_finance_master_sort_order(data.get('sort_order', 0))
         minimum_balance = _parse_payment_decimal(
             data.get('minimum_balance', b.minimum_balance or 0),
             'Số dư tối thiểu',

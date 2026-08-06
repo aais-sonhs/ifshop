@@ -763,6 +763,7 @@ def payment_tbl(request):
             'nhập hàng',
             'hoàn hàng',
         }
+        category['is_import_category'] = normalized_name == 'nhập hàng'
     manual_categories = [
         category for category in categories if not category['is_system']
     ]
@@ -1814,6 +1815,15 @@ def api_save_payment(request):
 
             # 4. Bổ sung cấu hình phương thức thanh toán nếu user chọn method option.
             _apply_payment_method_defaults(p)
+            if p.category_id:
+                selected_category_name = (
+                    FinanceCategory.objects
+                    .filter(id=p.category_id)
+                    .values_list('name', flat=True)
+                    .first()
+                )
+                if ' '.join((selected_category_name or '').split()).casefold() == 'nhập hàng':
+                    p.expense_classification_id = None
             _validate_finance_document_master_scope(request, p, 2)
             if p.supplier_id and not _suppliers_for_user(
                 Supplier.objects.all(), request,
@@ -1866,33 +1876,42 @@ def api_save_payment(request):
 
 def _apply_payment_approval_choices(request, payment, data):
     """Áp đúng phân loại và quỹ do người duyệt chỉ định trong lần duyệt này."""
-    try:
-        classification_id = int(data.get('expense_classification_id') or 0)
-    except (TypeError, ValueError):
-        classification_id = 0
-    if classification_id <= 0:
-        raise ValueError('Vui lòng chỉ định Phân loại chi cụ thể trước khi duyệt.')
+    category_name = (
+        ' '.join((payment.category.name or '').split()).casefold()
+        if payment.category_id else ''
+    )
+    if category_name == 'nhập hàng':
+        payment.expense_classification = None
+    else:
+        try:
+            classification_id = int(data.get('expense_classification_id') or 0)
+        except (TypeError, ValueError):
+            classification_id = 0
+        if classification_id <= 0:
+            raise ValueError('Vui lòng chỉ định Phân loại chi cụ thể trước khi duyệt.')
 
-    classification = _finance_master_for_user(
-        ExpenseClassification.objects.select_related('parent_category').filter(
-            is_active=True,
-            parent_category__type=2,
-            parent_category__is_active=True,
-        ),
-        request,
-    ).filter(id=classification_id).first()
-    if not classification:
-        raise ValueError(
-            'Phân loại chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.'
-        )
-    if (
-        payment.category_id
-        and payment.category_id != classification.parent_category_id
-    ):
-        raise ValueError(
-            f'Phân loại chi "{classification.name}" chỉ thuộc Danh mục cha '
-            f'"{classification.parent_category.name}".'
-        )
+        classification = _finance_master_for_user(
+            ExpenseClassification.objects.select_related('parent_category').filter(
+                is_active=True,
+                parent_category__type=2,
+                parent_category__is_active=True,
+            ),
+            request,
+        ).filter(id=classification_id).first()
+        if not classification:
+            raise ValueError(
+                'Phân loại chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.'
+            )
+        if (
+            payment.category_id
+            and payment.category_id != classification.parent_category_id
+        ):
+            raise ValueError(
+                f'Phân loại chi "{classification.name}" chỉ thuộc Danh mục cha '
+                f'"{classification.parent_category.name}".'
+            )
+        payment.category = classification.parent_category
+        payment.expense_classification = classification
 
     try:
         cash_book_id = int(data.get('cash_book_id') or 0)
@@ -1907,8 +1926,6 @@ def _apply_payment_approval_choices(request, payment, data):
     if not cash_book:
         raise ValueError('Quỹ chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.')
 
-    payment.category = classification.parent_category
-    payment.expense_classification = classification
     payment.cash_book = cash_book
 
 

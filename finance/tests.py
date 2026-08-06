@@ -456,7 +456,35 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, "params.get('store_id')")
         self.assertContains(response, 'applyPaymentUrlFilters();')
         self.assertNotContains(response, '<th>Người tạo</th>', html=True)
-        self.assertContains(response, '<th>Người duyệt</th>', html=True)
+        self.assertContains(response, '<th data-col="approved_by">Người duyệt</th>', html=True)
+        self.assertContains(response, '<th data-col="description">Diễn giải</th>', html=True)
+        self.assertContains(response, '/static/js/column_config.js')
+        self.assertContains(response, 'id="payment_col_config_container"')
+        self.assertContains(response, 'var paymentColConfig = new ColumnConfig({')
+        self.assertContains(response, "storageKey: 'ifshop_payment_columns_v1'")
+        self.assertContains(response, 'paymentColConfig.apply();')
+        for column_key in [
+            'stt',
+            'code',
+            'category',
+            'classification',
+            'description',
+            'target',
+            'goods_receipt',
+            'gross_amount',
+            'promotion',
+            'actual_amount',
+            'payment_method',
+            'payment_date',
+            'cash_book',
+            'approved_by',
+            'status',
+            'actions',
+        ]:
+            self.assertContains(response, f'data-col="{column_key}"')
+        self.assertContains(response, 'function escapePaymentHtml(value)')
+        self.assertContains(response, 'escapePaymentHtml(d.description)')
+        self.assertContains(response, 'colspan="16"', count=2)
         self.assertNotContains(response, "d.created_by || ''")
         self.assertContains(response, "d.approved_by || ''")
         self.assertContains(response, 'Tiền phiếu chi')
@@ -486,19 +514,30 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, ".prop('readonly', !!isLinkedReceipt)")
         self.assertContains(response, 'Tự lấy giá trị phiếu nhập còn lại sau hàng trả')
         self.assertContains(response, 'id="inp_expense_classification_id"')
+        self.assertContains(response, 'id="payment_classification_field"')
+        self.assertContains(response, 'data-import-category="1"')
+        self.assertContains(response, 'function syncPaymentClassificationField()')
+        self.assertContains(response, "$('#payment_classification_field').toggle(!isImportCategory)")
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertContains(response, 'btn-approve-payment')
         self.assertContains(response, 'id="modal_approve_payment"')
         self.assertContains(response, 'id="approve_payment_category"')
+        self.assertContains(response, 'id="approve_classification_field"')
         self.assertContains(response, 'id="approve_expense_classification_id"')
         self.assertContains(response, 'id="approve_cash_book_id"')
         self.assertContains(response, 'id="btn_confirm_approve_payment"')
         self.assertContains(response, 'data-parent-category-id=')
-        self.assertContains(response, 'expense_classification_id:classificationId')
+        self.assertContains(
+            response,
+            'expense_classification_id:PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION ? classificationId : null',
+        )
         self.assertContains(response, 'cash_book_id:cashBookId')
         self.assertContains(response, '/api/payments/approve/')
         self.assertContains(response, 'function syncApprovalClassificationOptions(categoryId)')
         self.assertContains(response, "syncApprovalClassificationOptions(payment.category_id || '')")
+        self.assertContains(response, "!== 'nhập hàng'")
+        self.assertContains(response, "$('#approve_classification_field').toggle(PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION)")
+        self.assertContains(response, 'PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION && !classificationId')
         self.assertContains(response, 'function selectFirstApprovalOption(selector)')
         self.assertContains(response, "selectFirstApprovalOption('#approve_cash_book_id')")
         self.assertContains(response, ".find('option:not([value=\"\"]):enabled').first().val()")
@@ -674,6 +713,94 @@ class FinanceFlowTests(TestCase):
         self.assertIsNone(payment.expense_classification)
         self.assertIsNone(payment.cash_book)
         self.assertEqual(cash_book.balance, Decimal('5000'))
+
+    def test_quick_approve_import_category_only_requires_cashbook(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        import_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Nhập hàng',
+            type=2,
+        )
+        cash_book = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ duyệt phiếu nhập',
+            balance=Decimal('5000'),
+        )
+        payment = Payment.objects.create(
+            code='PC-DUYET-NHAP-HANG-001',
+            store=self.store,
+            category=import_category,
+            amount=Decimal('1200'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        missing_cashbook_response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(missing_cashbook_response.json()['status'], 'error')
+        self.assertIn('Quỹ chi cụ thể', missing_cashbook_response.json()['message'])
+        self.assertNotIn('Phân loại chi cụ thể', missing_cashbook_response.json()['message'])
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'cash_book_id': cash_book.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.category, import_category)
+        self.assertIsNone(payment.expense_classification)
+        self.assertEqual(payment.cash_book, cash_book)
+        self.assertEqual(cash_book.balance, Decimal('3800'))
+
+    def test_save_import_payment_discards_expense_classification(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        import_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Nhập hàng',
+            type=2,
+        )
+        other_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi thường xuyên',
+            type=2,
+        )
+        classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=other_category,
+            name='Lương + thưởng + BHXH',
+        )
+
+        response = self.client.post(
+            reverse('api_save_payment'),
+            data=json.dumps({
+                'code': 'PC-NHAP-HANG-KHONG-PHAN-LOAI',
+                'category_id': import_category.id,
+                'expense_classification_id': classification.id,
+                'gross_amount': '1200',
+                'payment_date': date.today().isoformat(),
+                'status': 0,
+                'payment_method': 2,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment = Payment.objects.get(code='PC-NHAP-HANG-KHONG-PHAN-LOAI')
+        self.assertEqual(payment.category, import_category)
+        self.assertIsNone(payment.expense_classification)
 
     def test_quick_approve_preserves_choices_and_recalculates_linked_receipt_amount(self):
         self.brand.owner = self.user

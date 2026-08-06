@@ -5,6 +5,7 @@
     <div class="card-header">
         <h3 class="card-title"><i class="fas fa-money-bill-wave mr-2"></i>Phiếu chi</h3>
         <div class="card-tools">
+            <span id="payment_col_config_container"></span>
             <button type="button" class="btn btn-sm btn-outline-success" id="btn_export_excel"><i class="fas fa-file-excel"></i> Xuất Excel</button>
             <button type="button" class="btn btn-sm btn-primary" id="btn_add"><i class="fas fa-plus"></i> Tạo phiếu chi</button>
         </div>
@@ -131,14 +132,14 @@
         </div>
         <div class="table-responsive">
             <table id="data_tbl" class="table table-bordered table-striped table-sm">
-                <thead><tr><th>STT</th><th>Mã phiếu</th><th>Danh mục chi</th><th>Phân loại chi</th><th>NCC/KH</th><th>Phiếu nhập</th><th>Trước KM</th><th>Khuyến mãi</th><th>Thực chi</th><th>HTTT</th>
-                    <th id="payment_date_header" aria-sort="descending">
+                <thead><tr><th data-col="stt">STT</th><th data-col="code">Mã phiếu</th><th data-col="category">Danh mục chi</th><th data-col="classification">Phân loại chi</th><th data-col="description">Diễn giải</th><th data-col="target">NCC/KH</th><th data-col="goods_receipt">Phiếu nhập</th><th data-col="gross_amount">Trước KM</th><th data-col="promotion">Khuyến mãi</th><th data-col="actual_amount">Thực chi</th><th data-col="payment_method">HTTT</th>
+                    <th data-col="payment_date" id="payment_date_header" aria-sort="descending">
                         <button type="button" class="btn btn-link btn-sm p-0 text-dark font-weight-bold"
                                 id="btn_sort_payment_date" title="Sắp xếp Ngày chi tăng/giảm dần">
                             Ngày chi <i id="payment_date_sort_icon" class="fas fa-sort-down ml-1" aria-hidden="true"></i>
                         </button>
                     </th>
-                    <th>Quỹ</th><th>Người duyệt</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                    <th data-col="cash_book">Quỹ</th><th data-col="approved_by">Người duyệt</th><th data-col="status">Trạng thái</th><th data-col="actions">Thao tác</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -156,8 +157,8 @@
                 <input type="hidden" id="edit_id">
                 <div class="row">
                     <div class="col-md-4"><div class="form-group"><label>Mã phiếu <span class="text-danger">*</span></label><input type="text" class="form-control form-control-sm" id="inp_code"></div></div>
-                    <div class="col-md-4"><div class="form-group"><label>Danh mục chi</label><select class="form-control form-control-sm" id="inp_category_id"><option value="">-- Chọn danh mục --</option>{% for c in categories %}<option value="{{ c.id }}" data-purchase-related="{% if c.is_purchase_related %}1{% else %}0{% endif %}"{% if c.is_system %} hidden disabled{% endif %}>{{ c.name }}</option>{% endfor %}</select><small class="text-muted">Khoản chi cụ thể, ví dụ: Chi văn phòng.</small></div></div>
-                    <div class="col-md-4"><div class="form-group"><label>Phân loại chi</label><select class="form-control form-control-sm" id="inp_expense_classification_id"><option value="">-- Chọn danh mục chi trước --</option>{% for item in expense_classifications %}<option value="{{ item.id }}" data-parent-category-id="{{ item.parent_category_id|default:'' }}"{% if not item.is_active %} data-inactive="1" disabled{% endif %}>{{ item.name }}{% if not item.parent_category_id %} (Chưa có danh mục cha){% endif %}{% if not item.is_active %} (Ngừng sử dụng){% endif %}</option>{% endfor %}</select><small class="text-muted">Chỉ hiện phân loại thuộc Danh mục chi đã chọn.</small></div></div>
+                    <div class="col-md-4"><div class="form-group"><label>Danh mục chi</label><select class="form-control form-control-sm" id="inp_category_id"><option value="">-- Chọn danh mục --</option>{% for c in categories %}<option value="{{ c.id }}" data-purchase-related="{% if c.is_purchase_related %}1{% else %}0{% endif %}" data-import-category="{% if c.is_import_category %}1{% else %}0{% endif %}"{% if c.is_system %} hidden disabled{% endif %}>{{ c.name }}</option>{% endfor %}</select><small class="text-muted">Khoản chi cụ thể, ví dụ: Chi văn phòng.</small></div></div>
+                    <div class="col-md-4" id="payment_classification_field"><div class="form-group"><label>Phân loại chi</label><select class="form-control form-control-sm" id="inp_expense_classification_id"><option value="">-- Chọn danh mục chi trước --</option>{% for item in expense_classifications %}<option value="{{ item.id }}" data-parent-category-id="{{ item.parent_category_id|default:'' }}"{% if not item.is_active %} data-inactive="1" disabled{% endif %}>{{ item.name }}{% if not item.parent_category_id %} (Chưa có danh mục cha){% endif %}{% if not item.is_active %} (Ngừng sử dụng){% endif %}</option>{% endfor %}</select><small class="text-muted">Chỉ hiện phân loại thuộc Danh mục chi đã chọn.</small></div></div>
                 </div>
                 <div class="row" id="payment_purchase_link_fields">
                     <div class="col-md-6"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div></div>
@@ -216,7 +217,7 @@
                     <div>Danh mục chi: <strong id="approve_payment_category"></strong></div>
                     <div>Thực chi: <strong class="text-danger" id="approve_payment_amount"></strong></div>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="approve_classification_field">
                     <label for="approve_expense_classification_id">Phân loại chi cụ thể <span class="text-danger">*</span></label>
                     <select class="form-control" id="approve_expense_classification_id">
                         <option value="">-- Chọn phân loại chi --</option>
@@ -246,8 +247,33 @@
 </div>
 {% endblock %}
 {% block extra_js %}
+<script src="/static/js/column_config.js"></script>
 <script>
 function fmt(n){return Number(n||0).toLocaleString('vi-VN');}
+function escapePaymentHtml(value){return $('<div>').text(value || '').html();}
+var paymentColConfig = new ColumnConfig({
+    storageKey: 'ifshop_payment_columns_v1',
+    tableSelector: '#data_tbl',
+    buttonContainer: '#payment_col_config_container',
+    columns: [
+        {key: 'stt',              label: 'STT',           default: true, alwaysOn: true},
+        {key: 'code',             label: 'Mã phiếu',      default: true, alwaysOn: true},
+        {key: 'category',         label: 'Danh mục chi',  default: true},
+        {key: 'classification',   label: 'Phân loại chi', default: true},
+        {key: 'description',      label: 'Diễn giải',     default: true},
+        {key: 'target',           label: 'NCC/KH',        default: true},
+        {key: 'goods_receipt',    label: 'Phiếu nhập',    default: true},
+        {key: 'gross_amount',     label: 'Trước KM',      default: true},
+        {key: 'promotion',        label: 'Khuyến mãi',    default: true},
+        {key: 'actual_amount',    label: 'Thực chi',      default: true},
+        {key: 'payment_method',   label: 'HTTT',          default: true},
+        {key: 'payment_date',     label: 'Ngày chi',      default: true},
+        {key: 'cash_book',        label: 'Quỹ',           default: true},
+        {key: 'approved_by',      label: 'Người duyệt',   default: true},
+        {key: 'status',           label: 'Trạng thái',    default: true},
+        {key: 'actions',          label: 'Thao tác',      default: true}
+    ]
+});
 function getPaymentNumericValue(selector){
     var value = Number($(selector).val() || 0);
     return Number.isFinite(value) ? value : 0;
@@ -334,6 +360,7 @@ var PAYMENT_NEXT_CODE = '';
 var PAYMENT_DATE_SORT_DIRECTION = 'desc';
 var PAYMENT_ROWS_BY_ID = {};
 var PAYMENT_APPROVE_BUTTON = null;
+var PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION = true;
 var PAYMENT_FORM_CLOSE_BASELINE = null;
 var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
@@ -455,6 +482,15 @@ function syncPaymentClassificationOptions(preferredId, preservePreferred){
     );
     $('#inp_expense_classification_id').val(selectionAvailable ? selectedId : '');
 }
+function syncPaymentClassificationField(){
+    var isImportCategory = String(
+        $('#inp_category_id option:selected').data('import-category') || ''
+    ) === '1';
+    $('#payment_classification_field').toggle(!isImportCategory);
+    if(isImportCategory){
+        $('#inp_expense_classification_id').val('');
+    }
+}
 function syncPaymentFilterClassificationOptions(){
     var categoryId = String($('#f_category').val() || '');
     var selectedId = String($('#f_expense_classification').val() || '');
@@ -475,10 +511,12 @@ $(document).ready(function(){
     updatePaymentDateSortIndicator();
     loadData();
     syncPaymentClassificationOptions('', false);
+    syncPaymentClassificationField();
     syncPaymentFilterClassificationOptions();
     syncPaymentPurchaseFields(true);
     $('#inp_category_id').on('change', function(){
         syncPaymentClassificationOptions('', false);
+        syncPaymentClassificationField();
         syncPaymentPurchaseFields(true);
     });
     $('#f_category').on('change', syncPaymentFilterClassificationOptions);
@@ -770,16 +808,17 @@ function loadData(){
                 statusHtml += '<button type="button" class="btn btn-xs btn-success btn-approve-payment" data-payment-id="'+d.id+'" title="Duyệt nhanh phiếu chi"><i class="fas fa-check mr-1"></i>Duyệt</button>';
             }
             statusHtml += '</div>';
-            h+='<tr><td>'+(startIndex+i)+'</td><td>'+d.code+'</td><td>'+d.category+'</td><td>'+(d.expense_classification || '')+'</td><td>'+d.target+'</td>'+
-                '<td>'+grBadge+'</td>'+
-                '<td class="text-right">'+fmtD(d.gross_amount)+'</td><td class="text-right text-success">'+promotionLabel+'</td><td class="text-right font-weight-bold">'+fmtD(d.amount)+'</td><td class="text-center">'+pmLabel+'</td><td>'+fmtDt(d.payment_date, d.created_at)+'</td><td>'+d.cash_book+'</td>'+
-                '<td>'+(d.approved_by || '')+'</td><td>'+statusHtml+'</td>'+
-                '<td><div class="btn-action-group d-inline-flex flex-nowrap" style="gap:6px;"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button>'+
+            h+='<tr><td data-col="stt">'+(startIndex+i)+'</td><td data-col="code">'+d.code+'</td><td data-col="category">'+d.category+'</td><td data-col="classification">'+(d.expense_classification || '')+'</td><td data-col="description" style="min-width:180px;white-space:normal;">'+escapePaymentHtml(d.description)+'</td><td data-col="target">'+d.target+'</td>'+
+                '<td data-col="goods_receipt">'+grBadge+'</td>'+
+                '<td data-col="gross_amount" class="text-right">'+fmtD(d.gross_amount)+'</td><td data-col="promotion" class="text-right text-success">'+promotionLabel+'</td><td data-col="actual_amount" class="text-right font-weight-bold">'+fmtD(d.amount)+'</td><td data-col="payment_method" class="text-center">'+pmLabel+'</td><td data-col="payment_date">'+fmtDt(d.payment_date, d.created_at)+'</td><td data-col="cash_book">'+d.cash_book+'</td>'+
+                '<td data-col="approved_by">'+(d.approved_by || '')+'</td><td data-col="status">'+statusHtml+'</td>'+
+                '<td data-col="actions"><div class="btn-action-group d-inline-flex flex-nowrap" style="gap:6px;"><button class="btn btn-xs btn-info" onclick=\'editItem('+JSON.stringify(d).replace(/\'/g,"&#39;")+ ')\'>Sửa</button>'+
                 '<button class="btn btn-xs btn-outline-danger" onclick="deleteItem('+d.id+')">Xóa</button></div></td></tr>';
-        });$('#data_tbl tbody').html(h||'<tr><td colspan="15" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        });$('#data_tbl tbody').html(h||'<tr><td colspan="16" class="text-center text-muted">Chưa có dữ liệu</td></tr>');
+        paymentColConfig.apply();
         renderPaymentPagination(res.meta || {});
     }).fail(function(){
-        $('#data_tbl tbody').html('<tr><td colspan="15" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
+        $('#data_tbl tbody').html('<tr><td colspan="16" class="text-center text-danger">Không tải được danh sách phiếu chi.</td></tr>');
         $('#payment_pagination_summary').html('<span class="text-danger small">Không tải được dữ liệu.</span>');
         $('#payment_pagination').html('');
     });
@@ -787,6 +826,7 @@ function loadData(){
 function editItem(d){
     $('#edit_id').val(d.id);$('#inp_code').val(d.code);$('#inp_category_id').val(d.category_id);
     syncPaymentClassificationOptions(d.expense_classification_id || '', true);
+    syncPaymentClassificationField();
     $('#inp_cash_book_id').val(d.cash_book_id);$('#inp_supplier_id').val(d.supplier_id).trigger('change.select2');
     $('#inp_goods_receipt_id').val(d.goods_receipt_id).trigger('change.select2');
     $('#inp_amount').val(d.gross_amount);$('#inp_promotion_mode').val(d.promotion_mode || 'amount');
@@ -807,7 +847,16 @@ function approvePayment(id, button){
     $('#approve_payment_code').text(payment.code || '');
     $('#approve_payment_category').text(payment.category || 'Chưa chọn');
     $('#approve_payment_amount').text(fmtD(payment.amount));
-    syncApprovalClassificationOptions(payment.category_id || '');
+    PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION = String(payment.category || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLocaleLowerCase('vi-VN') !== 'nhập hàng';
+    $('#approve_classification_field').toggle(PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION);
+    if(PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION){
+        syncApprovalClassificationOptions(payment.category_id || '');
+    } else {
+        $('#approve_expense_classification_id').val('').trigger('change');
+    }
     selectFirstApprovalOption('#approve_cash_book_id');
     $('#modal_approve_payment').modal('show');
 }
@@ -842,7 +891,7 @@ function confirmApprovePayment(){
     var classificationId = $('#approve_expense_classification_id').val();
     var cashBookId = $('#approve_cash_book_id').val();
     if(!id) return;
-    if(!classificationId){
+    if(PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION && !classificationId){
         alert('Vui lòng chỉ định Phân loại chi cụ thể trước khi duyệt.');
         $('#approve_expense_classification_id').focus();
         return;
@@ -865,7 +914,7 @@ function confirmApprovePayment(){
         headers:{'X-CSRFToken':'{{csrf_token}}'},
         data:JSON.stringify({
             id:id,
-            expense_classification_id:classificationId,
+            expense_classification_id:PAYMENT_APPROVAL_REQUIRES_CLASSIFICATION ? classificationId : null,
             cash_book_id:cashBookId
         }),
         success:function(r){

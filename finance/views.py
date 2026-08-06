@@ -759,7 +759,9 @@ def payment_tbl(request):
     ).values('id', 'name'))
     expense_classifications = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
-    ).values('id', 'name', 'is_active', 'parent_category_id'))
+    ).values(
+        'id', 'name', 'is_active', 'parent_category_id', 'parent_category__name',
+    ))
     cashbooks = list(_finance_master_for_user(
         CashBook.objects.filter(is_active=True), request,
     ).values('id', 'name', 'balance'))
@@ -1851,46 +1853,49 @@ def api_save_payment(request):
         return JsonResponse({'status': 'error', 'message': str(e)})
 
 
-def _apply_payment_priority_defaults(request, payment):
-    """Bổ sung danh mục/phân loại/quỹ còn trống theo thứ tự ưu tiên đã cài đặt."""
-    if payment.expense_classification_id and not payment.category_id:
-        current_classification = _finance_master_for_user(
-            ExpenseClassification.objects.select_related('parent_category'), request,
-        ).filter(id=payment.expense_classification_id).first()
-        if current_classification and current_classification.parent_category_id:
-            payment.category_id = current_classification.parent_category_id
+def _apply_payment_approval_choices(request, payment, data):
+    """Áp đúng phân loại và quỹ do người duyệt chỉ định trong lần duyệt này."""
+    try:
+        classification_id = int(data.get('expense_classification_id') or 0)
+    except (TypeError, ValueError):
+        classification_id = 0
+    if classification_id <= 0:
+        raise ValueError('Vui lòng chỉ định Phân loại chi cụ thể trước khi duyệt.')
 
-    if not payment.category_id:
-        payment.category = _finance_master_for_user(
-            FinanceCategory.objects.filter(type=2, is_active=True), request,
-        ).first()
-        if not payment.category:
-            raise ValueError(
-                'Chưa có Danh mục chi đang sử dụng. Vui lòng cấu hình danh mục trước khi duyệt.'
-            )
+    classification = _finance_master_for_user(
+        ExpenseClassification.objects.select_related('parent_category').filter(
+            is_active=True,
+            parent_category__type=2,
+            parent_category__is_active=True,
+        ),
+        request,
+    ).filter(id=classification_id).first()
+    if not classification:
+        raise ValueError(
+            'Phân loại chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.'
+        )
 
-    if not payment.expense_classification_id:
-        payment.expense_classification = _finance_master_for_user(
-            ExpenseClassification.objects.filter(
-                parent_category_id=payment.category_id,
-                is_active=True,
-            ),
-            request,
-        ).first()
+    try:
+        cash_book_id = int(data.get('cash_book_id') or 0)
+    except (TypeError, ValueError):
+        cash_book_id = 0
+    if cash_book_id <= 0:
+        raise ValueError('Vui lòng chỉ định Quỹ chi cụ thể trước khi duyệt.')
 
-    if not payment.cash_book_id:
-        payment.cash_book = _finance_master_for_user(
-            CashBook.objects.filter(is_active=True), request,
-        ).first()
-        if not payment.cash_book:
-            raise ValueError(
-                'Chưa có Quỹ chi đang hoạt động. Vui lòng cấu hình quỹ trước khi duyệt.'
-            )
+    cash_book = _finance_master_for_user(
+        CashBook.objects.filter(is_active=True), request,
+    ).filter(id=cash_book_id).first()
+    if not cash_book:
+        raise ValueError('Quỹ chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.')
+
+    payment.category = classification.parent_category
+    payment.expense_classification = classification
+    payment.cash_book = cash_book
 
 
 @login_required(login_url="/login/")
 def api_approve_payment(request):
-    """Duyệt nhanh phiếu chi Nháp và tự lấy cấu hình ưu tiên còn thiếu."""
+    """Duyệt phiếu chi Nháp bằng phân loại và quỹ được chỉ định rõ."""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid method'})
     try:
@@ -1944,7 +1949,7 @@ def api_approve_payment(request):
                 'promotion_amount': payment.promotion_amount or 0,
                 'promotion_percent': payment.promotion_percent or 0,
             })
-            _apply_payment_priority_defaults(request, payment)
+            _apply_payment_approval_choices(request, payment, data)
             _validate_finance_document_master_scope(request, payment, 2)
             if payment.supplier_id and not _suppliers_for_user(
                 Supplier.objects.all(), request,

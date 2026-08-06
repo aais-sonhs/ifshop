@@ -202,6 +202,47 @@
         </div>
     </div>
 </div>
+<div class="modal fade" id="modal_approve_payment" tabindex="-1" data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-check-circle mr-2"></i>Duyệt phiếu chi</h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="approve_payment_id">
+                <div class="alert alert-light border py-2">
+                    <div>Phiếu chi: <strong id="approve_payment_code"></strong></div>
+                    <div>Thực chi: <strong class="text-danger" id="approve_payment_amount"></strong></div>
+                </div>
+                <div class="form-group">
+                    <label for="approve_expense_classification_id">Phân loại chi cụ thể <span class="text-danger">*</span></label>
+                    <select class="form-control" id="approve_expense_classification_id">
+                        <option value="">-- Chọn phân loại chi --</option>
+                        {% for item in expense_classifications %}
+                            {% if item.is_active and item.parent_category_id %}
+                            <option value="{{ item.id }}" data-category-name="{{ item.parent_category__name }}">{{ item.name }} — {{ item.parent_category__name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted" id="approve_category_hint">Danh mục chi sẽ được lấy đúng theo phân loại đã chọn.</small>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="approve_cash_book_id">Quỹ chi cụ thể <span class="text-danger">*</span></label>
+                    <select class="form-control" id="approve_cash_book_id">
+                        <option value="">-- Chọn quỹ chi --</option>
+                        {% for c in cashbooks %}<option value="{{ c.id }}" data-balance="{{ c.balance }}">{{ c.name }} — số dư {{ c.balance|money_vnd }}đ</option>{% endfor %}
+                    </select>
+                    <small class="text-muted" id="approve_cash_book_hint">Bắt buộc chọn đúng quỹ sẽ bị trừ tiền.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-success" id="btn_confirm_approve_payment"><i class="fas fa-check mr-1"></i>Duyệt phiếu chi</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block extra_js %}
 <script>
@@ -261,6 +302,7 @@ var PAYMENT_PAGE_STATE = {
 var PAYMENT_NEXT_CODE = '';
 var PAYMENT_DATE_SORT_DIRECTION = 'desc';
 var PAYMENT_ROWS_BY_ID = {};
+var PAYMENT_APPROVE_BUTTON = null;
 var PAYMENT_FORM_CLOSE_BASELINE = null;
 var PAYMENT_FORM_CLOSE_TRACKING_TOKEN = 0;
 var PAYMENT_URL_FILTERS = (function(){
@@ -522,6 +564,26 @@ $(document).ready(function(){
     $(document).on('click', '.btn-approve-payment', function(){
         approvePayment($(this).data('payment-id'), this);
     });
+    $('#approve_expense_classification_id').on('change', function(){
+        var categoryName = $(this).find('option:selected').data('category-name');
+        $('#approve_category_hint').text(
+            categoryName
+                ? 'Danh mục chi: ' + categoryName
+                : 'Danh mục chi sẽ được lấy đúng theo phân loại đã chọn.'
+        );
+    });
+    $('#approve_cash_book_id').on('change', function(){
+        var balance = $(this).find('option:selected').data('balance');
+        $('#approve_cash_book_hint').text(
+            $(this).val()
+                ? 'Số dư quỹ hiện tại: ' + fmtD(balance)
+                : 'Bắt buộc chọn đúng quỹ sẽ bị trừ tiền.'
+        );
+    });
+    $('#btn_confirm_approve_payment').on('click', confirmApprovePayment);
+    $('#modal_approve_payment').on('hidden.bs.modal', function(){
+        PAYMENT_APPROVE_BUTTON = null;
+    });
     $('#modal_form').on('hidden.bs.modal', function(){
         PAYMENT_FORM_CLOSE_TRACKING_TOKEN++;
         PAYMENT_FORM_CLOSE_BASELINE = null;
@@ -702,31 +764,48 @@ function approvePayment(id, button){
     var payment = PAYMENT_ROWS_BY_ID[id];
     if(!payment || Number(payment.status) !== 0) return;
 
-    var linkedReceiptText = payment.goods_receipt
-        ? ' cho phiếu nhập '+payment.goods_receipt
-        : '';
-    var categoryText = payment.category || 'Tự lấy theo thứ tự ưu tiên';
-    var classificationText = payment.expense_classification || 'Tự lấy theo thứ tự ưu tiên (nếu có)';
-    var cashBookText = payment.cash_book || 'Tự lấy theo thứ tự ưu tiên';
-    var confirmMessage = 'Bạn chắc chắn muốn duyệt phiếu chi '+payment.code+linkedReceiptText+'?\n\n'
-        +'Thực chi: '+fmtD(payment.amount)+'\n'
-        +'Danh mục chi: '+categoryText+'\n'
-        +'Phân loại chi: '+classificationText+'\n'
-        +'Quỹ chi: '+cashBookText+'\n'
-        +'Người duyệt sẽ là tài khoản đang đăng nhập.';
-    if(!confirm(confirmMessage)) return;
+    PAYMENT_APPROVE_BUTTON = button;
+    $('#approve_payment_id').val(payment.id);
+    $('#approve_payment_code').text(payment.code || '');
+    $('#approve_payment_amount').text(fmtD(payment.amount));
+    $('#approve_expense_classification_id').val(payment.expense_classification_id || '').trigger('change');
+    $('#approve_cash_book_id').val(payment.cash_book_id || '').trigger('change');
+    $('#modal_approve_payment').modal('show');
+}
+function confirmApprovePayment(){
+    var id = Number($('#approve_payment_id').val() || 0);
+    var classificationId = $('#approve_expense_classification_id').val();
+    var cashBookId = $('#approve_cash_book_id').val();
+    if(!id) return;
+    if(!classificationId){
+        alert('Vui lòng chỉ định Phân loại chi cụ thể trước khi duyệt.');
+        $('#approve_expense_classification_id').focus();
+        return;
+    }
+    if(!cashBookId){
+        alert('Vui lòng chỉ định Quỹ chi cụ thể trước khi duyệt.');
+        $('#approve_cash_book_id').focus();
+        return;
+    }
 
-    var $button = $(button);
+    var $button = $('#btn_confirm_approve_payment');
     var originalHtml = $button.html();
+    var $rowButton = $(PAYMENT_APPROVE_BUTTON);
     $button.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Đang duyệt');
+    $rowButton.prop('disabled', true);
     $.ajax({
         url:'/api/payments/approve/',
         type:'POST',
         contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'},
-        data:JSON.stringify({id:id}),
+        data:JSON.stringify({
+            id:id,
+            expense_classification_id:classificationId,
+            cash_book_id:cashBookId
+        }),
         success:function(r){
             if(r.status === 'ok'){
+                $('#modal_approve_payment').modal('hide');
                 loadData();
                 alert(r.message);
                 return;
@@ -741,6 +820,7 @@ function approvePayment(id, button){
         },
         complete:function(){
             $button.prop('disabled', false).html(originalHtml);
+            $rowButton.prop('disabled', false);
         }
     });
 }

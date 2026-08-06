@@ -458,12 +458,18 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'id="inp_expense_classification_id"')
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertContains(response, 'btn-approve-payment')
+        self.assertContains(response, 'id="modal_approve_payment"')
+        self.assertContains(response, 'id="approve_expense_classification_id"')
+        self.assertContains(response, 'id="approve_cash_book_id"')
+        self.assertContains(response, 'id="btn_confirm_approve_payment"')
+        self.assertContains(response, 'expense_classification_id:classificationId')
+        self.assertContains(response, 'cash_book_id:cashBookId')
         self.assertContains(response, '/api/payments/approve/')
         self.assertContains(response, 'd-inline-flex align-items-center flex-nowrap text-nowrap')
         self.assertContains(response, 'btn-action-group d-inline-flex flex-nowrap')
         self.assertContains(response, 'style="gap:6px;"')
 
-    def test_quick_approve_payment_uses_priority_defaults_and_only_deducts_once(self):
+    def test_quick_approve_requires_explicit_choices_and_only_deducts_once(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
         later_category = FinanceCategory.objects.create(
@@ -480,7 +486,7 @@ class FinanceFlowTests(TestCase):
         )
         later_classification = ExpenseClassification.objects.create(
             brand=self.brand,
-            parent_category=priority_category,
+            parent_category=later_category,
             name='Phân loại ưu tiên sau khi duyệt',
             sort_order=30,
         )
@@ -518,9 +524,36 @@ class FinanceFlowTests(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.post(
+        missing_classification_response = self.client.post(
             reverse('api_approve_payment'),
             data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(missing_classification_response.status_code, 200)
+        self.assertEqual(missing_classification_response.json()['status'], 'error')
+        self.assertIn(
+            'Phân loại chi cụ thể',
+            missing_classification_response.json()['message'],
+        )
+
+        missing_cashbook_response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'expense_classification_id': later_classification.id,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(missing_cashbook_response.json()['status'], 'error')
+        self.assertIn('Quỹ chi cụ thể', missing_cashbook_response.json()['message'])
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'expense_classification_id': later_classification.id,
+                'cash_book_id': later_cashbook.id,
+            }),
             content_type='application/json',
         )
 
@@ -531,16 +564,16 @@ class FinanceFlowTests(TestCase):
         later_cashbook.refresh_from_db()
         inactive_cashbook.refresh_from_db()
         self.assertEqual(payment.status, 1)
-        self.assertEqual(payment.category, priority_category)
-        self.assertEqual(payment.expense_classification, priority_classification)
-        self.assertEqual(payment.cash_book, priority_cashbook)
+        self.assertEqual(payment.category, later_category)
+        self.assertEqual(payment.expense_classification, later_classification)
+        self.assertEqual(payment.cash_book, later_cashbook)
         self.assertEqual(payment.approved_by, self.user)
         self.assertIsNotNone(payment.approved_at)
-        self.assertEqual(priority_cashbook.balance, Decimal('3800'))
-        self.assertEqual(later_cashbook.balance, Decimal('5000'))
+        self.assertEqual(priority_cashbook.balance, Decimal('5000'))
+        self.assertEqual(later_cashbook.balance, Decimal('3800'))
         self.assertEqual(inactive_cashbook.balance, Decimal('5000'))
-        self.assertNotEqual(payment.category, later_category)
-        self.assertNotEqual(payment.expense_classification, later_classification)
+        self.assertNotEqual(payment.category, priority_category)
+        self.assertNotEqual(payment.expense_classification, priority_classification)
 
         second_response = self.client.post(
             reverse('api_approve_payment'),
@@ -549,8 +582,8 @@ class FinanceFlowTests(TestCase):
         )
         self.assertEqual(second_response.json()['status'], 'error')
         self.assertIn('Nháp', second_response.json()['message'])
-        priority_cashbook.refresh_from_db()
-        self.assertEqual(priority_cashbook.balance, Decimal('3800'))
+        later_cashbook.refresh_from_db()
+        self.assertEqual(later_cashbook.balance, Decimal('3800'))
 
     def test_quick_approve_preserves_choices_and_recalculates_linked_receipt_amount(self):
         self.brand.owner = self.user
@@ -606,7 +639,11 @@ class FinanceFlowTests(TestCase):
 
         response = self.client.post(
             reverse('api_approve_payment'),
-            data=json.dumps({'id': payment.id}),
+            data=json.dumps({
+                'id': payment.id,
+                'expense_classification_id': selected_classification.id,
+                'cash_book_id': selected_cashbook.id,
+            }),
             content_type='application/json',
         )
 

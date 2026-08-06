@@ -924,6 +924,30 @@ def _create_completed_receipt_for_order(order, actor, amount, payment_method=2,
     return receipt
 
 
+def _get_order_return_payment_category(order_return):
+    """Lấy danh mục chi cố định cho phiếu hoàn tiền khách trả hàng."""
+    brand_id = (
+        order_return.order.store.brand_id
+        if order_return.order_id and order_return.order and order_return.order.store_id
+        else None
+    )
+    category = (
+        FinanceCategory.objects
+        .filter(brand_id=brand_id, type=2, name__iexact='Hoàn hàng')
+        .order_by('-is_active', 'id')
+        .first()
+    )
+    if category:
+        return category
+    return FinanceCategory.objects.create(
+        brand_id=brand_id,
+        name='Hoàn hàng',
+        type=2,
+        description='Chi hoàn tiền cho khách khi trả hàng',
+        is_active=True,
+    )
+
+
 def _sync_refund_payment_for_return(order_return, actor, payment_method_option_id=None,
                                     payment_method=2, cash_book_id=None):
     """Tạo/cập nhật phiếu chi hoàn tiền theo phiếu trả hàng hoàn thành."""
@@ -977,9 +1001,7 @@ def _sync_refund_payment_for_return(order_return, actor, payment_method_option_i
     if getattr(payment, 'is_deleted', False):
         payment.is_deleted = False
         payment.deleted_at = None
-    refund_cat = FinanceCategory.objects.filter(
-        type=2, name__icontains='hoàn', is_active=True
-    ).first() or FinanceCategory.objects.filter(type=2, is_active=True).first()
+    refund_cat = _get_order_return_payment_category(order_return)
     payment.store = order_return.order.store if order_return.order else None
     payment.category = refund_cat
     payment.cash_book = cash_book

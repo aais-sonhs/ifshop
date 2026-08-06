@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from customers.models import Customer, CustomerAddress
-from finance.models import CashBook, Payment, PaymentMethodOption, Receipt
+from finance.models import CashBook, FinanceCategory, Payment, PaymentMethodOption, Receipt
 from finance.services import update_order_payment_status
 from orders.models import (
     Order, OrderEditHistory, OrderItem, OrderReturn, OrderReturnExchangeItem, Packaging,
@@ -4025,6 +4025,12 @@ class OrderRiskFlowTests(TestCase):
 
     def test_save_order_return_requires_order_and_syncs_order_fields(self):
         order = self._create_order(code='DH-RETURN-001', status=5)
+        FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Hoàn tiền cũ',
+            type=2,
+            is_active=True,
+        )
 
         missing_order_response = self.client.post(
             reverse('api_save_order_return'),
@@ -4071,6 +4077,22 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(refund_payment.customer_id, order.customer_id)
         self.assertEqual(refund_payment.payment_method_option_id, self.payment_method.id)
         self.assertEqual(float(refund_payment.amount), 50.0)
+        self.assertEqual(refund_payment.category.name, 'Hoàn hàng')
+        self.assertEqual(refund_payment.category.brand_id, self.brand.id)
+        self.assertEqual(
+            FinanceCategory.objects.filter(
+                brand=self.brand,
+                type=2,
+                name='Hoàn hàng',
+            ).count(),
+            1,
+        )
+        payment_list_response = self.client.get(reverse('api_get_payments'))
+        payment_row = next(
+            row for row in payment_list_response.json()['data']
+            if row['id'] == refund_payment.id
+        )
+        self.assertEqual(payment_row['category'], 'Hoàn hàng')
         self.cashbook.refresh_from_db()
         self.assertEqual(float(self.cashbook.balance), 999950.0)
 

@@ -659,7 +659,11 @@ function editExpenseClassification(id){
 }
 
 function deleteExpenseClassification(id){
-    if(!confirm('Bạn có chắc muốn xóa phân loại chi này?')) return;
+    if(!confirm(
+        'Bạn có chắc muốn xóa phân loại chi này?\n\n' +
+        'Nếu đã được gán vào phiếu chi, hệ thống sẽ không xóa để bảo toàn lịch sử; ' +
+        'bạn có thể Sửa và chuyển sang Ngừng sử dụng.'
+    )) return;
     $.ajax({url:'{% url "api_delete_expense_classification" %}', type:'POST', contentType:'application/json',
         headers:{'X-CSRFToken':'{{csrf_token}}'}, data:JSON.stringify({id:id}),
         success:function(r){alert(r.message); if(r.status==='ok') loadExpenseClassifications();},

@@ -1942,7 +1942,11 @@ def api_delete_expense_classification(request):
         classification = _finance_master_for_user(
             ExpenseClassification.objects.all(), request,
         ).get(id=data.get('id'))
-        payment_count = Payment.objects.filter(expense_classification=classification).count()
+        # Tính cả phiếu chi đã xóa mềm: chúng vẫn là dữ liệu lịch sử
+        # và cần giữ nguyên tên phân loại đã được gán.
+        payment_count = Payment.all_objects.filter(
+            expense_classification=classification,
+        ).count()
         if payment_count:
             raise ValueError(
                 f'Phân loại này đang được dùng trên {payment_count} phiếu chi. '

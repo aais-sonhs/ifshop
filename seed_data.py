@@ -318,6 +318,7 @@ fin_cat_data = [
     {'name': 'Thu công nợ', 'type': 1, 'description': 'Thu tiền công nợ khách hàng'},
     {'name': 'Thu khác', 'type': 1, 'description': 'Các khoản thu khác'},
     {'name': 'Nhập hàng', 'type': 2, 'description': 'Chi mua hàng nhập kho'},
+    {'name': 'Hoàn hàng', 'type': 2, 'description': 'Chi hoàn tiền cho khách khi trả hàng'},
     {'name': 'Lương nhân viên', 'type': 2, 'description': 'Chi trả lương hàng tháng'},
     {'name': 'Chi phí vận chuyển', 'type': 2, 'description': 'Phí giao hàng, vận chuyển'},
     {'name': 'Chi phí mặt bằng', 'type': 2, 'description': 'Tiền thuê mặt bằng, điện nước'},

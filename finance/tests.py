@@ -595,6 +595,38 @@ class FinanceFlowTests(TestCase):
         self.assertEqual(delete_response.json()['status'], 'error')
         self.assertIn('Ngừng sử dụng', delete_response.json()['message'])
 
+        payment.delete()
+        delete_after_payment_soft_delete_response = self.client.post(
+            reverse('api_delete_expense_classification'),
+            data=json.dumps({'id': classification.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(
+            delete_after_payment_soft_delete_response.json()['status'], 'error',
+        )
+        self.assertIn(
+            'Ngừng sử dụng',
+            delete_after_payment_soft_delete_response.json()['message'],
+        )
+
+        unused_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=expense_category,
+            name='Chi chưa phát sinh',
+        )
+        delete_unused_response = self.client.post(
+            reverse('api_delete_expense_classification'),
+            data=json.dumps({'id': unused_classification.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_unused_response.json()['status'], 'ok')
+        self.assertFalse(
+            ExpenseClassification.objects.filter(id=unused_classification.id).exists(),
+        )
+        self.assertTrue(
+            ExpenseClassification.all_objects.filter(id=unused_classification.id).exists(),
+        )
+
     def test_payment_rejects_expense_classification_from_another_brand(self):
         other_brand = Brand.objects.create(name='Thương hiệu không thuộc quyền')
         foreign_classification = ExpenseClassification.objects.create(

@@ -404,6 +404,21 @@ class FinanceFlowTests(TestCase):
     def test_payment_page_exposes_filter_controls(self):
         self.brand.owner = self.user
         self.brand.save(update_fields=['owner'])
+        approval_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi thường xuyên',
+            type=2,
+        )
+        ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=approval_category,
+            name='Lương + thưởng + BHXH',
+        )
+        purchase_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Nhập hàng',
+            type=2,
+        )
 
         response = self.client.get(reverse('payment_tbl'), {
             'date_from': '2026-07-01',
@@ -451,22 +466,40 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'id="inp_promotion_amount"')
         self.assertContains(response, 'id="inp_promotion_percent"')
         self.assertContains(response, 'id="inp_actual_amount"')
+        self.assertContains(response, 'id="payment_purchase_link_fields"')
+        self.assertContains(response, 'id="payment_promotion_fields"')
+        self.assertContains(response, 'id="payment_actual_amount_field"')
+        self.assertContains(
+            response,
+            f'value="{purchase_category.id}" data-purchase-related="1"',
+        )
+        self.assertContains(
+            response,
+            f'value="{approval_category.id}" data-purchase-related="0"',
+        )
         self.assertContains(response, 'function syncPaymentPromotion()')
         self.assertContains(response, 'function setPaymentGrossInputMode(isLinkedReceipt)')
+        self.assertContains(response, 'function syncPaymentPurchaseFields(clearHiddenValues)')
+        self.assertContains(response, "$('#payment_purchase_link_fields, #payment_promotion_fields').toggle(isPurchaseRelated)")
+        self.assertContains(response, "$('#inp_supplier_id').val('').trigger('change')")
+        self.assertContains(response, "$('#inp_goods_receipt_id').val('').trigger('change')")
         self.assertContains(response, ".prop('readonly', !!isLinkedReceipt)")
         self.assertContains(response, 'Tự lấy giá trị phiếu nhập còn lại sau hàng trả')
         self.assertContains(response, 'id="inp_expense_classification_id"')
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertContains(response, 'btn-approve-payment')
         self.assertContains(response, 'id="modal_approve_payment"')
+        self.assertContains(response, 'id="approve_payment_category"')
         self.assertContains(response, 'id="approve_expense_classification_id"')
         self.assertContains(response, 'id="approve_cash_book_id"')
         self.assertContains(response, 'id="btn_confirm_approve_payment"')
+        self.assertContains(response, 'data-parent-category-id=')
         self.assertContains(response, 'expense_classification_id:classificationId')
         self.assertContains(response, 'cash_book_id:cashBookId')
         self.assertContains(response, '/api/payments/approve/')
+        self.assertContains(response, 'function syncApprovalClassificationOptions(categoryId)')
+        self.assertContains(response, "syncApprovalClassificationOptions(payment.category_id || '')")
         self.assertContains(response, 'function selectFirstApprovalOption(selector)')
-        self.assertContains(response, "selectFirstApprovalOption('#approve_expense_classification_id')")
         self.assertContains(response, "selectFirstApprovalOption('#approve_cash_book_id')")
         self.assertContains(response, ".find('option:not([value=\"\"]):enabled').first().val()")
         self.assertContains(response, 'd-inline-flex align-items-center flex-nowrap text-nowrap')
@@ -588,6 +621,59 @@ class FinanceFlowTests(TestCase):
         self.assertIn('Nháp', second_response.json()['message'])
         later_cashbook.refresh_from_db()
         self.assertEqual(later_cashbook.balance, Decimal('3800'))
+
+    def test_quick_approve_rejects_classification_from_another_parent_category(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        regular_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi thường xuyên',
+            type=2,
+        )
+        unexpected_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi đột xuất',
+            type=2,
+        )
+        salary_classification = ExpenseClassification.objects.create(
+            brand=self.brand,
+            parent_category=regular_category,
+            name='Lương + thưởng + BHXH',
+        )
+        cash_book = CashBook.objects.create(
+            brand=self.brand,
+            name='Quỹ duyệt sai danh mục',
+            balance=Decimal('5000'),
+        )
+        payment = Payment.objects.create(
+            code='PC-DUYET-SAI-DANH-MUC-001',
+            store=self.store,
+            category=unexpected_category,
+            amount=Decimal('1200'),
+            payment_date=date.today(),
+            status=0,
+            created_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({
+                'id': payment.id,
+                'expense_classification_id': salary_classification.id,
+                'cash_book_id': cash_book.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.json()['status'], 'error')
+        self.assertIn('chỉ thuộc Danh mục cha', response.json()['message'])
+        payment.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.category, unexpected_category)
+        self.assertIsNone(payment.expense_classification)
+        self.assertIsNone(payment.cash_book)
+        self.assertEqual(cash_book.balance, Decimal('5000'))
 
     def test_quick_approve_preserves_choices_and_recalculates_linked_receipt_amount(self):
         self.brand.owner = self.user
@@ -774,6 +860,59 @@ class FinanceFlowTests(TestCase):
         )
         self.assertEqual(delete_used_income_response.json()['status'], 'error')
         self.assertIn('phiếu thu', delete_used_income_response.json()['message'])
+
+    def test_order_return_category_is_hidden_from_manual_configuration(self):
+        self.brand.owner = self.user
+        self.brand.save(update_fields=['owner'])
+        system_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Hoàn hàng',
+            type=2,
+            is_system=True,
+        )
+        manual_category = FinanceCategory.objects.create(
+            brand=self.brand,
+            name='Chi thường xuyên',
+            type=2,
+        )
+
+        category_response = self.client.get(reverse('api_get_finance_categories'))
+        category_ids = {
+            row['id'] for row in category_response.json()['data']
+        }
+        self.assertNotIn(system_category.id, category_ids)
+        self.assertIn(manual_category.id, category_ids)
+
+        payment_page = self.client.get(reverse('payment_tbl'))
+        filter_category_ids = {
+            row['id'] for row in payment_page.context['categories']
+        }
+        manual_category_ids = {
+            row['id'] for row in payment_page.context['manual_categories']
+        }
+        self.assertIn(system_category.id, filter_category_ids)
+        self.assertNotIn(system_category.id, manual_category_ids)
+        self.assertIn(manual_category.id, manual_category_ids)
+
+        duplicate_response = self.client.post(
+            reverse('api_save_finance_category'),
+            data=json.dumps({
+                'name': '  Hoàn   hàng ',
+                'type': 2,
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(duplicate_response.json()['status'], 'error')
+        self.assertIn('tự động quản lý', duplicate_response.json()['message'])
+
+        delete_response = self.client.post(
+            reverse('api_delete_finance_category'),
+            data=json.dumps({'id': system_category.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_response.json()['status'], 'error')
+        self.assertIn('không thể xóa', delete_response.json()['message'])
 
     def test_finance_master_priority_order(self):
         self.brand.owner = self.user

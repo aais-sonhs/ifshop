@@ -931,19 +931,38 @@ def _get_order_return_payment_category(order_return):
         if order_return.order_id and order_return.order and order_return.order.store_id
         else None
     )
+    category_scope = FinanceCategory.objects.filter(
+        brand_id=brand_id,
+        type=2,
+    )
     category = (
-        FinanceCategory.objects
-        .filter(brand_id=brand_id, type=2, name__iexact='Hoàn hàng')
+        category_scope
+        .filter(is_system=True)
+        .order_by('-is_active', 'id')
+        .first()
+    ) or (
+        category_scope
+        .filter(name__iexact='Hoàn hàng')
         .order_by('-is_active', 'id')
         .first()
     )
     if category:
+        fields_to_update = []
+        if not category.is_system:
+            category.is_system = True
+            fields_to_update.append('is_system')
+        if not category.is_active:
+            category.is_active = True
+            fields_to_update.append('is_active')
+        if fields_to_update:
+            category.save(update_fields=fields_to_update)
         return category
     return FinanceCategory.objects.create(
         brand_id=brand_id,
         name='Hoàn hàng',
         type=2,
         description='Chi hoàn tiền cho khách khi trả hàng',
+        is_system=True,
         is_active=True,
     )
 

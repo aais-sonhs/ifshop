@@ -23,6 +23,11 @@ class FinanceCategory(SoftDeleteModel):
     type = models.IntegerField(choices=TYPE_CHOICES, verbose_name='Loại')
     description = models.TextField(blank=True, null=True, verbose_name='Mô tả')
     sort_order = models.PositiveIntegerField(default=0, verbose_name='Thứ tự ưu tiên')
+    is_system = models.BooleanField(
+        default=False,
+        editable=False,
+        verbose_name='Danh mục hệ thống',
+    )
     is_active = models.BooleanField(default=True, verbose_name='Đang hoạt động')
     created_at = models.DateTimeField(auto_now_add=True)
 

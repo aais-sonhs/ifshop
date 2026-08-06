@@ -4079,6 +4079,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(float(refund_payment.amount), 50.0)
         self.assertEqual(refund_payment.category.name, 'Hoàn hàng')
         self.assertEqual(refund_payment.category.brand_id, self.brand.id)
+        self.assertTrue(refund_payment.category.is_system)
         self.assertEqual(
             FinanceCategory.objects.filter(
                 brand=self.brand,

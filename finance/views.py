@@ -756,7 +756,16 @@ def receipt_tbl(request):
 def payment_tbl(request):
     categories = list(_finance_master_for_user(
         FinanceCategory.objects.filter(type=2, is_active=True), request,
-    ).order_by('sort_order', 'name', 'id').values('id', 'name'))
+    ).order_by('sort_order', 'name', 'id').values('id', 'name', 'is_system'))
+    for category in categories:
+        normalized_name = ' '.join((category['name'] or '').split()).casefold()
+        category['is_purchase_related'] = normalized_name in {
+            'nhập hàng',
+            'hoàn hàng',
+        }
+    manual_categories = [
+        category for category in categories if not category['is_system']
+    ]
     expense_classifications = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
     ).order_by('sort_order', 'name', 'id').values(
@@ -812,6 +821,7 @@ def payment_tbl(request):
     context = {
         'active_tab': 'payment_tbl',
         'categories': categories,
+        'manual_categories': manual_categories,
         'expense_classifications': expense_classifications,
         'cashbooks': cashbooks,
         'payment_methods': payment_methods,
@@ -909,6 +919,7 @@ def financial_plan_tbl(request):
             _finance_master_for_user(
                 FinanceCategory.objects.filter(is_active=True), request,
             )
+            .filter(is_system=False)
             .values('id', 'name', 'type', 'brand_id')
             .order_by('type', 'name')
         ),
@@ -1874,6 +1885,14 @@ def _apply_payment_approval_choices(request, payment, data):
         raise ValueError(
             'Phân loại chi đã chọn không hợp lệ hoặc đã ngừng sử dụng.'
         )
+    if (
+        payment.category_id
+        and payment.category_id != classification.parent_category_id
+    ):
+        raise ValueError(
+            f'Phân loại chi "{classification.name}" chỉ thuộc Danh mục cha '
+            f'"{classification.parent_category.name}".'
+        )
 
     try:
         cash_book_id = int(data.get('cash_book_id') or 0)
@@ -2083,7 +2102,9 @@ def api_update_finance_master_sort_order(request):
 @login_required(login_url="/login/")
 def api_get_finance_categories(request):
     type_display_map = dict(FinanceCategory.TYPE_CHOICES)
-    cats = list(_finance_master_for_user(FinanceCategory.objects.all(), request).values(
+    cats = list(_finance_master_for_user(
+        FinanceCategory.objects.filter(is_system=False), request,
+    ).values(
         'id',
         'name',
         'type',
@@ -2123,7 +2144,11 @@ def api_save_finance_category(request):
         cid = data.get('id')
         if cid:
             c = _finance_master_for_user(FinanceCategory.objects.all(), request).get(id=cid)
+            if c.is_system:
+                raise ValueError('Danh mục hệ thống được quản lý tự động và không thể sửa.')
         else:
+            if category_type == 2 and ' '.join(name.split()).casefold() == 'hoàn hàng':
+                raise ValueError('Danh mục "Hoàn hàng" được hệ thống tự động quản lý.')
             brand_id = _default_finance_brand_id(request)
             if not brand_id:
                 raise ValueError('Không xác định được thương hiệu để tạo danh mục thu chi.')
@@ -2150,6 +2175,8 @@ def api_delete_finance_category(request):
         category = _finance_master_for_user(
             FinanceCategory.objects.all(), request,
         ).get(id=data.get('id'))
+        if category.is_system:
+            raise ValueError('Danh mục hệ thống được quản lý tự động và không thể xóa.')
         usages = []
         receipt_count = Receipt.all_objects.filter(category=category).count()
         payment_count = Payment.all_objects.filter(category=category).count()
@@ -2229,7 +2256,11 @@ def api_save_expense_classification(request):
         if not parent_category_id:
             raise ValueError('Vui lòng chọn Danh mục cha cho phân loại chi.')
         parent_category = _finance_master_for_user(
-            FinanceCategory.objects.filter(type=2, is_active=True), request,
+            FinanceCategory.objects.filter(
+                type=2,
+                is_active=True,
+                is_system=False,
+            ), request,
         ).filter(id=parent_category_id).first()
         if not parent_category:
             raise ValueError('Danh mục cha không thuộc thương hiệu của bạn hoặc đã ngừng sử dụng.')

@@ -2035,9 +2035,14 @@ function normalizeOrderProductSearch(value){
     if(text.normalize){
         text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
+    text = text.replace(/[.,]/g, function(separator, index, source){
+        var previousIsDigit = /\d/.test(source.charAt(index - 1));
+        var nextIsDigit = /\d/.test(source.charAt(index + 1));
+        return previousIsDigit && nextIsDigit ? '.' : ' ';
+    });
     return text
         .replace(/đ/g, 'd')
-        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/[^a-z0-9.]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }

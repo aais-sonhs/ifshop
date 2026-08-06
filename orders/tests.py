@@ -1801,6 +1801,19 @@ class OrderRiskFlowTests(TestCase):
         self.assertContains(response, "setOrderFormInitialFocus('create')")
         self.assertContains(response, "mode === 'edit' && focusExistingOrderItemSearch()")
 
+    def test_order_product_search_preserves_decimal_keywords(self):
+        response = self.client.get(reverse('order_tbl'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "text = text.replace(/[.,]/g, function(separator, index, source){",
+        )
+        self.assertContains(response, "var previousIsDigit = /\\d/.test(source.charAt(index - 1));")
+        self.assertContains(response, "var nextIsDigit = /\\d/.test(source.charAt(index + 1));")
+        self.assertContains(response, "return previousIsDigit && nextIsDigit ? '.' : ' ';")
+        self.assertContains(response, ".replace(/[^a-z0-9.]+/g, ' ')")
+
     def test_order_status_action_buttons_have_spacing(self):
         response = self.client.get(reverse('order_tbl'))
 

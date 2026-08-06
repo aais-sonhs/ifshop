@@ -13,7 +13,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from finance.models import CashBook, FinanceCategory, Payment
+from finance.models import CashBook, FinanceCategory, Payment, SupplierPaymentSchedule
 from orders.models import Order, OrderEditHistory, OrderItem
 from products.models import (
     ComboItem,
@@ -2837,6 +2837,160 @@ class ProductInventoryFlowTests(TestCase):
         self.assertEqual(stock.quantity, Decimal('7'))
         self.assertTrue(purchase_return.stock_applied)
         self.assertEqual(purchase_return.total_amount, Decimal('300'))
+
+    def test_purchase_return_adjusts_cancels_and_restores_auto_draft_payment(self):
+        create_response = self._post_goods_receipt(
+            'P-RETURN-PAYMENT-SYNC',
+            Decimal('10'),
+            Decimal('100'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-RETURN-PAYMENT-SYNC')
+        receipt_item = receipt.items.get()
+        payment = Payment.objects.get(goods_receipt=receipt)
+
+        partial_response = self._post_purchase_return(
+            receipt,
+            receipt_item,
+            Decimal('3'),
+            status=1,
+        )
+        self.assertEqual(partial_response.json()['status'], 'ok', msg=partial_response.content.decode())
+        purchase_return = PurchaseReturn.objects.get(id=partial_response.json()['id'])
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.amount, Decimal('700'))
+        self.assertIn('Đã giảm 1 khoản chi Nháp', partial_response.json()['message'])
+        payment_row = next(
+            row for row in self.client.get(reverse('api_get_payments')).json()['data']
+            if row['id'] == payment.id
+        )
+        self.assertEqual(payment_row['gross_amount'], 700.0)
+        self.assertEqual(payment_row['amount'], 700.0)
+
+        full_response = self._post_purchase_return(
+            receipt,
+            receipt_item,
+            Decimal('10'),
+            status=1,
+            return_id=purchase_return.id,
+            code=purchase_return.code,
+        )
+        self.assertEqual(full_response.json()['status'], 'ok', msg=full_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, 2)
+        self.assertIn('Đã tự động hủy 1 khoản chi Nháp', full_response.json()['message'])
+
+        delete_response = self.client.post(
+            reverse('api_delete_purchase_return'),
+            data=json.dumps({'id': purchase_return.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_response.json()['status'], 'ok', msg=delete_response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.amount, Decimal('1000'))
+        self.assertNotIn('TỰ ĐỘNG ĐIỀU CHỈNH DO TRẢ HÀNG', payment.note or '')
+
+    def test_purchase_return_keeps_completed_payment_unchanged(self):
+        create_response = self._post_goods_receipt(
+            'P-RETURN-PAID-UNCHANGED',
+            Decimal('10'),
+            Decimal('100'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-RETURN-PAID-UNCHANGED')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        payment.status = 1
+        payment.save(update_fields=['status'])
+
+        response = self._post_purchase_return(
+            receipt,
+            receipt.items.get(),
+            Decimal('10'),
+            status=1,
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.amount, Decimal('1000'))
+
+    def test_purchase_return_syncs_scheduled_draft_payment(self):
+        create_response = self._post_goods_receipt(
+            'P-RETURN-SCHEDULE-SYNC',
+            Decimal('10'),
+            Decimal('100'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-RETURN-SCHEDULE-SYNC')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        schedule = SupplierPaymentSchedule.objects.create(
+            code='LCT-RETURN-SYNC',
+            supplier=self.supplier,
+            goods_receipt=receipt,
+            due_date=date.today(),
+            gross_amount=Decimal('1000'),
+            amount=Decimal('1000'),
+            status=0,
+            payment=payment,
+            created_by=self.user,
+        )
+
+        response = self._post_purchase_return(
+            receipt,
+            receipt.items.get(),
+            Decimal('4'),
+            status=1,
+        )
+
+        self.assertEqual(response.json()['status'], 'ok', msg=response.content.decode())
+        schedule.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertEqual(schedule.status, 0)
+        self.assertEqual(schedule.gross_amount, Decimal('600'))
+        self.assertEqual(schedule.amount, Decimal('600'))
+        self.assertEqual(payment.status, 0)
+        self.assertEqual(payment.amount, Decimal('600'))
+
+    def test_adjusted_draft_payment_approves_only_remaining_payable(self):
+        FinanceCategory.objects.create(name='Nhập hàng', type=2, is_active=True)
+        cash_book = CashBook.objects.create(
+            name='Quỹ duyệt sau trả hàng',
+            balance=Decimal('1000'),
+        )
+        create_response = self._post_goods_receipt(
+            'P-RETURN-APPROVE-NET',
+            Decimal('10'),
+            Decimal('100'),
+            status=1,
+        )
+        self.assertEqual(create_response.json()['status'], 'ok', msg=create_response.content.decode())
+        receipt = GoodsReceipt.objects.get(code='P-RETURN-APPROVE-NET')
+        payment = Payment.objects.get(goods_receipt=receipt)
+        return_response = self._post_purchase_return(
+            receipt,
+            receipt.items.get(),
+            Decimal('3'),
+            status=1,
+        )
+        self.assertEqual(return_response.json()['status'], 'ok', msg=return_response.content.decode())
+
+        approve_response = self.client.post(
+            reverse('api_approve_payment'),
+            data=json.dumps({'id': payment.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(approve_response.json()['status'], 'ok', msg=approve_response.content.decode())
+        payment.refresh_from_db()
+        cash_book.refresh_from_db()
+        self.assertEqual(payment.status, 1)
+        self.assertEqual(payment.amount, Decimal('700'))
+        self.assertEqual(cash_book.balance, Decimal('300'))
 
     def test_draft_purchase_return_does_not_change_inventory(self):
         receipt, receipt_item = self._create_completed_goods_receipt(code='P-RETURN-DRAFT')

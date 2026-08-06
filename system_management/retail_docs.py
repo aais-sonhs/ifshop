@@ -69,7 +69,7 @@ RETAIL_RECENT_UPDATES = [
         'path': 'Kho & Sản phẩm → Phiếu nhập; Tài chính → Phiếu chi / Công nợ NCC',
         'items': [
             'Khi phiếu nhập chuyển Hoàn thành, hệ thống tự tạo một phiếu chi Nháp gắn với phiếu nhập để kế toán kiểm tra và duyệt; các phiếu nhập cũ đủ điều kiện cũng đã được bổ sung phiếu chi Nháp.',
-            'Số tiền trước khuyến mãi lấy tự động từ tổng phiếu nhập, tức tổng Số lượng thực nhận × Đơn giá nhập; không nhập lại bằng tay trên phiếu chi liên kết.',
+            'Số tiền trước khuyến mãi lấy tự động từ giá trị phiếu nhập còn phải chi sau hàng trả và các phiếu chi đã hoàn thành; không nhập lại bằng tay trên phiếu chi liên kết.',
             'Kế toán chỉ nhập Khuyến mãi theo phần trăm hoặc số tiền. Tiền phiếu chi tự tính = Số tiền trước khuyến mãi − Khuyến mãi.',
             'Nếu số lượng hoặc đơn giá của phiếu nhập thay đổi, phiếu chi liên kết còn Nháp được tính lại; phiếu đã Hoàn thành không tự đổi để giữ lịch sử đã duyệt.',
             'Khuyến mãi được lưu trên phiếu chi, không sửa giá trị gốc của phiếu nhập. Công nợ NCC được giảm bởi cả tiền thực chi và khuyến mãi, còn sổ quỹ chỉ giảm theo tiền thực chi.',
@@ -613,7 +613,7 @@ RETAIL_OPERATION_GUIDES = [
             'Trên phiếu chi, chọn Danh mục chi trước rồi chọn Phân loại chi thuộc danh mục đó. Ví dụ: Danh mục chi = Chi văn phòng; Phân loại chi = Chi thường xuyên.',
             'Nếu chưa có lựa chọn phù hợp, chủ thương hiệu vào Quản trị → Danh mục, tìm khung Phân loại chi để khai báo. Phân loại Ngừng sử dụng sẽ không xuất hiện khi tạo phiếu mới.',
             'Với phiếu nhập đã Hoàn thành, mở phiếu chi Nháp do hệ thống tự tạo thay vì tìm và chọn lại phiếu nhập trong danh sách dài.',
-            'Kiểm tra Số tiền trước khuyến mãi được lấy từ tổng phiếu nhập; chọn Khuyến mãi theo % hoặc tiền rồi nhập đúng ưu đãi của nhà cung cấp.',
+            'Kiểm tra Số tiền trước khuyến mãi được lấy từ giá trị phiếu nhập còn phải chi sau hàng trả và các phiếu chi đã hoàn thành; chọn Khuyến mãi theo % hoặc tiền rồi nhập đúng ưu đãi của nhà cung cấp.',
             'Kiểm tra Tiền phiếu chi được tự tính. Đây là số thực tế sẽ bị trừ khỏi quỹ khi chứng từ Hoàn thành.',
             'Ghi nội dung đủ rõ, mở Sửa và chuyển Trạng thái từ Nháp sang Hoàn thành để duyệt. Tài khoản đang đăng nhập được lưu là Người duyệt.',
             'Cuối ngày đối chiếu riêng tiền mặt, ngân hàng và ví điện tử.',

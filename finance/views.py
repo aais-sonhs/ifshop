@@ -18,6 +18,7 @@ from django.db.models import (
     CharField,
     DecimalField,
     ExpressionWrapper,
+    Exists,
     F,
     OuterRef,
     Prefetch,
@@ -771,6 +772,34 @@ def payment_tbl(request):
     goods_receipts = list(goods_receipts_qs.values(
         'id', 'code', 'supplier__name', 'total_amount', 'status'
     ).order_by('-receipt_date'))
+    receipt_ids = [row['id'] for row in goods_receipts]
+    returned_by_receipt = {
+        row['goods_receipt_id']: Decimal(str(row['total'] or 0))
+        for row in PurchaseReturn.objects.filter(
+            goods_receipt_id__in=receipt_ids,
+            status=1,
+        ).values('goods_receipt_id').annotate(total=Sum('total_amount'))
+    }
+    paid_by_receipt = {
+        row['goods_receipt_id']: (
+            Decimal(str(row['amount'] or 0))
+            + Decimal(str(row['promotion'] or 0))
+        )
+        for row in Payment.objects.filter(
+            goods_receipt_id__in=receipt_ids,
+            status=1,
+        ).values('goods_receipt_id').annotate(
+            amount=Sum('amount'),
+            promotion=Sum('promotion_amount'),
+        )
+    }
+    for row in goods_receipts:
+        row['available_payment_amount'] = max(
+            Decimal(str(row['total_amount'] or 0))
+            - returned_by_receipt.get(row['id'], Decimal('0'))
+            - paid_by_receipt.get(row['id'], Decimal('0')),
+            Decimal('0'),
+        )
     from system_management.models import Store
     stores = list(
         Store.objects
@@ -1112,16 +1141,58 @@ def api_delete_receipt(request):
 
 # ============ API: PAYMENT ============
 
+def _stored_payment_gross_amount(payment):
+    return (
+        Decimal(str(payment.amount or 0))
+        + Decimal(str(payment.promotion_amount or 0))
+    )
+
+
+def _goods_receipt_available_payment_gross(receipt, exclude_payment_id=None):
+    """Số còn có thể chi sau trả hàng và các phiếu chi đã Hoàn thành."""
+    returned_amount = Decimal(str(
+        PurchaseReturn.objects.filter(goods_receipt=receipt, status=1)
+        .aggregate(total=Sum('total_amount'))['total'] or 0
+    ))
+    payable_amount = max(
+        Decimal(str(receipt.total_amount or 0)) - returned_amount,
+        Decimal('0'),
+    )
+    completed = Payment.objects.filter(goods_receipt=receipt, status=1)
+    if exclude_payment_id:
+        completed = completed.exclude(id=exclude_payment_id)
+    completed_totals = completed.aggregate(
+        amount=Sum('amount'),
+        promotion=Sum('promotion_amount'),
+    )
+    completed_amount = (
+        Decimal(str(completed_totals['amount'] or 0))
+        + Decimal(str(completed_totals['promotion'] or 0))
+    )
+    return max(payable_amount - completed_amount, Decimal('0'))
+
+
+def _goods_receipt_has_completed_return(receipt):
+    return PurchaseReturn.objects.filter(goods_receipt=receipt, status=1).exists()
+
+
 def _get_payment_amount_breakdown(payment):
-    """Giá trị hiển thị của phiếu chi, có đồng bộ lại các phiếu Nháp cũ."""
+    """Giá trị hiển thị đúng theo khoản chi đã lưu hoặc đã xếp lịch."""
     stored_amount = Decimal(str(payment.amount or 0))
     stored_promotion = Decimal(str(payment.promotion_amount or 0))
     promotion_percent = Decimal(str(payment.promotion_percent or 0))
     schedule = getattr(payment, 'supplier_schedule', None)
     if schedule and schedule.status != 2:
         gross_amount = Decimal(str(schedule.gross_amount or 0))
-    elif payment.goods_receipt_id:
-        gross_amount = Decimal(str(payment.goods_receipt.total_amount or 0))
+    elif payment.goods_receipt_id and payment.status == 0:
+        has_completed_return = getattr(payment, 'has_completed_purchase_return', None)
+        if has_completed_return is None:
+            has_completed_return = _goods_receipt_has_completed_return(payment.goods_receipt)
+        gross_amount = (
+            stored_amount + stored_promotion
+            if has_completed_return
+            else Decimal(str(payment.goods_receipt.total_amount or 0))
+        )
     else:
         gross_amount = stored_amount + stored_promotion
 
@@ -1571,6 +1642,10 @@ def api_get_payments(request):
         if payment_date_order == 'asc'
         else ('-payment_date', '-created_at', '-id')
     )
+    completed_purchase_returns = PurchaseReturn.objects.filter(
+        goods_receipt_id=OuterRef('goods_receipt_id'),
+        status=1,
+    )
     payments = (
         Payment.objects
         .select_related(
@@ -1586,6 +1661,7 @@ def api_get_payments(request):
             'approved_by',
             'supplier_schedule',
         )
+        .annotate(has_completed_purchase_return=Exists(completed_purchase_returns))
         .order_by(*ordering)
     )
     payments = _filter_payments_for_user(payments, request)
@@ -1698,7 +1774,23 @@ def api_save_payment(request):
                     promotion_data['promotion_percent'] = linked_schedule.promotion_percent
             elif linked_receipt:
                 promotion_data = dict(data)
-                promotion_data['gross_amount'] = linked_receipt.total_amount
+                available_gross = _goods_receipt_available_payment_gross(
+                    linked_receipt,
+                    exclude_payment_id=p.id if old_status == 1 else None,
+                )
+                stored_gross = _stored_payment_gross_amount(p)
+                if old_status == 1:
+                    # Phiếu đã Hoàn thành là lịch sử dòng tiền; trả hàng không
+                    # được âm thầm sửa lại số tiền đã thực chi.
+                    payment_gross = stored_gross
+                elif (
+                    stored_gross > 0
+                    and _goods_receipt_has_completed_return(linked_receipt)
+                ):
+                    payment_gross = min(stored_gross, available_gross)
+                else:
+                    payment_gross = available_gross
+                promotion_data['gross_amount'] = payment_gross
                 if not any(key in data for key in (
                     'promotion_mode', 'promotion_amount', 'promotion_percent',
                 )):
@@ -1838,7 +1930,13 @@ def api_approve_payment(request):
                 linked_receipt = linked_schedule.goods_receipt
                 gross_amount = Decimal(str(linked_schedule.gross_amount or 0))
             elif linked_receipt:
-                gross_amount = Decimal(str(linked_receipt.total_amount or 0))
+                available_gross = _goods_receipt_available_payment_gross(linked_receipt)
+                stored_gross = _stored_payment_gross_amount(payment)
+                gross_amount = (
+                    min(stored_gross, available_gross)
+                    if stored_gross > 0 and _goods_receipt_has_completed_return(linked_receipt)
+                    else available_gross
+                )
 
             _apply_payment_promotion(payment, {
                 'gross_amount': gross_amount,

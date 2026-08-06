@@ -161,7 +161,7 @@
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Nhà cung cấp</label><select class="form-control form-control-sm select2" id="inp_supplier_id"><option value="">-- Chọn --</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div></div>
-                    <div class="col-md-6"><div class="form-group"><label>Phiếu nhập hàng</label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Không liên kết --</option>{% for g in goods_receipts %}<option value="{{ g.id }}" data-amount="{{ g.total_amount }}">{{ g.code }} - {{ g.supplier__name|default:"" }} ({{ g.total_amount|money_vnd }}đ)</option>{% endfor %}</select></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Phiếu nhập hàng</label><select class="form-control form-control-sm select2" id="inp_goods_receipt_id"><option value="">-- Không liên kết --</option>{% for g in goods_receipts %}<option value="{{ g.id }}" data-amount="{{ g.available_payment_amount }}">{{ g.code }} - {{ g.supplier__name|default:"" }} (còn {{ g.available_payment_amount|money_vnd }}đ)</option>{% endfor %}</select></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-6"><div class="form-group"><label>Quỹ</label><select class="form-control form-control-sm" id="inp_cash_book_id"><option value="">-- Chọn --</option>{% for c in cashbooks %}<option value="{{ c.id }}" data-balance="{{ c.balance }}">{{ c.name }} - {{ c.balance|money_vnd }}đ</option>{% endfor %}</select><small class="text-muted" id="lbl_balance"></small></div></div>
@@ -185,7 +185,7 @@
                             <small class="text-muted" id="promotion_conversion">Tương đương 0đ (0%)</small>
                         </div>
                     </div>
-                    <div class="col-md-6"><div class="form-group"><label>Tiền phiếu chi</label><input type="number" class="form-control form-control-sm font-weight-bold text-danger" id="inp_actual_amount" value="0" readonly><small class="text-muted">Tự tính bằng Tổng tiền phiếu nhập − Khuyến mãi và là số thực tế bị trừ khỏi quỹ.</small></div></div>
+                    <div class="col-md-6"><div class="form-group"><label>Tiền phiếu chi</label><input type="number" class="form-control form-control-sm font-weight-bold text-danger" id="inp_actual_amount" value="0" readonly><small class="text-muted">Tự tính bằng số còn phải chi − Khuyến mãi và là số thực tế bị trừ khỏi quỹ.</small></div></div>
                 </div>
                 <div class="row">
                     <div class="col-md-4"><div class="form-group"><label>Ngày chi <span class="text-danger">*</span></label><input type="date" class="form-control form-control-sm" id="inp_payment_date"></div></div>
@@ -240,11 +240,11 @@ function setPaymentGrossInputMode(isLinkedReceipt){
         .prop('readonly', !!isLinkedReceipt)
         .toggleClass('bg-light', !!isLinkedReceipt);
     $('#payment_gross_label').text(
-        isLinkedReceipt ? 'Tổng tiền phiếu nhập' : 'Số tiền trước khuyến mãi'
+        isLinkedReceipt ? 'Còn phải chi cho phiếu nhập' : 'Số tiền trước khuyến mãi'
     );
     $('#payment_gross_hint').text(
         isLinkedReceipt
-            ? 'Tự lấy từ tổng số lượng × đơn giá của phiếu nhập; kế toán chỉ nhập khuyến mãi.'
+            ? 'Tự lấy giá trị phiếu nhập còn lại sau hàng trả và các phiếu chi đã hoàn thành; kế toán chỉ nhập khuyến mãi.'
             : 'Phiếu chi tạo tay được nhập số tiền trực tiếp.'
     );
 }
@@ -423,7 +423,7 @@ $(document).ready(function(){
         }
     });
 
-    // Khi chọn phiếu nhập hàng → khóa tiền gốc theo số lượng × đơn giá.
+    // Khi chọn phiếu nhập hàng → khóa tiền gốc theo nghĩa vụ còn phải chi.
     $('#inp_goods_receipt_id').change(function(){
         var $opt = $(this).find('option:selected');
         var amount = $opt.data('amount');

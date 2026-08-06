@@ -121,7 +121,7 @@ def _cancel_goods_receipt_draft_payment(receipt, reason):
     # không còn hợp lệ, hủy toàn bộ lịch chưa trả và các phiếu chi Nháp tương ứng.
     schedules = list(
         SupplierPaymentSchedule.objects.select_related('payment')
-        .select_for_update()
+        .select_for_update(of=('self',))
         .filter(goods_receipt=receipt, status=0)
     )
     for schedule in schedules:
@@ -143,6 +143,233 @@ def _cancel_goods_receipt_draft_payment(receipt, reason):
     payment.note = f'[HỦY TỰ ĐỘNG] {reason}'
     payment.save(update_fields=['status', 'note', 'updated_at'])
     return 'cancelled', payment
+
+
+_PURCHASE_RETURN_PAYMENT_NOTE_RE = re.compile(
+    r'\n?\[TỰ ĐỘNG ĐIỀU CHỈNH DO TRẢ HÀNG \| gốc=([0-9.]+) \| km=([0-9.]+)\]'
+)
+
+
+def _purchase_return_payment_snapshot(note):
+    match = _PURCHASE_RETURN_PAYMENT_NOTE_RE.search(note or '')
+    if not match:
+        return None
+    return Decimal(match.group(1)), Decimal(match.group(2))
+
+
+def _set_purchase_return_payment_note(note, gross_amount=None, promotion_amount=None):
+    cleaned = _PURCHASE_RETURN_PAYMENT_NOTE_RE.sub('', note or '').strip()
+    if gross_amount is None:
+        return cleaned
+    marker = (
+        '[TỰ ĐỘNG ĐIỀU CHỈNH DO TRẢ HÀNG | '
+        f'gốc={gross_amount} | km={promotion_amount}]'
+    )
+    return f'{cleaned}\n{marker}'.strip()
+
+
+def _draft_amounts_for_gross(document, gross_amount, original_promotion_amount):
+    gross_amount = max(Decimal(str(gross_amount or 0)), Decimal('0'))
+    if document.promotion_mode == 'percent':
+        promotion_percent = Decimal(str(document.promotion_percent or 0))
+        promotion_amount = (
+            gross_amount * promotion_percent / Decimal('100')
+        ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    else:
+        promotion_amount = min(
+            max(Decimal(str(original_promotion_amount or 0)), Decimal('0')),
+            gross_amount,
+        )
+        promotion_percent = (
+            promotion_amount * Decimal('100') / gross_amount
+            if gross_amount else Decimal('0')
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return promotion_amount, promotion_percent, gross_amount - promotion_amount
+
+
+def _sync_goods_receipt_payments_after_return(receipt):
+    """Khớp các khoản chi Nháp với nghĩa vụ còn lại sau trả hàng.
+
+    Phiếu chi đã Hoàn thành là dòng tiền lịch sử nên luôn được giữ nguyên. Các
+    phiếu/lịch chi Nháp được phân bổ theo thứ tự cũ; phần vượt nghĩa vụ mới bị
+    giảm hoặc hủy. Marker trong ghi chú lưu mức gốc để có thể phục hồi chính
+    xác khi phiếu trả được sửa về Nháp hoặc bị xóa.
+    """
+    from finance.models import Payment, SupplierPaymentSchedule
+
+    returned_amount = Decimal(str(
+        PurchaseReturn.objects.filter(goods_receipt=receipt, status=1)
+        .aggregate(total=Sum('total_amount'))['total'] or 0
+    ))
+    payable_amount = max(
+        Decimal(str(receipt.total_amount or 0)) - returned_amount,
+        Decimal('0'),
+    )
+    completed_totals = Payment.objects.filter(
+        goods_receipt=receipt,
+        status=1,
+    ).aggregate(amount=Sum('amount'), promotion=Sum('promotion_amount'))
+    completed_amount = (
+        Decimal(str(completed_totals['amount'] or 0))
+        + Decimal(str(completed_totals['promotion'] or 0))
+    )
+    remaining_amount = max(payable_amount - completed_amount, Decimal('0'))
+
+    schedules = list(
+        SupplierPaymentSchedule.all_objects
+        .select_for_update()
+        .filter(goods_receipt=receipt, is_deleted=False)
+        .filter(
+            Q(status=0)
+            | Q(status=2, note__contains='[TỰ ĐỘNG ĐIỀU CHỈNH DO TRẢ HÀNG |')
+        )
+        .order_by('due_date', 'installment_no', 'id')
+    )
+    schedule_payment_ids = [row.payment_id for row in schedules if row.payment_id]
+    schedule_payments = {
+        payment.id: payment
+        for payment in Payment.all_objects.select_for_update().filter(
+            id__in=schedule_payment_ids,
+            is_deleted=False,
+        )
+    }
+
+    direct_payments = list(
+        Payment.all_objects.select_for_update(of=('self',))
+        .filter(
+            goods_receipt=receipt,
+            is_deleted=False,
+            supplier_schedule__isnull=True,
+        )
+        .filter(
+            Q(status=0)
+            | Q(status=2, note__contains='[TỰ ĐỘNG ĐIỀU CHỈNH DO TRẢ HÀNG |')
+        )
+        .order_by('payment_date', 'id')
+    )
+
+    documents = []
+    for schedule in schedules:
+        payment = schedule_payments.get(schedule.payment_id)
+        if payment and payment.status == 1:
+            continue
+        snapshot = (
+            _purchase_return_payment_snapshot(schedule.note)
+            or _purchase_return_payment_snapshot(payment.note if payment else '')
+        )
+        current_gross = Decimal(str(schedule.gross_amount or 0))
+        current_promotion = Decimal(str(schedule.promotion_amount or 0))
+        original_gross, original_promotion = snapshot or (current_gross, current_promotion)
+        documents.append({
+            'kind': 'schedule',
+            'schedule': schedule,
+            'payment': payment,
+            'current_gross': current_gross,
+            'original_gross': original_gross,
+            'original_promotion': original_promotion,
+            'was_active': schedule.status == 0,
+        })
+
+    for payment in direct_payments:
+        snapshot = _purchase_return_payment_snapshot(payment.note)
+        current_gross = (
+            Decimal(str(payment.amount or 0))
+            + Decimal(str(payment.promotion_amount or 0))
+        )
+        current_promotion = Decimal(str(payment.promotion_amount or 0))
+        original_gross, original_promotion = snapshot or (current_gross, current_promotion)
+        documents.append({
+            'kind': 'payment',
+            'schedule': None,
+            'payment': payment,
+            'current_gross': current_gross,
+            'original_gross': original_gross,
+            'original_promotion': original_promotion,
+            'was_active': payment.status == 0,
+        })
+
+    result = {'updated': 0, 'cancelled': 0, 'reopened': 0}
+    for document in documents:
+        capacity = max(document['original_gross'], Decimal('0'))
+        allocated = min(capacity, remaining_amount)
+        remaining_amount -= allocated
+        schedule = document['schedule']
+        payment = document['payment']
+
+        if allocated <= 0:
+            if schedule:
+                schedule.note = _set_purchase_return_payment_note(
+                    schedule.note,
+                    capacity,
+                    document['original_promotion'],
+                )
+                schedule.status = 2
+                schedule.save(update_fields=['status', 'note', 'updated_at'])
+            if payment and payment.status == 0:
+                payment.note = _set_purchase_return_payment_note(
+                    payment.note,
+                    capacity,
+                    document['original_promotion'],
+                )
+                payment.status = 2
+                payment.approved_by = None
+                payment.approved_at = None
+                payment.save(update_fields=[
+                    'status', 'note', 'approved_by', 'approved_at', 'updated_at',
+                ])
+            if document['was_active']:
+                result['cancelled'] += 1
+            continue
+
+        amount_source = schedule or payment
+        promotion_amount, promotion_percent, actual_amount = _draft_amounts_for_gross(
+            amount_source,
+            allocated,
+            document['original_promotion'],
+        )
+        fully_restored = allocated == capacity
+        note_gross = None if fully_restored else capacity
+        note_promotion = None if fully_restored else document['original_promotion']
+
+        if schedule:
+            schedule.gross_amount = allocated
+            schedule.promotion_amount = promotion_amount
+            schedule.promotion_percent = promotion_percent
+            schedule.amount = actual_amount
+            schedule.status = 0
+            schedule.note = _set_purchase_return_payment_note(
+                schedule.note,
+                note_gross,
+                note_promotion,
+            )
+            schedule.save(update_fields=[
+                'gross_amount', 'promotion_amount', 'promotion_percent',
+                'amount', 'status', 'note', 'updated_at',
+            ])
+
+        if payment:
+            payment.promotion_amount = promotion_amount
+            payment.promotion_percent = promotion_percent
+            payment.amount = actual_amount
+            payment.status = 0
+            payment.approved_by = None
+            payment.approved_at = None
+            payment.note = _set_purchase_return_payment_note(
+                payment.note,
+                note_gross,
+                note_promotion,
+            )
+            payment.save(update_fields=[
+                'promotion_amount', 'promotion_percent', 'amount', 'status',
+                'approved_by', 'approved_at', 'note', 'updated_at',
+            ])
+
+        if not document['was_active']:
+            result['reopened'] += 1
+        elif allocated != document['current_gross']:
+            result['updated'] += 1
+
+    return result
 
 
 def _sync_goods_receipt_draft_payment(
@@ -3066,8 +3293,17 @@ def api_save_purchase_return(request):
 
             if old_return_status == 1 or status == 1:
                 _sync_purchase_costs(affected_product_ids, affected_variant_ids)
+                payment_sync = _sync_goods_receipt_payments_after_return(receipt)
+            else:
+                payment_sync = {'updated': 0, 'cancelled': 0, 'reopened': 0}
 
         message = 'Đã hoàn thành phiếu trả và trừ tồn kho.' if status == 1 else 'Đã lưu phiếu trả hàng nhập.'
+        if payment_sync['cancelled']:
+            message += f" Đã tự động hủy {payment_sync['cancelled']} khoản chi Nháp không còn phải trả."
+        if payment_sync['updated']:
+            message += f" Đã giảm {payment_sync['updated']} khoản chi Nháp theo giá trị hàng trả."
+        if payment_sync['reopened']:
+            message += f" Đã khôi phục {payment_sync['reopened']} khoản chi Nháp theo công nợ hiện tại."
         return JsonResponse({'status': 'ok', 'message': message, 'id': purchase_return.id, 'code': purchase_return.code})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
@@ -3093,10 +3329,19 @@ def api_delete_purchase_return(request):
             }
             _reverse_purchase_return_stock(purchase_return)
             was_completed = purchase_return.status == 1
+            receipt = purchase_return.goods_receipt
             purchase_return.delete()
             if was_completed:
                 _sync_purchase_costs(affected_product_ids, affected_variant_ids)
-        return JsonResponse({'status': 'ok', 'message': 'Đã xóa phiếu trả và hoàn tác tồn kho.'})
+                payment_sync = _sync_goods_receipt_payments_after_return(receipt)
+            else:
+                payment_sync = {'updated': 0, 'cancelled': 0, 'reopened': 0}
+        message = 'Đã xóa phiếu trả và hoàn tác tồn kho.'
+        if payment_sync['reopened']:
+            message += f" Đã khôi phục {payment_sync['reopened']} khoản chi Nháp."
+        if payment_sync['updated']:
+            message += f" Đã cập nhật {payment_sync['updated']} khoản chi Nháp."
+        return JsonResponse({'status': 'ok', 'message': message})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)})
 

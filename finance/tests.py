@@ -445,7 +445,7 @@ class FinanceFlowTests(TestCase):
         self.assertNotContains(response, "d.created_by || ''")
         self.assertContains(response, "d.approved_by || ''")
         self.assertContains(response, 'Tiền phiếu chi')
-        self.assertContains(response, 'Tổng tiền phiếu nhập')
+        self.assertContains(response, 'Còn phải chi cho phiếu nhập')
         self.assertContains(response, 'Khuyến mãi (% / tiền)')
         self.assertContains(response, 'id="inp_promotion_mode"')
         self.assertContains(response, 'id="inp_promotion_amount"')
@@ -454,7 +454,7 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'function syncPaymentPromotion()')
         self.assertContains(response, 'function setPaymentGrossInputMode(isLinkedReceipt)')
         self.assertContains(response, ".prop('readonly', !!isLinkedReceipt)")
-        self.assertContains(response, 'Tự lấy từ tổng số lượng × đơn giá của phiếu nhập')
+        self.assertContains(response, 'Tự lấy giá trị phiếu nhập còn lại sau hàng trả')
         self.assertContains(response, 'id="inp_expense_classification_id"')
         self.assertContains(response, "$('#inp_status').val('1')")
         self.assertContains(response, 'btn-approve-payment')
@@ -979,6 +979,12 @@ class FinanceFlowTests(TestCase):
         self.assertContains(page_response, 'Phân loại chi')
         self.assertContains(page_response, 'Danh mục cha')
         self.assertContains(page_response, 'Chi thường xuyên')
+        self.assertContains(
+            page_response,
+            'btn-action-group d-inline-flex flex-nowrap align-items-center',
+            count=2,
+        )
+        self.assertContains(page_response, 'style="gap:4px;"', count=2)
 
         create_response = self.client.post(
             reverse('api_save_expense_classification'),

@@ -463,6 +463,7 @@ class FinanceFlowTests(TestCase):
         self.assertContains(response, 'var paymentColConfig = new ColumnConfig({')
         self.assertContains(response, "storageKey: 'ifshop_payment_columns_v1'")
         self.assertContains(response, 'paymentColConfig.apply();')
+        self.assertContains(response, 'Ẩn/hiện cột')
         for column_key in [
             'stt',
             'code',

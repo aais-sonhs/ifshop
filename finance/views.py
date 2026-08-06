@@ -756,15 +756,15 @@ def receipt_tbl(request):
 def payment_tbl(request):
     categories = list(_finance_master_for_user(
         FinanceCategory.objects.filter(type=2, is_active=True), request,
-    ).values('id', 'name'))
+    ).order_by('sort_order', 'name', 'id').values('id', 'name'))
     expense_classifications = list(_finance_master_for_user(
         ExpenseClassification.objects.all(), request,
-    ).values(
+    ).order_by('sort_order', 'name', 'id').values(
         'id', 'name', 'is_active', 'parent_category_id', 'parent_category__name',
     ))
     cashbooks = list(_finance_master_for_user(
         CashBook.objects.filter(is_active=True), request,
-    ).values('id', 'name', 'balance'))
+    ).order_by('sort_order', 'name', 'id').values('id', 'name', 'balance'))
     payment_methods = _serialize_payment_methods()
     suppliers = list(_suppliers_for_user(
         Supplier.objects.filter(is_active=True), request,

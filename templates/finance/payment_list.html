@@ -768,9 +768,14 @@ function approvePayment(id, button){
     $('#approve_payment_id').val(payment.id);
     $('#approve_payment_code').text(payment.code || '');
     $('#approve_payment_amount').text(fmtD(payment.amount));
-    $('#approve_expense_classification_id').val(payment.expense_classification_id || '').trigger('change');
-    $('#approve_cash_book_id').val(payment.cash_book_id || '').trigger('change');
+    selectFirstApprovalOption('#approve_expense_classification_id');
+    selectFirstApprovalOption('#approve_cash_book_id');
     $('#modal_approve_payment').modal('show');
+}
+function selectFirstApprovalOption(selector){
+    var $select = $(selector);
+    var selectedValue = $select.find('option:not([value=""]):enabled').first().val() || '';
+    $select.val(selectedValue).trigger('change');
 }
 function confirmApprovePayment(){
     var id = Number($('#approve_payment_id').val() || 0);

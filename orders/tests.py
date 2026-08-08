@@ -4739,7 +4739,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertIn('Chưa chọn sản phẩm bảo hành', content)
         self.assertNotIn('Sản phẩm test đơn hàng', content)
 
-    def test_print_order_can_show_and_hide_combo_components(self):
+    def test_print_order_does_not_show_combo_components(self):
         combo = Product.objects.create(
             store=self.store,
             code='CB-PRINT-001',
@@ -4763,19 +4763,7 @@ class OrderRiskFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn('Combo in đơn', content)
-        self.assertIn('SP-ORDER-001 - Sản phẩm test đơn hàng', content)
-
-        PrintTemplate.objects.update_or_create(
-            brand=self.brand,
-            template_type='a4',
-            defaults={'title': 'Hóa đơn A4', 'show_combo_components': False},
-        )
-        hidden_response = self.client.get(reverse('api_print_order'), {'id': order.id, 'type': 'a4', 'source': 'order'})
-
-        self.assertEqual(hidden_response.status_code, 200)
-        hidden_content = hidden_response.content.decode()
-        self.assertIn('Combo in đơn', hidden_content)
-        self.assertNotIn('SP-ORDER-001 - Sản phẩm test đơn hàng', hidden_content)
+        self.assertNotIn('SP-ORDER-001 - Sản phẩm test đơn hàng', content)
 
     def test_print_order_shows_product_note_below_item_name(self):
         self.product.note = 'Tặng kèm dây nguồn'

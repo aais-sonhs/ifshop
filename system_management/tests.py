@@ -635,7 +635,7 @@ class SystemManagementScopeTests(TestCase):
         self.assertEqual(body['status'], 'ok', msg=response.content.decode())
         self.assertIn('Hóa đơn preview', body['html'])
         self.assertIn('Không ảnh', body['html'])
-        self.assertIn('SP001 - Áo khoác mẫu', body['html'])
+        self.assertNotIn('SP001 - Áo khoác mẫu', body['html'])
         self.assertNotIn('CK%', body['html'])
 
     def test_preview_print_template_can_hide_combo_components(self):
